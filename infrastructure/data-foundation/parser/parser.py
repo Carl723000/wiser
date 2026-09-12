@@ -1,5 +1,6 @@
 """Bounded extraction of source content. Source files never supply executable code."""
 
+import hashlib
 import math
 import re
 import stat
@@ -271,7 +272,10 @@ class VisibleText(HTMLParser):
 
 
 def document(path, kind):
-    yield schema(["Text", "Source location"])
+    yield schema(
+        ["Text", "Source location"],
+        [{"key": "__text_encoding", "label": "Text encoding issues"}],
+    )
     if kind == "pdf":
         from pypdf import PdfReader
 
@@ -309,7 +313,21 @@ def document(path, kind):
                 yield {"type": "warning", "reason": "TEXT_LIMIT"}
                 return
             for start in range(0, len(paragraph), 16000):
-                yield record({"c1": paragraph[start : start + 16000], "c2": location})
+                chunk = paragraph[start : start + 16000]
+                values = {"c1": chunk, "c2": location}
+                offsets = [index for index, char in enumerate(chunk) if char == "\x00"]
+                if offsets:
+                    # PostgreSQL JSONB cannot represent U+0000. Preserve its exact
+                    # positions rather than guessing a missing scientific symbol.
+                    values["c1"] = chunk.replace("\x00", "�")
+                    values["__text_encoding"] = {
+                        "code": "U+0000",
+                        "offsets": offsets,
+                        "offsetUnit": "UNICODE_CODE_POINT",
+                        "originalTextSha256": hashlib.sha256(chunk.encode("utf-8")).hexdigest(),
+                    }
+                    yield {"type": "warning", "reason": "TEXT_ENCODING_REPLACED"}
+                yield record(values)
     if kind == "pdf" and total == 0:
         yield {"type": "warning", "reason": "TEXT_UNAVAILABLE"}
 

@@ -1,9 +1,11 @@
 import io
+import hashlib
 import tempfile
 import unittest
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from openpyxl import Workbook
 from parser import ParseError, parse_asset
@@ -56,6 +58,41 @@ class SourceParserTest(unittest.TestCase):
                 b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n",
                 "pdf",
             )
+
+    def test_pdf_null_text_retains_readable_content_and_explicit_uncertainty(self):
+        text = "氮😀 concentration: 1 mg L\x001; literal � remains."
+        reader = Mock(is_encrypted=False)
+        reader.pages = [Mock(), Mock()]
+        reader.pages[0].extract_text.return_value = text
+        reader.pages[1].extract_text.return_value = "Unaffected page"
+        with patch("pypdf.PdfReader", return_value=reader):
+            events = self.events("encoding.pdf", b"%PDF-1.7\nfixture", "pdf")
+        rows = [event for event in events if event["type"] == "record"]
+        self.assertEqual(rows[0]["values"]["c1"], text.replace("\x00", "�"))
+        self.assertEqual(rows[0]["values"]["c2"], "page:1")
+        issues = rows[0]["values"]["__text_encoding"]
+        self.assertEqual(issues["code"], "U+0000")
+        self.assertEqual(issues["offsets"], [text.index("\x00")])
+        self.assertEqual(issues["offsetUnit"], "UNICODE_CODE_POINT")
+        self.assertEqual(issues["originalTextSha256"], hashlib.sha256(text.encode()).hexdigest())
+        restored = list(rows[0]["values"]["c1"])
+        for offset in issues["offsets"]:
+            restored[offset] = "\x00"
+        self.assertEqual("".join(restored), text)
+        self.assertEqual(rows[1]["values"]["c1"], "Unaffected page")
+        self.assertNotIn("__text_encoding", rows[1]["values"])
+        self.assertEqual(events[-1]["status"], "PARTIAL")
+        self.assertEqual(events[-1]["reason"], "TEXT_ENCODING_REPLACED")
+        self.assertEqual(events[-1]["recordCount"], 2)
+
+    def test_null_offsets_are_chunk_local_and_regular_text_remains_ready(self):
+        events = self.events("long.txt", b"a" * 15999 + b"\x00\x00b", "txt")
+        rows = [event for event in events if event["type"] == "record"]
+        self.assertEqual(rows[0]["values"]["__text_encoding"]["offsets"], [15999])
+        self.assertEqual(rows[1]["values"]["__text_encoding"]["offsets"], [0])
+        self.assertEqual(events[-1]["status"], "PARTIAL")
+        regular = self.events("normal.txt", "Normal � text".encode(), "txt")
+        self.assertEqual(regular[-1]["status"], "READY")
 
     def test_disguised_excel_is_invalid(self):
         with self.assertRaisesRegex(ParseError, "INVALID_FORMAT"):
