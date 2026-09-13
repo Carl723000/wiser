@@ -7,6 +7,7 @@ import { dataResourceName } from '@/lib/data-foundation-presentation';
 
 import { graphNodeLabel } from '@/lib/data-graph-label';
 
+import { DataRecordRelations } from './data-record-relations';
 import { DataExplorerInspector } from './data-explorer-inspector';
 import { DataExplorerSaved } from './data-explorer-saved';
 import { ExplorationViewContext } from './exploration-view-context';
@@ -1112,6 +1113,15 @@ export function DataExplorer({
                     </code>
                   </dd>
                 </dl>
+                <DataRecordRelations
+                  locale={locale}
+                  record={{
+                    dataItemId: selectedRecord.dataItemId,
+                    versionId: selectedRecord.versionId,
+                    recordId: selectedRecord.recordId,
+                  }}
+                  returnGraph={returnGraph}
+                />
                 <Link
                   href={`/${locale}/data-foundation/catalog/${selectedRecord.dataItemId}?versionId=${selectedRecord.versionId}`}
                 >

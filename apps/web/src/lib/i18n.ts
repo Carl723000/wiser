@@ -28,6 +28,18 @@ export function isLocale(value: string): value is Locale {
 
 const zhCN = {
   knowledgeRelations: {
+    recordRelations: '本记录的业务关系',
+    recordRelationHint:
+      '仅匹配明确绑定的记录身份；沿用案例来源及关系筛选条件。没有案例时仅检查当前资料版本。',
+    recordRelationStatus: '关系审核范围',
+    recordRelationPending: '以下是待审绑定，尚未确认其专业含义。',
+    findRecordRelations: '查找此记录的业务关系',
+    recordRelationFailed: '关系暂时无法读取，已清空结果，请重试。',
+    recordRelationChecked: '已检查关系记录：',
+    recordRelationPartial: '尚有关系未检查，请继续查找。',
+    recordRelationMore: '继续查找',
+    recordRelationEmpty: '当前范围内未找到这条记录的明确业务绑定。',
+
     filterTitle: '筛选已加载的关系',
     filterHint:
       '类型匹配关系任一端。日期按所选时间含义与原资料时段重叠筛选；仅有年份或月份时保留其原始粒度。日期不完整的关系可另行保留。图与下方证据同步筛选，来源地图和记录仍按各自条件查询。',
@@ -1933,6 +1945,22 @@ const zhCN = {
 
 const en: typeof zhCN = {
   knowledgeRelations: {
+    recordRelations: 'Business relations for this record',
+    recordRelationHint:
+      'Matches explicit record identities within the case sources and relation filters. Without a case, only this source version is checked.',
+    recordRelationStatus: 'Relation review scope',
+    recordRelationPending:
+      'These bindings await review; their scientific meaning is not confirmed.',
+    findRecordRelations: 'Find business relations for this record',
+    recordRelationFailed:
+      'Relations could not be read. Results were cleared; please retry.',
+    recordRelationChecked: 'Relation records checked:',
+    recordRelationPartial:
+      'More relations remain to be checked. Continue searching.',
+    recordRelationMore: 'Continue searching',
+    recordRelationEmpty:
+      'No explicit binding for this record was found in the current scope.',
+
     filterTitle: 'Filter loaded relations',
     filterHint:
       'Type matches either endpoint. Dates overlap source periods for the selected time role; year and month precision is retained. Incomplete periods can be kept separately. The graph and evidence list share these filters; source maps and records retain their own query conditions.',
