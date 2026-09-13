@@ -225,3 +225,7 @@ Saved-view queries are `dataExploreViews(input: JSON!)`, `dataExploreView(input:
 `dataAssessmentOverview(input: JSON!)` maps to `data.assessment.overview`, retaining the exact target, authorization, count grain and paging semantics.
 
 `importDataRelations` and `reviewDataRelation` are JSON-input mutations; `dataRelation` and `dataRelations` are JSON-input queries. All map to the same versioned business-relation capabilities as REST, including exact source hashes, default approved-only lists, human review, optimistic versions and command idempotency. Graph neighborhoods use the source version and optional entity/mapping filter; they never implicitly merge source-local identities.
+
+### Typed knowledge candidates (relations 1.1)
+
+Relations 1.1 adds persons, organizations, documents, claims, events, observations, policies, model runs and places through the existing source-bound workflow. Registered predicates constrain endpoint kinds; each extended relation requires explicit record nature, time role, location role and applicability. Plans, historical reports and simulations cannot be declared sampling observations. Source hashes, immutable versions, pending review and permissions remain unchanged. The 1.0 discovery schemas are retained. This typed intake slice does not yet implement cross-source identity reconciliation or a combined graph.

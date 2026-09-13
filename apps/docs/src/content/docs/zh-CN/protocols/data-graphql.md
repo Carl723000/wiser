@@ -225,3 +225,7 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 `dataAssessmentOverview(input: JSON!)` 映射 `data.assessment.overview`，保持检查对象、授权范围、资料计数口径与分页含义一致。
 
 `importDataRelations`、`reviewDataRelation` 为 JSON 输入 mutation；`dataRelation`、`dataRelations` 为 JSON 输入 query。它们映射到与 REST 相同的业务关系能力，保留原件哈希、默认仅已通过列表、人工审核、预期版本及命令幂等要求。邻域查询固定来源版本，并可按实体和映射筛选，不隐式合并来源内身份。
+
+### 类型化知识候选（关系协议1.1）
+
+关系协议1.1在现有来源绑定流程中增加人物、机构、文档、观点、事件、观测、政策、模型运行及地点。已登记关系规则限制两端对象类型；新增关系必须说明记录性质、时间角色、位置角色和适用条件。计划、历史报道及模拟不能标为采样观测。原件哈希、不可变版本、待审核与权限规则保持不变，保留1.0发现契约。本次类型化接收切片尚不包含跨资料身份核验与联合图查询。

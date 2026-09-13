@@ -22,6 +22,7 @@ export function groupRelationCandidates(
   rows: readonly unknown[],
 ): readonly { identity: string; candidate: RelationCandidate }[] {
   const parsed = rows.map((row) => RelationCandidateSchema.parse(row));
+  for (const row of parsed) assertTypedRelation(row);
   assertRelationEntityConsistency(
     parsed.flatMap((row) => [row.subject, row.object]),
   );
@@ -62,4 +63,92 @@ export function groupRelationCandidates(
           .map(([, e]) => e),
       },
     }));
+}
+
+/** Versioned code registry: new types share intake/review mechanics, never arbitrary LLM strings. */
+export const KNOWLEDGE_RELATION_RULES = {
+  EXPRESSES_CLAIM: { subjects: ['PERSON', 'ORGANIZATION'], objects: ['CLAIM'] },
+  REPORTS_CLAIM: { subjects: ['DOCUMENT'], objects: ['CLAIM'] },
+  ABOUT_ENTITY: {
+    subjects: ['CLAIM', 'EVENT', 'DOCUMENT', 'POLICY', 'MODEL_RUN'],
+    objects: null,
+  },
+  OBSERVES_ENTITY: {
+    subjects: ['OBSERVATION'],
+    objects: [
+      'MONITORING_POINT',
+      'RIVER_REACH',
+      'BASIN',
+      'PLACE',
+      'ENTERPRISE',
+      'EXTERNAL_ENTITY',
+    ],
+  },
+  OCCURRED_IN: {
+    subjects: ['EVENT'],
+    objects: ['RIVER_REACH', 'BASIN', 'PLACE'],
+  },
+  CITES_SOURCE: { subjects: ['DOCUMENT', 'CLAIM'], objects: ['DOCUMENT'] },
+  DERIVED_FROM: {
+    subjects: ['DOCUMENT', 'CLAIM', 'OBSERVATION', 'MODEL_RUN'],
+    objects: ['DOCUMENT', 'OBSERVATION', 'MODEL_RUN', 'EXTERNAL_ENTITY'],
+  },
+  APPLIES_TO: { subjects: ['POLICY', 'CLAIM'], objects: null },
+  USES_DATA: {
+    subjects: ['MODEL_RUN'],
+    objects: ['DOCUMENT', 'OBSERVATION', 'EXTERNAL_ENTITY'],
+  },
+} as const;
+
+function assertTypedRelation(row: RelationCandidate): void {
+  const rule = (
+    KNOWLEDGE_RELATION_RULES as Readonly<
+      Record<
+        string,
+        {
+          subjects: readonly string[];
+          objects: readonly string[] | null;
+        }
+      >
+    >
+  )[row.predicate];
+  // Legacy relation semantics remain unchanged for existing clients.
+  if (!rule) {
+    const legacyKinds = [
+      'ENTERPRISE',
+      'MONITORING_POINT',
+      'INDICATOR_RECORD',
+      'RIVER_REACH',
+      'BASIN',
+      'EXTERNAL_ENTITY',
+    ];
+    if (
+      !legacyKinds.includes(row.subject.kind) ||
+      !legacyKinds.includes(row.object.kind)
+    ) {
+      throw Error('Extended entities require a registered knowledge predicate');
+    }
+    return;
+  }
+  if (!row.qualifiers.context)
+    throw Error('Knowledge relation requires explicit context');
+  if (
+    !rule.subjects.includes(row.subject.kind) ||
+    (rule.objects && !rule.objects.includes(row.object.kind))
+  ) {
+    throw Error('Invalid knowledge relation endpoint types');
+  }
+  const context = row.qualifiers.context;
+  if (
+    context.recordNature !== 'REPORTED_OBSERVATION' &&
+    context.timeRole === 'OBSERVATION_TIME'
+  ) {
+    throw Error('Non-observation cannot use observation time');
+  }
+  if (
+    row.predicate === 'OBSERVES_ENTITY' &&
+    context.recordNature !== 'REPORTED_OBSERVATION'
+  ) {
+    throw Error('Observed relation requires reported observation');
+  }
 }

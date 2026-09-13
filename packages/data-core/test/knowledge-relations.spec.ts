@@ -97,3 +97,71 @@ describe('source-scoped business relation candidates', () => {
     ).toThrow();
   });
 });
+
+describe('typed cross-domain relation candidates', () => {
+  const expert = () => ({
+    ...candidate(),
+    subject: { ...entity('person:qu'), kind: 'PERSON', label: '曲久辉' },
+    predicate: 'EXPRESSES_CLAIM',
+    object: { ...entity('claim:four-waters'), kind: 'CLAIM' },
+    qualifiers: {
+      ...candidate().qualifiers,
+      context: {
+        recordNature: 'EXPERT_VIEW',
+        timeRole: 'STATEMENT_TIME',
+        validFrom: null,
+        validTo: null,
+        locationRole: 'SUBJECT_AREA',
+        applicability: '永定河治理讨论；不得当作监测结果',
+      },
+    },
+  });
+  it('accepts a source-bound expert view without converting it into an observation', () => {
+    const [row] = groupRelationCandidates([expert()]);
+    expect(row?.candidate.predicate).toBe('EXPRESSES_CLAIM');
+    expect(row?.candidate.qualifiers.context?.recordNature).toBe('EXPERT_VIEW');
+    expect(row?.candidate.qualifiers.observedAt).toBeNull();
+  });
+  it('requires an explicit nature and applicability for new knowledge relations', () => {
+    const row = expert();
+    const qualifiers = candidate().qualifiers;
+    expect(() => groupRelationCandidates([{ ...row, qualifiers }])).toThrow();
+  });
+  it('rejects using a monitoring point as a speaker', () => {
+    expect(() =>
+      groupRelationCandidates([{ ...expert(), subject: entity('point:1') }]),
+    ).toThrow();
+  });
+  it('keeps an event and a research claim as different nodes about the same water body', () => {
+    const about = (key: string, kind: string) => ({
+      ...expert(),
+      subject: { ...entity(key), kind },
+      predicate: 'ABOUT_ENTITY',
+      object: { ...entity('river:yongding'), kind: 'RIVER_REACH' },
+    });
+    expect(
+      groupRelationCandidates([
+        about('event:2020', 'EVENT'),
+        about('claim:2021', 'CLAIM'),
+      ]),
+    ).toHaveLength(2);
+  });
+  it('does not allow new person nodes to misuse legacy river relations', () => {
+    expect(() =>
+      groupRelationCandidates([{ ...expert(), predicate: 'FLOWS_TO' }]),
+    ).toThrow();
+  });
+  it('rejects treating a planning target as an observed sampling time', () => {
+    const row = expert();
+    row.qualifiers.context.recordNature = 'PLANNING_TARGET';
+    row.qualifiers.context.timeRole = 'OBSERVATION_TIME';
+    expect(() => groupRelationCandidates([row])).toThrow();
+  });
+  it('refuses arbitrary model-invented predicates', () => {
+    expect(() =>
+      groupRelationCandidates([
+        { ...expert(), predicate: 'PROVES_CAUSAL_EFFECT' },
+      ]),
+    ).toThrow();
+  });
+});

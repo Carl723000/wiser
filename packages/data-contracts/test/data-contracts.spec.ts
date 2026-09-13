@@ -904,20 +904,20 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 
 const expectedJsonSchemaHashes = {
   'data.knowledge.relations.import': {
-    input: '4c2b3769088db2caf0e6fe6b14acc966ab92b2fed294b7708ce18e6758598e20',
-    output: '785dc563ef01a4b71cd4867edae960023e334a9b9e6aee2eb453e45b8fc7cc00',
+    input: '1c62393b455ce80105a5d36757e7abd94c5ae0d039b3dd7a05f8a598c2f99367',
+    output: '28ca385f5d1d7ffa4c7e6d00fd4e68e0053aa596d5587f3596a83aa6d16393ef',
   },
   'data.knowledge.relations.get': {
     input: '1da03b60eb041eb77e0be2ebfedbab9881708170afa6df8b899d360def5f55c4',
-    output: '8b0534b4f09790ef4906068f4a3bf464ce2d99c06f65959c573dbef7847923df',
+    output: '701dbba0afc08fc81c5d6dd11b851286873d8b7fa9b79e173abecdc83849d842',
   },
   'data.knowledge.relations.list': {
     input: '39556b5ee516b087088cfedd0b535489f9f9d1e30510a854975dbf660a35f2d6',
-    output: '132fc40f5f5b9b87babfe9506cb8ff529d770cf73ab678aeea068488a39f9a62',
+    output: '2aba41367572903fb60b4ec0731679844efb9cda873cff29cdc13d572e02a812',
   },
   'data.knowledge.relations.review': {
     input: 'b942992c3638c17b7e34d211bc383be46b59383211be1fef3db3c8f14db4fe8b',
-    output: '8b0534b4f09790ef4906068f4a3bf464ce2d99c06f65959c573dbef7847923df',
+    output: '701dbba0afc08fc81c5d6dd11b851286873d8b7fa9b79e173abecdc83849d842',
   },
 
   'data.assessment.create': {
@@ -1801,4 +1801,39 @@ describe('Data Foundation JSON Schema generation', () => {
       }).toEqual(expectedJsonSchemaHashes[capabilityId]);
     }
   });
+});
+
+it('retains relations 1.0 discovery while advertising typed 1.1', () => {
+  const expected = {
+    'data.knowledge.relations.import': {
+      input: '4c2b3769088db2caf0e6fe6b14acc966ab92b2fed294b7708ce18e6758598e20',
+      output:
+        '785dc563ef01a4b71cd4867edae960023e334a9b9e6aee2eb453e45b8fc7cc00',
+    },
+    'data.knowledge.relations.get': {
+      input: '1da03b60eb041eb77e0be2ebfedbab9881708170afa6df8b899d360def5f55c4',
+      output:
+        '8b0534b4f09790ef4906068f4a3bf464ce2d99c06f65959c573dbef7847923df',
+    },
+    'data.knowledge.relations.list': {
+      input: '39556b5ee516b087088cfedd0b535489f9f9d1e30510a854975dbf660a35f2d6',
+      output:
+        '132fc40f5f5b9b87babfe9506cb8ff529d770cf73ab678aeea068488a39f9a62',
+    },
+    'data.knowledge.relations.review': {
+      input: 'b942992c3638c17b7e34d211bc383be46b59383211be1fef3db3c8f14db4fe8b',
+      output:
+        '8b0534b4f09790ef4906068f4a3bf464ce2d99c06f65959c573dbef7847923df',
+    },
+  };
+  for (const [id, hashes] of Object.entries(expected)) {
+    const key = id as keyof typeof expected;
+    const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
+    expect(old.version).toBe('1.0.0');
+    expect(DATA_CAPABILITY_REGISTRY[key].version).toBe('1.1.0');
+    expect({
+      input: jsonSchemaHash(old.inputSchema),
+      output: jsonSchemaHash(old.outputSchema),
+    }).toEqual(hashes);
+  }
 });

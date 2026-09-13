@@ -1,3 +1,4 @@
+import * as RelationsV1 from '../knowledge-relations/v1.ts';
 import {
   ImportRelationsInputSchema,
   ImportRelationsOutputSchema,
@@ -1296,7 +1297,7 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.import': defineCapability({
     id: 'data.knowledge.relations.import',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'command',
     inputSchema: ImportRelationsInputSchema,
     outputSchema: ImportRelationsOutputSchema,
@@ -1317,7 +1318,7 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.get': defineCapability({
     id: 'data.knowledge.relations.get',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'query',
     inputSchema: RelationGetInputSchema,
     outputSchema: RelationOutputSchema,
@@ -1338,7 +1339,7 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.list': defineCapability({
     id: 'data.knowledge.relations.list',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'query',
     inputSchema: RelationListInputSchema,
     outputSchema: RelationListOutputSchema,
@@ -1359,7 +1360,7 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.review': defineCapability({
     id: 'data.knowledge.relations.review',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'command',
     inputSchema: RelationReviewInputSchema,
     outputSchema: RelationOutputSchema,
@@ -1385,6 +1386,38 @@ export const DATA_CAPABILITY_REGISTRY: Readonly<
 > = Object.freeze(capabilityRegistry);
 
 const capabilityArchive = {
+  'data.knowledge.relations.import': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.import'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.ImportRelationsInputSchema,
+      outputSchema: RelationsV1.ImportRelationsOutputSchema,
+    }),
+  ]),
+  'data.knowledge.relations.get': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.get'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.RelationGetInputSchema,
+      outputSchema: RelationsV1.RelationOutputSchema,
+    }),
+  ]),
+  'data.knowledge.relations.list': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.RelationListInputSchema,
+      outputSchema: RelationsV1.RelationListOutputSchema,
+    }),
+  ]),
+  'data.knowledge.relations.review': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.review'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.RelationReviewInputSchema,
+      outputSchema: RelationsV1.RelationOutputSchema,
+    }),
+  ]),
   'data.explore.query': Object.freeze([
     defineCapability({
       ...capabilityRegistry['data.explore.query'],
