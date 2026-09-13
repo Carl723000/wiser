@@ -22,6 +22,12 @@ import {
   relationSourceExploreHref,
   type RelationViewState,
 } from '@/lib/relation-navigation';
+import {
+  DEFAULT_RELATION_FILTERS,
+  filterRelationRows,
+  parseRelationFilters,
+  type RelationFilters,
+} from '@/lib/relation-filters';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import styles from './data-reconciliation.module.css';
 
@@ -37,6 +43,12 @@ export function DataKnowledgeRelations({
   const statusId = useId(),
     sourcesId = useId();
   const [sourceLinks, setSourceLinks] = useState('');
+  const [filters, setFilters] = useState<RelationFilters>(
+    DEFAULT_RELATION_FILTERS,
+  );
+  const [filterDraft, setFilterDraft] = useState<RelationFilters>(
+    DEFAULT_RELATION_FILTERS,
+  );
   const [preview, setPreview] = useState(false);
   const [opened, setOpened] = useState(false);
   const applied = useRef<RelationViewState | null>(null);
@@ -67,6 +79,8 @@ export function DataKnowledgeRelations({
       setSourceLinks('');
       setStatus('APPROVED');
       setPreview(false);
+      setFilters(DEFAULT_RELATION_FILTERS);
+      setFilterDraft(DEFAULT_RELATION_FILTERS);
       setFailed(false);
       setBusy(false);
       setMessage('');
@@ -85,6 +99,8 @@ export function DataKnowledgeRelations({
         );
         setStatus(view.status);
         setPreview(view.preview);
+        setFilters(view.filters ?? DEFAULT_RELATION_FILTERS);
+        setFilterDraft(view.filters ?? DEFAULT_RELATION_FILTERS);
         void load(view.entity, undefined, view);
       } catch {
         setOpened(true);
@@ -126,28 +142,47 @@ export function DataKnowledgeRelations({
       window.history.pushState(window.history.state, '', href);
     applied.current = view;
   }
+  function applyFilters(value: RelationFilters) {
+    try {
+      const next = parseRelationFilters(value);
+      if (applied.current) saveView({ ...applied.current, filters: next });
+      setFilters(next);
+      setFilterDraft(next);
+      setMessage('');
+    } catch {
+      setMessage(copy.badFilters);
+    }
+  }
+  const visible = useMemo(
+    () => filterRelationRows(page?.items ?? [], filters),
+    [page, filters],
+  );
   const graph = useMemo(
     () => ({
       nodes: [
         ...new Map(
-          (page?.items ?? [])
+          visible.items
             .flatMap((r) =>
               [r.candidate.subject, r.candidate.object].map((e) => ({
                 key: relationNodeIdentity(r, e),
-                label: e.label,
+                label: `${copy.kinds[e.kind]} · ${e.label}`,
+                kind: e.kind,
               })),
             )
-            .map((e) => [e.key, { entityId: e.key, label: e.label }]),
+            .map((e) => [
+              e.key,
+              { entityId: e.key, label: e.label, kind: e.kind },
+            ]),
         ).values(),
       ],
-      edges: (page?.items ?? []).map((r) => ({
+      edges: visible.items.map((r) => ({
         edgeId: r.assertionId,
         fromEntityId: relationNodeIdentity(r, r.candidate.subject),
         toEntityId: relationNodeIdentity(r, r.candidate.object),
         label: copy.predicates[r.candidate.predicate],
       })),
     }),
-    [page, copy.predicates],
+    [visible.items, copy.predicates, copy.kinds],
   );
   async function request(action: string, input: unknown, command = false) {
     requests.current?.abort();
@@ -256,6 +291,7 @@ export function DataKnowledgeRelations({
       preview,
       entity: selected,
       pages: after ? (applied.current?.pages ?? 1) + 1 : 1,
+      filters,
     };
     if (view.pages > 10) return;
     let items = after ? [...(page?.items ?? [])] : [];
@@ -407,9 +443,109 @@ export function DataKnowledgeRelations({
                   : copy.partial
                 : copy.complete}
             </p>
+            <fieldset disabled={busy}>
+              <legend>{copy.filterTitle}</legend>
+              <p>{copy.filterHint}</p>
+              <label>
+                {copy.filterKind}
+                <select
+                  value={filterDraft.kind}
+                  onChange={(e) =>
+                    setFilterDraft({
+                      ...filterDraft,
+                      kind: e.target.value as RelationFilters['kind'],
+                    })
+                  }
+                >
+                  <option value="ALL">{copy.filterAll}</option>
+                  {Object.entries(copy.kinds).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {copy.filterTimeRole}
+                <select
+                  value={filterDraft.timeRole}
+                  onChange={(e) =>
+                    setFilterDraft({
+                      ...filterDraft,
+                      timeRole: e.target.value as RelationFilters['timeRole'],
+                    })
+                  }
+                >
+                  <option value="ALL">{copy.filterAll}</option>
+                  {Object.entries(copy.timeRoles).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {copy.filterFrom}
+                <input
+                  type="date"
+                  value={filterDraft.from ?? ''}
+                  onChange={(e) =>
+                    setFilterDraft({
+                      ...filterDraft,
+                      from: e.target.value || null,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                {copy.filterTo}
+                <input
+                  type="date"
+                  value={filterDraft.to ?? ''}
+                  onChange={(e) =>
+                    setFilterDraft({
+                      ...filterDraft,
+                      to: e.target.value || null,
+                    })
+                  }
+                />
+              </label>
+              <label className={styles.check}>
+                <input
+                  type="checkbox"
+                  checked={filterDraft.includeUndated}
+                  onChange={(e) =>
+                    setFilterDraft({
+                      ...filterDraft,
+                      includeUndated: e.target.checked,
+                    })
+                  }
+                />
+                {copy.filterUndated}
+              </label>
+              <div className={styles.actions}>
+                <button type="button" onClick={() => applyFilters(filterDraft)}>
+                  {copy.filterApply}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyFilters(DEFAULT_RELATION_FILTERS)}
+                >
+                  {copy.filterClear}
+                </button>
+              </div>
+            </fieldset>
+            <p role="status">
+              {copy.filteredCount}
+              {visible.items.length} · {copy.undatedCount}
+              {visible.undatedCount}
+            </p>
+            {visible.items.length === 0 && page.items.length > 0 ? (
+              <p>{copy.filteredEmpty}</p>
+            ) : null}
             {(status === 'APPROVED' ||
               (status === 'PENDING_REVIEW' && preview)) &&
-            page.items.length > 0 ? (
+            visible.items.length > 0 ? (
               <KnowledgeGraphCanvas
                 result={graph}
                 selectedId={entity}
@@ -419,7 +555,7 @@ export function DataKnowledgeRelations({
                 locale={locale}
               />
             ) : null}
-            {page.items.map((row) => (
+            {visible.items.map((row) => (
               <article key={row.assertionId}>
                 <h3>
                   <button

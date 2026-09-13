@@ -174,3 +174,34 @@ describe('business graph to source exploration round trip', () => {
     ).toBe('/en/data-foundation/explore?query=opaque');
   });
 });
+
+it('restores strict type and time conditions through a source round trip', () => {
+  const filters = {
+    kind: 'OBSERVATION',
+    timeRole: 'OBSERVATION_TIME',
+    from: '2026-06-01',
+    to: '2026-09-10',
+    includeUndated: false,
+  } as const;
+  const view = { ...state, filters };
+  const href = relationSourceExploreHref('zh-CN', view, source, 'records');
+  const back = relationReturnHref(
+    new URL(href, 'http://localhost').search,
+    'zh-CN',
+  );
+  expect(
+    readRelationView(new URL(back!, 'http://localhost').search, base),
+  ).toEqual(view);
+  expect(() =>
+    readRelationView(
+      '?relations=' +
+        encodeURIComponent(
+          JSON.stringify({
+            ...view,
+            filters: { ...filters, to: '2025-01-01' },
+          }),
+        ),
+      base,
+    ),
+  ).toThrow();
+});

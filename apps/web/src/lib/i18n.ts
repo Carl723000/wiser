@@ -28,6 +28,39 @@ export function isLocale(value: string): value is Locale {
 
 const zhCN = {
   knowledgeRelations: {
+    filterTitle: '筛选已加载的关系',
+    filterHint:
+      '类型匹配关系任一端。日期按所选时间含义与原资料时段重叠筛选；仅有年份或月份时保留其原始粒度。日期不完整的关系可另行保留。图与下方证据同步筛选，来源地图和记录仍按各自条件查询。',
+    filterKind: '涉及对象类型',
+    filterTimeRole: '筛选时间含义',
+    filterAll: '全部',
+    filterFrom: '筛选开始日期',
+    filterTo: '筛选结束日期',
+    filterUndated: '日期筛选时保留时段不明的关系',
+    filterApply: '应用关系筛选',
+    filterClear: '清除关系筛选',
+    filteredCount: '筛选后关系数：',
+    undatedCount: '所选类型与时间含义中，时段不明：',
+    filteredEmpty: '已加载的关系中没有匹配项。可清除条件或继续加载关系。',
+    badFilters: '请填写有效日期，开始日期不能晚于结束日期。',
+    kinds: {
+      ENTERPRISE: '企业',
+      MONITORING_POINT: '监测点',
+      INDICATOR_RECORD: '指标记录',
+      RIVER_REACH: '河段',
+      BASIN: '流域',
+      EXTERNAL_ENTITY: '外部对象',
+      PERSON: '人物',
+      ORGANIZATION: '机构',
+      CLAIM: '观点或断言',
+      EVENT: '事件',
+      DOCUMENT: '资料',
+      OBSERVATION: '观测或序列',
+      POLICY: '政策',
+      MODEL_RUN: '模型运行',
+      PLACE: '地点',
+    },
+
     relatedSources: '一起查看的资料链接',
     relatedHint:
       '粘贴本平台资料内容页的链接，每行一份，最多三十一份；每次查询都会核对访问权限。',
@@ -1897,6 +1930,40 @@ const zhCN = {
 
 const en: typeof zhCN = {
   knowledgeRelations: {
+    filterTitle: 'Filter loaded relations',
+    filterHint:
+      'Type matches either endpoint. Dates overlap source periods for the selected time role; year and month precision is retained. Incomplete periods can be kept separately. The graph and evidence list share these filters; source maps and records retain their own query conditions.',
+    filterKind: 'Related object type',
+    filterTimeRole: 'Filter time role',
+    filterAll: 'All',
+    filterFrom: 'Filter start date',
+    filterTo: 'Filter end date',
+    filterUndated: 'Keep unknown periods when filtering dates',
+    filterApply: 'Apply relation filters',
+    filterClear: 'Clear relation filters',
+    filteredCount: 'Matching loaded relations: ',
+    undatedCount: 'Unknown periods within type and time role: ',
+    filteredEmpty:
+      'No loaded relations match. Clear conditions or load more relations.',
+    badFilters: 'Enter valid dates with the start on or before the end.',
+    kinds: {
+      ENTERPRISE: 'Enterprise',
+      MONITORING_POINT: 'Monitoring point',
+      INDICATOR_RECORD: 'Indicator record',
+      RIVER_REACH: 'River reach',
+      BASIN: 'Basin',
+      EXTERNAL_ENTITY: 'External object',
+      PERSON: 'Person',
+      ORGANIZATION: 'Organization',
+      CLAIM: 'Claim',
+      EVENT: 'Event',
+      DOCUMENT: 'Document',
+      OBSERVATION: 'Observation or series',
+      POLICY: 'Policy',
+      MODEL_RUN: 'Model run',
+      PLACE: 'Place',
+    },
+
     relatedSources: 'Source links to view together',
     relatedHint:
       'Paste up to thirty-one version-specific source links from this platform, one per line. Access is checked on every query.',

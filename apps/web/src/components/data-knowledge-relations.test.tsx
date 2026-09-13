@@ -309,3 +309,156 @@ it('ignores a late denied response after history restores a newer query', async 
   });
   expect(screen.getByText('当前状态的关系数：0')).toBeTruthy();
 });
+
+it('filters the loaded graph and evidence together and restores conditions without widening the source request', async () => {
+  const context = {
+    recordNature: 'REPORTED_OBSERVATION',
+    timeRole: 'OBSERVATION_TIME',
+    validFrom: '2019-06-01',
+    validTo: '2019-06-30',
+    locationRole: 'SUBJECT_AREA',
+    applicability: 'source interval',
+  };
+  const observed = {
+    ...row,
+    candidate: {
+      ...row.candidate,
+      subject: { ...row.candidate.subject, kind: 'OBSERVATION' },
+      qualifiers: { ...row.candidate.qualifiers, context },
+    },
+  };
+  const undated = {
+    ...row,
+    assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    candidate: {
+      ...row.candidate,
+      subject: { ...row.candidate.subject, kind: 'PERSON', label: 'Speaker' },
+    },
+  };
+  const view = {
+    dataItemId: row.dataItemId,
+    versionId: row.versionId,
+    sources: [],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 1,
+  };
+  const route = `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=`;
+  window.history.replaceState(
+    null,
+    '',
+    route + encodeURIComponent(JSON.stringify(view)),
+  );
+  const fetcher = vi.fn(() =>
+    Promise.resolve(
+      Response.json({ items: [observed, undated], totalCount: 2 }),
+    ),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataKnowledgeRelations
+      locale="zh-CN"
+      dataItemId={row.dataItemId}
+      versionId={row.versionId}
+    />,
+  );
+  await screen.findByText('当前状态的关系数：2');
+  fireEvent.change(screen.getByLabelText('涉及对象类型'), {
+    target: { value: 'OBSERVATION' },
+  });
+  fireEvent.change(screen.getByLabelText('筛选开始日期'), {
+    target: { value: '2019-06-01' },
+  });
+  fireEvent.change(screen.getByLabelText('筛选结束日期'), {
+    target: { value: '2019-06-30' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '应用关系筛选' }));
+  expect(screen.getAllByText(/PDF page 1, row 1/)).toHaveLength(1);
+  expect(screen.getByText(/筛选后关系数：1/)).toBeTruthy();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  const filtered = window.location.search;
+  expect(
+    (
+      JSON.parse(new URLSearchParams(filtered).get('relations')!) as {
+        filters: { kind: string };
+      }
+    ).filters.kind,
+  ).toBe('OBSERVATION');
+  fireEvent.click(screen.getByRole('button', { name: '清除关系筛选' }));
+  expect(screen.getAllByText(/PDF page 1, row 1/)).toHaveLength(2);
+  // Restore exact encoded state, as a copied link or browser history would.
+  window.history.replaceState(
+    null,
+    '',
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}` + filtered,
+  );
+  fireEvent(window, new PopStateEvent('popstate'));
+  await waitFor(() =>
+    expect(screen.getAllByText(/PDF page 1, row 1/)).toHaveLength(1),
+  );
+  expect(screen.getByLabelText<HTMLSelectElement>('涉及对象类型').value).toBe(
+    'OBSERVATION',
+  );
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('keeps nonmatching loaded rows when continuing a filtered page so clearing filters restores them', async () => {
+  const view = {
+    dataItemId: row.dataItemId,
+    versionId: row.versionId,
+    sources: [],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 1,
+    filters: {
+      kind: 'PERSON',
+      timeRole: 'ALL',
+      from: null,
+      to: null,
+      includeUndated: true,
+    },
+  };
+  window.history.replaceState(
+    null,
+    '',
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=` +
+      encodeURIComponent(JSON.stringify(view)),
+  );
+  const next = {
+    ...row,
+    assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    candidate: {
+      ...row.candidate,
+      subject: { ...row.candidate.subject, kind: 'PERSON', label: 'Speaker' },
+    },
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, options: RequestInit) => {
+      await Promise.resolve();
+      return Response.json(
+        (JSON.parse(options.body as string) as { after?: string }).after
+          ? { items: [next], totalCount: 2 }
+          : {
+              items: [row],
+              totalCount: 2,
+              nextCursor: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            },
+      );
+    }),
+  );
+  render(
+    <DataKnowledgeRelations
+      locale="zh-CN"
+      dataItemId={row.dataItemId}
+      versionId={row.versionId}
+    />,
+  );
+  await screen.findByRole('button', { name: '继续加载关系' });
+  fireEvent.click(screen.getByRole('button', { name: '继续加载关系' }));
+  await screen.findByText('Speaker');
+  fireEvent.click(screen.getByRole('button', { name: '清除关系筛选' }));
+  expect(screen.getAllByText(/PDF page 1, row 1/)).toHaveLength(2);
+});

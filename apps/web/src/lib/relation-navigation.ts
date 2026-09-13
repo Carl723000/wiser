@@ -4,6 +4,7 @@ import {
   RelationStatusSchema,
   type RelationAssertion,
 } from '@wiser/data-contracts';
+import { parseRelationFilters, type RelationFilters } from './relation-filters';
 import { parseRelationNodeIdentity } from './relation-graph';
 import type { Locale } from './i18n';
 type Source = { dataItemId: string; versionId: string };
@@ -13,6 +14,7 @@ export type RelationViewState = Source & {
   preview: boolean;
   entity: string | null;
   pages: number;
+  filters?: RelationFilters;
 };
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -52,6 +54,7 @@ export function readRelationView(
           'preview',
           'entity',
           'pages',
+          'filters',
         ].includes(k),
     )
   )
@@ -108,6 +111,9 @@ export function readRelationView(
     preview: value.preview,
     entity,
     pages: value.pages,
+    ...(value.filters !== undefined
+      ? { filters: parseRelationFilters(value.filters) }
+      : {}),
   };
 }
 export function relationViewHref(
