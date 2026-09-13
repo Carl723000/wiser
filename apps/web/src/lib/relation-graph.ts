@@ -1,4 +1,5 @@
 import {
+  MAX_RELATION_RELATED_SOURCES,
   RelationEntityReferenceSchema,
   type RelationAssertion,
   type RelationCandidate,
@@ -38,7 +39,8 @@ export function parseRelationSourceLinks(
   origin: string,
 ): { dataItemId: string; versionId: string }[] {
   const links = value.trim() ? value.trim().split(/\s+/) : [];
-  if (links.length > 11) throw Error('Too many sources');
+  if (links.length > MAX_RELATION_RELATED_SOURCES)
+    throw Error('Too many sources');
   return [
     ...new Map(
       links.map((text) => {

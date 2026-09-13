@@ -308,3 +308,49 @@ it('does not admit an identity link whose source entities do not exist', async (
   ).rejects.toThrow();
   expect(f.rows.size).toBe(0);
 });
+
+it('authorizes every selected source in a 32-source case and stops before listing on denial', async () => {
+  const f = fixture();
+  const sources = Array.from({ length: 32 }, () => ({
+    dataItemId: randomUUID(),
+    versionId: randomUUID(),
+  }));
+  const first = sources[0]!;
+  const input = {
+    ...first,
+    relatedSources: sources.slice(1),
+    status: 'PENDING_REVIEW',
+  };
+  await f.call('list', input);
+  const auth = f.query.mock.calls.filter(([sql]) =>
+    sql.includes('select count(*)::int total from authorized'),
+  );
+  expect(
+    auth.map(([, v]) => {
+      const r = (
+        JSON.parse(String(v?.[0])) as {
+          dataItemId: string;
+          versionId: string;
+        }[]
+      )[0]!;
+      return { dataItemId: r.dataItemId, versionId: r.versionId };
+    }),
+  ).toEqual(sources);
+  f.query.mockClear();
+  const original = f.query.getMockImplementation()!;
+  f.query.mockImplementation(async (sql, values = []) => {
+    if (
+      sql.includes('select count(*)::int total from authorized') &&
+      (JSON.parse(String(values[0])) as { versionId: string }[])[0]!
+        .versionId === sources[31]!.versionId
+    )
+      return { rows: [{ total: 0 }], rowCount: 1 };
+    return original(sql, values);
+  });
+  await expect(f.call('list', input)).rejects.toThrow();
+  expect(
+    f.query.mock.calls.some(([sql]) =>
+      sql.includes('total from knowledge.assertion_binding'),
+    ),
+  ).toBe(false);
+});

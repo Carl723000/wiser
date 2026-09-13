@@ -1,4 +1,5 @@
 import {
+  MAX_RELATION_RELATED_SOURCES,
   RelationEntityReferenceSchema,
   RelationStatusSchema,
   type RelationAssertion,
@@ -63,7 +64,10 @@ export function readRelationView(
     base.versionId !== expected.versionId
   )
     throw Error('Source mismatch');
-  if (!Array.isArray(value.sources) || value.sources.length > 11)
+  if (
+    !Array.isArray(value.sources) ||
+    value.sources.length > MAX_RELATION_RELATED_SOURCES
+  )
     throw Error('Invalid sources');
   const sources = value.sources.map(source);
   if (

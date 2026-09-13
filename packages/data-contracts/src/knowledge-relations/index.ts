@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export const MAX_RELATION_RELATED_SOURCES = 31;
 const Id = z.uuid();
 const Text = z.string().trim().min(1).max(1024);
 export const RelationEntityReferenceSchema = z.strictObject({
@@ -159,13 +160,17 @@ export const RelationReviewInputSchema = RelationGetInputSchema.extend({
   rationale: Text,
 });
 export const RelationListInputSchema = Source.extend({
-  relatedSources: z.array(Source).max(11).optional(),
+  relatedSources: z.array(Source).max(MAX_RELATION_RELATED_SOURCES).optional(),
   entityReference: RelationEntityReferenceSchema.optional(),
   status: RelationStatusSchema.default('APPROVED'),
   entityKey: z.string().min(1).max(256).optional(),
   mappingVersion: z.string().min(1).max(128).optional(),
   first: z.number().int().min(1).max(100).default(25),
   after: Id.optional(),
+});
+// Retain the published 1.1 discovery bound; current lists use 1.2.
+export const RelationListInputV11Schema = RelationListInputSchema.extend({
+  relatedSources: z.array(Source).max(11).optional(),
 });
 export const RelationListOutputSchema = z.strictObject({
   items: z.array(RelationAssertionSchema).max(100),

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
+  MAX_RELATION_RELATED_SOURCES,
   ImportRelationsInputSchema,
   ImportRelationsOutputSchema,
   RelationListOutputSchema,
@@ -218,7 +219,8 @@ export function DataKnowledgeRelations({
         entityReference.versionId !== versionId &&
         !relatedSources.some((s) => s.versionId === entityReference?.versionId)
       ) {
-        if (relatedSources.length >= 11) throw Error();
+        if (relatedSources.length >= MAX_RELATION_RELATED_SOURCES)
+          throw Error();
         relatedSources.push({
           dataItemId: entityReference.dataItemId,
           versionId: entityReference.versionId,

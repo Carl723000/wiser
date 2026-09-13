@@ -104,6 +104,8 @@ Resource content includes per-file acquisition and typed information checks thro
 
 Resource content also provides source-bound business relations: separate review queues, exact original evidence, human review and an approved-only graph using the shared canvas. / 资料内容同时提供固定来源的业务关系，分别展示审核队列、原件依据及人工审核，并复用共享画布展示已通过关系。
 
-Relation exploration accepts up to eleven additional source-version links and an explicit pending-graph preview. Identity correspondences preserve source-local objects and authorized evidence; linked source pages retain map entry points. Structured source and entity filters use JSON-encoded HTTP query parameters. / 关联探索可添加最多十一份其他来源版本，并显式打开待审图预览。身份对应保留各来源对象和有权限的证据，来源入口可继续查看地图。HTTP查询以JSON编码传递来源集合与对象筛选。
+Relation exploration accepts up to thirty-one additional source-version links and an explicit pending-graph preview. Identity correspondences preserve source-local objects and authorized evidence; linked source pages retain map entry points. Structured source and entity filters use JSON-encoded HTTP query parameters. / 关联探索可添加最多三十一份其他来源版本，并显式打开待审图预览。身份对应保留各来源对象和有权限的证据，来源入口可继续查看地图。HTTP查询以JSON编码传递来源集合与对象筛选。
 
 Business-relation URLs restore source versions, review state, focus and bounded cumulative pages through session-verified reads. / 业务关系链接可恢复来源版本、审核状态、对象焦点及有界累计页，每次重新核对会话和访问权限。
+
+Relation lists and deep-link restoration share the contract limit of 31 additional sources. Oversized scopes are rejected rather than truncated. Restoration reauthorizes each source; the API page size remains 100 and cumulative browser loading remains bounded to ten pages.

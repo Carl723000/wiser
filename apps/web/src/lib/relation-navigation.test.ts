@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { RelationListInputSchema } from '@wiser/data-contracts';
+import { parseRelationSourceLinks } from './relation-graph';
 import { readRelationView, relationViewHref } from './relation-navigation';
 const base = {
   dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -58,4 +60,54 @@ describe('relation view links', () => {
       readRelationView('?relations={}&relations={}', base),
     ).toThrow();
   });
+});
+
+it('restores a full 32-source case and rejects the next source consistently', () => {
+  const sources = Array.from({ length: 32 }, (_, i) => ({
+    dataItemId: `11111111-1111-4111-8111-${String(i).padStart(12, '0')}`,
+    versionId: `22222222-2222-4222-8222-${String(i).padStart(12, '0')}`,
+  }));
+  for (const size of [12, 31]) {
+    const view = { ...state, sources: sources.slice(0, size) };
+    const links = view.sources
+      .map(
+        (s) =>
+          `http://localhost/zh-CN/data-foundation/catalog/${s.dataItemId}?versionId=${s.versionId}`,
+      )
+      .join('\n');
+    expect(parseRelationSourceLinks(links, 'http://localhost')).toEqual(
+      view.sources,
+    );
+    expect(
+      RelationListInputSchema.parse({ ...base, relatedSources: view.sources })
+        .relatedSources,
+    ).toEqual(view.sources);
+    const href = relationViewHref(
+      `http://localhost/zh-CN/data-foundation/catalog/${base.dataItemId}?versionId=${base.versionId}`,
+      view,
+    );
+    expect(
+      readRelationView(new URL(href, 'http://localhost').search, base),
+    ).toEqual(view);
+  }
+  expect(() =>
+    RelationListInputSchema.parse({ ...base, relatedSources: sources }),
+  ).toThrow();
+  expect(() =>
+    readRelationView(
+      '?relations=' + encodeURIComponent(JSON.stringify({ ...state, sources })),
+      base,
+    ),
+  ).toThrow();
+  expect(() =>
+    parseRelationSourceLinks(
+      sources
+        .map(
+          (s) =>
+            `http://localhost/zh-CN/data-foundation/catalog/${s.dataItemId}?versionId=${s.versionId}`,
+        )
+        .join('\n'),
+      'http://localhost',
+    ),
+  ).toThrow();
 });
