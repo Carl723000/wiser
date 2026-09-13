@@ -500,3 +500,101 @@ it('preserves a source-bound graph return across exploration history replacement
   expect(back.getAttribute('href')).toContain('#business-relations');
   window.history.replaceState(null, '', '/');
 });
+
+it('restores an exact record through its authorized query on history and never substitutes a missing record', async () => {
+  const data = result(firstId, 'Spatial product', 'spatial');
+  const source = data.resources[0];
+  const record = {
+    recordId: '50000000-0000-4000-8000-000000000001',
+    featureId: '50000000-0000-4000-8000-000000000001',
+    dataItemId: source.dataItemId,
+    versionId: source.versionId,
+    analysisId: '60000000-0000-4000-8000-000000000001',
+    assetId: '70000000-0000-4000-8000-000000000001',
+    sourceId: 'source-band-1',
+    index: 1,
+    values: { band: 1 },
+  };
+  const focus = {
+    dataItemId: record.dataItemId,
+    versionId: record.versionId,
+    recordId: record.recordId,
+  };
+  const focused = `?query=${firstId}&recordFocus=${encodeURIComponent(JSON.stringify(focus))}`;
+  window.history.replaceState(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore' + focused,
+  );
+  const records = ExplorationResultSchema.parse({
+    ...data,
+    view: 'records',
+    resources: [],
+    totalCount: 1,
+    records: [record],
+    assets: [
+      {
+        assetId: record.assetId,
+        sourceHash: 'a'.repeat(64),
+        status: 'READY',
+        recordCount: 1,
+        featureCount: 1,
+        reason: null,
+        paths: ['image.tif'],
+        columns: [{ key: 'band', label: 'Band' }],
+      },
+    ],
+  });
+  let missing = false;
+  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+    await Promise.resolve();
+    const request = inputBody(init) as { recordId?: string };
+    return Response.json(
+      request.recordId
+        ? {
+            ...records,
+            totalCount: missing ? 0 : 1,
+            records: missing ? [] : [record],
+          }
+        : data,
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorer
+      locale="zh-CN"
+      initialResult={data}
+      initialFailure={null}
+      initialText=""
+      initialFocusedRecord={record}
+    />,
+  );
+  expect(screen.getByText('source-band-1')).toBeTruthy();
+  expect(new URLSearchParams(window.location.search).get('recordFocus')).toBe(
+    JSON.stringify(focus),
+  );
+  act(() => {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.some(
+        (c) =>
+          (inputBody(c[1]) as { recordId?: string }).recordId ===
+          record.recordId,
+      ),
+    ).toBe(true),
+  );
+  await screen.findByText('source-band-1');
+  missing = true;
+  act(() => {
+    window.history.replaceState(
+      null,
+      '',
+      '/zh-CN/data-foundation/explore' + focused,
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await screen.findByRole('alert');
+  expect(screen.queryByText('source-band-1')).toBeNull();
+});

@@ -4,6 +4,7 @@ import {
   type OpenExplorationViewOutput,
   ExplorationQueryInputSchema,
   type ExplorationResult,
+  type ExplorationRecord,
 } from '@wiser/data-contracts';
 import { DataExplorer } from '@/components/data-explorer';
 import {
@@ -15,12 +16,18 @@ import {
   dataFoundationMetadata,
 } from '@/lib/data-foundation-page.server';
 import { getDictionary, isLocale } from '@/lib/i18n';
+import {
+  readRecordFocus,
+  focusRecordRequest,
+  checkedFocusedRecord,
+} from '@/lib/exploration-record-focus';
 import { explorationView } from '@/lib/exploration-navigation';
 
 interface Props {
   params: Promise<{ locale: string }>;
   searchParams: Promise<{
     saved?: string | string[];
+    recordFocus?: string | string[];
     dataItem?: string | string[];
     version?: string | string[];
     q?: string | string[];
@@ -43,10 +50,14 @@ export default async function ExplorePage({ params, searchParams }: Props) {
   if (!isLocale(locale)) notFound();
   let saved: OpenExplorationViewOutput | undefined;
   let result: ExplorationResult | null = null;
+  let focusedRecord: ExplorationRecord | undefined;
   let failure: 'expired' | 'unavailable' | null = null;
   const text =
     typeof search.q === 'string' && search.q.length <= 512 ? search.q : '';
   try {
+    const focus = readRecordFocus(search.recordFocus);
+    if (focus && search.saved !== undefined)
+      throw new DataFoundationApiError('invalid-request', 422);
     if (
       (search.dataItem !== undefined || search.version !== undefined) &&
       (search.saved !== undefined || search.query !== undefined)
@@ -85,9 +96,18 @@ export default async function ExplorePage({ params, searchParams }: Props) {
       });
       if (!input.success)
         throw new DataFoundationApiError('invalid-request', 422);
-      result = await (await getDataFoundationDal()).explore(input.data);
+      const dal = await getDataFoundationDal();
+      result = await dal.explore(input.data);
+      if (focus)
+        focusedRecord = checkedFocusedRecord(
+          await dal.explore(focusRecordRequest(result.queryId, focus)),
+          focus,
+        );
     }
   } catch (error) {
+    result = null;
+    saved = undefined;
+    focusedRecord = undefined;
     if (
       error instanceof DataFoundationApiError &&
       error.kind === 'authentication'
@@ -103,6 +123,7 @@ export default async function ExplorePage({ params, searchParams }: Props) {
     <DataExplorer
       key={result?.queryId ?? 'unavailable'}
       initialSaved={saved}
+      initialFocusedRecord={focusedRecord}
       locale={locale}
       initialResult={result}
       initialFailure={failure}
