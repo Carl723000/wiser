@@ -161,3 +161,5 @@ An observation node may declare `urn:wiser:record:<recordId>` as its external ID
 ### Exact relation history navigation
 
 Viewing a preceding relation stores its assertion ID in the source-bound URL. Refresh and browser history reauthorize and load that exact assertion, validating its source version and review status. Invalid, unavailable or changed targets fail without substituting another row. History selection clears graph focus and date filters, retains the authorized case scope and does not review or supersede any assertion.
+
+Without a saved page view, an exact-record entry requests the selected record directly so off-page records are immediately visible. Mismatched response identities fail instead of substituting page one. “Browse records in this file” resumes file pagination under the same query, clears exact focus from the URL and retains the business-graph return context. Existing saved views preserve their page and cursor history.

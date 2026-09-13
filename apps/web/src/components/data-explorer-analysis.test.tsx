@@ -83,6 +83,93 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+it('opens an off-page selected record with an exact request and can resume file browsing', async () => {
+  const target = {
+    ...record,
+    index: 605,
+    values: { c1: '官厅水库 | 延庆 | Ⅱ' },
+  };
+  const focused = {
+    ...response(),
+    totalCount: 1,
+    nextCursor: undefined,
+    records: [target],
+  };
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(Response.json(focused))
+    .mockResolvedValueOnce(Response.json(response()));
+  vi.stubGlobal('fetch', fetch);
+  const clear = vi.fn();
+  render(
+    <DataExplorerAnalysis
+      {...props()}
+      selectedRecord={target}
+      onClearRecordFocus={clear}
+    />,
+  );
+  await screen.findByRole('button', { name: 'Select record 605' });
+  expect(body(fetch.mock.calls[0][1]!)).toMatchObject({
+    versionId: id(3),
+    assetId: id(6),
+    recordId: id(5),
+  });
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Browse records in this file' }),
+  );
+  await screen.findByRole('button', { name: 'Select record 1' });
+  expect(body(fetch.mock.calls[1][1]!)).not.toHaveProperty('recordId');
+  expect(clear).toHaveBeenCalledOnce();
+});
+it('rejects an exact record response that substitutes a different record', async () => {
+  const target = { ...record, index: 605 };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        ...response(),
+        totalCount: 1,
+        nextCursor: undefined,
+        records: [{ ...target, recordId: id(99) }],
+      }),
+    ),
+  );
+  render(<DataExplorerAnalysis {...props()} selectedRecord={target} />);
+  await screen.findByRole('alert');
+  expect(
+    screen.queryByRole('button', { name: 'Select record 605' }),
+  ).toBeNull();
+});
+it.each(['version', 'asset', 'missing'] as const)(
+  'fails closed for an exact record with %s mismatch',
+  async (mismatch) => {
+    const records =
+      mismatch === 'missing'
+        ? []
+        : [
+            {
+              ...record,
+              ...(mismatch === 'version'
+                ? { versionId: id(99) }
+                : { assetId: id(99) }),
+            },
+          ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          ...response(),
+          totalCount: records.length,
+          nextCursor: undefined,
+          records,
+        }),
+      ),
+    );
+    render(<DataExplorerAnalysis {...props()} selectedRecord={record} />);
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('table')).toBeNull();
+  },
+);
 it('pages records, preserves original scalar values, selects a record and switches source files', async () => {
   const first = response();
   const second = {

@@ -35,6 +35,7 @@ export function DataExplorerAnalysis({
   onData,
   onConfigure,
   onBounds,
+  onClearRecordFocus,
   configuring = false,
 }: {
   readonly locale: Locale;
@@ -48,6 +49,7 @@ export function DataExplorerAnalysis({
   readonly onConfigure?: (configuration: RecordQuery | undefined) => void;
   readonly configuring?: boolean;
   readonly onBounds?: (bounds: ExplorationBounds | undefined) => void;
+  readonly onClearRecordFocus?: () => void;
 }) {
   const viewState = useExplorationViewState();
   const [seed] = useState(() => {
@@ -65,8 +67,20 @@ export function DataExplorerAnalysis({
   const [result, setResult] = useState<ExplorationResult | null>(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [recordId, setRecordId] = useState(seed?.recordId);
-  const [assetId, setAssetId] = useState<string | undefined>(seed?.assetId);
+  const [recordId, setRecordId] = useState(
+    seed
+      ? seed.recordId
+      : selectedRecord?.versionId === versionId
+        ? selectedRecord.recordId
+        : undefined,
+  );
+  const [assetId, setAssetId] = useState<string | undefined>(
+    seed
+      ? seed.assetId
+      : selectedRecord?.versionId === versionId
+        ? selectedRecord.assetId
+        : undefined,
+  );
   const [cursors, setCursors] = useState<(string | undefined)[]>(
     navigation?.cursors.map((value) => value ?? undefined) ?? [undefined],
   );
@@ -121,6 +135,18 @@ export function DataExplorerAnalysis({
         if (controller.signal.aborted) return;
         if (data.queryId !== queryId || data.view !== view)
           throw new Error('Mismatched view');
+        if (view === 'records' && recordId) {
+          const row = data.records?.[0];
+          if (
+            data.records?.length !== 1 ||
+            row?.recordId !== recordId ||
+            row.versionId !== requestVersionId ||
+            (assetId && row.assetId !== assetId) ||
+            (selectedRecord?.recordId === recordId &&
+              row.dataItemId !== selectedRecord.dataItemId)
+          )
+            throw new Error('Exact record unavailable');
+        }
         viewState?.report(
           view,
           {
@@ -237,6 +263,19 @@ export function DataExplorerAnalysis({
         <span>
           {result.totalCount.toLocaleString(locale)} {copy.records}
         </span>
+        {recordId ? (
+          <button
+            disabled={busy}
+            onClick={() => {
+              setRecordId(undefined);
+              setPage(0);
+              setCursors([undefined]);
+              onClearRecordFocus?.();
+            }}
+          >
+            {copy.browseFileRecords}
+          </button>
+        ) : null}
       </div>
       {selectedAsset && onConfigure ? (
         <DataExplorerRecordControls

@@ -1027,6 +1027,23 @@ export function DataExplorer({
                 }
                 selectedRecord={selectedRecord}
                 onSelect={selectRecord}
+                onClearRecordFocus={() => {
+                  dispatch({
+                    type: 'resource',
+                    queryId: result.queryId,
+                    resource:
+                      selected ??
+                      result.resources.find(
+                        (r) => r.versionId === selectedRecord?.versionId,
+                      ) ??
+                      null,
+                  });
+                  window.history.pushState(
+                    window.history.state,
+                    '',
+                    queryHref(result.queryId, 'records', false),
+                  );
+                }}
                 onData={onAnalysisData}
                 onConfigure={configureRecords}
                 onBounds={configureBounds}

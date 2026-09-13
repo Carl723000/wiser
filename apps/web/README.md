@@ -119,3 +119,5 @@ Business relations offer optional type and time filters over loaded, authorized 
 An observation node may declare `urn:wiser:record:<recordId>` as its external ID, scoped to its own source version or explicit referenced source. The Web offers exact record and spatial-content links only for a valid UUID binding on an OBSERVATION node; it never infers a record from a label or assigns geometry to a document. These links retain the applied graph return context and reauthorize/read all record identities on opening. The URI is a navigation declaration, not server attestation of scientific identity or professional approval; evidence and pending status remain visible. Ordinary external IDs are unchanged.
 
 观测记录节点可用`urn:wiser:record:<recordId>`声明平台记录标识，范围限定在自身来源版本或显式引用来源。网页只对OBSERVATION节点的合法UUID绑定提供精确记录与空间内容链接，不从名称猜记录，也不给文档虚设几何。链接保留原业务图返回状态，打开时重新鉴权并核对完整记录身份。此标识是导航声明，不代表服务端已认定科学身份或通过专业审核；证据和待审状态仍保留。其他外部标识不受影响。
+
+精确记录入口直接显示授权后的目标行，含非第一页记录；“浏览本文件记录”恢复同一查询下的文件分页。保存视图仍恢复原页。 / Exact-record entries show the authorized target even off page one; browsing resumes file pagination under the same query, while saved views retain their original page.
