@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: 60a707c512adfc3a5f91cd8e79e1a1ac9a6f5969
+lastReviewedCommit: fc5f726
 ---
 
 # WISER Web / 产品前端
@@ -108,7 +108,7 @@ Relation exploration accepts up to thirty-one additional source-version links an
 
 Business-relation URLs restore source versions, review state, focus and bounded cumulative pages through session-verified reads. / 业务关系链接可恢复来源版本、审核状态、对象焦点及有界累计页，每次重新核对会话和访问权限。
 
-Relation lists and deep-link restoration share the contract limit of 31 additional sources. Oversized scopes are rejected rather than truncated. Restoration reauthorizes each source; the API page size remains 100 and cumulative browser loading remains bounded to ten pages.
+Relation lists and deep-link restoration share the contract limit of 63 additional sources. Oversized scopes are rejected rather than truncated. Restoration reauthorizes each source; the API page size remains 100 and cumulative browser loading remains bounded to ten pages.
 
 Business graph source links add a bounded, validated `returnRelations` context. Exploration preserves it across query URL replacement and tab changes; the return action reopens the original graph scope, review state and focus with fresh authorization. It is a navigation origin only. The authenticated regression `e2e-live/business-relation-navigation.spec.ts` uses `WISER_WEB_LIVE_RELATION_URL` for a real loopback case and the existing live-test credentials. It tests source records, refresh, map/record tabs and return; it does not establish map alignment or scientific validity.
 
