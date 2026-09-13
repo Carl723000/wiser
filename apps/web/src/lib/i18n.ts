@@ -75,8 +75,8 @@ const zhCN = {
 
     relatedSources: '一起查看的资料链接',
     relatedHint:
-      '粘贴本平台资料内容页的链接，每行一份，最多三十一份；每次查询都会核对访问权限。',
-    badSources: '请使用本平台带具体版本的资料链接，最多三十一份。',
+      '粘贴本平台资料内容页的链接，每行一份，最多六十三份；每次查询都会核对访问权限。',
+    badSources: '请使用本平台带具体版本的资料链接，最多六十三份。',
     preview: '查看待审关联图',
     pageCount: '已加载关系数：',
     partial: '（仍有关系未加载）',
@@ -1997,9 +1997,9 @@ const en: typeof zhCN = {
 
     relatedSources: 'Source links to view together',
     relatedHint:
-      'Paste up to thirty-one version-specific source links from this platform, one per line. Access is checked on every query.',
+      'Paste up to sixty-three version-specific source links from this platform, one per line. Access is checked on every query.',
     badSources:
-      'Use up to thirty-one version-specific source links from this platform.',
+      'Use up to sixty-three version-specific source links from this platform.',
     preview: 'View pending relation graph',
     pageCount: 'Loaded relations: ',
     partial: ' (more relations remain)',
