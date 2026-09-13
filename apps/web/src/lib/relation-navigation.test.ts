@@ -68,12 +68,12 @@ describe('relation view links', () => {
   });
 });
 
-it('restores a full 32-source case and rejects the next source consistently', () => {
-  const sources = Array.from({ length: 32 }, (_, i) => ({
+it('restores a full 64-source case and rejects the next source consistently', () => {
+  const sources = Array.from({ length: 64 }, (_, i) => ({
     dataItemId: `11111111-1111-4111-8111-${String(i).padStart(12, '0')}`,
     versionId: `22222222-2222-4222-8222-${String(i).padStart(12, '0')}`,
   }));
-  for (const size of [12, 31]) {
+  for (const size of [12, 31, 39, 63]) {
     const view = { ...state, sources: sources.slice(0, size) };
     const links = view.sources
       .map(

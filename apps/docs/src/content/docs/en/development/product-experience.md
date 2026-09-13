@@ -183,7 +183,7 @@ Resource content provides “Copy verification and observation deduplication”:
 
 Available raster pixels are visible on entry, separately labeled from asset extent outlines. A keyboard-accessible opacity slider updates the existing layer without rebuilding its source or resetting the camera. Transparent areas must not be described as zero values; source units and ranges remain explicit source-reading requirements.
 
-Business relations accept up to thirty-one additional version-specific platform source links. Pending graph preview requires explicit opt-in and retains its pending notice. Nodes preserve source identities or explicit referenced identities. Each relation exposes its source, evidence, record nature, time/location roles and applicability. Counts and continuation are bounded. Source spatial links do not imply available or verified geometry.
+Business relations accept up to sixty-three additional version-specific platform source links. Pending graph preview requires explicit opt-in and retains its pending notice. Nodes preserve source identities or explicit referenced identities. Each relation exposes its source, evidence, record nature, time/location roles and applicability. Counts and continuation are bounded. Source spatial links do not imply available or verified geometry.
 
 A copied business-relation URL restores the applied version-specific source scope, status, explicit pending preview, focus and loaded-page bound in a new tab or browser. Browser back/forward restores that same state. Links grant no access; malformed scopes and denied sources fail without silently retrying a broader query. Loading more relations retains earlier graph rows, and the interface states when the bounded loading limit is reached.
 

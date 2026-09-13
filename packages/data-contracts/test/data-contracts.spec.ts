@@ -912,7 +912,7 @@ const expectedJsonSchemaHashes = {
     output: '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
   },
   'data.knowledge.relations.list': {
-    input: 'abe447a34395f2ae2c5be33aaaa78f7bb9f511ff68b067402790f6617aa429e7',
+    input: 'cf30648dbee592ba950ab2e16056364d38ed13c5196c0d10ad7ad95379a3d630',
     output: 'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
   },
   'data.knowledge.relations.review': {
@@ -1831,7 +1831,7 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
     const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
     expect(old.version).toBe('1.0.0');
     expect(DATA_CAPABILITY_REGISTRY[key].version).toBe(
-      key === 'data.knowledge.relations.list' ? '1.2.0' : '1.1.0',
+      key === 'data.knowledge.relations.list' ? '1.3.0' : '1.1.0',
     );
     expect({
       input: jsonSchemaHash(old.inputSchema),
@@ -1840,12 +1840,12 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
   }
 });
 
-it('archives the 1.1 twelve-source list while publishing the bounded 1.2 list', () => {
+it('archives the 1.1 twelve-source list while publishing the bounded 1.3 list', () => {
   const current = DATA_CAPABILITY_REGISTRY['data.knowledge.relations.list'];
   const previous = DATA_CAPABILITY_ARCHIVE[
     'data.knowledge.relations.list'
   ]!.find((c) => c.version === '1.1.0')!;
-  const sources = Array.from({ length: 31 }, (_, i) => ({
+  const sources = Array.from({ length: 63 }, (_, i) => ({
     dataItemId: DATA_ITEM_ID,
     versionId: `22222222-2222-4222-8222-${String(i).padStart(12, '0')}`,
   }));
@@ -1854,7 +1854,7 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.2 list', 
     versionId: VERSION_ID,
     relatedSources: sources,
   };
-  expect(current.version).toBe('1.2.0');
+  expect(current.version).toBe('1.3.0');
   expect(jsonSchemaHash(previous.inputSchema)).toBe(
     '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
   );
@@ -1877,4 +1877,17 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.2 list', 
       relatedSources: [...sources, sources[0]],
     }).success,
   ).toBe(false);
+});
+
+it('retains the exact 1.2 discovery schema when expanding the source scope', () => {
+  const previous = DATA_CAPABILITY_ARCHIVE[
+    'data.knowledge.relations.list'
+  ]!.find((c) => c.version === '1.2.0');
+  expect(previous).toBeDefined();
+  expect(jsonSchemaHash(previous!.inputSchema)).toBe(
+    'abe447a34395f2ae2c5be33aaaa78f7bb9f511ff68b067402790f6617aa429e7',
+  );
+  expect(jsonSchemaHash(previous!.outputSchema)).toBe(
+    'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
+  );
 });

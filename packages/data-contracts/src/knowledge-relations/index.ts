@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export const MAX_RELATION_RELATED_SOURCES = 31;
+export const MAX_RELATION_RELATED_SOURCES = 63;
 const Id = z.uuid();
 const Text = z.string().trim().min(1).max(1024);
 export const RelationEntityReferenceSchema = z.strictObject({
@@ -168,7 +168,10 @@ export const RelationListInputSchema = Source.extend({
   first: z.number().int().min(1).max(100).default(25),
   after: Id.optional(),
 });
-// Retain the published 1.1 discovery bound; current lists use 1.2.
+// Retain published discovery bounds; current lists use 1.3.
+export const RelationListInputV12Schema = RelationListInputSchema.extend({
+  relatedSources: z.array(Source).max(31).optional(),
+});
 export const RelationListInputV11Schema = RelationListInputSchema.extend({
   relatedSources: z.array(Source).max(11).optional(),
 });

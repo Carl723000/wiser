@@ -309,9 +309,9 @@ it('does not admit an identity link whose source entities do not exist', async (
   expect(f.rows.size).toBe(0);
 });
 
-it('authorizes every selected source in a 32-source case and stops before listing on denial', async () => {
+it('authorizes every selected source in a 64-source case and stops before listing on denial', async () => {
   const f = fixture();
-  const sources = Array.from({ length: 32 }, () => ({
+  const sources = Array.from({ length: 64 }, () => ({
     dataItemId: randomUUID(),
     versionId: randomUUID(),
   }));
@@ -342,7 +342,7 @@ it('authorizes every selected source in a 32-source case and stops before listin
     if (
       sql.includes('select count(*)::int total from authorized') &&
       (JSON.parse(String(values[0])) as { versionId: string }[])[0]!
-        .versionId === sources[31]!.versionId
+        .versionId === sources[63]!.versionId
     )
       return { rows: [{ total: 0 }], rowCount: 1 };
     return original(sql, values);
