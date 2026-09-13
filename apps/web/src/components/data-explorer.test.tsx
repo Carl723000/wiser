@@ -15,6 +15,10 @@ import {
   type ExplorationResult,
 } from '@wiser/data-contracts';
 import { DataExplorer } from './data-explorer';
+import {
+  readRelationView,
+  relationSourceExploreHref,
+} from '@/lib/relation-navigation';
 
 function inputBody(init?: RequestInit): unknown {
   if (typeof init?.body !== 'string') throw new Error('Expected a JSON body');
@@ -426,4 +430,73 @@ it('preserves the resource page size of views saved through the shared API', asy
     view: 'resources',
     queryId: firstId,
   });
+});
+
+it('preserves a source-bound graph return across exploration history replacement and record tabs', async () => {
+  const initial = result(firstId, 'Station source', 'station');
+  const pin = {
+    dataItemId: initial.resources[0].dataItemId,
+    versionId: initial.resources[0].versionId,
+  };
+  const context = {
+    ...pin,
+    sources: [],
+    status: 'PENDING_REVIEW' as const,
+    preview: true,
+    pages: 2,
+    entity: JSON.stringify([pin.dataItemId, pin.versionId, 'v1', 'river']),
+  };
+  window.history.replaceState(
+    null,
+    '',
+    relationSourceExploreHref('en', context, pin, 'records'),
+  );
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      Promise.resolve(
+        Response.json({
+          ...initial,
+          view: 'records',
+          records: [],
+          assets: [],
+          resources: [],
+          totalCount: 0,
+        }),
+      ),
+    ),
+  );
+  render(
+    <DataExplorer
+      locale="en"
+      initialResult={initial}
+      initialFailure={null}
+      initialText="station"
+    />,
+  );
+  const back = await screen.findByRole('link', {
+    name: 'Return to the previous business graph',
+  });
+  expect(
+    readRelationView(
+      new URL(back.getAttribute('href')!, 'http://localhost').search,
+      pin,
+    ),
+  ).toEqual(context);
+  expect(
+    JSON.parse(
+      new URLSearchParams(window.location.search).get('returnRelations')!,
+    ),
+  ).toEqual(context);
+  await userEvent.setup().click(screen.getByRole('tab', { name: 'Records' }));
+  expect(new URLSearchParams(window.location.search).get('view')).toBe(
+    'records',
+  );
+  expect(
+    JSON.parse(
+      new URLSearchParams(window.location.search).get('returnRelations')!,
+    ),
+  ).toEqual(context);
+  expect(back.getAttribute('href')).toContain('#business-relations');
+  window.history.replaceState(null, '', '/');
 });

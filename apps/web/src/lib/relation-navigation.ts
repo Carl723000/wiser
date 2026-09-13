@@ -5,6 +5,7 @@ import {
   type RelationAssertion,
 } from '@wiser/data-contracts';
 import { parseRelationNodeIdentity } from './relation-graph';
+import type { Locale } from './i18n';
 type Source = { dataItemId: string; versionId: string };
 export type RelationViewState = Source & {
   sources: Source[];
@@ -138,4 +139,67 @@ export function relationSourceLinks(
         `${origin}/${locale}/data-foundation/catalog/${s.dataItemId}?versionId=${s.versionId}`,
     )
     .join('\n');
+}
+
+function readReturnView(search: string): RelationViewState | null {
+  const values = new URLSearchParams(search).getAll('returnRelations');
+  if (values.length !== 1 || !values[0] || values[0].length > 8192) return null;
+  try {
+    const value = object(JSON.parse(values[0]));
+    const base = source({
+      dataItemId: value.dataItemId,
+      versionId: value.versionId,
+    });
+    return readRelationView(
+      '?relations=' + encodeURIComponent(values[0]),
+      base,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function relationReturnHref(
+  search: string,
+  locale: Locale,
+): string | null {
+  const view = readReturnView(search);
+  return view
+    ? relationViewHref(
+        `http://local/${locale}/data-foundation/catalog/${view.dataItemId}?versionId=${view.versionId}`,
+        view,
+      )
+    : null;
+}
+
+export function withRelationReturn(href: string, search: string): string {
+  const view = readReturnView(search);
+  if (!view) return href;
+  const url = new URL(href, 'http://local');
+  url.searchParams.set('returnRelations', JSON.stringify(view));
+  return url.pathname + url.search + url.hash;
+}
+
+export function relationSourceExploreHref(
+  locale: Locale,
+  view: RelationViewState,
+  target: Source,
+  tab: 'map' | 'records',
+): string {
+  const encoded = JSON.stringify(view);
+  readRelationView('?relations=' + encodeURIComponent(encoded), view);
+  if (
+    ![view, ...view.sources].some(
+      (s) =>
+        s.dataItemId === target.dataItemId && s.versionId === target.versionId,
+    )
+  )
+    throw Error('Target outside relation scope');
+  const params = new URLSearchParams({
+    dataItem: target.dataItemId,
+    version: target.versionId,
+    view: tab,
+    returnRelations: encoded,
+  });
+  return `/${locale}/data-foundation/explore?${params}`;
 }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { RelationListInputSchema } from '@wiser/data-contracts';
 import { parseRelationSourceLinks } from './relation-graph';
-import { readRelationView, relationViewHref } from './relation-navigation';
+import {
+  readRelationView,
+  relationViewHref,
+  relationSourceExploreHref,
+  relationReturnHref,
+  withRelationReturn,
+} from './relation-navigation';
 const base = {
   dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   versionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -110,4 +116,61 @@ it('restores a full 32-source case and rejects the next source consistently', ()
       'http://localhost',
     ),
   ).toThrow();
+});
+
+describe('business graph to source exploration round trip', () => {
+  it('carries the exact graph scope and focus through a source map and query tab link', () => {
+    const focused = {
+      ...state,
+      pages: 2,
+      entity: JSON.stringify([base.dataItemId, base.versionId, 'v1', 'river']),
+    };
+    const map = relationSourceExploreHref('zh-CN', focused, source, 'map');
+    const mapUrl = new URL(map, 'http://localhost');
+    expect(mapUrl.searchParams.get('dataItem')).toBe(source.dataItemId);
+    expect(mapUrl.searchParams.get('version')).toBe(source.versionId);
+    const records = withRelationReturn(
+      '/zh-CN/data-foundation/explore?query=opaque&view=records',
+      mapUrl.search,
+    );
+    const back = relationReturnHref(
+      new URL(records, 'http://localhost').search,
+      'zh-CN',
+    );
+    expect(back).not.toBeNull();
+    expect(
+      readRelationView(new URL(back!, 'http://localhost').search, base),
+    ).toEqual(focused);
+  });
+  it('does not allow unrelated target sources or arbitrary return destinations', () => {
+    expect(() =>
+      relationSourceExploreHref(
+        'en',
+        state,
+        { ...source, versionId: base.versionId },
+        'map',
+      ),
+    ).toThrow();
+    for (const text of [
+      'https://elsewhere.test',
+      JSON.stringify({ ...state, redirect: 'https://elsewhere.test' }),
+      'x'.repeat(9000),
+    ]) {
+      expect(
+        relationReturnHref(
+          '?returnRelations=' + encodeURIComponent(text),
+          'en',
+        ),
+      ).toBeNull();
+    }
+    expect(
+      relationReturnHref('?returnRelations={}&returnRelations={}', 'en'),
+    ).toBeNull();
+    expect(
+      withRelationReturn(
+        '/en/data-foundation/explore?query=opaque',
+        '?returnRelations=bad',
+      ),
+    ).toBe('/en/data-foundation/explore?query=opaque');
+  });
 });

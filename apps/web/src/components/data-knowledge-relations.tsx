@@ -19,6 +19,7 @@ import {
   readRelationView,
   relationViewHref,
   relationSourceLinks,
+  relationSourceExploreHref,
   type RelationViewState,
 } from '@/lib/relation-navigation';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
@@ -98,6 +99,22 @@ export function DataKnowledgeRelations({
       loadGeneration.current++;
     };
   }, [dataItemId, versionId, locale]);
+  function sourceExploreHref(
+    target: { dataItemId: string; versionId: string },
+    tab: 'map' | 'records',
+  ) {
+    const view = applied.current;
+    if (
+      view &&
+      [view, ...view.sources].some(
+        (s) =>
+          s.dataItemId === target.dataItemId &&
+          s.versionId === target.versionId,
+      )
+    )
+      return relationSourceExploreHref(locale, view, target, tab);
+    return `/${locale}/data-foundation/explore?dataItem=${target.dataItemId}&version=${target.versionId}&view=${tab}`;
+  }
   function saveView(view: RelationViewState) {
     const href = relationViewHref(window.location.href, view);
     if (
@@ -437,10 +454,12 @@ export function DataKnowledgeRelations({
                     {copy.source}
                   </Link>
                   {' · '}
-                  <Link
-                    href={`/${locale}/data-foundation/explore?dataItem=${row.dataItemId}&version=${row.versionId}&view=map`}
-                  >
+                  <Link href={sourceExploreHref(row, 'map')}>
                     {copy.sourceMap}
+                  </Link>
+                  {' · '}
+                  <Link href={sourceExploreHref(row, 'records')}>
+                    {copy.sourceRecords}
                   </Link>
                 </p>
                 {[row.candidate.subject, row.candidate.object]
@@ -455,9 +474,7 @@ export function DataKnowledgeRelations({
                         {copy.source}
                       </Link>
                       {' · '}
-                      <Link
-                        href={`/${locale}/data-foundation/explore?dataItem=${e.reference!.dataItemId}&version=${e.reference!.versionId}&view=map`}
-                      >
+                      <Link href={sourceExploreHref(e.reference!, 'map')}>
                         {copy.sourceMap}
                       </Link>
                     </p>

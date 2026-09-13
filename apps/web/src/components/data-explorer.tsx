@@ -1,4 +1,8 @@
 'use client';
+import {
+  relationReturnHref,
+  withRelationReturn,
+} from '@/lib/relation-navigation';
 import { dataResourceName } from '@/lib/data-foundation-presentation';
 
 import { graphNodeLabel } from '@/lib/data-graph-label';
@@ -76,6 +80,13 @@ export function DataExplorer({
 }) {
   const copy = getDictionary(locale).dataFoundation.explorer;
   const [result, setResult] = useState(initialResult);
+  const [returnGraph, setReturnGraph] = useState<string | null>(null);
+  function queryHref(queryId: string, tab: ExplorationView) {
+    return withRelationReturn(
+      explorationHref(locale, queryId, tab),
+      window.location.search,
+    );
+  }
   const [text, setText] = useState(initialResult?.spec.text ?? initialText);
   const [quality, setQuality] = useState(
     initialResult?.spec.qualityGrades?.[0] ?? '',
@@ -348,11 +359,7 @@ export function DataExplorer({
       window.history[method](
         window.history.state,
         '',
-        explorationHref(
-          locale,
-          next.queryId,
-          restoreView ?? (reset ? 'resources' : view),
-        ),
+        queryHref(next.queryId, restoreView ?? (reset ? 'resources' : view)),
       );
     } catch {
       if (!controller.signal.aborted) setFailure('unavailable');
@@ -379,15 +386,17 @@ export function DataExplorer({
     }
   };
   useEffect(() => {
+    setReturnGraph(relationReturnHref(window.location.search, locale));
     if (initialResult && !initialSaved)
       window.history.replaceState(
         window.history.state,
         '',
-        explorationHref(locale, initialResult.queryId, initialView),
+        queryHref(initialResult.queryId, initialView),
       );
     const back = () => {
       if (window.location.pathname !== `/${locale}/data-foundation/explore`)
         return;
+      setReturnGraph(relationReturnHref(window.location.search, locale));
       const parameters = new URLSearchParams(window.location.search);
       if (parameters.has('saved')) {
         window.location.reload();
@@ -407,7 +416,7 @@ export function DataExplorer({
       window.history.replaceState(
         window.history.state,
         '',
-        explorationHref(locale, result.queryId, nextView),
+        queryHref(result.queryId, nextView),
       );
   }
   function submit(event: FormEvent) {
@@ -507,6 +516,11 @@ export function DataExplorer({
       >
         <header className={styles.heading}>
           <div>
+            {returnGraph ? (
+              <Link href={returnGraph}>
+                {getDictionary(locale).knowledgeRelations.returnGraph}
+              </Link>
+            ) : null}
             <h1>{copy.title}</h1>
             <p>{copy.description}</p>
           </div>

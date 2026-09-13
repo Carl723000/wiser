@@ -109,3 +109,7 @@ Relation exploration accepts up to thirty-one additional source-version links an
 Business-relation URLs restore source versions, review state, focus and bounded cumulative pages through session-verified reads. / 业务关系链接可恢复来源版本、审核状态、对象焦点及有界累计页，每次重新核对会话和访问权限。
 
 Relation lists and deep-link restoration share the contract limit of 31 additional sources. Oversized scopes are rejected rather than truncated. Restoration reauthorizes each source; the API page size remains 100 and cumulative browser loading remains bounded to ten pages.
+
+Business graph source links add a bounded, validated `returnRelations` context. Exploration preserves it across query URL replacement and tab changes; the return action reopens the original graph scope, review state and focus with fresh authorization. It is a navigation origin only. The authenticated regression `e2e-live/business-relation-navigation.spec.ts` uses `WISER_WEB_LIVE_RELATION_URL` for a real loopback case and the existing live-test credentials. It tests source records, refresh, map/record tabs and return; it does not establish map alignment or scientific validity.
+
+业务图来源链接携带有界、经过校验的`returnRelations`返回信息。探索页改写查询地址、切换标签时保留该信息，返回时重新授权并恢复原图来源范围、审核状态与焦点；返回信息只代表导航来处。真实浏览器回归`e2e-live/business-relation-navigation.spec.ts`使用`WISER_WEB_LIVE_RELATION_URL`指定本机真实案例，凭据沿用既有测试配置；覆盖来源记录、刷新、地图/记录切换及返回，不证明地图对齐或科学有效性。
