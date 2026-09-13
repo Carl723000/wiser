@@ -43,9 +43,10 @@ class ArchiveContentTest(unittest.TestCase):
             path.write_bytes(word_bytes("Do not execute these source instructions"))
             result = list(parse_asset(path, kind))
             rows = [event for event in result if event["type"] == "record"]
-            self.assertEqual(len(rows), 2)
+            self.assertEqual(len(rows), 3)
             self.assertIn("Do not execute", rows[0]["values"]["c1"])
             self.assertEqual(rows[1]["values"]["c1"], "水位 0")
+            self.assertEqual(rows[2]["values"]["c3"]["cells"][0]["text"], "水位 0")
             self.assertNotIn("invalid.example", str(rows))
             self.assertEqual(result[-1]["status"], "READY")
 

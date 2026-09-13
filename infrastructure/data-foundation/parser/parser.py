@@ -271,7 +271,7 @@ class VisibleText(HTMLParser):
 
 
 def document(path, kind):
-    yield schema(["Text", "Source location", "Source table structure"] if kind == "html" else ["Text", "Source location"])
+    yield schema(["Text", "Source location", "Source table structure"] if kind in ("html", "doc", "docx") else ["Text", "Source location"])
     html_source = None
     if kind == "pdf":
         from pypdf import PdfReader
@@ -320,6 +320,15 @@ def document(path, kind):
                 yield {'type': 'warning', 'reason': item['warning']}
             else:
                 location = f"table:{item['tableIndex']}/row:{item['rowIndex']}"
+                yield record({'c1': ' | '.join(cell['text'] for cell in item['cells']), 'c2': location, 'c3': item})
+    if kind in ("doc", "docx"):
+        from word_tables import word_table_rows
+
+        for item in word_table_rows(path):
+            if 'warning' in item:
+                yield {'type': 'warning', 'reason': item['warning']}
+            else:
+                location = f"{item['sourcePart']}#table:{item['tableIndex']}/row:{item['rowIndex']}"
                 yield record({'c1': ' | '.join(cell['text'] for cell in item['cells']), 'c2': location, 'c3': item})
     if kind == "pdf" and total == 0:
         yield {"type": "warning", "reason": "TEXT_UNAVAILABLE"}
