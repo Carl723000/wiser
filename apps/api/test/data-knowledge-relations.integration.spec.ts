@@ -604,6 +604,29 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           (x) => x.assertionId === linked.items[0]!.assertionId,
         ),
       ).toBe(true);
+      // Pagination must retain the same authorization and exact total as the full union.
+      const pagedIds: string[] = [];
+      let after: string | undefined;
+      do {
+        const page = RelationListOutputSchema.parse(
+          await call('list', {
+            ...union,
+            first: 1,
+            ...(after ? { after } : {}),
+          }),
+        );
+        expect(page.totalCount).toBe(combined.totalCount);
+        pagedIds.push(...page.items.map((row) => row.assertionId));
+        after = page.nextCursor;
+        expect(pagedIds.length).toBeLessThanOrEqual(combined.totalCount);
+      } while (after);
+      expect(pagedIds).toEqual(combined.items.map((row) => row.assertionId));
+      await expect(
+        call('list', union, {
+          ...context,
+          authorization: { ...context.authorization, projectId: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
       const focused = RelationListOutputSchema.parse(
         await call('list', {
           ...union,
