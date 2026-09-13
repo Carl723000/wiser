@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -14,54 +15,56 @@ vi.mock('./data-foundation-graph', () => ({
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.history.replaceState(null, '', '/');
 });
-it('separates candidate counts from the approved graph and preserves review retry identity', async () => {
-  const row = {
-    assertionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-    versionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    version: 1,
-    mappingVersion: 'v1',
-    status: 'PENDING_REVIEW',
-    confidence: null,
-    createdAt: '2026-09-11T00:00:00Z',
-    reviews: [],
-    candidate: {
-      subject: {
-        key: 'enterprise',
-        label: 'Enterprise',
-        kind: 'ENTERPRISE',
-        externalId: null,
-      },
-      predicate: 'HAS_DECLARED_MONITORING_POINT',
-      object: {
-        key: 'point',
-        label: 'Point',
-        kind: 'MONITORING_POINT',
-        externalId: null,
-      },
-      qualifiers: {
-        measure: null,
-        unit: null,
-        observedAt: null,
-        missing: true,
-        spatialScope: null,
-        limitations: [],
-        reportedConclusion: null,
-      },
-      generation: { method: 'SOURCE_TABLE', model: null },
-      evidence: [
-        {
-          assetId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-          sourceHash: 'a'.repeat(64),
-          locator: 'PDF page 1, row 1',
-          excerpt: null,
-          polarity: 'SUPPORTS',
-        },
-      ],
-      supersedesId: null,
+const row = {
+  assertionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  versionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  version: 1,
+  mappingVersion: 'v1',
+  status: 'PENDING_REVIEW',
+  confidence: null,
+  createdAt: '2026-09-11T00:00:00Z',
+  reviews: [],
+  candidate: {
+    subject: {
+      key: 'enterprise',
+      label: 'Enterprise',
+      kind: 'ENTERPRISE',
+      externalId: null,
     },
-  };
+    predicate: 'HAS_DECLARED_MONITORING_POINT',
+    object: {
+      key: 'point',
+      label: 'Point',
+      kind: 'MONITORING_POINT',
+      externalId: null,
+    },
+    qualifiers: {
+      measure: null,
+      unit: null,
+      observedAt: null,
+      missing: true,
+      spatialScope: null,
+      limitations: [],
+      reportedConclusion: null,
+    },
+    generation: { method: 'SOURCE_TABLE', model: null },
+    evidence: [
+      {
+        assetId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        sourceHash: 'a'.repeat(64),
+        locator: 'PDF page 1, row 1',
+        excerpt: null,
+        polarity: 'SUPPORTS',
+      },
+    ],
+    supersedesId: null,
+  },
+};
+
+it('separates candidate counts from the approved graph and preserves review retry identity', async () => {
   const calls: RequestInit[] = [];
   let attempts = 0;
   vi.stubGlobal(
@@ -77,6 +80,11 @@ it('separates candidate counts from the approved graph and preserves review retr
       }
       return Response.json({ items: [row], totalCount: 1 });
     }),
+  );
+  window.history.replaceState(
+    null,
+    '',
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`,
   );
   render(
     <DataKnowledgeRelations
@@ -108,4 +116,196 @@ it('separates candidate counts from the approved graph and preserves review retr
   expect(new Headers(calls[0]?.headers).get('Idempotency-Key')).toEqual(
     new Headers(calls[1]?.headers).get('Idempotency-Key'),
   );
+});
+
+it('restores a version-bound relation view on direct entry and browser history without an earlier tab', async () => {
+  const base = {
+    dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    versionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  };
+  const other = {
+    dataItemId: '11111111-1111-4111-8111-111111111111',
+    versionId: '22222222-2222-4222-8222-222222222222',
+  };
+  const view = {
+    ...base,
+    sources: [other],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 1,
+  };
+  window.history.replaceState(
+    { keep: 'framework' },
+    '',
+    '/?relations=' + encodeURIComponent(JSON.stringify(view)),
+  );
+  const fetcher = vi.fn((_url: string, _options: RequestInit) =>
+    Promise.resolve(Response.json({ items: [], totalCount: 0 })),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataKnowledgeRelations locale="zh-CN" {...base} />);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(fetcher.mock.calls[0][1].body as string)).toMatchObject({
+    ...base,
+    relatedSources: [other],
+    status: 'PENDING_REVIEW',
+  });
+  expect(screen.getByLabelText<HTMLSelectElement>('审核状态').value).toBe(
+    'PENDING_REVIEW',
+  );
+  expect(screen.getByText('有证据的业务关系').closest('details')?.open).toBe(
+    true,
+  );
+  window.history.replaceState({ keep: 'framework' }, '', '/');
+  fireEvent(window, new PopStateEvent('popstate'));
+  await waitFor(() =>
+    expect(screen.getByLabelText<HTMLSelectElement>('审核状态').value).toBe(
+      'APPROVED',
+    ),
+  );
+  expect(screen.queryByText('当前状态的关系数：0')).toBeNull();
+});
+
+it('does not query or silently broaden a malformed saved relation scope', async () => {
+  window.history.replaceState(null, '', '/?relations=broken');
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataKnowledgeRelations
+      locale="zh-CN"
+      dataItemId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      versionId="cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(fetcher).not.toHaveBeenCalled();
+  window.history.replaceState(null, '', '/');
+});
+
+it('accumulates saved pages and reauthorizes the same source scope instead of replacing the visible graph', async () => {
+  const base = {
+    dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    versionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  };
+  const view = {
+    ...base,
+    sources: [],
+    status: 'APPROVED',
+    preview: false,
+    entity: null,
+    pages: 2,
+  };
+  window.history.replaceState(
+    null,
+    '',
+    '/?relations=' + encodeURIComponent(JSON.stringify(view)),
+  );
+  const fetcher = vi.fn(async (_url: string, options: RequestInit) => {
+    const body = JSON.parse(options.body as string) as { after?: string };
+    await Promise.resolve();
+    return Response.json(
+      body.after
+        ? {
+            items: [
+              {
+                ...row,
+                assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+                status: 'APPROVED',
+              },
+            ],
+            totalCount: 2,
+          }
+        : {
+            items: [{ ...row, status: 'APPROVED' }],
+            totalCount: 2,
+            nextCursor: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          },
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataKnowledgeRelations locale="zh-CN" {...base} />);
+  await screen.findByText('当前状态的关系数：2');
+  expect(screen.getAllByText(/PDF page 1, row 1/)).toHaveLength(2);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(fetcher.mock.calls[1][1].body as string)).toMatchObject({
+    ...base,
+    status: 'APPROVED',
+    relatedSources: [],
+    after: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    first: 100,
+  });
+});
+
+it('clears a restored view when authorization is denied and never retries with a broader source scope', async () => {
+  const base = {
+    dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    versionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  };
+  const view = {
+    ...base,
+    sources: [],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 2,
+  };
+  window.history.replaceState(
+    null,
+    '',
+    '/?relations=' + encodeURIComponent(JSON.stringify(view)),
+  );
+  const fetcher = vi.fn(() =>
+    Promise.resolve(new Response('{}', { status: 403 })),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataKnowledgeRelations locale="zh-CN" {...base} />);
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByTestId('business-graph')).toBeNull();
+});
+
+it('ignores a late denied response after history restores a newer query', async () => {
+  const base = { dataItemId: row.dataItemId, versionId: row.versionId };
+  const view = {
+    ...base,
+    sources: [],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 1,
+  };
+  window.history.replaceState(
+    null,
+    '',
+    '/?relations=' + encodeURIComponent(JSON.stringify(view)),
+  );
+  let release: (response: Response) => void = () => {
+    throw Error('request not started');
+  };
+  const slow = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const fetcher = vi
+    .fn()
+    .mockReturnValueOnce(slow)
+    .mockResolvedValueOnce(Response.json({ items: [], totalCount: 0 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataKnowledgeRelations locale="zh-CN" {...base} />);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  window.history.replaceState(
+    null,
+    '',
+    '/?relations=' +
+      encodeURIComponent(
+        JSON.stringify({ ...view, status: 'APPROVED', preview: false }),
+      ),
+  );
+  fireEvent(window, new PopStateEvent('popstate'));
+  await screen.findByText('当前状态的关系数：0');
+  await act(async () => {
+    release(new Response('{}', { status: 403 }));
+    await slow;
+  });
+  expect(screen.getByText('当前状态的关系数：0')).toBeTruthy();
 });

@@ -33,8 +33,9 @@ const zhCN = {
       '粘贴本平台资料内容页的链接，每行一份，最多十一份；每次查询都会核对访问权限。',
     badSources: '请使用本平台带具体版本的资料链接，最多十一份。',
     preview: '查看待审关联图',
-    pageCount: '本页关系数：',
-    partial: '（仍有后续页）',
+    pageCount: '已加载关系数：',
+    partial: '（仍有关系未加载）',
+    loadingLimit: '（已达本次加载上限，请缩小资料范围或选择对象）',
     complete: '',
     source: '查看来源资料',
     sourceMap: '查看来源空间内容',
@@ -80,7 +81,7 @@ const zhCN = {
     candidateHint: '这些关系仍需按所示状态复核，不计入正式关系数量。',
     empty: '当前条件下没有关系。可切换审核状态，或导入已整理的候选文件。',
     all: '返回全部对象',
-    more: '下一页关系',
+    more: '继续加载关系',
     importTitle: '导入关系候选文件',
     importHint:
       '选择按本资料版本整理的候选文件。系统保留证据位置，并检查原件是否一致。',
@@ -1900,8 +1901,10 @@ const en: typeof zhCN = {
     badSources:
       'Use up to eleven version-specific source links from this platform.',
     preview: 'View pending relation graph',
-    pageCount: 'Relations on this page: ',
-    partial: ' (more pages remain)',
+    pageCount: 'Loaded relations: ',
+    partial: ' (more relations remain)',
+    loadingLimit:
+      ' (loading limit reached; narrow the source scope or select an entity)',
     complete: '',
     source: 'View source',
     sourceMap: 'View source spatial content',
@@ -1949,7 +1952,7 @@ const en: typeof zhCN = {
     empty:
       'No relations match. Change review status or import a prepared candidate file.',
     all: 'Return to all entities',
-    more: 'Next page of relations',
+    more: 'Load more relations',
     importTitle: 'Import relation candidate file',
     importHint:
       'Choose candidates prepared for this resource version. Source locations are retained and saved originals are checked.',

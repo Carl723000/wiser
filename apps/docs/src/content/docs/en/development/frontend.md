@@ -18,7 +18,7 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-13
+lastReviewedAt: 2026-09-14
 lastReviewedCommit: f77f0444866e8330b8e70f6be5a58a45ed6a1ae9
 ---
 
@@ -192,3 +192,5 @@ The catalogue exposes an on-demand acquisition overview with an explicit resourc
 Resource content includes a source-version business-relation disclosure. Lists select an explicit review status; only approved pages mount the existing accessible knowledge canvas. Entity selection binds mapping and source keys. Candidate-file import validates the current source version, evidence links point to exact original assets, and review actions retain their command key on ambiguous failures. A human reviewer must supply a rationale; safe errors expose no upstream details.
 
 Business relations accept up to eleven additional version-specific platform source links. Pending graph preview requires explicit opt-in and retains its pending notice. Nodes preserve source identities or explicit referenced identities. Each relation exposes its source, evidence, record nature, time/location roles and applicability. Counts and continuation are bounded. Source spatial links do not imply available or verified geometry.
+
+The catalog URL uses a strict `relations` JSON parameter and `#business-relations` anchor for the source-local business graph. `relation-navigation.ts` validates source/version UUIDs, at most eleven distinct additional sources, review status, pending opt-in, a scoped entity identity and 1–10 pages. It rejects unknown fields, duplicate parameters and payloads over 8192 characters. No evidence text or credentials enter the parameter. Native browser history preserves Next.js state. Opening or restoring history reissues session-verified list requests with 100 rows per page; permissions are never restored from the URL. Subsequent pages accumulate by assertion ID, and interrupted restoration cannot repaint a newer view. This transport does not change the saved exploration-view contract or grant project sharing.

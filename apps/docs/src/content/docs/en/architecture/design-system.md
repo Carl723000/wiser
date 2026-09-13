@@ -14,7 +14,7 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
-lastReviewedAt: 2026-09-13
+lastReviewedAt: 2026-09-14
 lastReviewedCommit: f77f0444866e8330b8e70f6be5a58a45ed6a1ae9
 ---
 
@@ -147,3 +147,5 @@ A resource opens its content workspace before collapsed governance details. A ve
 Available raster pixels are visible on entry, separately labeled from asset extent outlines. A keyboard-accessible opacity slider updates the existing layer without rebuilding its source or resetting the camera. Transparent areas must not be described as zero values; source units and ranges remain explicit source-reading requirements.
 
 Business relations accept up to eleven additional version-specific platform source links. Pending graph preview requires explicit opt-in and retains its pending notice. Nodes preserve source identities or explicit referenced identities. Each relation exposes its source, evidence, record nature, time/location roles and applicability. Counts and continuation are bounded. Source spatial links do not imply available or verified geometry.
+
+Business-relation deep links open the relation disclosure and restore its source scope, review status and selected entity. Accumulated graph counts distinguish loaded rows from the authorized total and expose a bounded continuation limit; the canvas fit control changes only the viewport. Pending preview remains visibly pending after restoration.

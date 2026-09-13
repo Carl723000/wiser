@@ -14,6 +14,12 @@ import {
   parseRelationNodeIdentity,
   relationNodeIdentity,
 } from '@/lib/relation-graph';
+import {
+  readRelationView,
+  relationViewHref,
+  relationSourceLinks,
+  type RelationViewState,
+} from '@/lib/relation-navigation';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import styles from './data-reconciliation.module.css';
 
@@ -30,6 +36,9 @@ export function DataKnowledgeRelations({
     sourcesId = useId();
   const [sourceLinks, setSourceLinks] = useState('');
   const [preview, setPreview] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const applied = useRef<RelationViewState | null>(null);
+  const loadGeneration = useRef(0);
   const dict = getDictionary(locale),
     copy = dict.knowledgeRelations,
     common = dict.assessment;
@@ -47,15 +56,58 @@ export function DataKnowledgeRelations({
     keys = useRef(new Map<string, string>());
   useEffect(() => () => requests.current?.abort(), []);
   useEffect(() => {
-    requests.current?.abort();
-    setPage(null);
-    setEntity(null);
-    setSourceLinks('');
-    setPreview(false);
-    setPayload(null);
-    setNotes({});
-    keys.current.clear();
-  }, [dataItemId, versionId]);
+    function restore() {
+      requests.current?.abort();
+      loadGeneration.current++;
+      applied.current = null;
+      setPage(null);
+      setEntity(null);
+      setSourceLinks('');
+      setStatus('APPROVED');
+      setPreview(false);
+      setFailed(false);
+      setBusy(false);
+      setMessage('');
+      setPayload(null);
+      setNotes({});
+      keys.current.clear();
+      try {
+        const view = readRelationView(window.location.search, {
+          dataItemId,
+          versionId,
+        });
+        setOpened(view !== null);
+        if (!view) return;
+        setSourceLinks(
+          relationSourceLinks(view.sources, locale, window.location.origin),
+        );
+        setStatus(view.status);
+        setPreview(view.preview);
+        void load(view.entity, undefined, view);
+      } catch {
+        setOpened(true);
+        setFailed(true);
+      }
+    }
+    restore();
+    window.addEventListener('popstate', restore);
+    return () => {
+      window.removeEventListener('popstate', restore);
+      requests.current?.abort();
+      loadGeneration.current++;
+    };
+  }, [dataItemId, versionId, locale]);
+  function saveView(view: RelationViewState) {
+    const href = relationViewHref(window.location.href, view);
+    if (
+      window.location.pathname +
+        window.location.search +
+        window.location.hash !==
+      href
+    )
+      window.history.pushState(window.history.state, '', href);
+    applied.current = view;
+  }
   const graph = useMemo(
     () => ({
       nodes: [
@@ -103,6 +155,7 @@ export function DataKnowledgeRelations({
         signal: controller.signal,
         cache: 'no-store',
       });
+      if (controller.signal.aborted) return null;
       if (!response.ok) {
         if ([401, 403, 404].includes(response.status)) setPage(null);
         throw Error('unavailable');
@@ -145,14 +198,18 @@ export function DataKnowledgeRelations({
       if (generation === fileRead.current) setMessage(copy.badFile);
     }
   }
-  async function load(selected: string | null = entity, after?: string) {
+  async function load(
+    selected: string | null = entity,
+    after?: string,
+    restored?: RelationViewState,
+  ) {
+    const generation = ++loadGeneration.current;
     let relatedSources: { dataItemId: string; versionId: string }[],
       entityReference: ReturnType<typeof parseRelationNodeIdentity> | undefined;
     try {
-      relatedSources = parseRelationSourceLinks(
-        sourceLinks,
-        window.location.origin,
-      );
+      relatedSources =
+        restored?.sources ??
+        parseRelationSourceLinks(sourceLinks, window.location.origin);
       entityReference = selected
         ? parseRelationNodeIdentity(selected)
         : undefined;
@@ -172,23 +229,50 @@ export function DataKnowledgeRelations({
       setPage(null);
       return;
     }
-    const value = await request('list', {
+    const view: RelationViewState = restored ?? {
       dataItemId,
       versionId,
+      sources: relatedSources,
       status,
-      first: 25,
-      relatedSources,
-      ...(entityReference ? { entityReference } : {}),
-      ...(after ? { after } : {}),
-    });
-    if (value) {
+      preview,
+      entity: selected,
+      pages: after ? (applied.current?.pages ?? 1) + 1 : 1,
+    };
+    if (view.pages > 10) return;
+    let items = after ? [...(page?.items ?? [])] : [];
+    let cursor = after;
+    const steps = restored ? restored.pages : 1;
+    for (let i = 0; i < steps; i++) {
+      const value = await request('list', {
+        dataItemId,
+        versionId,
+        status: view.status,
+        first: 100,
+        relatedSources,
+        ...(entityReference ? { entityReference } : {}),
+        ...(cursor ? { after: cursor } : {}),
+      });
+      if (generation !== loadGeneration.current || !value) return;
       const parsed = RelationListOutputSchema.safeParse(value);
-      if (parsed.success) {
-        setPage(parsed.data);
-        setEntity(selected);
-      } else {
+      if (!parsed.success) {
         setPage(null);
         setFailed(true);
+        return;
+      }
+      items = [
+        ...new Map(
+          [...items, ...parsed.data.items].map((row) => [row.assertionId, row]),
+        ).values(),
+      ];
+      cursor = parsed.data.nextCursor;
+      if (i === steps - 1 || !cursor) {
+        setPage({ ...parsed.data, items });
+        setEntity(selected);
+        setOpened(true);
+        view.pages = restored ? i + 1 : view.pages;
+        applied.current = view;
+        if (!restored) saveView(view);
+        return;
       }
     }
   }
@@ -215,7 +299,12 @@ export function DataKnowledgeRelations({
     }
   }
   return (
-    <details className={styles.frame}>
+    <details
+      id="business-relations"
+      className={styles.frame}
+      open={opened}
+      onToggle={(event) => setOpened(event.currentTarget.open)}
+    >
       <summary>{copy.title}</summary>
       <div className={styles.body}>
         <p>{copy.hint}</p>
@@ -227,6 +316,7 @@ export function DataKnowledgeRelations({
           disabled={busy}
           onChange={(e) => {
             setSourceLinks(e.target.value);
+            applied.current = null;
             setPage(null);
             setEntity(null);
             setMessage('');
@@ -240,6 +330,7 @@ export function DataKnowledgeRelations({
           disabled={busy}
           onChange={(e) => {
             setStatus(e.target.value as RelationAssertion['status']);
+            applied.current = null;
             setPage(null);
             setEntity(null);
             setPreview(false);
@@ -276,7 +367,14 @@ export function DataKnowledgeRelations({
                 <input
                   type="checkbox"
                   checked={preview}
-                  onChange={(e) => setPreview(e.target.checked)}
+                  onChange={(e) => {
+                    setPreview(e.target.checked);
+                    if (applied.current)
+                      saveView({
+                        ...applied.current,
+                        preview: e.target.checked,
+                      });
+                  }}
                 />
                 {copy.preview}
               </label>
@@ -284,7 +382,11 @@ export function DataKnowledgeRelations({
             <p>
               {copy.pageCount}
               {page.items.length}
-              {page.nextCursor ? copy.partial : copy.complete}
+              {page.nextCursor
+                ? (applied.current?.pages ?? 0) >= 10
+                  ? copy.loadingLimit
+                  : copy.partial
+                : copy.complete}
             </p>
             {(status === 'APPROVED' ||
               (status === 'PENDING_REVIEW' && preview)) &&
@@ -517,7 +619,7 @@ export function DataKnowledgeRelations({
                 </div>
               </article>
             ))}
-            {page.nextCursor ? (
+            {page.nextCursor && (applied.current?.pages ?? 0) < 10 ? (
               <button
                 type="button"
                 disabled={busy}
