@@ -119,6 +119,34 @@ class SourceParserTest(unittest.TestCase):
         self.assertIn("测站 001", str(events))
         self.assertEqual(events[-1]["status"], "READY")
 
+    def test_html_declared_chinese_encoding_preserves_text_and_provenance(self):
+        for meta in (
+            '<meta charset="gb2312">',
+            '<meta http-equiv="Content-Type" content="text/html; charset=gbk">',
+        ):
+            with self.subTest(meta=meta):
+                raw = (meta + '<p>王浩：社会水循环；测站001。</p>').encode('gb18030')
+                events = self.events('speech.html', raw, 'html')
+                rows = [e for e in events if e['type'] == 'record']
+                self.assertEqual(rows[0]['values']['c1'], '王浩：社会水循环；测站001。')
+                self.assertEqual(rows[0]['values']['__source_encoding'], 'gb18030')
+                self.assertEqual(events[-1]['status'], 'READY')
+
+    def test_html_encoding_does_not_guess_undeclared_or_invalid_bytes(self):
+        for raw in (b'<meta charset="not-a-codec"><p>x</p>', b'<p>\xff</p>', b'<meta charset="gbk"><p>\x81</p>'):
+            with self.subTest(raw=raw), self.assertRaisesRegex(ParseError, 'INVALID_CONTENT'):
+                self.events('invalid.html', raw, 'html')
+
+    def test_html_utf8_bom_overrides_legacy_meta_and_ignores_comment_declaration(self):
+        for raw in (
+            b'\xef\xbb\xbf' + '<meta charset="gbk"><p>永定河</p>'.encode(),
+            '<!-- <meta charset="gbk"> --><p>永定河</p>'.encode(),
+        ):
+            events = self.events('utf8.html', raw, 'html')
+            rows = [e for e in events if e['type']=='record']
+            self.assertEqual(rows[0]['values']['c1'], '永定河')
+            self.assertEqual(rows[0]['values']['__source_encoding'], 'utf-8-sig')
+
     def test_archive_rejects_traversal_and_reports_members_without_running_them(self):
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w") as archive:

@@ -229,6 +229,40 @@ def legacy_workbook(path):
         book.release_resources()
 
 
+class DeclaredHtmlEncoding(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.encoding = None
+        self.stopped = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "body":
+            self.stopped = True
+        if tag != "meta" or self.stopped or self.encoding is not None:
+            return
+        attrs = dict(attrs)
+        value = attrs.get("charset")
+        if value is None and (attrs.get("http-equiv") or "").lower() == "content-type":
+            match = re.search(r"charset\s*=\s*['\"]?([\w-]+)", attrs.get("content") or "", re.I)
+            value = match[1] if match else None
+        if value is not None:
+            self.encoding = value.strip().lower()
+
+
+def decode_html(raw):
+    encoding = "utf-8-sig"
+    if not raw.startswith(b"\xef\xbb\xbf"):
+        declaration = DeclaredHtmlEncoding()
+        # Inspect only the bounded header for explicit declarations, not heuristics.
+        declaration.feed(raw[:16384].decode("ascii", errors="ignore"))
+        declared = declaration.encoding
+        if declared in ("gb2312", "gbk", "gb18030"):
+            encoding = "gb18030"
+        elif declared not in (None, "utf-8", "utf8"):
+            raise ParseError("INVALID_CONTENT")
+    return raw.decode(encoding), encoding
+
+
 class VisibleText(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -274,8 +308,12 @@ class VisibleText(HTMLParser):
 def document(path, kind):
     yield schema(
         ["Text", "Source location"],
-        [{"key": "__text_encoding", "label": "Text encoding issues"}],
+        [
+            {"key": "__text_encoding", "label": "Text encoding issues"},
+            {"key": "__source_encoding", "label": "Source text encoding"},
+        ],
     )
+    source_encoding = None
     if kind == "pdf":
         from pypdf import PdfReader
 
@@ -295,12 +333,14 @@ def document(path, kind):
 
         segments = word_segments(path)
     else:
-        text = path.read_text(encoding="utf-8-sig")
         if kind == "html":
+            text, source_encoding = decode_html(path.read_bytes())
             parser = VisibleText()
             parser.feed(text)
             parser.close()
             text = "".join(parser.parts)
+        else:
+            text = path.read_text(encoding="utf-8-sig")
         segments = ((text, "document"),)
     total = 0
     for text, location in segments:
@@ -315,6 +355,8 @@ def document(path, kind):
             for start in range(0, len(paragraph), 16000):
                 chunk = paragraph[start : start + 16000]
                 values = {"c1": chunk, "c2": location}
+                if source_encoding:
+                    values["__source_encoding"] = source_encoding
                 offsets = [index for index, char in enumerate(chunk) if char == "\x00"]
                 if offsets:
                     # PostgreSQL JSONB cannot represent U+0000. Preserve its exact
