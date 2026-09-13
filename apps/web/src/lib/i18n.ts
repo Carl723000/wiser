@@ -40,6 +40,13 @@ const zhCN = {
     recordRelationMore: '继续查找',
     recordRelationEmpty: '当前范围内未找到这条记录的明确业务绑定。',
 
+    revisionDisplay: '更正记录显示',
+    revisionAll: '全部记录（含更正历史）',
+    revisionCurrent: '当前记录（同一审核队列）',
+    revisionDeferred:
+      '当前范围尚未加载完整，或正在查看局部对象；暂保留全部已加载记录。',
+    revisionHidden: '收起的历史关系：',
+    revisionBranches: '保留的并行更正分支：',
     filterTitle: '筛选已加载的关系',
     filterHint:
       '类型匹配关系任一端。日期按所选时间含义与原资料时段重叠筛选；仅有年份或月份时保留其原始粒度。日期不完整的关系可另行保留。图与下方证据同步筛选，来源地图和记录仍按各自条件查询。',
@@ -1961,6 +1968,13 @@ const en: typeof zhCN = {
     recordRelationEmpty:
       'No explicit binding for this record was found in the current scope.',
 
+    revisionDisplay: 'Correction display',
+    revisionAll: 'All records, including correction history',
+    revisionCurrent: 'Current records in the same review queue',
+    revisionDeferred:
+      'The full scope is not loaded, or an entity is focused; all loaded records remain visible.',
+    revisionHidden: 'Historical relations collapsed: ',
+    revisionBranches: 'Retained competing correction branches: ',
     filterTitle: 'Filter loaded relations',
     filterHint:
       'Type matches either endpoint. Dates overlap source periods for the selected time role; year and month precision is retained. Incomplete periods can be kept separately. The graph and evidence list share these filters; source maps and records retain their own query conditions.',

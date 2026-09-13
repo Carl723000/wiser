@@ -32,6 +32,7 @@ import {
   parseRelationFilters,
   type RelationFilters,
 } from '@/lib/relation-filters';
+import { selectRelationRevisions } from '@/lib/relation-revisions';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import styles from './data-reconciliation.module.css';
 
@@ -47,6 +48,7 @@ export function DataKnowledgeRelations({
   const statusId = useId(),
     sourcesId = useId();
   const [sourceLinks, setSourceLinks] = useState('');
+  const [revisionMode, setRevisionMode] = useState<'all' | 'current'>('all');
   const [filters, setFilters] = useState<RelationFilters>(
     DEFAULT_RELATION_FILTERS,
   );
@@ -83,6 +85,7 @@ export function DataKnowledgeRelations({
       setSourceLinks('');
       setStatus('APPROVED');
       setPreview(false);
+      setRevisionMode('all');
       setFilters(DEFAULT_RELATION_FILTERS);
       setFilterDraft(DEFAULT_RELATION_FILTERS);
       setFailed(false);
@@ -103,6 +106,7 @@ export function DataKnowledgeRelations({
         );
         setStatus(view.status);
         setPreview(view.preview);
+        setRevisionMode(view.revisionMode ?? 'all');
         setFilters(view.filters ?? DEFAULT_RELATION_FILTERS);
         setFilterDraft(view.filters ?? DEFAULT_RELATION_FILTERS);
         void load(view.entity, undefined, view);
@@ -157,9 +161,21 @@ export function DataKnowledgeRelations({
       setMessage(copy.badFilters);
     }
   }
+  const revisions = useMemo(
+    () =>
+      selectRelationRevisions(
+        page?.items ?? [],
+        revisionMode,
+        !!page &&
+          !page.nextCursor &&
+          entity === null &&
+          !applied.current?.assertionId,
+      ),
+    [page, revisionMode, entity],
+  );
   const visible = useMemo(
-    () => filterRelationRows(page?.items ?? [], filters),
-    [page, filters],
+    () => filterRelationRows(revisions.items, filters),
+    [revisions.items, filters],
   );
   const graph = useMemo(
     () => ({
@@ -296,6 +312,7 @@ export function DataKnowledgeRelations({
       entity: selected,
       pages: after ? (applied.current?.pages ?? 1) + 1 : 1,
       filters,
+      revisionMode,
     };
     if (view.pages > 10) return;
     if (view.assertionId) {
@@ -483,6 +500,7 @@ export function DataKnowledgeRelations({
             setPage(null);
             setEntity(null);
             setPreview(false);
+            setRevisionMode('all');
           }}
         >
           {Object.entries(copy.statuses).map(([key, label]) => (
@@ -539,6 +557,29 @@ export function DataKnowledgeRelations({
             </p>
             <fieldset disabled={busy}>
               <legend>{copy.filterTitle}</legend>
+              <label>
+                {copy.revisionDisplay}
+                <select
+                  aria-label={copy.revisionDisplay}
+                  value={revisionMode}
+                  onChange={(e) => {
+                    const next = e.target.value as 'all' | 'current';
+                    setRevisionMode(next);
+                    if (applied.current)
+                      saveView({ ...applied.current, revisionMode: next });
+                  }}
+                >
+                  <option value="all">{copy.revisionAll}</option>
+                  <option value="current">{copy.revisionCurrent}</option>
+                </select>
+              </label>
+              {revisionMode === 'current' ? (
+                <p role="status">
+                  {revisions.deferred
+                    ? copy.revisionDeferred
+                    : `${copy.revisionHidden}${revisions.hiddenCount} · ${copy.revisionBranches}${revisions.branchCount}`}
+                </p>
+              ) : null}
               <p>{copy.filterHint}</p>
               <label>
                 {copy.filterKind}

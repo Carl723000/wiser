@@ -125,3 +125,5 @@ An observation node may declare `urn:wiser:record:<recordId>` as its external ID
 Record inspection offers an on-demand reverse lookup of explicit record bindings through authorized, paged relation lists. It retains a valid case source scope and relationship filters, defaults to approved records without a case, and requires an explicit pending selection otherwise. Partial, empty and unavailable results are distinct; denial clears retained bindings. Opening a match focuses its source-bound business node, while the previous graph return action remains independent. Selecting a different record aborts and clears the previous lookup; matching never uses labels or invented geometry.
 
 记录检查区通过已授权的分页业务关系列表反查明确记录绑定，沿用有效案例来源和关系筛选。没有案例时默认仅查当前版本已通过关系，待审范围须明确选择。部分完成、无绑定和读取失败分别显示；拒绝访问时清空结果。点击匹配项进入来源限定的业务节点，原图返回入口独立保留。切换记录中止并清空此前查询，不按名称或虚构几何匹配。
+
+Business relation correction display preserves immutable history and same-review-queue boundaries; see [product rules](../docs/src/content/docs/en/development/product-experience.md). / 业务图更正显示保留不可变历史与同一审核队列边界，见[产品规则](../docs/src/content/docs/zh-CN/development/product-experience.md)。

@@ -17,6 +17,7 @@ export type RelationViewState = Source & {
   pages: number;
   filters?: RelationFilters;
   assertionId?: string;
+  revisionMode?: 'all' | 'current';
 };
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -58,6 +59,7 @@ export function readRelationView(
           'pages',
           'filters',
           'assertionId',
+          'revisionMode',
         ].includes(k),
     )
   )
@@ -107,6 +109,12 @@ export function readRelationView(
     )
       throw Error('Entity outside scope');
   }
+  if (
+    value.revisionMode !== undefined &&
+    value.revisionMode !== 'all' &&
+    value.revisionMode !== 'current'
+  )
+    throw Error('Invalid revision display');
   const assertionId =
     value.assertionId === undefined
       ? undefined
@@ -121,6 +129,9 @@ export function readRelationView(
     entity,
     pages: value.pages,
     ...(assertionId ? { assertionId } : {}),
+    ...(value.revisionMode !== undefined
+      ? { revisionMode: value.revisionMode }
+      : {}),
     ...(value.filters !== undefined
       ? { filters: parseRelationFilters(value.filters) }
       : {}),

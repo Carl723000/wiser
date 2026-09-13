@@ -232,3 +232,28 @@ it('restores one exact history assertion and rejects conflicting focus', () => {
       ),
     ).toThrow();
 });
+
+it('restores current or historical revision display through source return and rejects unknown modes', () => {
+  for (const revisionMode of ['all', 'current'] as const) {
+    const value = { ...state, revisionMode };
+    const search = '?relations=' + encodeURIComponent(JSON.stringify(value));
+    expect(readRelationView(search, base)).toEqual(value);
+    const href = relationSourceExploreHref('zh-CN', value, source, 'records');
+    const back = relationReturnHref(
+      new URL(href, 'http://local').search,
+      'zh-CN',
+    )!;
+    expect(
+      readRelationView(new URL(back, 'http://local').search, base),
+    ).toEqual(value);
+  }
+  expect(() =>
+    readRelationView(
+      '?relations=' +
+        encodeURIComponent(
+          JSON.stringify({ ...state, revisionMode: 'guess-latest' }),
+        ),
+      base,
+    ),
+  ).toThrow();
+});
