@@ -1,6 +1,12 @@
 import { z } from 'zod';
 const Id = z.uuid();
 const Text = z.string().trim().min(1).max(1024);
+export const RelationEntityReferenceSchema = z.strictObject({
+  dataItemId: Id,
+  versionId: Id,
+  mappingVersion: z.string().min(1).max(128),
+  entityKey: z.string().min(1).max(256),
+});
 export const RelationEntitySchema = z.strictObject({
   key: z.string().min(1).max(256),
   label: Text,
@@ -22,6 +28,7 @@ export const RelationEntitySchema = z.strictObject({
     'PLACE',
   ]),
   externalId: z.string().min(1).max(256).nullable(),
+  reference: RelationEntityReferenceSchema.optional(),
 });
 export const RelationEvidenceSchema = z.strictObject({
   assetId: Id,
@@ -38,6 +45,7 @@ export const RelationCandidateSchema = z.strictObject({
     'FLOWS_TO',
     'BELONGS_TO_BASIN',
     'CANDIDATE_RECEIVING_WATER',
+    'IDENTITY_MATCH',
     'EXPRESSES_CLAIM',
     'REPORTS_CLAIM',
     'ABOUT_ENTITY',
@@ -151,6 +159,8 @@ export const RelationReviewInputSchema = RelationGetInputSchema.extend({
   rationale: Text,
 });
 export const RelationListInputSchema = Source.extend({
+  relatedSources: z.array(Source).max(11).optional(),
+  entityReference: RelationEntityReferenceSchema.optional(),
   status: RelationStatusSchema.default('APPROVED'),
   entityKey: z.string().min(1).max(256).optional(),
   mappingVersion: z.string().min(1).max(128).optional(),

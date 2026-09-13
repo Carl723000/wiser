@@ -9,6 +9,11 @@ import {
   type RelationAssertion,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import {
+  parseRelationSourceLinks,
+  parseRelationNodeIdentity,
+  relationNodeIdentity,
+} from '@/lib/relation-graph';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import styles from './data-reconciliation.module.css';
 
@@ -21,7 +26,10 @@ export function DataKnowledgeRelations({
   readonly dataItemId: string;
   readonly versionId: string;
 }) {
-  const statusId = useId();
+  const statusId = useId(),
+    sourcesId = useId();
+  const [sourceLinks, setSourceLinks] = useState('');
+  const [preview, setPreview] = useState(false);
   const dict = getDictionary(locale),
     copy = dict.knowledgeRelations,
     common = dict.assessment;
@@ -38,6 +46,16 @@ export function DataKnowledgeRelations({
   const requests = useRef<AbortController | null>(null),
     keys = useRef(new Map<string, string>());
   useEffect(() => () => requests.current?.abort(), []);
+  useEffect(() => {
+    requests.current?.abort();
+    setPage(null);
+    setEntity(null);
+    setSourceLinks('');
+    setPreview(false);
+    setPayload(null);
+    setNotes({});
+    keys.current.clear();
+  }, [dataItemId, versionId]);
   const graph = useMemo(
     () => ({
       nodes: [
@@ -45,7 +63,7 @@ export function DataKnowledgeRelations({
           (page?.items ?? [])
             .flatMap((r) =>
               [r.candidate.subject, r.candidate.object].map((e) => ({
-                key: JSON.stringify([r.mappingVersion, e.key]),
+                key: relationNodeIdentity(r, e),
                 label: e.label,
               })),
             )
@@ -54,11 +72,8 @@ export function DataKnowledgeRelations({
       ],
       edges: (page?.items ?? []).map((r) => ({
         edgeId: r.assertionId,
-        fromEntityId: JSON.stringify([
-          r.mappingVersion,
-          r.candidate.subject.key,
-        ]),
-        toEntityId: JSON.stringify([r.mappingVersion, r.candidate.object.key]),
+        fromEntityId: relationNodeIdentity(r, r.candidate.subject),
+        toEntityId: relationNodeIdentity(r, r.candidate.object),
         label: copy.predicates[r.candidate.predicate],
       })),
     }),
@@ -131,19 +146,39 @@ export function DataKnowledgeRelations({
     }
   }
   async function load(selected: string | null = entity, after?: string) {
-    const pair: unknown = selected ? JSON.parse(selected) : null;
-    const filter =
-      Array.isArray(pair) &&
-      typeof pair[0] === 'string' &&
-      typeof pair[1] === 'string'
-        ? { mappingVersion: pair[0], entityKey: pair[1] }
-        : {};
+    let relatedSources: { dataItemId: string; versionId: string }[],
+      entityReference: ReturnType<typeof parseRelationNodeIdentity> | undefined;
+    try {
+      relatedSources = parseRelationSourceLinks(
+        sourceLinks,
+        window.location.origin,
+      );
+      entityReference = selected
+        ? parseRelationNodeIdentity(selected)
+        : undefined;
+      if (
+        entityReference &&
+        entityReference.versionId !== versionId &&
+        !relatedSources.some((s) => s.versionId === entityReference?.versionId)
+      ) {
+        if (relatedSources.length >= 11) throw Error();
+        relatedSources.push({
+          dataItemId: entityReference.dataItemId,
+          versionId: entityReference.versionId,
+        });
+      }
+    } catch {
+      setMessage(copy.badSources);
+      setPage(null);
+      return;
+    }
     const value = await request('list', {
       dataItemId,
       versionId,
       status,
       first: 25,
-      ...filter,
+      relatedSources,
+      ...(entityReference ? { entityReference } : {}),
       ...(after ? { after } : {}),
     });
     if (value) {
@@ -184,6 +219,20 @@ export function DataKnowledgeRelations({
       <summary>{copy.title}</summary>
       <div className={styles.body}>
         <p>{copy.hint}</p>
+        <label htmlFor={sourcesId}>{copy.relatedSources}</label>
+        <textarea
+          id={sourcesId}
+          rows={2}
+          value={sourceLinks}
+          disabled={busy}
+          onChange={(e) => {
+            setSourceLinks(e.target.value);
+            setPage(null);
+            setEntity(null);
+            setMessage('');
+          }}
+        />
+        <p>{copy.relatedHint}</p>
         <label htmlFor={statusId}>{copy.status}</label>
         <select
           id={statusId}
@@ -193,6 +242,7 @@ export function DataKnowledgeRelations({
             setStatus(e.target.value as RelationAssertion['status']);
             setPage(null);
             setEntity(null);
+            setPreview(false);
           }}
         >
           {Object.entries(copy.statuses).map(([key, label]) => (
@@ -221,7 +271,24 @@ export function DataKnowledgeRelations({
               {status === 'APPROVED' ? copy.approvedHint : copy.candidateHint}
             </p>
             {page.items.length === 0 ? <p>{copy.empty}</p> : null}
-            {status === 'APPROVED' && page.items.length > 0 ? (
+            {status === 'PENDING_REVIEW' ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={preview}
+                  onChange={(e) => setPreview(e.target.checked)}
+                />
+                {copy.preview}
+              </label>
+            ) : null}
+            <p>
+              {copy.pageCount}
+              {page.items.length}
+              {page.nextCursor ? copy.partial : copy.complete}
+            </p>
+            {(status === 'APPROVED' ||
+              (status === 'PENDING_REVIEW' && preview)) &&
+            page.items.length > 0 ? (
               <KnowledgeGraphCanvas
                 result={graph}
                 selectedId={entity}
@@ -239,10 +306,7 @@ export function DataKnowledgeRelations({
                     disabled={busy}
                     onClick={() =>
                       void load(
-                        JSON.stringify([
-                          row.mappingVersion,
-                          row.candidate.subject.key,
-                        ]),
+                        relationNodeIdentity(row, row.candidate.subject),
                       )
                     }
                   >
@@ -255,18 +319,93 @@ export function DataKnowledgeRelations({
                     type="button"
                     disabled={busy}
                     onClick={() =>
-                      void load(
-                        JSON.stringify([
-                          row.mappingVersion,
-                          row.candidate.object.key,
-                        ]),
-                      )
+                      void load(relationNodeIdentity(row, row.candidate.object))
                     }
                   >
                     {row.candidate.object.label}
                   </button>
                 </h3>
                 <p>{copy.statuses[row.status]}</p>
+                <p>
+                  <Link
+                    href={`/${locale}/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`}
+                  >
+                    {copy.source}
+                  </Link>
+                  {' · '}
+                  <Link
+                    href={`/${locale}/data-foundation/explore?dataItem=${row.dataItemId}&version=${row.versionId}&view=map`}
+                  >
+                    {copy.sourceMap}
+                  </Link>
+                </p>
+                {[row.candidate.subject, row.candidate.object]
+                  .filter((e) => e.reference)
+                  .map((e, i) => (
+                    <p key={i}>
+                      {e.label}
+                      {' · '}
+                      <Link
+                        href={`/${locale}/data-foundation/catalog/${e.reference!.dataItemId}?versionId=${e.reference!.versionId}`}
+                      >
+                        {copy.source}
+                      </Link>
+                      {' · '}
+                      <Link
+                        href={`/${locale}/data-foundation/explore?dataItem=${e.reference!.dataItemId}&version=${e.reference!.versionId}&view=map`}
+                      >
+                        {copy.sourceMap}
+                      </Link>
+                    </p>
+                  ))}
+                {row.candidate.qualifiers.context ? (
+                  <dl className={styles.metrics}>
+                    <div>
+                      <dt>{copy.nature}</dt>
+                      <dd>
+                        {
+                          copy.natures[
+                            row.candidate.qualifiers.context.recordNature
+                          ]
+                        }
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{copy.timeRole}</dt>
+                      <dd>
+                        {
+                          copy.timeRoles[
+                            row.candidate.qualifiers.context.timeRole
+                          ]
+                        }
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{copy.period}</dt>
+                      <dd>
+                        {row.candidate.qualifiers.context.validFrom ??
+                          copy.unknown}{' '}
+                        —{' '}
+                        {row.candidate.qualifiers.context.validTo ??
+                          copy.unknown}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{copy.locationRole}</dt>
+                      <dd>
+                        {
+                          copy.locationRoles[
+                            row.candidate.qualifiers.context.locationRole
+                          ]
+                        }
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{copy.applicability}</dt>
+                      <dd>{row.candidate.qualifiers.context.applicability}</dd>
+                    </div>
+                  </dl>
+                ) : null}
                 <dl className={styles.metrics}>
                   {[
                     [

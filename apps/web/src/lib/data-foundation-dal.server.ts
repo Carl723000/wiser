@@ -458,7 +458,12 @@ export function createDataFoundationDal(
       }
       if (definition.restMapping.method === 'GET') {
         const query = new URLSearchParams(
-          Object.entries(body).map(([key, value]) => [key, String(value)]),
+          Object.entries(body).map(([key, value]) => [
+            key,
+            key === 'relatedSources' || key === 'entityReference'
+              ? JSON.stringify(value)
+              : String(value),
+          ]),
         );
         if (query.size) path += `?${query}`;
       }

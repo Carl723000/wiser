@@ -188,3 +188,41 @@ it('rejects credentials and path injection in a projection target', () => {
     ).toThrow('Invalid business projection target');
   }
 });
+
+it('connects referenced original nodes without rewriting their source scope', async () => {
+  const request = vi.fn((_input: GraphStacHttpRequest) =>
+    Promise.resolve({ status: 200, body: {} }),
+  );
+  const target = new Neo4jBusinessProjection({
+    baseUrl: 'http://neo4j:7474',
+    database: 'neo4j',
+    username: 'neo4j',
+    password: 'synthetic',
+    http: { request },
+  });
+  const reference = {
+    dataItemId: row.dataItemId,
+    versionId: '11111111-1111-4111-8111-111111111111',
+    mappingVersion: 'expert-2023',
+    entityKey: 'person:one',
+  };
+  await target.putBatch([
+    {
+      ...row,
+      candidate: {
+        ...row.candidate,
+        object: { ...row.candidate.object, reference },
+      },
+    },
+  ]);
+  const body = request.mock.calls[0]?.[0].body as {
+    parameters: { rows: Record<string, unknown>[] };
+  };
+  expect(body.parameters.rows[0]?.['objectId']).toBe(
+    `${JSON.stringify([row.tenantId, row.projectId, reference.versionId, reference.mappingVersion])}:${reference.entityKey}`,
+  );
+  expect(body.parameters.rows[0]?.['objectVersionId']).toBe(
+    reference.versionId,
+  );
+  expect(body.parameters.rows[0]?.['versionId']).toBe(row.versionId);
+});

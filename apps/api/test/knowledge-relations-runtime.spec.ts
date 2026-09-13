@@ -265,3 +265,46 @@ it('rejects automatic review, conflicting identities and oversized evidence befo
   ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   expect(f.pool.connect).not.toHaveBeenCalled();
 });
+
+it('does not admit an identity link whose source entities do not exist', async () => {
+  const f = fixture();
+  const reference = (versionId: string) => ({
+    dataItemId: f.input.dataItemId,
+    versionId,
+    mappingVersion: 'v1',
+    entityKey: 'person:one',
+  });
+  const candidate = {
+    ...f.candidate,
+    predicate: 'IDENTITY_MATCH',
+    subject: {
+      key: 'a',
+      kind: 'PERSON',
+      label: 'Same name',
+      externalId: null,
+      reference: reference(f.input.versionId),
+    },
+    object: {
+      key: 'b',
+      kind: 'PERSON',
+      label: 'Same name',
+      externalId: null,
+      reference: reference(randomUUID()),
+    },
+    qualifiers: {
+      ...f.candidate.qualifiers,
+      context: {
+        recordNature: 'SOURCE_RELATION',
+        timeRole: 'UNKNOWN',
+        validFrom: null,
+        validTo: null,
+        locationRole: 'UNKNOWN',
+        applicability: 'Identity candidate only',
+      },
+    },
+  };
+  await expect(
+    f.call('import', { ...f.input, candidates: [candidate] }),
+  ).rejects.toThrow();
+  expect(f.rows.size).toBe(0);
+});

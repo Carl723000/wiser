@@ -165,3 +165,62 @@ describe('typed cross-domain relation candidates', () => {
     ).toThrow();
   });
 });
+
+describe('explicit source entity references', () => {
+  const ref = (suffix: string) => ({
+    dataItemId: `10000000-0000-4000-8000-00000000000${suffix}`,
+    versionId: `20000000-0000-4000-8000-00000000000${suffix}`,
+    mappingVersion: 'expert-v1',
+    entityKey: 'person:wang',
+  });
+  const match = () => ({
+    ...candidate(),
+    subject: { ...entity('left'), kind: 'PERSON', reference: ref('1') },
+    object: { ...entity('right'), kind: 'PERSON', reference: ref('2') },
+    predicate: 'IDENTITY_MATCH',
+    qualifiers: {
+      ...candidate().qualifiers,
+      context: {
+        recordNature: 'SOURCE_RELATION',
+        timeRole: 'UNKNOWN',
+        validFrom: null,
+        validTo: null,
+        locationRole: 'UNKNOWN',
+        applicability: 'Identity hypothesis, requires source comparison',
+      },
+    },
+  });
+  it('preserves two source identities instead of coalescing equal labels', () => {
+    const [value] = groupRelationCandidates([match()]);
+    expect(value?.candidate.subject.reference?.versionId).not.toBe(
+      value?.candidate.object.reference?.versionId,
+    );
+    expect(value?.candidate.predicate).toBe('IDENTITY_MATCH');
+  });
+  it('refuses a cross-reference hidden in an ordinary predicate', () => {
+    expect(() =>
+      groupRelationCandidates([{ ...match(), predicate: 'ABOUT_ENTITY' }]),
+    ).toThrow();
+  });
+  it('requires two distinct source references and matching kinds', () => {
+    const value = match();
+    expect(() =>
+      groupRelationCandidates([
+        {
+          ...value,
+          object: { ...value.object, reference: value.subject.reference },
+        },
+      ]),
+    ).toThrow();
+    expect(() =>
+      groupRelationCandidates([
+        { ...value, object: { ...value.object, kind: 'ORGANIZATION' } },
+      ]),
+    ).toThrow();
+    expect(() =>
+      groupRelationCandidates([
+        { ...value, object: { ...value.object, reference: undefined } },
+      ]),
+    ).toThrow();
+  });
+});

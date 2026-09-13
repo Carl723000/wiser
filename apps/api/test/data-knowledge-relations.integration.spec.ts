@@ -488,6 +488,175 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           command(),
         ),
       ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+      // A second isolated source exposes the same spelling under a distinct identity.
+      await client.query('reset role');
+      const secondItem = randomUUID(),
+        secondVersion = randomUUID(),
+        secondAsset = randomUUID();
+      await client.query(
+        `insert into catalog.data_item select (jsonb_populate_record(null::catalog.data_item,to_jsonb(i)||jsonb_build_object('data_item_id',$2::uuid,'name','Synthetic second source'))).* from catalog.data_item i where data_item_id=$1`,
+        [item, secondItem],
+      );
+      await client.query(
+        `insert into catalog.data_item_version select (jsonb_populate_record(null::catalog.data_item_version,to_jsonb(v)||jsonb_build_object('data_item_id',$2::uuid,'version_id',$3::uuid))).* from catalog.data_item_version v where version_id=$1`,
+        [version, secondItem, secondVersion],
+      );
+      await client.query(
+        `insert into catalog.asset select (jsonb_populate_record(null::catalog.asset,to_jsonb(s)||jsonb_build_object('asset_id',$2::uuid,'version_id',$3::uuid,'storage_key','synthetic/second/'||$2::text))).* from catalog.asset s where asset_id=$1`,
+        [asset, secondAsset, secondVersion],
+      );
+      const originalEntity = {
+        key: 'expert:wang',
+        label: 'Same-name synthetic person',
+        kind: 'PERSON',
+        externalId: null,
+      };
+      const contextFields = {
+        recordNature: 'EXPERT_VIEW',
+        timeRole: 'PUBLICATION_TIME',
+        validFrom: null,
+        validTo: null,
+        locationRole: 'UNKNOWN',
+        applicability: 'Synthetic identity and permission test only',
+      };
+      const expertRow = {
+        ...relation('expert:wang', 'EXPRESSES_CLAIM', 'claim:one'),
+        subject: originalEntity,
+        object: { ...entity('claim:one'), kind: 'CLAIM' },
+        qualifiers: {
+          ...relation('a', 'b', 'c').qualifiers,
+          observedAt: null,
+          context: contextFields,
+        },
+      };
+      const one = {
+        dataItemId: item,
+        versionId: version,
+        mappingVersion: 'expert.v1',
+        candidates: [expertRow],
+      };
+      const two = {
+        ...one,
+        dataItemId: secondItem,
+        versionId: secondVersion,
+        candidates: [
+          {
+            ...expertRow,
+            evidence: [{ ...expertRow.evidence[0]!, assetId: secondAsset }],
+          },
+        ],
+      };
+      await call('import', one, command());
+      await call('import', two, command());
+      const ref = (dataItemId: string, versionId: string) => ({
+        dataItemId,
+        versionId,
+        mappingVersion: 'expert.v1',
+        entityKey: originalEntity.key,
+      });
+      const identityRow = {
+        ...expertRow,
+        predicate: 'IDENTITY_MATCH',
+        subject: {
+          ...originalEntity,
+          key: 'left',
+          reference: ref(item, version),
+        },
+        object: {
+          ...originalEntity,
+          key: 'right',
+          reference: ref(secondItem, secondVersion),
+        },
+        qualifiers: {
+          ...expertRow.qualifiers,
+          context: { ...contextFields, recordNature: 'SOURCE_RELATION' },
+        },
+      };
+      const linkInput = {
+        ...one,
+        mappingVersion: 'identity.v1',
+        candidates: [identityRow],
+      };
+      const linked = ImportRelationsOutputSchema.parse(
+        await call('import', linkInput, command()),
+      );
+      expect(linked.createdCount).toBe(1);
+      expect(
+        ImportRelationsOutputSchema.parse(
+          await call('import', linkInput, command()),
+        ).reusedCount,
+      ).toBe(1);
+      const union = {
+        dataItemId: item,
+        versionId: version,
+        relatedSources: [{ dataItemId: secondItem, versionId: secondVersion }],
+        status: 'PENDING_REVIEW',
+        first: 100,
+      };
+      const combined = RelationListOutputSchema.parse(
+        await call('list', union),
+      );
+      expect(
+        combined.items.filter((x) => x.mappingVersion === 'expert.v1'),
+      ).toHaveLength(2);
+      expect(
+        combined.items.some(
+          (x) => x.assertionId === linked.items[0]!.assertionId,
+        ),
+      ).toBe(true);
+      const focused = RelationListOutputSchema.parse(
+        await call('list', {
+          ...union,
+          entityReference: ref(secondItem, secondVersion),
+        }),
+      );
+      expect(focused.totalCount).toBe(2);
+      await expect(
+        call(
+          'import',
+          {
+            ...linkInput,
+            mappingVersion: 'bad-ref',
+            candidates: [
+              {
+                ...identityRow,
+                object: { ...identityRow.object, label: 'A different person' },
+              },
+            ],
+          },
+          command(),
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(
+        call('list', {
+          ...union,
+          relatedSources: [
+            { dataItemId: randomUUID(), versionId: secondVersion },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      // Withdrawal clears the cross-source edge even when its own origin remains readable.
+      await client.query('reset role');
+      await client.query(
+        `update catalog.data_item set publication_status='WITHDRAWN' where data_item_id=$1`,
+        [secondItem],
+      );
+      await expect(
+        call('get', { assertionId: linked.items[0]!.assertionId }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(call('list', union)).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      expect(
+        RelationListOutputSchema.parse(
+          await call('list', {
+            dataItemId: item,
+            versionId: version,
+            status: 'PENDING_REVIEW',
+            mappingVersion: 'identity.v1',
+          }),
+        ).totalCount,
+      ).toBe(0);
       await client.query('reset role');
       await client.query(
         `update catalog.data_item set publication_status='WITHDRAWN' where data_item_id=$1`,

@@ -1,3 +1,4 @@
+import { relationVisibleSql } from '../postgres/knowledge-relation-visibility.js';
 import { createHash } from 'node:crypto';
 import { RelationProjectionBatchSchema } from '@wiser/data-contracts';
 import type { DataPostgresPool } from '../postgres/pool.js';
@@ -9,8 +10,8 @@ OPTIONAL MATCH ()-[prior:WISER_BUSINESS_RELATION {projectionId: row.id}]->()
 FOREACH (old IN CASE WHEN prior IS NULL THEN [] ELSE [prior] END | DELETE old)
 WITH DISTINCT row
 FOREACH (ignored IN CASE WHEN row.active THEN [1] ELSE [] END |
- MERGE (s:WiserBusinessEntity {projectionId:row.subjectId}) SET s.name=row.subjectName,s.entityKey=row.subjectKey,s.tenantId=row.tenantId,s.projectId=row.projectId,s.versionId=row.versionId,s.mappingVersion=row.mappingVersion
- MERGE (o:WiserBusinessEntity {projectionId:row.objectId}) SET o.name=row.objectName,o.entityKey=row.objectKey,o.externalId=row.externalId,o.tenantId=row.tenantId,o.projectId=row.projectId,o.versionId=row.versionId,o.mappingVersion=row.mappingVersion
+ MERGE (s:WiserBusinessEntity {projectionId:row.subjectId}) SET s.name=row.subjectName,s.entityKey=row.subjectKey,s.tenantId=row.tenantId,s.projectId=row.projectId,s.versionId=row.subjectVersionId,s.mappingVersion=row.subjectMappingVersion
+ MERGE (o:WiserBusinessEntity {projectionId:row.objectId}) SET o.name=row.objectName,o.entityKey=row.objectKey,o.externalId=row.externalId,o.tenantId=row.tenantId,o.projectId=row.projectId,o.versionId=row.objectVersionId,o.mappingVersion=row.objectMappingVersion
  MERGE (s)-[r:WISER_BUSINESS_RELATION {projectionId:row.id}]->(o) SET r += row.properties
 )
 RETURN count(row) AS processed`;
@@ -69,22 +70,34 @@ export class Neo4jBusinessProjection {
   }
   async putBatch(input: readonly unknown[]) {
     const rows = RelationProjectionBatchSchema.parse(input).map((row) => {
-      const prefix = JSON.stringify([
-        row.tenantId,
-        row.projectId,
-        row.versionId,
-        row.mappingVersion,
-      ]);
       const c = row.candidate;
+      const identity = (entity: typeof c.subject) => {
+        const reference = entity.reference;
+        const version = reference?.versionId ?? row.versionId;
+        const mapping = reference?.mappingVersion ?? row.mappingVersion;
+        const key = reference?.entityKey ?? entity.key;
+        return {
+          id: `${JSON.stringify([row.tenantId, row.projectId, version, mapping])}:${key}`,
+          version,
+          mapping,
+          key,
+        };
+      };
+      const subject = identity(c.subject),
+        object = identity(c.object);
       return {
         id: row.assertionId,
         active: row.active,
-        subjectId: `${prefix}:${c.subject.key}`,
-        objectId: `${prefix}:${c.object.key}`,
+        subjectId: subject.id,
+        subjectVersionId: subject.version,
+        subjectMappingVersion: subject.mapping,
+        objectId: object.id,
+        objectVersionId: object.version,
+        objectMappingVersion: object.mapping,
         subjectName: c.subject.label,
-        subjectKey: c.subject.key,
+        subjectKey: subject.key,
         objectName: c.object.label,
-        objectKey: c.object.key,
+        objectKey: object.key,
         externalId: c.object.externalId,
         tenantId: row.tenantId,
         projectId: row.projectId,
@@ -164,8 +177,7 @@ export class BusinessProjectionConsumer {
       );
       const rows = await c.query(
         `select b.assertion_id,b.tenant_id,b.project_id,b.data_item_id,b.version_id,b.mapping_version,b.security_level,b.policy_version,b.candidate,
-    (a.status='APPROVED' and exists(select 1 from catalog.data_item_version v join catalog.data_item i using(tenant_id,project_id,data_item_id) where v.version_id=b.version_id and i.data_item_id=b.data_item_id and v.publication_status='PUBLISHED' and i.publication_status='PUBLISHED' and v.acceptance_status in ('PASSED','CONDITIONALLY_PASSED') and i.acceptance_status in ('PASSED','CONDITIONALLY_PASSED'))
-     and not exists(select 1 from jsonb_array_elements(b.candidate->'evidence') e where not exists(select 1 from catalog.asset s where s.asset_id=(e->>'assetId')::uuid and s.version_id=b.version_id and s.content_hash=decode(e->>'sourceHash','hex') and s.lifecycle_state='RAW'))) active
+    (a.status='APPROVED' and ${relationVisibleSql()}) active
     from knowledge.assertion_binding b join knowledge.assertion a using(tenant_id,project_id,assertion_id)
     where b.tenant_id=$1 and b.project_id=$2 and ($3::uuid is null or b.assertion_id>$3::uuid) order by b.assertion_id limit $4`,
         [

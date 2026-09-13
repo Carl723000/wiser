@@ -430,6 +430,46 @@ function appWith(
 }
 
 describe('Data Foundation REST module', () => {
+  it('decodes bounded relation source and entity references over HTTP', async () => {
+    const { app } = appWith();
+    const relatedSources = [
+      { dataItemId: DATA_ITEM_ID, versionId: VERSION_ID },
+    ];
+    const entityReference = {
+      ...relatedSources[0],
+      mappingVersion: 'source-v1',
+      entityKey: 'person:1',
+    };
+    const query = new URLSearchParams({
+      dataItemId: DATA_ITEM_ID,
+      versionId: VERSION_ID,
+      relatedSources: JSON.stringify(relatedSources),
+      entityReference: JSON.stringify(entityReference),
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/knowledge/relations?${query.toString()}`,
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ input: unknown }>().input).toMatchObject({
+      relatedSources,
+      entityReference,
+    });
+    for (const bad of ['{', 'null', '"text"']) {
+      query.set('entityReference', bad);
+      expect(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/data/v1/knowledge/relations?${query.toString()}`,
+            headers: authHeaders(),
+          })
+        ).statusCode,
+      ).toBe(422);
+    }
+  });
+
   it('maps every Registry REST route to the same authenticated Capability Handler', async () => {
     const { app, handler } = appWith();
 

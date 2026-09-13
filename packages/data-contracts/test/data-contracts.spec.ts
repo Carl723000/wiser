@@ -904,20 +904,20 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 
 const expectedJsonSchemaHashes = {
   'data.knowledge.relations.import': {
-    input: '1c62393b455ce80105a5d36757e7abd94c5ae0d039b3dd7a05f8a598c2f99367',
-    output: '28ca385f5d1d7ffa4c7e6d00fd4e68e0053aa596d5587f3596a83aa6d16393ef',
+    input: '9e1ff89f970f971ea5a079cc5b25d9127bfc139ddb30cb6fcdfedf5c32c0be43',
+    output: '0a8ade7bd6243a8425667917651f643109ceed16a63bb454b696cdebe75b6ea3',
   },
   'data.knowledge.relations.get': {
     input: '1da03b60eb041eb77e0be2ebfedbab9881708170afa6df8b899d360def5f55c4',
-    output: '701dbba0afc08fc81c5d6dd11b851286873d8b7fa9b79e173abecdc83849d842',
+    output: '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
   },
   'data.knowledge.relations.list': {
-    input: '39556b5ee516b087088cfedd0b535489f9f9d1e30510a854975dbf660a35f2d6',
-    output: '2aba41367572903fb60b4ec0731679844efb9cda873cff29cdc13d572e02a812',
+    input: '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
+    output: 'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
   },
   'data.knowledge.relations.review': {
     input: 'b942992c3638c17b7e34d211bc383be46b59383211be1fef3db3c8f14db4fe8b',
-    output: '701dbba0afc08fc81c5d6dd11b851286873d8b7fa9b79e173abecdc83849d842',
+    output: '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
   },
 
   'data.assessment.create': {

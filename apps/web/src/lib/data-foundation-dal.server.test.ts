@@ -17,6 +17,47 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 const GEO_VERSION_ID = '55555555-5555-4555-8555-555555555555';
 
+it('preserves structured relation filters in the authenticated HTTP request', async () => {
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(Response.json({ items: [], totalCount: 0 }));
+  const dal = createDataFoundationDal({
+    config: {
+      apiOrigin: 'http://api:3001',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'read',
+      requestTimeoutMs: 5000,
+      responseLimitBytes: 32768,
+    },
+    createAuthClient: () => Promise.resolve(authClient([])),
+    fetch,
+  });
+  const relatedSources = [
+    { dataItemId: PROJECT_ID, versionId: GEO_VERSION_ID },
+  ];
+  const entityReference = {
+    ...relatedSources[0],
+    mappingVersion: 'source-v1',
+    entityKey: 'person:1',
+  };
+  await dal.relations('list', {
+    dataItemId: PROJECT_ID,
+    versionId: GEO_VERSION_ID,
+    relatedSources,
+    entityReference,
+  });
+  const calledUrl = fetch.mock.calls[0]?.[0];
+  if (typeof calledUrl !== 'string') throw Error('Expected serialized URL');
+  const url = new URL(calledUrl);
+  expect(JSON.parse(url.searchParams.get('relatedSources') ?? 'null')).toEqual(
+    relatedSources,
+  );
+  expect(JSON.parse(url.searchParams.get('entityReference') ?? 'null')).toEqual(
+    entityReference,
+  );
+});
+
 it('streams a source preview with verified identity, range support and an inert document policy', async () => {
   const fetch = vi.fn<typeof globalThis.fetch>(() =>
     Promise.resolve(

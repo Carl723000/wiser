@@ -11,3 +11,4 @@ export * from './projections/postgis/index.js';
 export * from './search/backends/index.js';
 export * from './search/index.js';
 export * from './projections/business-relations.js';
+export * from './postgres/knowledge-relation-visibility.js';

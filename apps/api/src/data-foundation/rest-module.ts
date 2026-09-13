@@ -9,6 +9,7 @@ import {
   DATA_CAPABILITY_IDS,
   DATA_CAPABILITY_REGISTRY,
   OperationEventPageSchema,
+  RelationListInputSchema,
   type DataCapabilityId,
 } from '@wiser/data-contracts';
 import {
@@ -357,6 +358,19 @@ function normalizeQuery(
   const normalized: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(source)) {
     if (FORBIDDEN_KEYS.has(key)) return null;
+    if (key === 'relatedSources' || key === 'entityReference') {
+      if (typeof entry !== 'string' || entry.length > 8192) return null;
+      try {
+        const parsed = RelationListInputSchema.shape[key].safeParse(
+          JSON.parse(entry),
+        );
+        if (!parsed.success) return null;
+        normalized[key] = parsed.data;
+      } catch {
+        return null;
+      }
+      continue;
+    }
     if (key === 'includeTotal') {
       if (entry !== 'true' && entry !== 'false') return null;
       normalized[key] = entry === 'true';

@@ -1,3 +1,7 @@
+import {
+  relationVisibleSql,
+  relationSourceVisibleSql,
+} from '@wiser/data-infra';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -34,10 +38,7 @@ const SELECT = `select b.*,a.status,a.row_version,a.created_at,
  coalesce((select jsonb_agg(jsonb_build_object('reviewId',r.review_record_id,'reviewerId',r.reviewer_actor_id,'decision',r.decision,'rationale',r.rationale,'createdAt',r.created_at) order by r.row_version) from knowledge.review_record r where r.assertion_id=a.assertion_id),'[]'::jsonb) reviews
  from knowledge.assertion_binding b join knowledge.assertion a using(tenant_id,project_id,assertion_id)`;
 /** Reauthorize every source file at read time, independently of graph projection lag. */
-const VISIBLE = `exists(select 1 from catalog.data_item_version v join catalog.data_item i using(tenant_id,project_id,data_item_id)
- where v.version_id=b.version_id and i.data_item_id=b.data_item_id and v.publication_status='PUBLISHED' and i.publication_status='PUBLISHED'
- and v.acceptance_status in ('PASSED','CONDITIONALLY_PASSED') and i.acceptance_status in ('PASSED','CONDITIONALLY_PASSED'))
- and not exists(select 1 from jsonb_array_elements(b.candidate->'evidence') e where not exists(select 1 from catalog.asset s where s.asset_id=(e->>'assetId')::uuid and s.version_id=b.version_id and s.content_hash=decode(e->>'sourceHash','hex') and s.lifecycle_state='RAW'))`;
+const VISIBLE = relationVisibleSql();
 function assertion(row: Record<string, unknown>): RelationAssertion {
   return RelationAssertionSchema.parse({
     assertionId: row['assertion_id'],
@@ -83,6 +84,33 @@ async function authorize(
     if (saved.rows[0]?.['total'] !== evidence.length) throw fail('NOT_FOUND');
   }
 }
+async function authorizeReferences(
+  client: Client,
+  candidates: readonly RelationCandidate[],
+) {
+  for (const entity of candidates.flatMap((c) => [c.subject, c.object])) {
+    const ref = entity.reference;
+    if (!ref) continue;
+    await authorize(client, ref);
+    const found = await client.query(
+      `select value from knowledge.assertion_binding b join knowledge.assertion a using(tenant_id,project_id,assertion_id)
+       cross join lateral (values(b.candidate->'subject'),(b.candidate->'object')) entity(value)
+       where b.data_item_id=$1::uuid and b.version_id=$2::uuid and b.mapping_version=$3 and value->>'key'=$4
+       and not (value ? 'reference') and a.status in ('APPROVED','PENDING_REVIEW') and ${relationSourceVisibleSql()} limit 1`,
+      [ref.dataItemId, ref.versionId, ref.mappingVersion, ref.entityKey],
+    );
+    const saved = found.rows[0]?.['value'] as
+      RelationCandidate['subject'] | undefined;
+    if (
+      !saved ||
+      saved.kind !== entity.kind ||
+      saved.label !== entity.label ||
+      saved.externalId !== entity.externalId
+    )
+      throw fail('NOT_FOUND');
+  }
+}
+
 async function load(client: Client, id: string) {
   const rows = await client.query(
     `${SELECT} where b.assertion_id=$1::uuid and ${VISIBLE}`,
@@ -155,6 +183,10 @@ export function createKnowledgeRelationExecutors(
             await authorize(
               client,
               input,
+              grouped.map((g) => g.candidate),
+            );
+            await authorizeReferences(
+              client,
               grouped.map((g) => g.candidate),
             );
             // Serialize the source/mapping only, so a changed command key cannot race a duplicate import.
@@ -320,18 +352,52 @@ export function createKnowledgeRelationExecutors(
       execute: (raw, context) =>
         read(context, async (c) => {
           const input = RelationListInputSchema.parse(raw);
-          await authorize(c, input);
+          const sources = [
+            ...new Map(
+              [input, ...(input.relatedSources ?? [])].map((s) => [
+                s.versionId,
+                { dataItemId: s.dataItemId, versionId: s.versionId },
+              ]),
+            ).values(),
+          ];
+          // Reject conflicting version ownership before deduplication.
+          for (const source of [input, ...(input.relatedSources ?? [])])
+            await authorize(c, source);
+          if (
+            input.entityReference &&
+            !sources.some(
+              (s) =>
+                s.dataItemId === input.entityReference!.dataItemId &&
+                s.versionId === input.entityReference!.versionId,
+            )
+          )
+            throw fail('NOT_FOUND');
           if (input.after) {
             const cursor = await load(c, input.after);
-            if (cursor.versionId !== input.versionId) throw fail('NOT_FOUND');
+            if (
+              !sources.some(
+                (s) =>
+                  s.versionId === cursor.versionId &&
+                  s.dataItemId === cursor.dataItemId,
+              ) ||
+              cursor.status !== input.status
+            )
+              throw fail('NOT_FOUND');
           }
-          const where = `b.data_item_id=$1::uuid and b.version_id=$2::uuid and a.status=$3 and ($4::text is null or a.subject->>'key'=$4 or a.object->>'key'=$4) and ($5::text is null or b.mapping_version=$5) and ${VISIBLE}`;
+          const where = `exists(select 1 from jsonb_array_elements($1::jsonb) source where b.data_item_id=(source->>'dataItemId')::uuid and b.version_id=(source->>'versionId')::uuid)
+            and a.status=$2 and ($3::text is null or a.subject->>'key'=$3 or a.object->>'key'=$3)
+            and ($4::text is null or b.mapping_version=$4)
+            and ($5::jsonb is null or exists(select 1 from (values(b.candidate->'subject'),(b.candidate->'object')) ent(value) where
+              (b.data_item_id=($5->>'dataItemId')::uuid and b.version_id=($5->>'versionId')::uuid and b.mapping_version=$5->>'mappingVersion' and value->>'key'=$5->>'entityKey')
+              or value->'reference'=$5::jsonb)) and ${VISIBLE}`;
           const values = [
-            input.dataItemId,
-            input.versionId,
+            JSON.stringify(sources),
             input.status,
             input.entityKey ?? null,
             input.mappingVersion ?? null,
+            input.entityReference
+              ? JSON.stringify(input.entityReference)
+              : null,
           ];
           const count = await c.query(
             `select count(*)::int total from knowledge.assertion_binding b join knowledge.assertion a using(tenant_id,project_id,assertion_id) where ${where}`,

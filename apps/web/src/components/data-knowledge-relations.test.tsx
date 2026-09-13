@@ -91,6 +91,9 @@ it('separates candidate counts from the approved graph and preserves review retr
   fireEvent.click(screen.getByRole('button', { name: '查看业务关系' }));
   await screen.findByText(/PDF page 1, row 1/);
   expect(screen.queryByTestId('business-graph')).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox', { name: '查看待审关联图' }));
+  expect(screen.getByTestId('business-graph')).toBeTruthy();
+  expect(screen.getByText('当前状态的关系数：1')).toBeTruthy();
   expect(screen.getByText('当前状态的关系数：1')).toBeTruthy();
   expect(
     screen.getByRole('link', { name: '查看原件' }).getAttribute('href'),

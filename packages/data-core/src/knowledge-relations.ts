@@ -67,6 +67,19 @@ export function groupRelationCandidates(
 
 /** Versioned code registry: new types share intake/review mechanics, never arbitrary LLM strings. */
 export const KNOWLEDGE_RELATION_RULES = {
+  IDENTITY_MATCH: {
+    subjects: [
+      'PERSON',
+      'ORGANIZATION',
+      'ENTERPRISE',
+      'MONITORING_POINT',
+      'RIVER_REACH',
+      'BASIN',
+      'PLACE',
+      'EXTERNAL_ENTITY',
+    ],
+    objects: null,
+  },
   EXPRESSES_CLAIM: { subjects: ['PERSON', 'ORGANIZATION'], objects: ['CLAIM'] },
   REPORTS_CLAIM: { subjects: ['DOCUMENT'], objects: ['CLAIM'] },
   ABOUT_ENTITY: {
@@ -101,6 +114,23 @@ export const KNOWLEDGE_RELATION_RULES = {
 } as const;
 
 function assertTypedRelation(row: RelationCandidate): void {
+  const references = [row.subject.reference, row.object.reference];
+  if (row.predicate === 'IDENTITY_MATCH') {
+    if (
+      !references[0] ||
+      !references[1] ||
+      JSON.stringify(references[0]) === JSON.stringify(references[1]) ||
+      row.subject.kind !== row.object.kind ||
+      row.qualifiers.context?.recordNature !== 'SOURCE_RELATION'
+    ) {
+      throw Error(
+        'Identity match requires distinct source references, equal kinds and source context',
+      );
+    }
+  } else if (references.some(Boolean)) {
+    throw Error('Only identity matches may reference another source entity');
+  }
+
   const rule = (
     KNOWLEDGE_RELATION_RULES as Readonly<
       Record<
