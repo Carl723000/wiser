@@ -348,6 +348,10 @@ def parse_asset(path, kind, maximum_records=MAX_RECORDS):
             events = workbook(path)
         elif kind == "xls":
             events = legacy_workbook(path)
+        elif kind == "xml":
+            from xml_content import xml_content
+
+            events = xml_content(path)
         elif kind in ("html", "md", "pdf", "txt", "doc", "docx"):
             events = document(path, kind)
         elif kind in ("shp", "tif", "tiff", "adf", "nc"):
