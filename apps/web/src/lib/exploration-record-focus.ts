@@ -1,6 +1,7 @@
 import {
   ExplorationRecordSchema,
   ExplorationQueryInputSchema,
+  type RelationAssertion,
   type ExplorationRecord,
   type ExplorationResult,
 } from '@wiser/data-contracts';
@@ -69,4 +70,22 @@ export function checkedFocusedRecord(
   )
     throw Error('Focused record unavailable');
   return ExplorationRecordSchema.parse(r[0]);
+}
+
+export function relationRecordFocus(
+  source: Pick<RelationAssertion, 'dataItemId' | 'versionId'>,
+  entity: RelationAssertion['candidate']['subject'],
+): RecordFocus | null {
+  if (
+    entity.kind !== 'OBSERVATION' ||
+    !entity.externalId?.startsWith('urn:wiser:record:')
+  )
+    return null;
+  const pin = entity.reference ?? source;
+  const parsed = FocusSchema.safeParse({
+    dataItemId: pin.dataItemId,
+    versionId: pin.versionId,
+    recordId: entity.externalId.slice('urn:wiser:record:'.length),
+  });
+  return parsed.success ? parsed.data : null;
 }

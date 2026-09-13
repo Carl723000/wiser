@@ -462,3 +462,60 @@ it('keeps nonmatching loaded rows when continuing a filtered page so clearing fi
   fireEvent.click(screen.getByRole('button', { name: '清除关系筛选' }));
   expect(screen.getAllByText(/PDF page 1, row 1/)).toHaveLength(2);
 });
+
+it('links an explicit observation record to its version and retains the applied graph context', async () => {
+  const recordId = '50000000-0000-4000-8000-000000000001';
+  const bound = {
+    ...row,
+    candidate: {
+      ...row.candidate,
+      predicate: 'DERIVED_FROM',
+      object: { ...row.candidate.object, kind: 'DOCUMENT' },
+      subject: {
+        key: 'band:1',
+        label: '影像波段1',
+        kind: 'OBSERVATION',
+        externalId: 'urn:wiser:record:' + recordId,
+      },
+    },
+  };
+  const view = {
+    dataItemId: row.dataItemId,
+    versionId: row.versionId,
+    sources: [],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 1,
+  };
+  window.history.replaceState(
+    null,
+    '',
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=` +
+      encodeURIComponent(JSON.stringify(view)),
+  );
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      Promise.resolve(Response.json({ items: [bound], totalCount: 1 })),
+    ),
+  );
+  render(
+    <DataKnowledgeRelations
+      locale="zh-CN"
+      dataItemId={row.dataItemId}
+      versionId={row.versionId}
+    />,
+  );
+  const link = await screen.findByRole('link', {
+    name: '查看对应记录的空间内容',
+  });
+  const url = new URL(link.getAttribute('href')!, 'http://localhost');
+  expect(JSON.parse(url.searchParams.get('recordFocus')!)).toEqual({
+    dataItemId: row.dataItemId,
+    versionId: row.versionId,
+    recordId,
+  });
+  expect(JSON.parse(url.searchParams.get('returnRelations')!)).toEqual(view);
+  expect(screen.getByRole('link', { name: '查看对应记录' })).toBeTruthy();
+});

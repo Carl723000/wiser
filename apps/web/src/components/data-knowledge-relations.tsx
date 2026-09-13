@@ -11,6 +11,10 @@ import {
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import {
+  relationRecordFocus,
+  withRecordFocus,
+} from '@/lib/exploration-record-focus';
+import {
   parseRelationSourceLinks,
   parseRelationNodeIdentity,
   relationNodeIdentity,
@@ -598,6 +602,34 @@ export function DataKnowledgeRelations({
                     {copy.sourceRecords}
                   </Link>
                 </p>
+                {[row.candidate.subject, row.candidate.object].map(
+                  (endpoint, i) => {
+                    const focus = relationRecordFocus(row, endpoint);
+                    return focus ? (
+                      <p key={'record-' + i}>
+                        {endpoint.label}
+                        {' · '}
+                        <Link
+                          href={withRecordFocus(
+                            sourceExploreHref(focus, 'records'),
+                            focus,
+                          )}
+                        >
+                          {copy.boundRecord}
+                        </Link>
+                        {' · '}
+                        <Link
+                          href={withRecordFocus(
+                            sourceExploreHref(focus, 'map'),
+                            focus,
+                          )}
+                        >
+                          {copy.boundRecordMap}
+                        </Link>
+                      </p>
+                    ) : null;
+                  },
+                )}
                 {[row.candidate.subject, row.candidate.object]
                   .filter((e) => e.reference)
                   .map((e, i) => (

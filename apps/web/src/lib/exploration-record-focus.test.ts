@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import {
+  relationRecordFocus,
   readRecordFocus,
   withRecordFocus,
   focusRecordRequest,
@@ -59,4 +60,36 @@ it('pins the actual record lookup to the freshly authorized query and checks eve
     [{ ...record, dataItemId: '20000000-0000-4000-8000-000000000002' }],
   ])
     expect(() => checkedFocusedRecord({ records }, focus)).toThrow();
+});
+
+it('resolves only explicit record references with versioned source identity', () => {
+  const source = { dataItemId: focus.dataItemId, versionId: focus.versionId };
+  const entity = {
+    key: 'band:1',
+    label: 'Band 1',
+    kind: 'OBSERVATION' as const,
+    externalId: 'urn:wiser:record:' + focus.recordId,
+  };
+  expect(relationRecordFocus(source, entity)).toEqual(focus);
+  expect(
+    relationRecordFocus(source, { ...entity, externalId: null }),
+  ).toBeNull();
+  expect(
+    relationRecordFocus(source, {
+      ...entity,
+      externalId: 'urn:wiser:record:not-a-record',
+    }),
+  ).toBeNull();
+  expect(relationRecordFocus(source, { ...entity, kind: 'PLACE' })).toBeNull();
+  const reference = {
+    dataItemId: '20000000-0000-4000-8000-000000000002',
+    versionId: '30000000-0000-4000-8000-000000000002',
+    mappingVersion: 'v1',
+    entityKey: 'band:1',
+  };
+  expect(relationRecordFocus(source, { ...entity, reference })).toEqual({
+    ...focus,
+    dataItemId: reference.dataItemId,
+    versionId: reference.versionId,
+  });
 });
