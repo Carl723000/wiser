@@ -1,6 +1,7 @@
 import {
   MAX_RELATION_RELATED_SOURCES,
   RelationEntityReferenceSchema,
+  RelationAssertionSchema,
   RelationStatusSchema,
   type RelationAssertion,
 } from '@wiser/data-contracts';
@@ -15,6 +16,7 @@ export type RelationViewState = Source & {
   entity: string | null;
   pages: number;
   filters?: RelationFilters;
+  assertionId?: string;
 };
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -55,6 +57,7 @@ export function readRelationView(
           'entity',
           'pages',
           'filters',
+          'assertionId',
         ].includes(k),
     )
   )
@@ -104,6 +107,12 @@ export function readRelationView(
     )
       throw Error('Entity outside scope');
   }
+  const assertionId =
+    value.assertionId === undefined
+      ? undefined
+      : RelationAssertionSchema.shape.assertionId.parse(value.assertionId);
+  if (assertionId && (entity !== null || value.pages !== 1))
+    throw Error('History target conflicts with graph focus');
   return {
     ...base,
     sources,
@@ -111,6 +120,7 @@ export function readRelationView(
     preview: value.preview,
     entity,
     pages: value.pages,
+    ...(assertionId ? { assertionId } : {}),
     ...(value.filters !== undefined
       ? { filters: parseRelationFilters(value.filters) }
       : {}),

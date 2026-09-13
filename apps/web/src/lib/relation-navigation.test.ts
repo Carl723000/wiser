@@ -205,3 +205,30 @@ it('restores strict type and time conditions through a source round trip', () =>
     ),
   ).toThrow();
 });
+
+it('restores one exact history assertion and rejects conflicting focus', () => {
+  const history = {
+    ...state,
+    assertionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  };
+  expect(
+    readRelationView(
+      '?relations=' + encodeURIComponent(JSON.stringify(history)),
+      base,
+    ),
+  ).toEqual(history);
+  for (const changed of [
+    { ...history, assertionId: 'invalid' },
+    { ...history, pages: 2 },
+    {
+      ...history,
+      entity: JSON.stringify([base.dataItemId, base.versionId, 'v1', 'point']),
+    },
+  ])
+    expect(() =>
+      readRelationView(
+        '?relations=' + encodeURIComponent(JSON.stringify(changed)),
+        base,
+      ),
+    ).toThrow();
+});

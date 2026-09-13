@@ -519,3 +519,107 @@ it('links an explicit observation record to its version and retains the applied 
   expect(JSON.parse(url.searchParams.get('returnRelations')!)).toEqual(view);
   expect(screen.getByRole('link', { name: '查看对应记录' })).toBeTruthy();
 });
+
+it('persists an exact preceding assertion and reauthorizes it on history restoration', async () => {
+  const revised = {
+    ...row,
+    assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    mappingVersion: 'v2',
+    candidate: { ...row.candidate, supersedesId: row.assertionId },
+  };
+  const get = vi.fn(() => Response.json({ assertion: row }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith('/get')
+          ? get()
+          : Response.json({ items: [row, revised], totalCount: 2 }),
+      ),
+    ),
+  );
+  const view = {
+    dataItemId: row.dataItemId,
+    versionId: row.versionId,
+    sources: [],
+    status: 'PENDING_REVIEW',
+    preview: true,
+    entity: null,
+    pages: 1,
+  };
+  window.history.replaceState(
+    null,
+    '',
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=${encodeURIComponent(JSON.stringify(view))}`,
+  );
+  const { container } = render(
+    <DataKnowledgeRelations
+      locale="zh-CN"
+      dataItemId={row.dataItemId}
+      versionId={row.versionId}
+    />,
+  );
+  await waitFor(() =>
+    expect(container.querySelectorAll('article')).toHaveLength(2),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '查看更正前的关系' }));
+  await waitFor(() =>
+    expect(container.querySelectorAll('article')).toHaveLength(1),
+  );
+  expect(
+    new URLSearchParams(window.location.search).get('relations'),
+  ).toContain(row.assertionId);
+  act(() => {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+  expect(container.querySelectorAll('article')).toHaveLength(1);
+});
+
+it.each(['denied', 'foreign-version', 'wrong-id', 'changed-status'])(
+  'does not replace failed history with a different relation: %s',
+  async (failure) => {
+    const changed =
+      failure === 'foreign-version'
+        ? { ...row, versionId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }
+        : failure === 'wrong-id'
+          ? { ...row, assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' }
+          : failure === 'changed-status'
+            ? { ...row, status: 'APPROVED' }
+            : row;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          failure === 'denied'
+            ? new Response('{}', { status: 403 })
+            : Response.json({ assertion: changed }),
+        ),
+      ),
+    );
+    const view = {
+      dataItemId: row.dataItemId,
+      versionId: row.versionId,
+      sources: [],
+      status: 'PENDING_REVIEW',
+      preview: true,
+      entity: null,
+      pages: 1,
+      assertionId: row.assertionId,
+    };
+    window.history.replaceState(
+      null,
+      '',
+      `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=${encodeURIComponent(JSON.stringify(view))}`,
+    );
+    const { container } = render(
+      <DataKnowledgeRelations
+        locale="zh-CN"
+        dataItemId={row.dataItemId}
+        versionId={row.versionId}
+      />,
+    );
+    await screen.findByRole('alert');
+    expect(container.querySelectorAll('article')).toHaveLength(0);
+  },
+);

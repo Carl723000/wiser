@@ -298,6 +298,30 @@ export function DataKnowledgeRelations({
       filters,
     };
     if (view.pages > 10) return;
+    if (view.assertionId) {
+      const value = await request('get', { assertionId: view.assertionId });
+      if (generation !== loadGeneration.current || !value) return;
+      const parsed = RelationOutputSchema.safeParse(value);
+      if (
+        !parsed.success ||
+        parsed.data.assertion.assertionId !== view.assertionId ||
+        parsed.data.assertion.status !== view.status ||
+        ![view, ...view.sources].some(
+          (s) =>
+            s.dataItemId === parsed.data.assertion.dataItemId &&
+            s.versionId === parsed.data.assertion.versionId,
+        )
+      ) {
+        setPage(null);
+        setFailed(true);
+        return;
+      }
+      setPage({ items: [parsed.data.assertion], totalCount: 1 });
+      setEntity(null);
+      setOpened(true);
+      applied.current = view;
+      return;
+    }
     let items = after ? [...(page?.items ?? [])] : [];
     let cursor = after;
     const steps = restored ? restored.pages : 1;
@@ -334,6 +358,72 @@ export function DataKnowledgeRelations({
         return;
       }
     }
+  }
+  async function showPreceding(row: RelationAssertion) {
+    const assertionId = row.candidate.supersedesId;
+    if (!assertionId) return;
+    const generation = ++loadGeneration.current;
+    const value = await request('get', { assertionId });
+    if (generation !== loadGeneration.current || !value) return;
+    const parsed = RelationOutputSchema.safeParse(value);
+    if (
+      !parsed.success ||
+      parsed.data.assertion.assertionId !== assertionId ||
+      parsed.data.assertion.dataItemId !== row.dataItemId
+    ) {
+      setPage(null);
+      setFailed(true);
+      return;
+    }
+    const previous = parsed.data.assertion;
+    const current = applied.current ?? {
+      dataItemId,
+      versionId,
+      sources: [],
+      status,
+      preview,
+      entity: null,
+      pages: 1,
+    };
+    const sources = [...current.sources];
+    if (
+      ![current, ...sources].some(
+        (s) =>
+          s.dataItemId === previous.dataItemId &&
+          s.versionId === previous.versionId,
+      )
+    )
+      sources.push({
+        dataItemId: previous.dataItemId,
+        versionId: previous.versionId,
+      });
+    const view: RelationViewState = {
+      ...current,
+      sources,
+      assertionId,
+      status: previous.status,
+      preview:
+        previous.status === 'PENDING_REVIEW' || previous.status === 'APPROVED',
+      entity: null,
+      pages: 1,
+      filters: DEFAULT_RELATION_FILTERS,
+    };
+    try {
+      saveView(view);
+    } catch {
+      setPage(null);
+      setFailed(true);
+      return;
+    }
+    setSourceLinks(
+      relationSourceLinks(sources, locale, window.location.origin),
+    );
+    setStatus(view.status);
+    setPreview(view.preview);
+    setEntity(null);
+    setFilters(DEFAULT_RELATION_FILTERS);
+    setFilterDraft(DEFAULT_RELATION_FILTERS);
+    setPage({ items: [previous], totalCount: 1 });
   }
   async function review(
     row: RelationAssertion,
@@ -746,17 +836,7 @@ export function DataKnowledgeRelations({
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() =>
-                      void request('get', {
-                        assertionId: row.candidate.supersedesId,
-                      }).then((v) => {
-                        const p = RelationOutputSchema.safeParse(v);
-                        if (p.success) {
-                          setStatus(p.data.assertion.status);
-                          setPage({ items: [p.data.assertion], totalCount: 1 });
-                        }
-                      })
-                    }
+                    onClick={() => void showPreceding(row)}
                   >
                     {copy.supersedes}
                   </button>
