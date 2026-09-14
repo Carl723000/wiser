@@ -48,8 +48,8 @@ export function DataExplorerBusiness({
     [busy, setBusy] = useState(true),
     [failed, setFailed] = useState(false),
     [loaded, setLoaded] = useState(0);
-  const [mode, setMode] = useState<'overview' | 'all'>('overview'),
-    [listPage, setListPage] = useState(0);
+  const mode = search.get('businessMode') === 'all' ? 'all' : 'overview';
+  const [listPage, setListPage] = useState(0);
   const selected = search.get('businessEntity');
   const [draft, setDraft] = useState(scope.filters);
   const viewState = useExplorationViewState();
@@ -171,13 +171,19 @@ export function DataExplorerBusiness({
       ].sort(),
     [rows],
   );
-  const select = (id: string | null, nextKind: Kind | null = kind) => {
+  const select = (
+    id: string | null,
+    nextKind: Kind | null = kind,
+    nextMode: 'overview' | 'all' = mode,
+  ) => {
     setListPage(0);
     const params = new URLSearchParams(search.toString());
     if (id) params.set('businessEntity', id);
     else params.delete('businessEntity');
     if (nextKind) params.set('businessKind', nextKind);
     else params.delete('businessKind');
+    if (nextMode === 'all') params.set('businessMode', 'all');
+    else params.delete('businessMode');
     router.replace(pathname + '?' + params.toString(), { scroll: false });
   };
   return (
@@ -274,8 +280,7 @@ export function DataExplorerBusiness({
           <div className={styles.actions}>
             <button
               onClick={() => {
-                setMode('overview');
-                select(null, null);
+                select(null, null, 'overview');
               }}
               aria-pressed={mode === 'overview' && !selected && !kind}
             >
@@ -283,8 +288,7 @@ export function DataExplorerBusiness({
             </button>
             <button
               onClick={() => {
-                setMode('all');
-                select(null, null);
+                select(null, null, 'all');
               }}
               aria-pressed={mode === 'all' && !selected && !kind}
             >

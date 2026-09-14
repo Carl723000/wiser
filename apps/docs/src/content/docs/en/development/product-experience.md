@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: f5d667693850e12f563aa8678e7bcd50e89cb9e3
+lastReviewedCommit: 8cde9800238fe7ad1c5315c61c1d0a208936627c
 ---
 
 ## What this guide governs
@@ -226,3 +226,5 @@ Theme changes refresh the graph’s resolved node, edge, label and label-backgro
 When a scoped business query contains only observations or source relationships, its default overview shows those authorized rows instead of an empty diagram. Mixed business results still collapse observation detail. Explicit object/category filters remain exact, including empty matches; this display fallback never expands the query or changes record/map scope.
 
 Business-query record views include a source selector and searchable directory built only from explicit record bindings in the complete authorized relation result. Links retain the same query and exact DataItem/Version/record identity. Pagination must complete before showing entries; denied, inconsistent or truncated responses clear the directory. Unbound documents remain reachable through the business graph. The directory counts bound records, not independent observations, and does not expand time/review/source conditions. The file table remains a single-source view.
+
+Business graph overview/all-observations mode is stored in the page URL. Reopening a saved view or remounting its query restores the selected mode; returning to overview clears the override. This is a display preference only and does not expand source, time, review or record scope. Unknown mode values fall back to overview.
