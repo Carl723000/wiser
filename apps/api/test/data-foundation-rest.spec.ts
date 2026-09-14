@@ -430,6 +430,19 @@ function appWith(
 }
 
 describe('Data Foundation REST module', () => {
+  it('accepts a short persisted relation scope over the existing GET endpoint', async () => {
+    const { app } = appWith();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/knowledge/relations?queryId=${VERSION_ID}`,
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ input: unknown }>().input).toMatchObject({
+      queryId: VERSION_ID,
+    });
+  });
+
   it('decodes bounded relation source and entity references over HTTP', async () => {
     const { app } = appWith();
     const relatedSources = [

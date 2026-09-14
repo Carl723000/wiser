@@ -288,6 +288,51 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           await call('list', { dataItemId: item, versionId: version }),
         ).totalCount,
       ).toBe(1);
+
+      // A persisted manifest is still owner/purpose-bound and reauthorized per read.
+      await client.query('reset role');
+      const queryId = randomUUID();
+      await client.query(
+        `insert into service.exploration_snapshot(query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,spec,version_refs,expires_at)
+        values($1,$2,$3,$4,$5,'L1_INTERNAL',1,'{}',$6::jsonb,clock_timestamp()+interval '20 minutes')`,
+        [
+          queryId,
+          tenant,
+          project,
+          actor,
+          context.authorization.purpose,
+          JSON.stringify([{ dataItemId: item, versionId: version }]),
+        ],
+      );
+      expect(
+        RelationListOutputSchema.parse(
+          await call('list', { queryId }),
+        ).items.map((row) => row.assertionId),
+      ).toEqual([candidate.assertionId]);
+      await expect(
+        call(
+          'list',
+          { queryId },
+          {
+            ...context,
+            principal: { ...context.principal, actorId: randomUUID() },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(
+        call(
+          'list',
+          { queryId },
+          {
+            ...context,
+            authorization: {
+              ...context.authorization,
+              purpose: 'other-purpose',
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await call('list', { queryId });
       if (consumer) {
         await consumer.processBatch(
           {

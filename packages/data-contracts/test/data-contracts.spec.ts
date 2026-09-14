@@ -912,7 +912,7 @@ const expectedJsonSchemaHashes = {
     output: '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
   },
   'data.knowledge.relations.list': {
-    input: 'cf30648dbee592ba950ab2e16056364d38ed13c5196c0d10ad7ad95379a3d630',
+    input: 'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
     output: 'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
   },
   'data.knowledge.relations.review': {
@@ -1831,7 +1831,7 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
     const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
     expect(old.version).toBe('1.0.0');
     expect(DATA_CAPABILITY_REGISTRY[key].version).toBe(
-      key === 'data.knowledge.relations.list' ? '1.3.0' : '1.1.0',
+      key === 'data.knowledge.relations.list' ? '1.4.0' : '1.1.0',
     );
     expect({
       input: jsonSchemaHash(old.inputSchema),
@@ -1854,7 +1854,7 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.3 list', 
     versionId: VERSION_ID,
     relatedSources: sources,
   };
-  expect(current.version).toBe('1.3.0');
+  expect(current.version).toBe('1.4.0');
   expect(jsonSchemaHash(previous.inputSchema)).toBe(
     '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
   );
@@ -1889,5 +1889,17 @@ it('retains the exact 1.2 discovery schema when expanding the source scope', () 
   );
   expect(jsonSchemaHash(previous!.outputSchema)).toBe(
     'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
+  );
+});
+
+it('retains the exact inline 1.3 discovery schema when adding persisted scopes', () => {
+  const previous = DATA_CAPABILITY_ARCHIVE[
+    'data.knowledge.relations.list'
+  ]!.find((c) => c.version === '1.3.0')!;
+  expect(jsonSchemaHash(previous.inputSchema)).toBe(
+    'cf30648dbee592ba950ab2e16056364d38ed13c5196c0d10ad7ad95379a3d630',
+  );
+  expect(previous.inputSchema.safeParse({ queryId: VERSION_ID }).success).toBe(
+    false,
   );
 });

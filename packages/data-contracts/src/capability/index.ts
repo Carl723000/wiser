@@ -8,6 +8,7 @@ import {
   RelationListInputSchema,
   RelationListInputV11Schema,
   RelationListInputV12Schema,
+  RelationListInputV13Schema,
   RelationListOutputSchema,
 } from '../knowledge-relations/index.ts';
 import {
@@ -1341,7 +1342,7 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.list': defineCapability({
     id: 'data.knowledge.relations.list',
-    version: '1.3.0',
+    version: '1.4.0',
     kind: 'query',
     inputSchema: RelationListInputSchema,
     outputSchema: RelationListOutputSchema,
@@ -1421,6 +1422,12 @@ const capabilityArchive = {
       ...capabilityRegistry['data.knowledge.relations.list'],
       version: '1.2.0',
       inputSchema: RelationListInputV12Schema,
+      outputSchema: RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.3.0',
+      inputSchema: RelationListInputV13Schema,
       outputSchema: RelationListOutputSchema,
     }),
   ]),

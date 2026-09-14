@@ -159,7 +159,7 @@ export const RelationReviewInputSchema = RelationGetInputSchema.extend({
   decision: RelationStatusSchema.exclude(['PENDING_REVIEW']),
   rationale: Text,
 });
-export const RelationListInputSchema = Source.extend({
+export const RelationListInputV13Schema = Source.extend({
   relatedSources: z.array(Source).max(MAX_RELATION_RELATED_SOURCES).optional(),
   entityReference: RelationEntityReferenceSchema.optional(),
   status: RelationStatusSchema.default('APPROVED'),
@@ -168,11 +168,33 @@ export const RelationListInputSchema = Source.extend({
   first: z.number().int().min(1).max(100).default(25),
   after: Id.optional(),
 });
-// Retain published discovery bounds; current lists use 1.3.
-export const RelationListInputV12Schema = RelationListInputSchema.extend({
+/** A persisted exploration scope keeps large source manifests out of GET URLs. */
+export const RelationListInputSchema = z
+  .strictObject({
+    ...RelationListInputV13Schema.shape,
+    dataItemId: Id.optional(),
+    versionId: Id.optional(),
+    queryId: Id.optional(),
+  })
+  .superRefine((input, context) => {
+    const valid = input.queryId
+      ? input.dataItemId === undefined &&
+        input.versionId === undefined &&
+        input.relatedSources === undefined
+      : input.dataItemId !== undefined && input.versionId !== undefined;
+    if (!valid)
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Supply an exploration query or an inline source scope, never both',
+      });
+  });
+// Retain published discovery bounds unchanged.
+
+export const RelationListInputV12Schema = RelationListInputV13Schema.extend({
   relatedSources: z.array(Source).max(31).optional(),
 });
-export const RelationListInputV11Schema = RelationListInputSchema.extend({
+export const RelationListInputV11Schema = RelationListInputV13Schema.extend({
   relatedSources: z.array(Source).max(11).optional(),
 });
 export const RelationListOutputSchema = z.strictObject({

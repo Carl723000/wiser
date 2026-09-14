@@ -131,13 +131,15 @@ export function createKnowledgeRelationExecutors(
     try {
       await c.query('begin isolation level repeatable read');
       await c.query(
-        "select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),set_config('wiser.max_security_level',$3,true),set_config('wiser.policy_version',$4,true),set_config('statement_timeout',$5,true)",
+        "select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),set_config('wiser.max_security_level',$3,true),set_config('wiser.policy_version',$4,true),set_config('statement_timeout',$5,true),set_config('wiser.actor_id',$6,true),set_config('wiser.purpose',$7,true)",
         [
           context.authorization.tenantId,
           context.authorization.projectId,
           context.effectiveMaxSecurityLevel,
           String(context.authorization.authzVersion),
           String(context.timeoutMs),
+          context.principal.actorId,
+          context.authorization.purpose,
         ],
       );
       const result = await work(c);
@@ -352,17 +354,43 @@ export function createKnowledgeRelationExecutors(
       execute: (raw, context) =>
         read(context, async (c) => {
           const input = RelationListInputSchema.parse(raw);
+          let selectedSources: { dataItemId: string; versionId: string }[];
+          if (input.queryId) {
+            // Snapshot RLS binds tenant, project and owner. Expiry never becomes an empty success.
+            const snapshot = await c.query(
+              'select version_refs from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
+              [input.queryId, context.principal.actorId],
+            );
+            if (!snapshot.rows[0]) throw fail('NOT_FOUND');
+            selectedSources = z
+              .array(
+                z.object({
+                  dataItemId: z.uuid(),
+                  versionId: z.uuid(),
+                  analysisId: z.uuid().nullable().optional(),
+                }),
+              )
+              .max(10000)
+              .parse(snapshot.rows[0]['version_refs']);
+            const checked = await c.query(
+              `${AUTHORIZED} select count(*)::int total from authorized`,
+              [JSON.stringify(selectedSources)],
+            );
+            if (checked.rows[0]?.['total'] !== selectedSources.length)
+              throw fail('NOT_FOUND');
+          } else {
+            selectedSources = [
+              { dataItemId: input.dataItemId!, versionId: input.versionId! },
+              ...(input.relatedSources ?? []),
+            ];
+            // Reject conflicting ownership before deduplication, preserving legacy behavior.
+            for (const source of selectedSources) await authorize(c, source);
+          }
           const sources = [
             ...new Map(
-              [input, ...(input.relatedSources ?? [])].map((s) => [
-                s.versionId,
-                { dataItemId: s.dataItemId, versionId: s.versionId },
-              ]),
+              selectedSources.map((source) => [source.versionId, source]),
             ).values(),
           ];
-          // Reject conflicting version ownership before deduplication.
-          for (const source of [input, ...(input.relatedSources ?? [])])
-            await authorize(c, source);
           if (
             input.entityReference &&
             !sources.some(
