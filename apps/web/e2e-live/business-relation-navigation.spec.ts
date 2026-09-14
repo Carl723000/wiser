@@ -14,6 +14,15 @@ if (
 )
   throw Error('Expected a loopback version-bound relation case');
 const destination = target.pathname + target.search + target.hash;
+// The caller supplies an independently verified fixture expectation, never a UI count.
+const expectedObservationCount = Number(
+  process.env['WISER_WEB_LIVE_OBSERVATION_COUNT'],
+);
+if (
+  !Number.isSafeInteger(expectedObservationCount) ||
+  expectedObservationCount < 1
+)
+  throw Error('A verified positive observation relation count is required');
 
 test.use({ actionTimeout: 30000 });
 test('retains the real business graph across source records and map navigation', async ({
@@ -78,20 +87,30 @@ test('filters real observation relations and preserves the conditions through re
   await relations.getByLabel('筛选结束日期').fill('2026-09-10');
   await relations.getByLabel('日期筛选时保留时段不明的关系').uncheck();
   await relations.getByRole('button', { name: '应用关系筛选' }).click();
-  await expect(relations.locator('article')).toHaveCount(10);
+  await expect(relations.locator('article')).toHaveCount(
+    expectedObservationCount,
+  );
   await expect(
-    relations.getByText('筛选后关系数：10', { exact: false }),
+    relations.getByText(`筛选后关系数：${expectedObservationCount}`, {
+      exact: false,
+    }),
   ).toBeVisible();
   await page.reload();
-  await expect(relations.locator('article')).toHaveCount(10, {
-    timeout: 30000,
-  });
+  await expect(relations.locator('article')).toHaveCount(
+    expectedObservationCount,
+    {
+      timeout: 30000,
+    },
+  );
   await expect(relations.getByLabel('涉及对象类型')).toHaveValue('OBSERVATION');
   await relations.getByRole('link', { name: '查看来源记录' }).first().click();
   await page.getByRole('link', { name: '返回刚才的业务关系图' }).click();
-  await expect(relations.locator('article')).toHaveCount(10, {
-    timeout: 30000,
-  });
+  await expect(relations.locator('article')).toHaveCount(
+    expectedObservationCount,
+    {
+      timeout: 30000,
+    },
+  );
   await expect(relations.getByLabel('筛选开始日期')).toHaveValue('2026-06-01');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
