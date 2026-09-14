@@ -131,3 +131,5 @@ Business relation correction display preserves immutable history and same-review
 Business-scoped exploration renders the shared problem/evidence graph, with explicit observation-detail expansion and query-preserving evidence/table/map links. Saved entries retain the web-console purpose and reauthorize on reopening.
 
 Business object source captions use the current authorized relation set and preserve canonical referenced source/version identities. They add no metadata request or graph merge.
+
+The optional business path reader follows only loaded, authorized source-qualified identities, preserves original edge directions, and limits each inspected connection to eight edges without changing the shared query.
