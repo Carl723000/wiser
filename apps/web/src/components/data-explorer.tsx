@@ -117,6 +117,10 @@ function DataExplorerSession({
         withBusinessFocus(
           explorationHref(locale, queryId, tab),
           window.location.search,
+          initialSaved && {
+            viewId: initialSaved.savedView.viewId,
+            queryId: initialSaved.result.queryId,
+          },
         ),
         window.location.search,
       ),
