@@ -598,3 +598,48 @@ it('restores an exact record through its authorized query on history and never s
   await screen.findByRole('alert');
   expect(screen.queryByText('source-band-1')).toBeNull();
 });
+
+it('preserves business node and category focus when initializing an existing query URL', () => {
+  const identity = JSON.stringify([
+    '20000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000001',
+    'mapping-v1',
+    'band:1',
+  ]);
+  window.history.replaceState(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?' +
+      new URLSearchParams({
+        query: firstId,
+        businessEntity: identity,
+        businessKind: 'OBSERVATION',
+      }).toString(),
+  );
+  render(
+    <DataExplorer
+      locale="zh-CN"
+      initialResult={result(firstId, 'Band source', 'band')}
+      initialFailure={null}
+      initialText=""
+    />,
+  );
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get('businessEntity')).toBe(identity);
+  expect(params.get('businessKind')).toBe('OBSERVATION');
+});
+
+it('switches the visible view when a record return link supplies new route props', () => {
+  const data = result(firstId, 'Band source', 'band');
+  const props = {
+    locale: 'zh-CN' as const,
+    initialResult: data,
+    initialFailure: null,
+    initialText: '',
+  };
+  const rendered = render(<DataExplorer {...props} initialView="resources" />);
+  rendered.rerender(<DataExplorer {...props} initialView="graph" />);
+  expect(
+    screen.getByRole('tab', { name: '知识图谱' }).getAttribute('aria-selected'),
+  ).toBe('true');
+});

@@ -12,6 +12,7 @@ import { DataExplorerInspector } from './data-explorer-inspector';
 import { DataExplorerSaved } from './data-explorer-saved';
 import { ExplorationViewContext } from './exploration-view-context';
 import { createExplorationViewState } from '@/lib/exploration-view-state';
+import { withBusinessFocus } from '@/lib/exploration-business-focus';
 import { invalidatesExploration } from '@/lib/exploration-request';
 import {
   explorationHref,
@@ -72,7 +73,18 @@ const DataExplorerAggregate = dynamic(
   { ssr: false },
 );
 
-export function DataExplorer({
+export function DataExplorer(props: Parameters<typeof DataExplorerSession>[0]) {
+  // A server navigation is a new view session; client tab changes keep their own state.
+  const route = [
+    props.locale,
+    props.initialResult?.queryId,
+    props.initialView ?? 'resources',
+    props.initialFocusedRecord?.recordId,
+  ];
+  return <DataExplorerSession key={JSON.stringify(route)} {...props} />;
+}
+
+function DataExplorerSession({
   locale,
   initialResult,
   initialFailure,
@@ -101,7 +113,10 @@ export function DataExplorer({
       : null;
     return withRecordFocus(
       withRelationReturn(
-        explorationHref(locale, queryId, tab),
+        withBusinessFocus(
+          explorationHref(locale, queryId, tab),
+          window.location.search,
+        ),
         window.location.search,
       ),
       focus,
