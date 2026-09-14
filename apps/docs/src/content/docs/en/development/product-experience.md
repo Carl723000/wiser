@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: 3781e36
+lastReviewedCommit: 2d249480ba07cf01147ec7cc6b2bea0e6ef242b9
 ---
 
 ## What this guide governs
@@ -218,3 +218,5 @@ Graph labels reserve conservative screen-space boxes from current element positi
 Business graph object lists distinguish identical labels using source-document captions from the already authorized relation set. The selected object links to its own exact source version, including explicit cross-source references. Missing titles retain a numbered source label; unresolved same-source duplicates retain separate object numbers. These captions do not merge identities, add relationships or widen the query.
 
 Business exploration offers an optional path reader over the complete authorized relation set. Users select two source-qualified objects and inspect one shortest connection of at most eight edges, with original directed statements and evidence. Traversal may follow either end of a relation for reading only; it does not infer causation, approval or new edges. This local diagram inspection does not change the shared records/map query; changing endpoints clears the displayed path.
+
+Graph initialization fits once after the first screen-space label draw, so endpoint labels remain within the canvas. Subsequent selection, zoom and label refresh preserve the user’s view; resize and explicit fit remain available. This does not change graph scope or data.

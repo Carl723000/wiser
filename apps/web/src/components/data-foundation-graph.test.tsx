@@ -154,7 +154,7 @@ it('fits only after the first readable-label draw and does not refit on selectio
   await waitFor(() =>
     expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
   );
-  await act(async () => {
+  act(() => {
     WorkerDouble.current.onmessage?.({
       data: [
         { id: 'a', x: 0, y: 0 },
@@ -164,7 +164,7 @@ it('fits only after the first readable-label draw and does not refit on selectio
   });
   await waitFor(() => expect(engine.draw).toHaveBeenCalledOnce());
   expect(engine.fitView).not.toHaveBeenCalled();
-  await act(async () => finishDraw());
+  act(() => finishDraw());
   await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
   rendered.rerender(<KnowledgeGraphCanvas {...props} selectedId="b" />);
   await waitFor(() => expect(engine.draw).toHaveBeenCalledTimes(2));

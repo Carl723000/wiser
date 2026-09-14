@@ -239,6 +239,7 @@ export function KnowledgeGraphCanvas({
         canvas.setAttribute('aria-hidden', 'true');
       }
       graph.current = active;
+      let initialLabelFitPending = true;
       const readableLabels = () => {
         cancelAnimationFrame(labelFrame);
         labelFrame = requestAnimationFrame(() => {
@@ -284,9 +285,17 @@ export function KnowledgeGraphCanvas({
               },
             })),
           );
-          void active.draw().catch(() => {
-            if (!disposed) setState('unavailable');
-          });
+          void active
+            .draw()
+            .then(async () => {
+              if (disposed || !initialLabelFitPending) return;
+              // Auto-fit preceded screen-space label sizing; include those labels once.
+              initialLabelFitPending = false;
+              await active.fitView(undefined, false);
+            })
+            .catch(() => {
+              if (!disposed) setState('unavailable');
+            });
         });
       };
       active.on(GraphEvent.AFTER_TRANSFORM, readableLabels);
