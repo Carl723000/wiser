@@ -62,3 +62,32 @@ export async function loadBusinessMap(
     })),
   };
 }
+
+/** Bounds of the rendered GCJ-02 features, not the broader source inventory. */
+export function businessMapBounds(
+  collection: FeatureCollection | null,
+): [number, number, number, number] | undefined {
+  let bounds: [number, number, number, number] | undefined;
+  function coordinates(value: unknown): void {
+    if (!Array.isArray(value)) return;
+    const [x, y] = value as unknown[];
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      bounds = bounds
+        ? [
+            Math.min(bounds[0], x),
+            Math.min(bounds[1], y),
+            Math.max(bounds[2], x),
+            Math.max(bounds[3], y),
+          ]
+        : [x, y, x, y];
+    } else value.forEach(coordinates);
+  }
+  function geometry(value: Geometry | null): void {
+    if (!value) return;
+    if (value.type === 'GeometryCollection') value.geometries.forEach(geometry);
+    else coordinates(value.coordinates);
+  }
+  collection?.features.forEach((feature) => geometry(feature.geometry));
+  return bounds;
+}

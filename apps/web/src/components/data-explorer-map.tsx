@@ -5,7 +5,7 @@ import {
 } from '@/lib/exploration-request';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { FeatureCollection } from 'geojson';
-import { loadBusinessMap } from '@/lib/business-map';
+import { loadBusinessMap, businessMapBounds } from '@/lib/business-map';
 import * as maplibre from 'maplibre-gl';
 import Map, {
   Source,
@@ -128,20 +128,18 @@ export default function DataExplorerMap({
   useEffect(() => setSelected(selectedId), [selectedId]);
   useEffect(() => () => pending.current?.abort(), []);
   function fit() {
-    const extent = result.spec.spatialBounds ?? result.spatial?.bounds;
+    const extent = business
+      ? businessMapBounds(businessMap)
+      : (result.spec.spatialBounds ?? result.spatial?.bounds);
+    const display = (point: [number, number]): [number, number] =>
+      business ? point : (toAmap(point) as [number, number]);
     if (extent)
       map.current?.fitBounds(
         [
-          toAmap([extent[0], Math.max(-85.0511287798066, extent[1])]) as [
-            number,
-            number,
-          ],
-          toAmap([extent[2], Math.min(85.0511287798066, extent[3])]) as [
-            number,
-            number,
-          ],
+          display([extent[0], Math.max(-85.0511287798066, extent[1])]),
+          display([extent[2], Math.min(85.0511287798066, extent[3])]),
         ],
-        { padding: 60, maxZoom: 5.5, duration: 0 },
+        { padding: 60, maxZoom: business ? 14 : 5.5, duration: 0 },
       );
   }
   function filterArea() {
@@ -216,7 +214,7 @@ export default function DataExplorerMap({
   }
   useEffect(() => {
     if (ready && !savedMap?.camera) fit();
-  }, [ready, result]);
+  }, [ready, result, businessMap]);
   const tiles = useMemo(
     () => [
       `${window.location.origin}/api/data-foundation/geo/tiles/vector/amap/queries/${result.queryId}/{z}/{x}/{y}.pbf`,
