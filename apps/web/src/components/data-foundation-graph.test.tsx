@@ -281,7 +281,11 @@ it('uses current theme colors for rendered node and edge labels without resettin
     document.documentElement.style.setProperty('--border-strong', foreground);
   };
   const resolve = (style: unknown) =>
-    typeof style === 'function' ? style({ data: { kind: 'PLACE' } }) : style;
+    typeof style === 'function'
+      ? (style as (datum: { data: { kind: string } }) => unknown)({
+          data: { kind: 'PLACE' },
+        })
+      : style;
   try {
     theme('#12343d', '#edf5f6');
     render(

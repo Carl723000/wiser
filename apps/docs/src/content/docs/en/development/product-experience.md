@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: a03299273d7805edb04e10b12acdd408b4985a13
+lastReviewedCommit: f3ae08a0769c9f88830f9faa3ce46ac602fce772
 ---
 
 ## What this guide governs
@@ -220,3 +220,5 @@ Business graph object lists distinguish identical labels using source-document c
 Business exploration offers an optional path reader over the complete authorized relation set. Users select two source-qualified objects and inspect one shortest connection of at most eight edges, with original directed statements and evidence. Traversal may follow either end of a relation for reading only; it does not infer causation, approval or new edges. This local diagram inspection does not change the shared records/map query; changing endpoints clears the displayed path.
 
 Graph initialization fits once after the first screen-space label draw, so endpoint labels remain within the canvas. Subsequent selection, zoom and label refresh preserve the user’s view; resize and explicit fit remain available. This does not change graph scope or data.
+
+Theme changes refresh the graph’s resolved node, edge, label and label-background colors. They preserve layout, selected objects, path highlights and viewport; a redraw must not retain the initial theme’s default label color.

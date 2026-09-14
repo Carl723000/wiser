@@ -94,6 +94,7 @@ export function KnowledgeGraphCanvas({
         fill: tokens.getPropertyValue('--accent').trim(),
         stroke: tokens.getPropertyValue('--accent-strong').trim(),
         labelFill: tokens.getPropertyValue('--text-primary').trim(),
+        surface: tokens.getPropertyValue('--surface').trim(),
         edge: tokens.getPropertyValue('--border-strong').trim(),
         selected: tokens.getPropertyValue('--warning-bright').trim(),
         source:
@@ -135,7 +136,7 @@ export function KnowledgeGraphCanvas({
         ).map((node) => [node.id, node]),
       );
       if (disposed) return;
-      const palette = colors();
+      let palette = colors();
       const columns = Math.max(1, Math.ceil(Math.sqrt(result.nodes.length)));
       instance = new GraphConstructor({
         container,
@@ -169,7 +170,7 @@ export function KnowledgeGraphCanvas({
             size: (node) =>
               typeof node.style?.size === 'number' ? node.style.size : 24,
             fill: (node) => fillFor(node.data?.['kind'], palette),
-            stroke: palette.stroke,
+            stroke: () => palette.stroke,
             lineWidth: 2,
             labelText: (node) => {
               if (node.style?.labelVisibility === 'hidden') return '';
@@ -180,7 +181,7 @@ export function KnowledgeGraphCanvas({
                 ? `${label.slice(0, limit - 1)}…`
                 : label;
             },
-            labelFill: palette.labelFill,
+            labelFill: () => palette.labelFill,
             labelFontSize: (node) =>
               typeof node.style?.labelFontSize === 'number'
                 ? node.style.labelFontSize
@@ -197,14 +198,14 @@ export function KnowledgeGraphCanvas({
             labelMaxLines: result.nodes.length <= 14 ? 3 : 2,
           },
           state: {
-            selected: { stroke: palette.selected, lineWidth: 5 },
-            path: { stroke: palette.selected, lineWidth: 4 },
+            selected: { stroke: () => palette.selected, lineWidth: 5 },
+            path: { stroke: () => palette.selected, lineWidth: 4 },
           },
         },
         edge: {
-          state: { path: { stroke: palette.selected, lineWidth: 4 } },
+          state: { path: { stroke: () => palette.selected, lineWidth: 4 } },
           style: {
-            stroke: palette.edge,
+            stroke: () => palette.edge,
             lineWidth: (edge) =>
               typeof edge.style?.lineWidth === 'number'
                 ? edge.style.lineWidth
@@ -215,15 +216,13 @@ export function KnowledgeGraphCanvas({
               typeof edge.data?.['label'] === 'string'
                 ? edge.data['label']
                 : '',
-            labelFill: palette.labelFill,
+            labelFill: () => palette.labelFill,
             labelFontSize: (edge) =>
               typeof edge.style?.labelFontSize === 'number'
                 ? edge.style.labelFontSize
                 : 11,
             labelBackground: true,
-            labelBackgroundFill: getComputedStyle(document.documentElement)
-              .getPropertyValue('--surface')
-              .trim(),
+            labelBackgroundFill: () => palette.surface,
           },
         },
         behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
@@ -322,7 +321,7 @@ export function KnowledgeGraphCanvas({
       resize.observe(container);
       theme = new MutationObserver(() => {
         if (disposed) return;
-        const palette = colors();
+        palette = colors();
         pending.current = pending.current
           .then(async () => {
             if (disposed) return;
