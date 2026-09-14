@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: dea68d0e0af226840ebadde43a9e7aeee6b98a54
+lastReviewedCommit: f729c81d665c4e485a8fb0c8dae663f90824b3e0
 ---
 
 ## What this guide governs
@@ -224,3 +224,5 @@ Graph initialization fits once after the first screen-space label draw, so endpo
 Theme changes refresh the graph’s resolved node, edge, label and label-background colors. They preserve layout, selected objects, path highlights and viewport; a redraw must not retain the initial theme’s default label color.
 
 When a scoped business query contains only observations or source relationships, its default overview shows those authorized rows instead of an empty diagram. Mixed business results still collapse observation detail. Explicit object/category filters remain exact, including empty matches; this display fallback never expands the query or changes record/map scope.
+
+Business-query record views include a source selector and searchable directory built only from explicit record bindings in the complete authorized relation result. Links retain the same query and exact DataItem/Version/record identity. Pagination must complete before showing entries; denied, inconsistent or truncated responses clear the directory. Unbound documents remain reachable through the business graph. The directory counts bound records, not independent observations, and does not expand time/review/source conditions. The file table remains a single-source view.

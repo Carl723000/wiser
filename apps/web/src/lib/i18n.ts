@@ -39,6 +39,20 @@ const zhCN = {
     businessOverview: '多类对象总览',
     businessAll: '展开全部观测关系',
     businessClearFocus: '返回总览',
+    recordDirectoryTitle: '本次问题关联的记录',
+    recordDirectoryHint:
+      '按当前来源、时段和审核状态查找已绑定的记录。下方表格一次显示一份资料；单份为空不代表整个案例没有数据。',
+    recordDirectoryLoading: '正在查找匹配记录…',
+    recordDirectoryFailed: '关联记录暂不可用，请重新打开案例后再试。',
+    recordDirectoryEmpty:
+      '当前条件下尚无明确绑定的记录，可返回业务图查看原文依据。',
+    recordDirectoryCount: ' 条已绑定记录；不代表独立观测数量。',
+    recordDirectorySource: '有匹配记录的资料',
+    recordDirectorySearch: '查找关联记录',
+    recordDirectoryNoMatch:
+      '这份资料中没有匹配的记录名称，可修改关键词或切换资料。',
+    recordDirectoryGraph: '返回业务图查看原文证据',
+
     businessVisible: '图中关系 / 当前范围：',
     businessOverviewHint:
       '总览优先展示业务联系；仅剩观测或资料关联时全部显示。点击对象可展开明细。',
@@ -2003,6 +2017,22 @@ const en: typeof zhCN = {
     businessOverview: 'Overview by object',
     businessAll: 'Include all observation relations',
     businessClearFocus: 'Return to overview',
+    recordDirectoryTitle: 'Records linked to this question',
+    recordDirectoryHint:
+      'Find bound records under the current source, time and review conditions. The table below shows one source at a time; an empty source does not mean the whole case has no data.',
+    recordDirectoryLoading: 'Finding matching records…',
+    recordDirectoryFailed:
+      'Linked records are unavailable. Reopen the case and try again.',
+    recordDirectoryEmpty:
+      'No explicitly bound records match these conditions. Return to the business graph for source evidence.',
+    recordDirectoryCount:
+      ' bound records; not a count of independent observations.',
+    recordDirectorySource: 'Sources with matching records',
+    recordDirectorySearch: 'Find linked records',
+    recordDirectoryNoMatch:
+      'No record names match in this source. Change the keywords or select another source.',
+    recordDirectoryGraph: 'Return to the business graph for evidence',
+
     businessVisible: 'Visible / scoped relations: ',
     businessOverviewHint:
       'Overview prioritizes business connections; observation-only or source-only results remain visible. Select an object for detail.',

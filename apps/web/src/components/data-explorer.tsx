@@ -26,6 +26,7 @@ import { EXPLORATION_TOOLS } from '@/lib/navigation';
 import { DataExplorerReadiness } from './data-explorer-readiness';
 import dynamic from 'next/dynamic';
 import { DataExplorerBusiness } from './data-explorer-business';
+import { DataExplorerRecordSources } from './data-explorer-record-sources';
 import { DataExplorerGraph } from './data-explorer-graph';
 import {
   useMemo,
@@ -1054,43 +1055,55 @@ function DataExplorerSession({
                 onInvalidated={invalidate}
               />
             ) : result && (view === 'records' || view === 'map') ? (
-              <DataExplorerAnalysis
-                key={`${result.queryId}:${view}:${view === 'records' ? focusedVersion : ''}`}
-                locale={locale}
-                queryId={result.queryId}
-                view={view}
-                versionId={
-                  selectedRecord?.versionId ??
-                  selectedNode?.versionId ??
-                  selected?.versionId ??
-                  result.spec.versions?.[0]?.versionId ??
-                  null
-                }
-                selectedRecord={selectedRecord}
-                onSelect={selectRecord}
-                onClearRecordFocus={() => {
-                  dispatch({
-                    type: 'resource',
-                    queryId: result.queryId,
-                    resource:
-                      selected ??
-                      result.resources.find(
-                        (r) => r.versionId === selectedRecord?.versionId,
-                      ) ??
-                      null,
-                  });
-                  window.history.pushState(
-                    window.history.state,
-                    '',
-                    queryHref(result.queryId, 'records', false),
-                  );
-                }}
-                onData={onAnalysisData}
-                onConfigure={configureRecords}
-                onBounds={configureBounds}
-                configuring={busy}
-                onInvalidated={invalidate}
-              />
+              <>
+                {view === 'records' && result.spec.businessQuery ? (
+                  <DataExplorerRecordSources
+                    key={result.queryId}
+                    locale={locale}
+                    queryId={result.queryId}
+                    status={result.spec.businessQuery.status}
+                    versionId={focusedVersion}
+                    onInvalidated={invalidate}
+                  />
+                ) : null}
+                <DataExplorerAnalysis
+                  key={`${result.queryId}:${view}:${view === 'records' ? focusedVersion : ''}`}
+                  locale={locale}
+                  queryId={result.queryId}
+                  view={view}
+                  versionId={
+                    selectedRecord?.versionId ??
+                    selectedNode?.versionId ??
+                    selected?.versionId ??
+                    result.spec.versions?.[0]?.versionId ??
+                    null
+                  }
+                  selectedRecord={selectedRecord}
+                  onSelect={selectRecord}
+                  onClearRecordFocus={() => {
+                    dispatch({
+                      type: 'resource',
+                      queryId: result.queryId,
+                      resource:
+                        selected ??
+                        result.resources.find(
+                          (r) => r.versionId === selectedRecord?.versionId,
+                        ) ??
+                        null,
+                    });
+                    window.history.pushState(
+                      window.history.state,
+                      '',
+                      queryHref(result.queryId, 'records', false),
+                    );
+                  }}
+                  onData={onAnalysisData}
+                  onConfigure={configureRecords}
+                  onBounds={configureBounds}
+                  configuring={busy}
+                  onInvalidated={invalidate}
+                />
+              </>
             ) : null}
           </section>
           <DataExplorerInspector

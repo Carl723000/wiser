@@ -69,7 +69,7 @@ function bound(assertionId = row.assertionId): RelationAssertion {
         kind: 'OBSERVATION',
         label: '六月水质原表',
         externalId: `urn:wiser:record:${recordId}`,
-        reference: foreign,
+        reference: { ...foreign, mappingVersion: 'v1', entityKey: 'sample' },
       },
     },
   };
@@ -88,12 +88,12 @@ afterEach(() => {
 });
 it('collects all scoped pages, deduplicates record bindings and preserves referenced source identity in links', async () => {
   const fetch = vi
-    .fn()
+    .fn<typeof globalThis.fetch>()
     .mockResolvedValueOnce(
       Response.json({
-        items: [row, bound()],
+        items: [row, bound('77777777-7777-4777-8777-777777777777')],
         totalCount: 3,
-        nextCursor: 'next',
+        nextCursor: '66666666-6666-4666-8666-666666666666',
       }),
     )
     .mockResolvedValueOnce(
@@ -113,10 +113,12 @@ it('collects all scoped pages, deduplicates record bindings and preserves refere
     recordId,
   });
   expect(screen.getAllByRole('link', { name: '六月水质原表' })).toHaveLength(1);
-  expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({
+  const requestBody = fetch.mock.calls[1][1]?.body;
+  if (typeof requestBody !== 'string') throw Error('Expected JSON request');
+  expect(JSON.parse(requestBody)).toMatchObject({
     queryId,
     status: 'PENDING_REVIEW',
-    after: 'next',
+    after: '66666666-6666-4666-8666-666666666666',
   });
   expect(screen.getByText(/1 条已绑定记录/)).toBeTruthy();
 });
@@ -126,7 +128,11 @@ it('does not expose partial pages when a later page is denied', async () => {
     vi
       .fn()
       .mockResolvedValueOnce(
-        Response.json({ items: [bound()], totalCount: 2, nextCursor: 'next' }),
+        Response.json({
+          items: [bound()],
+          totalCount: 2,
+          nextCursor: '66666666-6666-4666-8666-666666666666',
+        }),
       )
       .mockResolvedValueOnce(new Response('', { status: 403 })),
   );
