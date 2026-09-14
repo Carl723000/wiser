@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: b0ba283
+lastReviewedCommit: 44b6279
 ---
 
 ## Design direction
@@ -169,3 +169,5 @@ Record inspection offers an on-demand reverse lookup of explicit record bindings
 Business relation links optionally persist `revisionMode: "all" | "current"`; omitted means all history. Current display collapses only explicit same-DataItem, same-triple replacements in the same approved or pending review queue, after the full unfocused scope is loaded. It never chooses by timestamps, resolves competing branches, or promotes pending changes over approved knowledge. Incomplete pages, focused objects and exact history retain all loaded rows and disclose that boundary. Cyclic or invalid replacement links do not hide evidence. Type/time filters run after revision selection, and exact predecessor links still reopen immutable history. This is presentation over authorized API rows, not a new approval or authority state.
 
 Business exploration opens a multi-source problem/evidence graph when the saved query contains business conditions. The overview explicitly collapses observation detail and shows visible/scoped counts; selecting an object expands its evidence. Bound-record and map links preserve the query. Authority status stays visible and source lineage remains a separate view for ordinary queries. Both locales use the shared graph canvas and design tokens.
+
+Graph labels reserve conservative screen-space boxes from current element positions after fitting, zooming and dragging. Hidden labels render no text, while edges retain a readable screen width. Overlapping labels yield to the selected object and overview labels; zooming reveals more labels. This changes neither nodes, edges, scope nor counts, and the keyboard object list and evidence remain available.

@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: 00cd6c4
+lastReviewedCommit: 44b6279
 ---
 
 ## What this guide governs
@@ -212,3 +212,5 @@ Business problem graphs offer a two-hop neighborhood around an object category u
 Map fit in a business query uses the bounds of its fully loaded rendered features, after the single display-coordinate conversion. It waits for those features, does not substitute the wider source inventory for an empty result, and allows a local extent to be inspected. A restored saved camera remains unchanged until the user requests fit.
 
 When returning from a selected record, initialization and tab navigation retain the valid business object/category focus within the same authorized query. A different query clears that focus; duplicate or malformed values are not copied. Diagram focus does not change the data scope.
+
+Graph labels reserve conservative screen-space boxes from current element positions after fitting, zooming and dragging. Hidden labels render no text, while edges retain a readable screen width. Overlapping labels yield to the selected object and overview labels; zooming reveals more labels. This changes neither nodes, edges, scope nor counts, and the keyboard object list and evidence remain available.

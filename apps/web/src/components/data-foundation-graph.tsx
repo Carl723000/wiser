@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { GraphResultDto } from '@/lib/data-foundation';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import { visibleGraphLabels } from '@/lib/graph-label-visibility';
 import { layoutGraph } from '@/lib/graph-layout';
 import styles from './data-foundation-graph.module.css';
 
@@ -60,6 +61,9 @@ export function KnowledgeGraphCanvas({
   const pending = useRef<Promise<void>>(Promise.resolve());
   const select = useRef(onSelect);
   select.current = onSelect;
+  const selection = useRef(selectedId);
+  selection.current = selectedId;
+  const refreshLabels = useRef<(() => void) | null>(null);
   const [state, setState] = useState<GraphState>('loading');
   const [mode, setMode] = useState<'network' | 'hierarchy'>('network');
   const [direction, setDirection] = useState<'LR' | 'TB'>('LR');
@@ -168,6 +172,7 @@ export function KnowledgeGraphCanvas({
             stroke: palette.stroke,
             lineWidth: 2,
             labelText: (node) => {
+              if (node.style?.labelVisibility === 'hidden') return '';
               const label = node.data?.['label'];
               if (typeof label !== 'string') return '';
               const limit = 36;
@@ -180,6 +185,10 @@ export function KnowledgeGraphCanvas({
               typeof node.style?.labelFontSize === 'number'
                 ? node.style.labelFontSize
                 : 12,
+            labelLineHeight: (node) =>
+              typeof node.style?.labelLineHeight === 'number'
+                ? node.style.labelLineHeight
+                : 16,
             labelMaxWidth: (node) =>
               typeof node.style?.labelMaxWidth === 'number'
                 ? node.style.labelMaxWidth
@@ -196,9 +205,13 @@ export function KnowledgeGraphCanvas({
           state: { path: { stroke: palette.selected, lineWidth: 4 } },
           style: {
             stroke: palette.edge,
-            lineWidth: 1.5,
+            lineWidth: (edge) =>
+              typeof edge.style?.lineWidth === 'number'
+                ? edge.style.lineWidth
+                : 1.5,
             endArrow: true,
             labelText: (edge) =>
+              edge.style?.labelVisibility !== 'hidden' &&
               typeof edge.data?.['label'] === 'string'
                 ? edge.data['label']
                 : '',
@@ -231,21 +244,33 @@ export function KnowledgeGraphCanvas({
         labelFrame = requestAnimationFrame(() => {
           if (disposed) return;
           const zoom = Math.max(0.02, active.getZoom());
-          const detailed = zoom >= 0.65 || result.nodes.length <= 14;
+          const detailed = zoom >= 0.65;
+          const visible = visibleGraphLabels(
+            result.nodes.map((node) => {
+              const [x, y] = active.getElementPosition(node.entityId);
+              return {
+                id: node.entityId,
+                x,
+                y,
+                preferred: Boolean(
+                  node.overviewLabel || node.kind === 'RESOURCE',
+                ),
+              };
+            }),
+            zoom,
+            selection.current,
+          );
           active.updateNodeData(
             result.nodes.map((node) => ({
               id: node.entityId,
               style: {
                 size: Math.min(64, 14 / zoom),
                 labelFontSize: 12 / zoom,
+                labelLineHeight: 16 / zoom,
                 labelMaxWidth: 140 / zoom,
-                labelVisibility:
-                  detailed ||
-                  node.overviewLabel ||
-                  node.kind === 'RESOURCE' ||
-                  node.entityId === selectedId
-                    ? 'visible'
-                    : 'hidden',
+                labelVisibility: visible.has(node.entityId)
+                  ? 'visible'
+                  : 'hidden',
               },
             })),
           );
@@ -253,6 +278,7 @@ export function KnowledgeGraphCanvas({
             result.edges.map((edge) => ({
               id: edge.edgeId,
               style: {
+                lineWidth: 1.2 / zoom,
                 labelVisibility: detailed ? 'visible' : 'hidden',
                 labelFontSize: 10 / zoom,
               },
@@ -264,6 +290,8 @@ export function KnowledgeGraphCanvas({
         });
       };
       active.on(GraphEvent.AFTER_TRANSFORM, readableLabels);
+      active.on(NodeEvent.DRAG_END, readableLabels);
+      refreshLabels.current = readableLabels;
       readableLabels();
       resize = new ResizeObserver(() => {
         if (
@@ -331,6 +359,7 @@ export function KnowledgeGraphCanvas({
       resize?.disconnect();
       theme?.disconnect();
       graph.current = null;
+      refreshLabels.current = null;
       if (highlights.current?.instance === instance) highlights.current = null;
       void pending.current.finally(() => instance?.destroy()).catch(() => {});
     };
@@ -339,6 +368,7 @@ export function KnowledgeGraphCanvas({
   useEffect(() => {
     const active = graph.current;
     if (active === null) return;
+    refreshLabels.current?.();
     pending.current = pending.current
       .then(async () => {
         if (graph.current !== active) return;

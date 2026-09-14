@@ -19,9 +19,20 @@ const engine = vi.hoisted(() => ({
   fitView: vi.fn().mockResolvedValue(undefined),
   zoomTo: vi.fn().mockResolvedValue(undefined),
   getZoom: vi.fn(() => 1),
+  getElementPosition: vi.fn((id: string): [number, number] => {
+    const node = engine.options?.data?.nodes?.find((n) => n.id === id);
+    return [Number(node?.style?.x), Number(node?.style?.y)];
+  }),
   focusElement: vi.fn().mockResolvedValue(undefined),
   draw: vi.fn().mockResolvedValue(undefined),
-  updateNodeData: vi.fn(),
+  updateNodeData: vi.fn<
+    (
+      nodes: {
+        id: string;
+        style?: { labelVisibility?: string; labelLineHeight?: number };
+      }[],
+    ) => void
+  >(),
   updateEdgeData: vi.fn(),
   setElementState: vi.fn().mockResolvedValue(undefined),
   click: null as ((event: { target: { id: string } }) => void) | null,
@@ -42,6 +53,7 @@ vi.mock('@antv/g6', () => ({
     fitView = engine.fitView;
     zoomTo = engine.zoomTo;
     getZoom = engine.getZoom;
+    getElementPosition = engine.getElementPosition;
     focusElement = engine.focusElement;
     draw = engine.draw;
     updateNodeData = engine.updateNodeData;
@@ -77,6 +89,52 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  engine.getZoom.mockReturnValue(1);
+});
+
+it('avoids overlapping overview labels and prioritizes a newly selected object without replacing the graph', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  engine.getZoom.mockReturnValue(0.1);
+  const crowded = {
+    nodes: Array.from({ length: 20 }, (_, i) => ({
+      entityId: String(i),
+      label: `流域资料 ${i}`,
+      overviewLabel: true,
+    })),
+    edges: [],
+  };
+  const props = {
+    locale: 'zh-CN' as const,
+    result: crowded,
+    onSelect: vi.fn(),
+  };
+  const rendered = render(
+    <KnowledgeGraphCanvas {...props} selectedId={null} />,
+  );
+  await waitFor(() =>
+    expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
+  );
+  await act(async () => {
+    WorkerDouble.current.onmessage?.({
+      data: crowded.nodes.map((n, i) => ({ id: n.entityId, x: i * 30, y: 0 })),
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('knowledge-graph').getAttribute('data-state'),
+    ).toBe('ready'),
+  );
+  const visible = () =>
+    engine.updateNodeData.mock.calls
+      .at(-1)?.[0]
+      .filter((n) => n.style?.labelVisibility === 'visible');
+  await waitFor(() => expect(visible()).toHaveLength(1));
+  expect(visible()?.[0].style?.labelLineHeight).toBe(160);
+  rendered.rerender(<KnowledgeGraphCanvas {...props} selectedId="19" />);
+  await waitFor(() => expect(visible()?.map((n) => n.id)).toEqual(['19']));
+  expect(engine.render).toHaveBeenCalledOnce();
 });
 
 it('renders worker positions, preserves the canvas on selection and disposes after rendering', async () => {
