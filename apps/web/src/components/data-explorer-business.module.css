@@ -1,0 +1,54 @@
+.compact {
+  gap: 0.5rem;
+}
+.compact > p {
+  margin-block: 0.2rem;
+}
+.timeFilters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.timeFilters legend {
+  font-weight: 600;
+}
+.timeFilters label {
+  min-width: 0;
+}
+.timeFilters button {
+  align-self: end;
+}
+.categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.categories button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.evidence {
+  border-top: 1px solid var(--border);
+  padding-block: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.evidence h4 {
+  margin-top: 0;
+}
+.evidence details {
+  margin-top: 0.65rem;
+}
+.evidence summary {
+  cursor: pointer;
+  color: var(--accent-strong);
+}
+.evidence blockquote {
+  margin: 0.5rem 0;
+  padding-left: 1rem;
+  border-left: 2px solid var(--border-strong);
+}
+@media (max-width: 700px) {
+  .timeFilters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

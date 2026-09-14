@@ -60,3 +60,17 @@ it('keeps business evidence and its connecting identities, without expanding a s
   ).toEqual(['policy', 'study', 'connector']);
   expect(businessGraphRows(rows, 'all', null)).toHaveLength(4);
 });
+it('focuses a category through actual neighboring edges without mixing unconnected evidence', () => {
+  const policy = row('policy', 'POLICY');
+  const study = row('study', 'DOCUMENT');
+  const other = row('other', 'EVENT');
+  other.candidate.object = { ...other.candidate.object, key: 'elsewhere' };
+  expect(
+    businessGraphRows([policy, study, other], 'overview', null, 'POLICY').map(
+      (r) => r.assertionId,
+    ),
+  ).toEqual(['policy', 'study']);
+  expect(
+    businessGraphRows([policy, study, other], 'overview', null, 'ENTERPRISE'),
+  ).toEqual([]);
+});

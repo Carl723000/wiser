@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
   RelationListOutputSchema,
@@ -19,6 +19,7 @@ import {
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import { useExplorationViewState } from './exploration-view-context';
 import styles from './data-reconciliation.module.css';
+import businessStyles from './data-explorer-business.module.css';
 
 export function DataExplorerBusiness({
   queryId,
@@ -34,16 +35,20 @@ export function DataExplorerBusiness({
   readonly onApply: (scope: BusinessQuery) => void;
 }) {
   const copy = getDictionary(locale).knowledgeRelations;
-  const search = useSearchParams();
+  const search = useSearchParams(),
+    router = useRouter(),
+    pathname = usePathname();
+  type Kind = RelationAssertion['candidate']['subject']['kind'];
+  const readKind = search.get('businessKind');
+  const kind: Kind | null =
+    readKind && Object.hasOwn(copy.kinds, readKind) ? (readKind as Kind) : null;
   const [rows, setRows] = useState<RelationAssertion[]>([]),
     [busy, setBusy] = useState(true),
     [failed, setFailed] = useState(false),
     [loaded, setLoaded] = useState(0);
   const [mode, setMode] = useState<'overview' | 'all'>('overview'),
-    [selected, setSelected] = useState<string | null>(() =>
-      search.get('businessEntity'),
-    ),
     [listPage, setListPage] = useState(0);
+  const selected = search.get('businessEntity');
   const [draft, setDraft] = useState(scope.filters);
   const viewState = useExplorationViewState();
   useEffect(() => {
@@ -104,8 +109,8 @@ export function DataExplorerBusiness({
     return () => controller.abort();
   }, [queryId, scope.status, onInvalidated, viewState]);
   const visible = useMemo(
-    () => businessGraphRows(rows, mode, selected),
-    [rows, mode, selected],
+    () => businessGraphRows(rows, mode, selected, kind),
+    [rows, mode, selected, kind],
   );
   const graph = useMemo(() => {
     const degree = new Map<string, number>();
@@ -150,13 +155,30 @@ export function DataExplorerBusiness({
       })),
     };
   }, [visible, copy]);
-  const select = (id: string | null) => {
-    setSelected(id);
+  const kinds = useMemo(
+    () =>
+      [
+        ...new Set(
+          rows.flatMap((r) => [
+            r.candidate.subject.kind,
+            r.candidate.object.kind,
+          ]),
+        ),
+      ].sort(),
+    [rows],
+  );
+  const select = (id: string | null, nextKind: Kind | null = kind) => {
     setListPage(0);
+    const params = new URLSearchParams(search.toString());
+    if (id) params.set('businessEntity', id);
+    else params.delete('businessEntity');
+    if (nextKind) params.set('businessKind', nextKind);
+    else params.delete('businessKind');
+    router.replace(pathname + '?' + params.toString(), { scroll: false });
   };
   return (
     <section
-      className={`${styles.frame} ${styles.body}`}
+      className={`${styles.frame} ${styles.body} ${businessStyles.compact}`}
       aria-label={copy.businessTitle}
     >
       <h2>{copy.businessTitle}</h2>
@@ -169,73 +191,79 @@ export function DataExplorerBusiness({
       {scope.status === 'PENDING_REVIEW' ? (
         <p>{copy.recordRelationPending}</p>
       ) : null}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onApply({ ...scope, filters: draft });
-        }}
-      >
-        <fieldset>
-          <legend>{copy.businessScope}</legend>
-          <label>
-            {copy.filterTimeRole}
-            <select
-              value={draft.timeRole}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  timeRole: e.target.value as typeof draft.timeRole,
-                })
+      <details>
+        <summary>
+          {copy.businessScope} · {scope.filters.from ?? copy.filterAll} —{' '}
+          {scope.filters.to ?? copy.filterAll}
+        </summary>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onApply({ ...scope, filters: draft });
+          }}
+        >
+          <fieldset className={businessStyles.timeFilters}>
+            <legend>{copy.businessScope}</legend>
+            <label>
+              {copy.filterTimeRole}
+              <select
+                value={draft.timeRole}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    timeRole: e.target.value as typeof draft.timeRole,
+                  })
+                }
+              >
+                <option value="ALL">{copy.filterAll}</option>
+                {Object.entries(copy.timeRoles).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {copy.filterFrom}
+              <input
+                type="date"
+                value={draft.from ?? ''}
+                onChange={(e) =>
+                  setDraft({ ...draft, from: e.target.value || null })
+                }
+              />
+            </label>
+            <label>
+              {copy.filterTo}
+              <input
+                type="date"
+                value={draft.to ?? ''}
+                onChange={(e) =>
+                  setDraft({ ...draft, to: e.target.value || null })
+                }
+              />
+            </label>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                checked={draft.includeUndated}
+                onChange={(e) =>
+                  setDraft({ ...draft, includeUndated: e.target.checked })
+                }
+              />
+              {copy.filterUndated}
+            </label>
+            <button
+              type="submit"
+              disabled={
+                busy || Boolean(draft.from && draft.to && draft.from > draft.to)
               }
             >
-              <option value="ALL">{copy.filterAll}</option>
-              {Object.entries(copy.timeRoles).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {copy.filterFrom}
-            <input
-              type="date"
-              value={draft.from ?? ''}
-              onChange={(e) =>
-                setDraft({ ...draft, from: e.target.value || null })
-              }
-            />
-          </label>
-          <label>
-            {copy.filterTo}
-            <input
-              type="date"
-              value={draft.to ?? ''}
-              onChange={(e) =>
-                setDraft({ ...draft, to: e.target.value || null })
-              }
-            />
-          </label>
-          <label className={styles.check}>
-            <input
-              type="checkbox"
-              checked={draft.includeUndated}
-              onChange={(e) =>
-                setDraft({ ...draft, includeUndated: e.target.checked })
-              }
-            />
-            {copy.filterUndated}
-          </label>
-          <button
-            type="submit"
-            disabled={
-              busy || Boolean(draft.from && draft.to && draft.from > draft.to)
-            }
-          >
-            {copy.businessApply}
-          </button>
-        </fieldset>
-      </form>
+              {copy.businessApply}
+            </button>
+          </fieldset>
+        </form>
+      </details>
       {failed ? <p role="alert">{copy.recordRelationFailed}</p> : null}
       {!busy && !failed ? (
         <>
@@ -243,18 +271,18 @@ export function DataExplorerBusiness({
             <button
               onClick={() => {
                 setMode('overview');
-                select(null);
+                select(null, null);
               }}
-              aria-pressed={mode === 'overview' && !selected}
+              aria-pressed={mode === 'overview' && !selected && !kind}
             >
               {copy.businessOverview}
             </button>
             <button
               onClick={() => {
                 setMode('all');
-                select(null);
+                select(null, null);
               }}
-              aria-pressed={mode === 'all' && !selected}
+              aria-pressed={mode === 'all' && !selected && !kind}
             >
               {copy.businessAll}
             </button>
@@ -264,6 +292,21 @@ export function DataExplorerBusiness({
               </button>
             ) : null}
           </div>
+          <div
+            className={businessStyles.categories}
+            aria-label={copy.businessCategories}
+          >
+            {kinds.map((k) => (
+              <button
+                key={k}
+                aria-pressed={kind === k && !selected}
+                onClick={() => select(null, k)}
+              >
+                {copy.kinds[k]}
+              </button>
+            ))}
+          </div>
+          {kind ? <p>{copy.businessCategoryHint}</p> : null}
           <p>
             {copy.businessVisible}
             {visible.length} / {rows.length} · {copy.businessOverviewHint}
@@ -292,7 +335,7 @@ export function DataExplorerBusiness({
           </details>
           <h3>{copy.businessEvidence}</h3>
           {visible.slice(listPage * 20, listPage * 20 + 20).map((row) => (
-            <article key={row.assertionId}>
+            <article className={businessStyles.evidence} key={row.assertionId}>
               <h4>
                 {row.candidate.subject.label} →{' '}
                 {copy.predicates[row.candidate.predicate]} →{' '}
@@ -311,9 +354,13 @@ export function DataExplorerBusiness({
               {row.candidate.qualifiers.context ? (
                 <p>{row.candidate.qualifiers.context.applicability}</p>
               ) : null}
-              {row.candidate.qualifiers.limitations.map((v, i) => (
-                <p key={i}>{v}</p>
-              ))}
+              {[...new Set(row.candidate.qualifiers.limitations)]
+                .filter(
+                  (v) => v !== row.candidate.qualifiers.context?.applicability,
+                )
+                .map((v) => (
+                  <p key={v}>{v}</p>
+                ))}
               <Link
                 href={`/${locale}/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`}
               >
@@ -345,18 +392,24 @@ export function DataExplorerBusiness({
                   ) : null;
                 },
               )}
-              <ul>
-                {row.candidate.evidence.map((e, i) => (
-                  <li key={i}>
-                    <Link
-                      href={`/api/data-foundation/assets/${row.versionId}/${e.assetId}`}
-                    >
-                      {e.locator}
-                    </Link>
-                    {e.excerpt ? <blockquote>{e.excerpt}</blockquote> : null}
-                  </li>
-                ))}
-              </ul>
+              <details>
+                <summary>
+                  {copy.businessOriginalEvidence} (
+                  {row.candidate.evidence.length})
+                </summary>
+                <ul>
+                  {row.candidate.evidence.map((e, i) => (
+                    <li key={i}>
+                      <Link
+                        href={`/api/data-foundation/assets/${row.versionId}/${e.assetId}`}
+                      >
+                        {e.locator}
+                      </Link>
+                      {e.excerpt ? <blockquote>{e.excerpt}</blockquote> : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </article>
           ))}
           <div className={styles.actions}>

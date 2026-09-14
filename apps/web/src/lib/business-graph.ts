@@ -6,6 +6,7 @@ export function businessGraphRows(
   rows: readonly RelationAssertion[],
   mode: 'overview' | 'all',
   selected: string | null,
+  kind: RelationAssertion['candidate']['subject']['kind'] | null = null,
 ) {
   if (selected)
     return rows.filter((r) =>
@@ -13,6 +14,32 @@ export function businessGraphRows(
         (e) => relationNodeIdentity(r, e) === selected,
       ),
     );
+  if (kind) {
+    const seeds = new Set(
+      rows.flatMap((r) =>
+        [r.candidate.subject, r.candidate.object]
+          .filter((e) => e.kind === kind)
+          .map((e) => relationNodeIdentity(r, e)),
+      ),
+    );
+    const direct = rows.filter((r) =>
+      [r.candidate.subject, r.candidate.object].some((e) =>
+        seeds.has(relationNodeIdentity(r, e)),
+      ),
+    );
+    const neighbors = new Set(
+      direct.flatMap((r) =>
+        [r.candidate.subject, r.candidate.object].map((e) =>
+          relationNodeIdentity(r, e),
+        ),
+      ),
+    );
+    return rows.filter((r) =>
+      [r.candidate.subject, r.candidate.object].some((e) =>
+        neighbors.has(relationNodeIdentity(r, e)),
+      ),
+    );
+  }
   if (mode === 'all') return [...rows];
   const endpoints = (r: RelationAssertion) =>
     [r.candidate.subject, r.candidate.object].map((e) =>

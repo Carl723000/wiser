@@ -100,6 +100,12 @@ export function KnowledgeGraphCanvas({
           tokens.getPropertyValue('--accent').trim(),
       };
     };
+    const fillFor = (kind: unknown, palette: ReturnType<typeof colors>) =>
+      kind === 'RESOURCE' || kind === 'DOCUMENT'
+        ? palette.source
+        : kind === 'EVIDENCE' || kind === 'CLAIM'
+          ? palette.evidence
+          : palette.fill;
     const initialize = async () => {
       const {
         Graph: GraphConstructor,
@@ -140,12 +146,7 @@ export function KnowledgeGraphCanvas({
             id: node.entityId,
             data: { label: node.label, kind: node.kind },
             style: {
-              fill:
-                node.kind === 'RESOURCE'
-                  ? palette.source
-                  : node.kind === 'EVIDENCE'
-                    ? palette.evidence
-                    : palette.fill,
+              fill: fillFor(node.kind, palette),
               x: positions?.get(node.entityId)?.x ?? (index % columns) * 180,
               y:
                 positions?.get(node.entityId)?.y ??
@@ -163,12 +164,7 @@ export function KnowledgeGraphCanvas({
           style: {
             size: (node) =>
               typeof node.style?.size === 'number' ? node.style.size : 24,
-            fill: (node) =>
-              node.data?.['kind'] === 'RESOURCE'
-                ? palette.source
-                : node.data?.['kind'] === 'EVIDENCE'
-                  ? palette.evidence
-                  : palette.fill,
+            fill: (node) => fillFor(node.data?.['kind'], palette),
             stroke: palette.stroke,
             lineWidth: 2,
             labelText: (node) => {
@@ -189,6 +185,7 @@ export function KnowledgeGraphCanvas({
                 ? node.style.labelMaxWidth
                 : 170,
             labelWordWrap: true,
+            labelMaxLines: result.nodes.length <= 14 ? 3 : 2,
           },
           state: {
             selected: { stroke: palette.selected, lineWidth: 5 },
@@ -296,12 +293,7 @@ export function KnowledgeGraphCanvas({
               result.nodes.map((node) => ({
                 id: node.entityId,
                 style: {
-                  fill:
-                    node.kind === 'RESOURCE'
-                      ? palette.source
-                      : node.kind === 'EVIDENCE'
-                        ? palette.evidence
-                        : palette.fill,
+                  fill: fillFor(node.kind, palette),
                   stroke: palette.stroke,
                   labelFill: palette.labelFill,
                 },
