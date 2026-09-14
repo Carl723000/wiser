@@ -354,3 +354,30 @@ it('authorizes every selected source in a 64-source case and stops before listin
     ),
   ).toBe(false);
 });
+
+
+it('uses all 149 persisted sources, and refuses a partially unauthorized scope', async () => {
+  const f = fixture();
+  const sources = Array.from({length:149}, () => ({dataItemId:randomUUID(), versionId:randomUUID()}));
+  const queryId = randomUUID();
+  let allowed = true;
+  f.query.mockImplementation(async (sql: string, v: readonly unknown[] = []) => {
+    await Promise.resolve();
+    if (sql.includes('from service.exploration_snapshot')) return {rows:[{version_refs:sources}], rowCount:1};
+    if (sql.includes('from authorized')) return {rows:[{total:allowed ? sources.length : sources.length-1}],rowCount:1};
+    if (sql.includes('count(*)::int total')) {
+      expect(JSON.parse(String(v[0]))).toEqual(sources);
+      return {rows:[{total:0}],rowCount:1};
+    }
+    return {rows:[],rowCount:0};
+  });
+  expect(await f.call('list', {queryId})).toMatchObject({totalCount:0,items:[]});
+  allowed=false;
+  await expect(f.call('list', {queryId})).rejects.toMatchObject({code:'NOT_FOUND'});
+});
+
+it('does not treat an absent or expired snapshot as an empty successful graph', async () => {
+  const f=fixture();
+  f.query.mockResolvedValue({rows:[],rowCount:0});
+  await expect(f.call('list',{queryId:randomUUID()})).rejects.toMatchObject({code:'NOT_FOUND'});
+});
