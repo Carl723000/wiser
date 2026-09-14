@@ -137,6 +137,40 @@ it('avoids overlapping overview labels and prioritizes a newly selected object w
   expect(engine.render).toHaveBeenCalledOnce();
 });
 
+it('fits only after the first readable-label draw and does not refit on selection', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  let finishDraw!: () => void;
+  engine.draw.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishDraw = resolve;
+      }),
+  );
+  const props = { locale: 'zh-CN' as const, result, onSelect: vi.fn() };
+  const rendered = render(
+    <KnowledgeGraphCanvas {...props} selectedId={null} />,
+  );
+  await waitFor(() =>
+    expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
+  );
+  await act(async () => {
+    WorkerDouble.current.onmessage?.({
+      data: [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: 0, y: 800 },
+      ],
+    });
+  });
+  await waitFor(() => expect(engine.draw).toHaveBeenCalledOnce());
+  expect(engine.fitView).not.toHaveBeenCalled();
+  await act(async () => finishDraw());
+  await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
+  rendered.rerender(<KnowledgeGraphCanvas {...props} selectedId="b" />);
+  await waitFor(() => expect(engine.draw).toHaveBeenCalledTimes(2));
+  expect(engine.fitView).toHaveBeenCalledOnce();
+});
+
 it('renders worker positions, preserves the canvas on selection and disposes after rendering', async () => {
   vi.stubGlobal('Worker', WorkerDouble);
   vi.stubGlobal('ResizeObserver', ResizeDouble);
@@ -173,7 +207,7 @@ it('renders worker positions, preserves the canvas on selection and disposes aft
     clientHeight: { value: 440 },
   });
   act(() => ResizeDouble.callback());
-  await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
+  await waitFor(() => expect(engine.fitView).toHaveBeenCalledTimes(2));
   expect(WorkerDouble.current.terminate).toHaveBeenCalledOnce();
   rendered.rerender(
     <KnowledgeGraphCanvas
