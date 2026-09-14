@@ -269,6 +269,68 @@ it('renders worker positions, preserves the canvas on selection and disposes aft
   await waitFor(() => expect(engine.destroy).toHaveBeenCalledOnce());
 });
 
+it('uses current theme colors for rendered node and edge labels without resetting the view', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  const originalStyle = document.documentElement.getAttribute('style');
+  const originalTheme = document.documentElement.getAttribute('data-theme');
+  const theme = (foreground: string, background: string) => {
+    document.documentElement.style.setProperty('--text-primary', foreground);
+    document.documentElement.style.setProperty('--surface', background);
+    document.documentElement.style.setProperty('--accent', foreground);
+    document.documentElement.style.setProperty('--border-strong', foreground);
+  };
+  const resolve = (style: unknown) =>
+    typeof style === 'function' ? style({ data: { kind: 'PLACE' } }) : style;
+  try {
+    theme('#12343d', '#edf5f6');
+    render(
+      <KnowledgeGraphCanvas
+        locale="zh-CN"
+        result={result}
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
+    );
+    act(() =>
+      WorkerDouble.current.onmessage?.({
+        data: [
+          { id: 'a', x: 0, y: 0 },
+          { id: 'b', x: 300, y: 300 },
+        ],
+      }),
+    );
+    await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
+    const node = engine.options?.node?.style as Record<string, unknown>;
+    const edge = engine.options?.edge?.style as Record<string, unknown>;
+    expect(resolve(node['labelFill'])).toBe('#12343d');
+    theme('#e8f3f4', '#0b303a');
+    const draws = engine.draw.mock.calls.length;
+    act(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await waitFor(() =>
+      expect(engine.draw.mock.calls.length).toBeGreaterThan(draws),
+    );
+    expect(resolve(node['labelFill'])).toBe('#e8f3f4');
+    expect(resolve(node['fill'])).toBe('#e8f3f4');
+    expect(resolve(edge['labelFill'])).toBe('#e8f3f4');
+    expect(resolve(edge['labelBackgroundFill'])).toBe('#0b303a');
+    expect(resolve(edge['stroke'])).toBe('#e8f3f4');
+    expect(engine.render).toHaveBeenCalledOnce();
+    expect(engine.fitView).toHaveBeenCalledOnce();
+  } finally {
+    cleanup();
+    if (originalStyle === null)
+      document.documentElement.removeAttribute('style');
+    else document.documentElement.setAttribute('style', originalStyle);
+    if (originalTheme === null)
+      document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', originalTheme);
+  }
+});
+
 it('cancels unfinished layout when the graph is removed', async () => {
   vi.stubGlobal('ResizeObserver', ResizeDouble);
   vi.stubGlobal('Worker', WorkerDouble);
