@@ -52,6 +52,8 @@ export function businessGraphRows(
         (e) => e.kind === 'OBSERVATION',
       ),
   );
+  // A strict time query may contain only observations; do not turn it into an empty diagram.
+  if (business.length === 0) return [...rows];
   const seeds = new Set(business.flatMap(endpoints));
   const businessIds = new Set(business.map((r) => r.assertionId));
   // Keep a shared identity hub only when actual assertions connect multiple seed objects.

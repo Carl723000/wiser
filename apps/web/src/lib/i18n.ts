@@ -41,7 +41,7 @@ const zhCN = {
     businessClearFocus: '返回总览',
     businessVisible: '图中关系 / 当前范围：',
     businessOverviewHint:
-      '总览突出业务关系及其连接，收起观测和目录明细；点击对象可展开。',
+      '总览优先展示业务联系；仅剩观测或资料关联时全部显示。点击对象可展开明细。',
     businessObjects: '按对象查找',
     businessPathTitle: '查看对象之间的联系',
     businessPathHint:
@@ -2005,7 +2005,7 @@ const en: typeof zhCN = {
     businessClearFocus: 'Return to overview',
     businessVisible: 'Visible / scoped relations: ',
     businessOverviewHint:
-      'Overview collapses observation detail; select an object to expand it. All relations remain available.',
+      'Overview prioritizes business connections; observation-only or source-only results remain visible. Select an object for detail.',
     businessObjects: 'Find an object',
     businessPathTitle: 'Explore connections between objects',
     businessPathHint:

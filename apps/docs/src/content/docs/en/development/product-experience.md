@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: 86c3e6903be61c44371a348181ce1e74c991229a
+lastReviewedCommit: dea68d0e0af226840ebadde43a9e7aeee6b98a54
 ---
 
 ## What this guide governs
@@ -222,3 +222,5 @@ Business exploration offers an optional path reader over the complete authorized
 Graph initialization fits once after the first screen-space label draw, so endpoint labels remain within the canvas. Subsequent selection, zoom and label refresh preserve the user’s view; resize and explicit fit remain available. This does not change graph scope or data.
 
 Theme changes refresh the graph’s resolved node, edge, label and label-background colors. They preserve layout, selected objects, path highlights and viewport; a redraw must not retain the initial theme’s default label color.
+
+When a scoped business query contains only observations or source relationships, its default overview shows those authorized rows instead of an empty diagram. Mixed business results still collapse observation detail. Explicit object/category filters remain exact, including empty matches; this display fallback never expands the query or changes record/map scope.
