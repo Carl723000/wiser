@@ -74,3 +74,25 @@ it('focuses a category through actual neighboring edges without mixing unconnect
     businessGraphRows([policy, study, other], 'overview', null, 'ENTERPRISE'),
   ).toEqual([]);
 });
+
+it('keeps an observation-only time result visible without introducing rows outside it', () => {
+  const observations = [
+    row('june-a', 'OBSERVATION'),
+    row('june-b', 'OBSERVATION'),
+  ];
+  expect(businessGraphRows(observations, 'overview', null)).toEqual(
+    observations,
+  );
+  expect(businessGraphRows(observations, 'overview', null, 'POLICY')).toEqual(
+    [],
+  );
+  expect(businessGraphRows([], 'overview', null)).toEqual([]);
+});
+
+it('shows actual source relationships when they are the entire remaining scope', () => {
+  const source = row('only-source', 'DOCUMENT');
+  source.candidate.qualifiers = {
+    context: { recordNature: 'SOURCE_RELATION' },
+  } as RelationAssertion['candidate']['qualifiers'];
+  expect(businessGraphRows([source], 'overview', null)).toEqual([source]);
+});
