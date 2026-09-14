@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import {
   BusinessQuerySchema,
@@ -148,14 +154,24 @@ it('keeps original evidence available without expanding every excerpt by default
 it('distinguishes names by their own document and follows the referenced source without changing the saved query', async () => {
   const policy: RelationAssertion = {
     ...row,
-    candidate: { ...row.candidate, subject: { ...row.candidate.subject, kind: 'DOCUMENT', label: '永定河保护条例' } },
+    candidate: {
+      ...row.candidate,
+      subject: {
+        ...row.candidate.subject,
+        kind: 'DOCUMENT',
+        label: '永定河保护条例',
+      },
+    },
   };
   const research: RelationAssertion = {
     ...policy,
     assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
     dataItemId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
     versionId: '11111111-1111-4111-8111-111111111111',
-    candidate: { ...policy.candidate, subject: { ...policy.candidate.subject, label: '永定河生态研究' } },
+    candidate: {
+      ...policy.candidate,
+      subject: { ...policy.candidate.subject, label: '永定河生态研究' },
+    },
   };
   const bridge: RelationAssertion = {
     ...row,
@@ -163,21 +179,79 @@ it('distinguishes names by their own document and follows the referenced source 
     candidate: {
       ...row.candidate,
       subject: row.candidate.object,
-      object: { ...row.candidate.object, reference: { dataItemId: research.dataItemId, versionId: research.versionId, mappingVersion: research.mappingVersion, entityKey: research.candidate.object.key } },
+      object: {
+        ...row.candidate.object,
+        reference: {
+          dataItemId: research.dataItemId,
+          versionId: research.versionId,
+          mappingVersion: research.mappingVersion,
+          entityKey: research.candidate.object.key,
+        },
+      },
     },
   };
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ items: [policy, research, bridge], totalCount: 3 })));
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ items: [policy, research, bridge], totalCount: 3 }),
+      ),
+  );
   const view = render(<DataExplorerBusiness {...props} />);
   fireEvent.click(await screen.findByText(/按对象查找/));
-  expect(screen.getByRole('button', { name: /地点 · 永定河 来源资料：永定河保护条例/ })).toBeTruthy();
-  const target = screen.getByRole('button', { name: /地点 · 永定河 来源资料：永定河生态研究/ });
+  expect(
+    screen.getByRole('button', {
+      name: /河段 · 永定河 来源资料：永定河保护条例/,
+    }),
+  ).toBeTruthy();
+  const target = screen.getByRole('button', {
+    name: /河段 · 永定河 来源资料：永定河生态研究/,
+  });
   fireEvent.click(target);
   const identity = relationNodeIdentity(bridge, bridge.candidate.object);
-  const expected = new URLSearchParams({ saved: 'case', businessEntity: identity });
-  expect(nav.replace).toHaveBeenLastCalledWith('/zh-CN/data-foundation/explore?' + expected.toString(), { scroll: false });
+  const expected = new URLSearchParams({
+    saved: 'case',
+    businessEntity: identity,
+  });
+  expect(nav.replace).toHaveBeenLastCalledWith(
+    '/zh-CN/data-foundation/explore?' + expected.toString(),
+    { scroll: false },
+  );
   nav.search = expected;
   view.rerender(<DataExplorerBusiness {...props} />);
   const selected = screen.getByRole('region', { name: '当前对象' });
-  expect(within(selected).getByRole('link', { name: '永定河生态研究' }).getAttribute('href')).toBe(`/zh-CN/data-foundation/catalog/${research.dataItemId}?versionId=${research.versionId}`);
+  expect(
+    within(selected)
+      .getByRole('link', { name: '永定河生态研究' })
+      .getAttribute('href'),
+  ).toBe(
+    `/zh-CN/data-foundation/catalog/${research.dataItemId}?versionId=${research.versionId}`,
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('keeps same-source duplicates distinct and labels missing document titles without inventing one', async () => {
+  const revised = {
+    ...row,
+    assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    mappingVersion: 'v2',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ items: [revised, row], totalCount: 2 }),
+      ),
+  );
+  render(<DataExplorerBusiness {...props} />);
+  fireEvent.click(await screen.findByText(/按对象查找/));
+  expect(
+    screen.getByRole('button', { name: '河段 · 永定河 来源资料：1 · 对象 1' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: '河段 · 永定河 来源资料：1 · 对象 2' }),
+  ).toBeTruthy();
   expect(fetch).toHaveBeenCalledTimes(1);
 });

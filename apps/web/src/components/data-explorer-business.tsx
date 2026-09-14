@@ -10,6 +10,7 @@ import {
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { businessGraphRows, businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
+import { businessObjectSources } from '@/lib/business-object-sources';
 import { withRecordFocus } from '@/lib/exploration-record-focus';
 import { explorationHref } from '@/lib/exploration-navigation';
 import {
@@ -112,6 +113,8 @@ export function DataExplorerBusiness({
     () => businessGraphRows(rows, mode, selected, kind),
     [rows, mode, selected, kind],
   );
+  const sources = useMemo(() => businessObjectSources(rows), [rows]);
+  const selectedSource = selected ? sources.get(selected) : undefined;
   const graph = useMemo(() => {
     const degree = new Map<string, number>();
     for (const r of visible)
@@ -311,6 +314,23 @@ export function DataExplorerBusiness({
             {copy.businessVisible}
             {visible.length} / {rows.length} · {copy.businessOverviewHint}
           </p>
+          {selectedSource ? (
+            <section
+              aria-label={copy.businessSelectedObject}
+              className={businessStyles.selectedObject}
+            >
+              <strong>
+                {copy.businessSelectedObject} ·{' '}
+                {graph.nodes.find((n) => n.entityId === selected)?.label}
+              </strong>
+              <Link
+                href={`/${locale}/data-foundation/catalog/${selectedSource.dataItemId}?versionId=${selectedSource.versionId}`}
+              >
+                {selectedSource.title ||
+                  `${copy.businessObjectSource}${selectedSource.sourceNumber}`}
+              </Link>
+            </section>
+          ) : null}
           {visible.length ? (
             <KnowledgeGraphCanvas
               result={graph}
@@ -325,12 +345,27 @@ export function DataExplorerBusiness({
             <summary>
               {copy.businessObjects} ({graph.nodes.length})
             </summary>
-            <ul>
-              {graph.nodes.map((n) => (
-                <li key={n.entityId}>
-                  <button onClick={() => select(n.entityId)}>{n.label}</button>
-                </li>
-              ))}
+            <ul className={businessStyles.objectList}>
+              {graph.nodes.map((n) => {
+                const source = sources.get(n.entityId)!;
+                return (
+                  <li key={n.entityId}>
+                    <button
+                      aria-pressed={selected === n.entityId}
+                      onClick={() => select(n.entityId)}
+                    >
+                      <span>{n.label}</span>{' '}
+                      <small>
+                        {copy.businessObjectSource}
+                        {source.title || source.sourceNumber}
+                        {source.objectNumber
+                          ? ` · ${copy.businessObjectNumber} ${source.objectNumber}`
+                          : ''}
+                      </small>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </details>
           <h3>{copy.businessEvidence}</h3>

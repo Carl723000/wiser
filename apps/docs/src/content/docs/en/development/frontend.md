@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: 939dd9521c2ee30c2d984d968df8e8e354910c50
+lastReviewedCommit: 94e576ca4b582bb7baf2415c75606b11261b4a1e
 ---
 
 ## Two frontend applications
@@ -214,3 +214,5 @@ Business exploration opens a multi-source problem/evidence graph when the saved 
 Business maps page through the authorized exploration map response before rendering a complete bounded GeoJSON collection, with the existing display-coordinate conversion. They do not use legacy query tiles, whose database function only understands the older source/record filters. A changed, duplicate, incomplete or oversized collection fails visibly; it is not drawn as a complete result.
 
 Business record inspection retains the persisted query and its review state, searches the complete bounded relation result and returns to the selected business object. Explicit record links apply to documents and other entity kinds as well as observations. Business maps display only scoped record geometry; moving the viewport does not filter the business question. Combined viewport and business conditions are rejected until relation-level spatial semantics are defined.
+
+Business object captions are derived from already loaded, authorized relation rows. Source links follow each object’s canonical reference, not the row that mentions it; diagram labels remain concise. Missing titles and same-source duplicates retain neutral numbered identifiers.

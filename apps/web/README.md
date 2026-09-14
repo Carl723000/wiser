@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-09-14
-lastReviewedCommit: 939dd9521c2ee30c2d984d968df8e8e354910c50
+lastReviewedCommit: 94e576ca4b582bb7baf2415c75606b11261b4a1e
 ---
 
 # WISER Web / 产品前端
@@ -129,3 +129,5 @@ Record inspection offers an on-demand reverse lookup of explicit record bindings
 Business relation correction display preserves immutable history and same-review-queue boundaries; see [product rules](../docs/src/content/docs/en/development/product-experience.md). / 业务图更正显示保留不可变历史与同一审核队列边界，见[产品规则](../docs/src/content/docs/zh-CN/development/product-experience.md)。
 
 Business-scoped exploration renders the shared problem/evidence graph, with explicit observation-detail expansion and query-preserving evidence/table/map links. Saved entries retain the web-console purpose and reauthorize on reopening.
+
+Business object source captions use the current authorized relation set and preserve canonical referenced source/version identities. They add no metadata request or graph merge.

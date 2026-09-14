@@ -43,6 +43,9 @@ const zhCN = {
     businessOverviewHint:
       '总览突出业务关系及其连接，收起观测和目录明细；点击对象可展开。',
     businessObjects: '按对象查找',
+    businessSelectedObject: '当前对象',
+    businessObjectSource: '来源资料：',
+    businessObjectNumber: '对象',
     businessCategories: '按对象类别查看',
     businessCategoryHint:
       '显示该类对象及相邻资料的已有关系；其他视图仍使用同一业务查询范围。',
@@ -1988,6 +1991,9 @@ const en: typeof zhCN = {
     businessOverviewHint:
       'Overview collapses observation detail; select an object to expand it. All relations remain available.',
     businessObjects: 'Find an object',
+    businessSelectedObject: 'Selected object',
+    businessObjectSource: 'Source: ',
+    businessObjectNumber: 'Object',
     businessCategories: 'Browse by object category',
     businessCategoryHint:
       'Shows existing relations around this category and its neighbors; other views retain the same business query scope.',
