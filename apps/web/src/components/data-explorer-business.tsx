@@ -18,6 +18,7 @@ import {
   type InvalidateExploration,
 } from '@/lib/exploration-request';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
+import { BusinessEvidencePathPanel } from './business-evidence-path';
 import { useExplorationViewState } from './exploration-view-context';
 import styles from './data-reconciliation.module.css';
 import businessStyles from './data-explorer-business.module.css';
@@ -369,6 +370,7 @@ export function DataExplorerBusiness({
             </ul>
           </details>
           <h3>{copy.businessEvidence}</h3>
+          <BusinessEvidencePathPanel rows={rows} locale={locale} />
           {visible.slice(listPage * 20, listPage * 20 + 20).map((row) => (
             <article className={businessStyles.evidence} key={row.assertionId}>
               <h4>

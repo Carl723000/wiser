@@ -53,6 +53,28 @@
 .objectList small {
   color: var(--muted);
 }
+.pathForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.pathForm label,
+.pathForm select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.pathForm button {
+  justify-self: start;
+}
+.pathObjects li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.pathObjects button {
+  height: auto;
+}
 .evidence {
   border-top: 1px solid var(--border);
   padding-block: 0.85rem;

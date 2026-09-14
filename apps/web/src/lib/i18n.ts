@@ -43,6 +43,22 @@ const zhCN = {
     businessOverviewHint:
       '总览突出业务关系及其连接，收起观测和目录明细；点击对象可展开。',
     businessObjects: '按对象查找',
+    businessPathTitle: '查看对象之间的联系',
+    businessPathHint:
+      '在当前完整关系范围内寻找最多八步的一条最短连接。阅读可沿关系两端进行，图中箭头和原文仍保留原方向；连通不代表因果、实施或专业审核通过。',
+    businessPathTemporary:
+      '起终点仅用于本页临时阅读，不改变地图、表格或保存的查询条件。',
+    businessPathFrom: '起点',
+    businessPathSearchFrom: '查找起点（名称或来源）',
+    businessPathSearchTo: '查找终点（名称或来源）',
+    businessPathObjects: '路径上的对象',
+    businessPathTo: '终点',
+    businessPathChoose: '选择对象及来源',
+    businessPathFind: '显示联系路径',
+    businessPathMissing:
+      '当前范围内未找到八步以内的连接。可调整起终点；这不表示现实中没有联系。',
+    businessPathCount: '路径关系数：',
+    businessPathReverse: '阅读此步时逆向沿边查找；上方仍是原关系的方向。',
     businessSelectedObject: '当前对象',
     businessObjectSource: '来源资料：',
     businessObjectNumber: '对象',
@@ -1991,6 +2007,23 @@ const en: typeof zhCN = {
     businessOverviewHint:
       'Overview collapses observation detail; select an object to expand it. All relations remain available.',
     businessObjects: 'Find an object',
+    businessPathTitle: 'Explore connections between objects',
+    businessPathHint:
+      'Find one shortest connection of up to eight edges in the complete current relation scope. Reading may follow either end; arrows and evidence retain the original direction. A connection does not establish causation, implementation or professional approval.',
+    businessPathTemporary:
+      'Endpoints are temporary reading choices on this page; they do not change the map, records or saved query.',
+    businessPathFrom: 'Start object',
+    businessPathSearchFrom: 'Find start object by name or source',
+    businessPathSearchTo: 'Find end object by name or source',
+    businessPathObjects: 'Objects along this path',
+    businessPathTo: 'End object',
+    businessPathChoose: 'Choose an object and source',
+    businessPathFind: 'Show connection path',
+    businessPathMissing:
+      'No connection within eight edges in this scope. Try other endpoints; this does not establish that no real-world connection exists.',
+    businessPathCount: 'Path edges: ',
+    businessPathReverse:
+      'This step is read against the edge; the statement above retains its original direction.',
     businessSelectedObject: 'Selected object',
     businessObjectSource: 'Source: ',
     businessObjectNumber: 'Object',
