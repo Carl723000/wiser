@@ -255,3 +255,54 @@ it('keeps same-source duplicates distinct and labels missing document titles wit
   ).toBeTruthy();
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it('keeps expanded observations after a saved view remount and restores overview explicitly', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(Response.json({ items: [row], totalCount: 1 })),
+      ),
+  );
+  const first = render(<DataExplorerBusiness {...props} />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: '展开全部观测关系' }),
+  );
+  expect(nav.replace).toHaveBeenLastCalledWith(
+    '/zh-CN/data-foundation/explore?saved=case&businessMode=all',
+    { scroll: false },
+  );
+  first.unmount();
+  nav.search = new URLSearchParams('saved=case&businessMode=all');
+  render(<DataExplorerBusiness {...props} queryId="reopened-query" />);
+  expect(
+    (
+      await screen.findByRole('button', { name: '展开全部观测关系' })
+    ).getAttribute('aria-pressed'),
+  ).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '多类对象总览' }));
+  expect(nav.replace).toHaveBeenLastCalledWith(
+    '/zh-CN/data-foundation/explore?saved=case',
+    { scroll: false },
+  );
+});
+
+it('treats an unknown graph mode as overview without widening the business scope', async () => {
+  nav.search = new URLSearchParams('saved=case&businessMode=unexpected');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(<DataExplorerBusiness {...props} />);
+  expect(
+    (await screen.findByRole('button', { name: '多类对象总览' })).getAttribute(
+      'aria-pressed',
+    ),
+  ).toBe('true');
+  expect(
+    screen
+      .getByRole('button', { name: '展开全部观测关系' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+});
