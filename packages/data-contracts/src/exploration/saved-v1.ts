@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import {
-  ExplorationQueryInputSchema as ExplorationQueryInputV111Schema,
-  ExplorationResultSchema as ExplorationResultV111Schema,
+  ExplorationQueryInputV111Schema,
+  ExplorationResultV111Schema,
   ExplorationResourceSchema,
   ExplorationRecordSchema,
   ExplorationGraphNodeSchema,
-} from './index.ts';
+} from './v111.ts';
 export const ExplorationViewNameSchema = z.enum([
   'resources',
   'records',

@@ -263,3 +263,61 @@ function requestInput(init: RequestInit | undefined) {
   const input: unknown = JSON.parse(init.body);
   return RelationListInputSchema.parse(input);
 }
+
+it('keeps the persisted business scope and review status for a non-observation record across pages', async () => {
+  const queryId = '11111111-1111-4111-8111-111111111111';
+  const businessRow = {
+    ...bound,
+    status: 'PENDING_REVIEW',
+    candidate: {
+      ...bound.candidate,
+      subject: { ...bound.candidate.subject, kind: 'DOCUMENT' },
+    },
+  };
+  const request = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [row],
+        totalCount: 2,
+        nextCursor: row.assertionId,
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [
+          {
+            ...businessRow,
+            assertionId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          },
+        ],
+        totalCount: 2,
+      }),
+    );
+  vi.stubGlobal('fetch', request);
+  render(
+    <DataRecordRelations
+      locale="zh-CN"
+      record={record}
+      returnGraph={null}
+      business={{ queryId, status: 'PENDING_REVIEW' }}
+    />,
+  );
+  expect(screen.getByRole<HTMLSelectElement>('combobox').disabled).toBe(true);
+  expect(screen.getByRole<HTMLSelectElement>('combobox').value).toBe(
+    'PENDING_REVIEW',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '查找此记录的业务关系' }));
+  const link = await screen.findByRole('link', { name: '真实波段2' });
+  const url = new URL(link.getAttribute('href')!, 'http://localhost');
+  expect(url.searchParams.get('query')).toBe(queryId);
+  expect(url.searchParams.get('view')).toBe('graph');
+  expect(url.searchParams.has('businessEntity')).toBe(true);
+  expect(request).toHaveBeenCalledTimes(2);
+  for (const [, options] of request.mock.calls) {
+    const input = requestInput(options);
+    expect(input.queryId).toBe(queryId);
+    expect(input.status).toBe('PENDING_REVIEW');
+    expect(input.dataItemId).toBeUndefined();
+  }
+});

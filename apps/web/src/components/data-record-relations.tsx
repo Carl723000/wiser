@@ -9,6 +9,7 @@ import {
   relationRecordFocus,
   type RecordFocus,
 } from '@/lib/exploration-record-focus';
+import { businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 import {
   readRelationView,
@@ -22,16 +23,17 @@ type Props = {
   locale: Locale;
   record: RecordFocus;
   returnGraph: string | null;
+  business?: { queryId: string; status: RelationAssertion['status'] };
 };
 export function DataRecordRelations(props: Props) {
   return (
     <RecordRelations
-      key={JSON.stringify([props.record, props.returnGraph])}
+      key={JSON.stringify([props.record, props.returnGraph, props.business])}
       {...props}
     />
   );
 }
-function RecordRelations({ locale, record, returnGraph }: Props) {
+function RecordRelations({ locale, record, returnGraph, business }: Props) {
   const copy = getDictionary(locale).knowledgeRelations;
   const [scope] = useState<RelationViewState>(() => {
     if (returnGraph) {
@@ -63,10 +65,11 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
       pages: 1,
     };
   });
-  const [status, setStatus] = useState<'APPROVED' | 'PENDING_REVIEW'>(
-    scope.status === 'PENDING_REVIEW' && scope.preview
-      ? 'PENDING_REVIEW'
-      : 'APPROVED',
+  const [status, setStatus] = useState<RelationAssertion['status']>(
+    business?.status ??
+      (scope.status === 'PENDING_REVIEW' && scope.preview
+        ? 'PENDING_REVIEW'
+        : 'APPROVED'),
   );
   const [rows, setRows] = useState<RelationAssertion[]>([]);
   const [next, setNext] = useState<string>();
@@ -98,47 +101,72 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
       setChecked(0);
     }
     try {
-      const response = await fetch('/api/data-foundation/relations/list', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          dataItemId: scope.dataItemId,
-          versionId: scope.versionId,
-          relatedSources: scope.sources,
-          status,
-          first: 100,
-          ...(after ? { after } : {}),
-        }),
-        signal: request.signal,
-      });
-      if (!response.ok) throw Error('Unavailable');
-      const page = RelationListOutputSchema.parse(await response.json());
-      if (request.signal.aborted) return;
-      const sources = [scope, ...scope.sources];
+      const collected: RelationAssertion[] = [];
+      const cursors = new Set<string>();
+      let cursor = after,
+        count: number | undefined;
+      do {
+        const response = await fetch('/api/data-foundation/relations/list', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            ...(business
+              ? { queryId: business.queryId }
+              : {
+                  dataItemId: scope.dataItemId,
+                  versionId: scope.versionId,
+                  relatedSources: scope.sources,
+                }),
+            status,
+            first: 100,
+            ...(cursor ? { after: cursor } : {}),
+          }),
+          signal: request.signal,
+        });
+        if (!response.ok) throw Error('Unavailable');
+        const page = RelationListOutputSchema.parse(await response.json());
+        if (request.signal.aborted) return;
+        const sources = [scope, ...scope.sources];
+        if (
+          page.items.some(
+            (row) =>
+              row.status !== status ||
+              (!business &&
+                !sources.some(
+                  (source) =>
+                    source.dataItemId === row.dataItemId &&
+                    source.versionId === row.versionId,
+                )),
+          ) ||
+          (count !== undefined && count !== page.totalCount) ||
+          (cursor && page.nextCursor === cursor) ||
+          (page.nextCursor && cursors.has(page.nextCursor))
+        )
+          throw Error('Invalid result');
+        count = page.totalCount;
+        collected.push(...page.items);
+        cursor = page.nextCursor;
+        if (cursor) cursors.add(cursor);
+        if (business && collected.length > 2000) throw Error('Scope too large');
+      } while (business && cursor);
       if (
-        page.items.some(
-          (row) =>
-            row.status !== status ||
-            !sources.some(
-              (s) =>
-                s.dataItemId === row.dataItemId &&
-                s.versionId === row.versionId,
-            ),
-        ) ||
-        (after && page.nextCursor === after)
+        business &&
+        (collected.length !== count ||
+          new Set(collected.map((r) => r.assertionId)).size !==
+            collected.length)
       )
-        throw Error('Invalid result');
+        throw Error('Incomplete scope');
       setRows((previous) => [
         ...new Map(
-          [...(after ? previous : []), ...page.items].map((row) => [
+          [...(after ? previous : []), ...collected].map((row) => [
             row.assertionId,
             row,
           ]),
         ).values(),
       ]);
-      setChecked((previous) => (after ? previous : 0) + page.items.length);
-      setTotal(page.totalCount);
-      setNext(page.nextCursor);
+      setChecked((previous) => (after ? previous : 0) + collected.length);
+      setTotal(count);
+      setNext(cursor);
       setStarted(true);
     } catch {
       if (request.signal.aborted) return;
@@ -157,7 +185,9 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
     : rows;
   for (const row of visible)
     for (const entity of [row.candidate.subject, row.candidate.object]) {
-      const focus = relationRecordFocus(row, entity);
+      const focus = business
+        ? businessRecordFocus(row, entity)
+        : relationRecordFocus(row, entity);
       if (
         !focus ||
         focus.recordId !== record.recordId ||
@@ -167,6 +197,7 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
         continue;
       const pin = entity.reference ?? row;
       if (
+        !business &&
         ![scope, ...scope.sources].some(
           (s) =>
             s.dataItemId === pin.dataItemId && s.versionId === pin.versionId,
@@ -175,16 +206,18 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
         continue;
       const identity = relationNodeIdentity(row, entity);
       const { assertionId: _history, ...view } = scope;
-      const href = relationViewHref(
-        `http://local/${locale}/data-foundation/catalog/${scope.dataItemId}?versionId=${scope.versionId}`,
-        {
-          ...view,
-          status,
-          preview: status === 'PENDING_REVIEW',
-          entity: identity,
-          pages: 1,
-        },
-      );
+      const href = business
+        ? `/${locale}/data-foundation/explore?${new URLSearchParams({ query: business.queryId, view: 'graph', businessEntity: identity })}`
+        : relationViewHref(
+            `http://local/${locale}/data-foundation/catalog/${scope.dataItemId}?versionId=${scope.versionId}`,
+            {
+              ...view,
+              status,
+              preview: status === 'PENDING_REVIEW',
+              entity: identity,
+              pages: 1,
+            },
+          );
       matches.set(identity, { label: entity.label, href });
     }
   return (
@@ -195,7 +228,7 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
         {copy.recordRelationStatus}
         <select
           value={status}
-          disabled={busy}
+          disabled={busy || Boolean(business)}
           onChange={(event) => {
             clear();
             setStatus(
@@ -205,6 +238,9 @@ function RecordRelations({ locale, record, returnGraph }: Props) {
             );
           }}
         >
+          {business && !['APPROVED', 'PENDING_REVIEW'].includes(status) ? (
+            <option value={status}>{copy.statuses[status]}</option>
+          ) : null}
           <option value="APPROVED">{copy.statuses.APPROVED}</option>
           <option value="PENDING_REVIEW">{copy.statuses.PENDING_REVIEW}</option>
         </select>

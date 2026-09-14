@@ -1,3 +1,8 @@
+import {
+  businessRecordPredicate,
+  projectBusinessRecord,
+  type BusinessRecordPin,
+} from './business-query-runtime.js';
 import { findExplorationPath } from '@wiser/data-core';
 import { queryFilteredRecords } from './exploration-filtered-records.js';
 import { RECORD_PAGE_BYTES } from './exploration-record-page.js';
@@ -21,6 +26,7 @@ export async function queryProvenanceGraph(
   queryId: string,
   input: ExplorationQueryInput,
   spec: QuerySpec = {},
+  businessPins?: readonly BusinessRecordPin[],
 ) {
   if (
     spec.recordQuery &&
@@ -111,12 +117,13 @@ export async function queryProvenanceGraph(
   if (input.recordId !== undefined) {
     const row = (
       await client.query(
-        `select record.*,ref->>'dataItemId' data_item_id,ref->>'versionId' version_id,record.geom is not null spatial from catalog.analysis_record record join jsonb_array_elements($1::jsonb) ref on record.analysis_id=(ref->>'analysisId')::uuid where record.record_id=$2::uuid and ($3::jsonb is null or (record.asset_id=($3->>'assetId')::uuid and service.exploration_record_matches(record.record_values,$3->'filters'))) and ($4::float8[] is null or ${spatialPredicate('record.geom', '$4::float8[]')})`,
+        `select record.*,ref->>'dataItemId' data_item_id,ref->>'versionId' version_id,record.geom is not null spatial from catalog.analysis_record record join jsonb_array_elements($1::jsonb) ref on record.analysis_id=(ref->>'analysisId')::uuid where record.record_id=$2::uuid and ($3::jsonb is null or (record.asset_id=($3->>'assetId')::uuid and service.exploration_record_matches(record.record_values,$3->'filters'))) and ($4::float8[] is null or ${spatialPredicate('record.geom', '$4::float8[]')}) and ($5::jsonb is null or ${businessRecordPredicate('record', '$5')})`,
         [
           serialized,
           input.recordId,
           spec.recordQuery ? JSON.stringify(spec.recordQuery) : null,
           spec.spatialBounds ?? null,
+          businessPins ? JSON.stringify(businessPins) : null,
         ],
       )
     ).rows[0];
@@ -223,6 +230,17 @@ export async function queryProvenanceGraph(
       first,
       offset,
       query: spec.recordQuery ?? { assetId: input.assetId!, filters: [] },
+      ...(businessPins
+        ? {
+            recordIds: businessPins
+              .filter(
+                (pin) =>
+                  pin.versionId === ref.versionId &&
+                  pin.assetId === input.assetId,
+              )
+              .map((pin) => pin.recordId),
+          }
+        : {}),
       ...(spec.spatialBounds ? { spatialBounds: spec.spatialBounds } : {}),
       maximumBytes:
         RECORD_PAGE_BYTES -
@@ -241,7 +259,16 @@ export async function queryProvenanceGraph(
           assetId: row['asset_id'],
           sourceId: row['source_id'],
           index: z.coerce.number().parse(row['record_index']),
-          values: row['record_values'],
+          values: businessPins
+            ? projectBusinessRecord(
+                row['record_values'],
+                businessPins.find(
+                  (pin) =>
+                    pin.recordId === row['record_id'] &&
+                    pin.analysisId === row['analysis_id'],
+                )!,
+              )
+            : row['record_values'],
         }),
       );
     returned = recordNodes.length;

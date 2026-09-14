@@ -1,3 +1,8 @@
+import { loadBusinessRelations } from './business-query-runtime.js';
+import {
+  RELATION_SELECT as SELECT,
+  readRelationAssertion as assertion,
+} from './knowledge-relation-read.js';
 import {
   relationVisibleSql,
   relationSourceVisibleSql,
@@ -10,7 +15,7 @@ import {
   RelationGetInputSchema,
   RelationReviewInputSchema,
   RelationListInputSchema,
-  RelationAssertionSchema,
+  QuerySpecSchema,
   type RelationAssertion,
   type RelationCandidate,
 } from '@wiser/data-contracts';
@@ -34,31 +39,7 @@ import { AUTHORIZED } from './exploration-authorization.js';
 type Client = PostgresDataCommandClient;
 const fail = (code: 'NOT_FOUND' | 'STATE_CONFLICT' | 'IDEMPOTENCY_CONFLICT') =>
   new PostgresDataCommandError(code);
-const SELECT = `select b.*,a.status,a.row_version,a.created_at,
- coalesce((select jsonb_agg(jsonb_build_object('reviewId',r.review_record_id,'reviewerId',r.reviewer_actor_id,'decision',r.decision,'rationale',r.rationale,'createdAt',r.created_at) order by r.row_version) from knowledge.review_record r where r.assertion_id=a.assertion_id),'[]'::jsonb) reviews
- from knowledge.assertion_binding b join knowledge.assertion a using(tenant_id,project_id,assertion_id)`;
-/** Reauthorize every source file at read time, independently of graph projection lag. */
 const VISIBLE = relationVisibleSql();
-function assertion(row: Record<string, unknown>): RelationAssertion {
-  return RelationAssertionSchema.parse({
-    assertionId: row['assertion_id'],
-    dataItemId: row['data_item_id'],
-    versionId: row['version_id'],
-    version: Number(row['row_version']),
-    mappingVersion: row['mapping_version'],
-    candidate: row['candidate'],
-    status: row['status'],
-    confidence: null,
-    createdAt: z.coerce.date().parse(row['created_at']).toISOString(),
-    reviews: z
-      .array(z.record(z.string(), z.unknown()))
-      .parse(row['reviews'])
-      .map((r) => ({
-        ...r,
-        createdAt: z.coerce.date().parse(r['createdAt']).toISOString(),
-      })),
-  });
-}
 async function authorize(
   client: Client,
   ref: { dataItemId: string; versionId: string },
@@ -358,7 +339,7 @@ export function createKnowledgeRelationExecutors(
           if (input.queryId) {
             // Snapshot RLS binds tenant, project and owner. Expiry never becomes an empty success.
             const snapshot = await c.query(
-              'select version_refs from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
+              'select version_refs,spec from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
               [input.queryId, context.principal.actorId],
             );
             if (!snapshot.rows[0]) throw fail('NOT_FOUND');
@@ -378,6 +359,62 @@ export function createKnowledgeRelationExecutors(
             );
             if (checked.rows[0]?.['total'] !== selectedSources.length)
               throw fail('NOT_FOUND');
+            const spec = QuerySpecSchema.parse(snapshot.rows[0]['spec'] ?? {});
+            if (spec.businessQuery) {
+              if (input.status !== spec.businessQuery.status)
+                throw fail('NOT_FOUND');
+              const resolved = await loadBusinessRelations(
+                c,
+                selectedSources,
+                spec.businessQuery,
+              );
+              const matched = resolved.items.filter(
+                (row) =>
+                  (!input.mappingVersion ||
+                    row.mappingVersion === input.mappingVersion) &&
+                  (!input.entityKey ||
+                    [
+                      row.candidate.subject.key,
+                      row.candidate.object.key,
+                    ].includes(input.entityKey)) &&
+                  (!input.entityReference ||
+                    [row.candidate.subject, row.candidate.object].some(
+                      (entity) => {
+                        const ref = entity.reference ?? {
+                          dataItemId: row.dataItemId,
+                          versionId: row.versionId,
+                          mappingVersion: row.mappingVersion,
+                          entityKey: entity.key,
+                        };
+                        return (
+                          ref.dataItemId ===
+                            input.entityReference!.dataItemId &&
+                          ref.versionId === input.entityReference!.versionId &&
+                          ref.mappingVersion ===
+                            input.entityReference!.mappingVersion &&
+                          ref.entityKey === input.entityReference!.entityKey
+                        );
+                      },
+                    )),
+              );
+              if (
+                input.after &&
+                !matched.some((row) => row.assertionId === input.after)
+              )
+                throw fail('NOT_FOUND');
+              const offset = input.after
+                ? matched.findIndex((row) => row.assertionId === input.after) +
+                  1
+                : 0;
+              const items = matched.slice(offset, offset + input.first);
+              return {
+                items,
+                totalCount: matched.length,
+                ...(offset + items.length < matched.length
+                  ? { nextCursor: items.at(-1)!.assertionId }
+                  : {}),
+              };
+            }
           } else {
             selectedSources = [
               { dataItemId: input.dataItemId!, versionId: input.versionId! },

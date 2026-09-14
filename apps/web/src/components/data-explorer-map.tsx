@@ -4,6 +4,8 @@ import {
   type InvalidateExploration,
 } from '@/lib/exploration-request';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import type { FeatureCollection } from 'geojson';
+import { loadBusinessMap } from '@/lib/business-map';
 import * as maplibre from 'maplibre-gl';
 import Map, {
   Source,
@@ -51,6 +53,42 @@ export default function DataExplorerMap({
   const [ready, setReady] = useState(false);
   const [renderedCount, setRenderedCount] = useState(0);
   const [failed, setFailed] = useState(false);
+  const business = Boolean(result.spec.businessQuery);
+  const [retry, setRetry] = useState(0);
+  const [businessMap, setBusinessMap] = useState<FeatureCollection | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!business) return;
+    const controller = new AbortController();
+    void loadBusinessMap(result, async (after) => {
+      const response = await fetch('/api/data-foundation/explore', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          queryId: result.queryId,
+          view: 'map',
+          first: 200,
+          after,
+        }),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        if (invalidatesExploration(response.status))
+          onInvalidated(result.queryId, response.status);
+        throw Error('Map unavailable');
+      }
+      return ExplorationResultSchema.parse(await response.json());
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setBusinessMap(data);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, [business, result, onInvalidated, retry]);
   const [layers, setLayers] = useState(
     savedMap?.layers ?? {
       points: true,
@@ -198,7 +236,7 @@ export default function DataExplorerMap({
       data-selected-record={selected ?? ''}
     >
       <AmapBasemap ref={basemap} locale={locale} />
-      {failed ? null : (
+      {failed || (business && !businessMap) ? null : (
         <Map
           ref={map}
           mapLib={maplibre}
@@ -319,13 +357,12 @@ export default function DataExplorerMap({
           <NavigationControl position="top-right" showCompass={false} />
           <Source
             id="records"
-            type="vector"
-            tiles={tiles}
-            minzoom={0}
-            maxzoom={22}
+            {...(business && businessMap
+              ? { type: 'geojson' as const, data: businessMap }
+              : { type: 'vector' as const, tiles, minzoom: 0, maxzoom: 22 })}
           >
             <Layer
-              source-layer="exploration"
+              {...(business ? {} : { 'source-layer': 'exploration' })}
               id="records-polygons"
               layout={{ visibility: layers.polygons ? 'visible' : 'none' }}
               type="fill"
@@ -333,7 +370,7 @@ export default function DataExplorerMap({
               paint={{ 'fill-color': palette.accent, 'fill-opacity': 0.3 }}
             />
             <Layer
-              source-layer="exploration"
+              {...(business ? {} : { 'source-layer': 'exploration' })}
               id="records-lines"
               layout={{
                 visibility:
@@ -362,7 +399,7 @@ export default function DataExplorerMap({
               }}
             />
             <Layer
-              source-layer="exploration"
+              {...(business ? {} : { 'source-layer': 'exploration' })}
               id="records-points"
               layout={{ visibility: layers.points ? 'visible' : 'none' }}
               type="circle"
@@ -400,7 +437,7 @@ export default function DataExplorerMap({
               }}
             />
             <Layer
-              source-layer="exploration"
+              {...(business ? {} : { 'source-layer': 'exploration' })}
               id="records-cluster-labels"
               type="symbol"
               filter={['==', ['get', 'cluster'], true]}
@@ -419,7 +456,7 @@ export default function DataExplorerMap({
       )}
       <div className={styles.mapSummary}>
         <button onClick={fit}>{copy.fitMap}</button>
-        {onBounds ? (
+        {onBounds && !business ? (
           <button disabled={!ready || failed} onClick={filterArea}>
             {copy.mapLayers.filter}
           </button>
@@ -434,6 +471,12 @@ export default function DataExplorerMap({
       </div>
       <p role="note" className={styles.mapPositionNote}>
         {getDictionary(locale).dataFoundation.amap.positionLimit}
+        {business ? (
+          <span>
+            {' '}
+            {getDictionary(locale).knowledgeRelations.businessMapScope}
+          </span>
+        ) : null}
       </p>
       {!failed ? (
         <details className={styles.mapLegend}>
@@ -466,7 +509,14 @@ export default function DataExplorerMap({
       {failed ? (
         <div className={styles.mapNotice} role="status">
           {copy.mapUnavailable}
-          <button onClick={() => setFailed(false)}>{copy.retryMap}</button>
+          <button
+            onClick={() => {
+              setFailed(false);
+              setRetry((value) => value + 1);
+            }}
+          >
+            {copy.retryMap}
+          </button>
         </div>
       ) : null}
     </div>

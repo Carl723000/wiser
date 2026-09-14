@@ -1,3 +1,7 @@
+import {
+  loadBusinessRelations,
+  bindBusinessRecords,
+} from './business-query-runtime.js';
 import { spatialMembers } from './exploration-spatial.js';
 import { AUTHORIZED } from './exploration-authorization.js';
 import { queryAggregate } from './exploration-aggregate.js';
@@ -151,6 +155,23 @@ export class PostgresExplorationExecutor {
         !snapshot.version_refs.some((ref) => ref.versionId === input.versionId)
       )
         throw new DataCapabilityHandlerError('NOT_FOUND');
+      const businessRelations = snapshot.spec.businessQuery
+        ? await loadBusinessRelations(
+            client,
+            snapshot.version_refs,
+            snapshot.spec.businessQuery,
+          )
+        : undefined;
+      const businessPins =
+        businessRelations && snapshot.spec.businessQuery
+          ? await bindBusinessRecords(
+              client,
+              snapshot.version_refs,
+              snapshot.spec.businessQuery,
+              businessRelations.items,
+              businessRelations.all,
+            )
+          : undefined;
       const visibleRefs = await spatialMembers(
         client,
         snapshot.version_refs,
@@ -169,6 +190,7 @@ export class PostgresExplorationExecutor {
                 snapshot.version_refs,
                 input,
                 snapshot.spec,
+                businessPins,
               )
             : input.view === 'graph'
               ? (visibleRefs.length === 0 ||
@@ -189,6 +211,7 @@ export class PostgresExplorationExecutor {
                     queryId,
                     input,
                     snapshot.spec,
+                    businessPins,
                   )
               : queryAnalysisView(
                   client,
@@ -196,6 +219,7 @@ export class PostgresExplorationExecutor {
                   queryId,
                   input,
                   snapshot.spec,
+                  businessPins,
                 ))),
         });
         if (context.signal.aborted)
@@ -387,6 +411,47 @@ export class PostgresExplorationExecutor {
       if (requested.some((field) => !fields.has(field)))
         throw new DataCapabilityHandlerError('VALIDATION_FAILED');
     }
+    if (spec.businessQuery) {
+      const relations = await loadBusinessRelations(
+        client,
+        refs,
+        spec.businessQuery,
+      );
+      if (
+        spec.businessQuery.tableSelections?.some(
+          (selection) =>
+            !relations.all.some(
+              (relation) =>
+                relation.assertionId === selection.assertionId &&
+                [relation.candidate.subject, relation.candidate.object].some(
+                  (entity) =>
+                    entity.externalId ===
+                    'urn:wiser:record:' + selection.recordId,
+                ),
+            ),
+        )
+      )
+        throw new DataCapabilityHandlerError('VALIDATION_FAILED');
+      await bindBusinessRecords(
+        client,
+        refs,
+        spec.businessQuery,
+        relations.items,
+        relations.all,
+      );
+      spec = {
+        ...spec,
+        businessQuery: {
+          ...spec.businessQuery,
+          assertionPins: relations.all.map((row) => [
+            row.assertionId,
+            row.version,
+          ]),
+        },
+      };
+    }
+    if (Buffer.byteLength(JSON.stringify(spec), 'utf8') > 120000)
+      throw new DataCapabilityHandlerError('VALIDATION_FAILED');
     const id = randomUUID();
     await client.query(
       `insert into service.exploration_snapshot(query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,spec,version_refs,created_at,expires_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,

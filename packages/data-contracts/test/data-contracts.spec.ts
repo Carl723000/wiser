@@ -963,7 +963,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.view.open': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
-    output: 'c92fba950266c2a830ad0a3da08bfc712dc5606ebc6568c333542ff5303a2509',
+    output: '67c4c0d7b588932dfa8b7756325a7f4379f2f4bc81247e6b7b67d76e02b90d4c',
   },
   'data.explore.view.revoke': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
@@ -971,7 +971,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.export': {
     input: '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
-    output: '3830a39891bc7b6b547d04c6c89242cdcf75d56f59a3ae900396a4c4e601ba4b',
+    output: '5160ecc1bd3fb87b278c1124dd2f12a638aa7920cd4549461d9ac960b4580742',
   },
 
   'data.analysis.create': {
@@ -979,8 +979,8 @@ const expectedJsonSchemaHashes = {
     output: '157a58322075047c67537707e26c0307eb80090d55e7bf3443b704345d9e3d16',
   },
   'data.explore.query': {
-    input: '2e3fc03a051f845ff148ca8ec3e9924c24a0d2ca4d9044cc97627c875ee570b4',
-    output: 'dc13256f63d17168c940bf71dd6d185f1f20d94ced335fd3166648e9a8d792bc',
+    input: 'e2f0a6419ebe7ae26bb2b36b08cf44a7578e487902c7ecfab05326c9257c4109',
+    output: 'f31e39c629c1f50fc10049979595d648980f2aedb3bfd29e028dd17de2316745',
   },
   'data.catalog.search': {
     input: '9fa0f09f57dc5063f42406cdaefd0e19b0ab8e019a3a4ba9824a3445c24139be',

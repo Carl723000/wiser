@@ -10,7 +10,12 @@ import { layoutGraph } from '@/lib/graph-layout';
 import styles from './data-foundation-graph.module.css';
 
 export interface CanvasGraphData {
-  readonly nodes: readonly { entityId: string; label: string; kind?: string }[];
+  readonly nodes: readonly {
+    entityId: string;
+    label: string;
+    kind?: string;
+    overviewLabel?: boolean;
+  }[];
   readonly edges: readonly {
     edgeId: string;
     fromEntityId: string;
@@ -239,6 +244,7 @@ export function KnowledgeGraphCanvas({
                 labelMaxWidth: 140 / zoom,
                 labelVisibility:
                   detailed ||
+                  node.overviewLabel ||
                   node.kind === 'RESOURCE' ||
                   node.entityId === selectedId
                     ? 'visible'

@@ -71,42 +71,37 @@ function geoJsonData(
   return {
     type: 'FeatureCollection' as const,
     features: features.features.map((feature) => {
+      const coordinates = amapCoordinates(feature.geometry.coordinates, crs);
       const geometry = (() => {
         switch (feature.geometry.type) {
           case 'Point':
             return {
               type: 'Point' as const,
-              coordinates: position(feature.geometry.coordinates),
+              coordinates: position(coordinates),
             };
           case 'MultiPoint':
           case 'LineString':
             return {
               type: feature.geometry.type,
-              coordinates: positions(feature.geometry.coordinates),
+              coordinates: positions(coordinates),
             };
           case 'MultiLineString':
           case 'Polygon':
             return {
               type: feature.geometry.type,
-              coordinates: rings(feature.geometry.coordinates),
+              coordinates: rings(coordinates),
             };
           case 'MultiPolygon':
             return {
               type: 'MultiPolygon' as const,
-              coordinates: polygons(feature.geometry.coordinates),
+              coordinates: polygons(coordinates),
             };
         }
       })();
       return {
         type: 'Feature' as const,
         id: feature.id,
-        geometry: {
-          ...geometry,
-          coordinates: amapCoordinates(
-            geometry.coordinates,
-            crs,
-          ) as typeof geometry.coordinates,
-        },
+        geometry,
         properties: feature.properties,
       };
     }),

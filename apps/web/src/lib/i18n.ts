@@ -28,6 +28,23 @@ export function isLocale(value: string): value is Locale {
 
 const zhCN = {
   knowledgeRelations: {
+    businessMapScope:
+      '地图只显示当前问题中有位置证据的记录；移动地图不会改变问题和资料范围。',
+    businessTitle: '问题与证据关系图',
+    businessHint:
+      '从政策、事件、研究与数据之间的联系理解问题。点击对象展开相关证据；资料关联不等于因果结论。',
+    businessScope: '图谱、表格和地图共用的业务时段',
+    businessApply: '应用到所有视图',
+    businessLoading: '正在读取完整范围',
+    businessOverview: '多类对象总览',
+    businessAll: '展开全部观测关系',
+    businessClearFocus: '返回总览',
+    businessVisible: '图中关系 / 当前范围：',
+    businessOverviewHint:
+      '总览突出业务关系及其连接，收起观测和目录明细；点击对象可展开。',
+    businessObjects: '按对象查找',
+    businessEvidence: '关系与原文依据',
+
     recordRelations: '本记录的业务关系',
     recordRelationHint:
       '仅匹配明确绑定的记录身份；沿用案例来源及关系筛选条件。没有案例时仅检查当前资料版本。',
@@ -1952,6 +1969,23 @@ const zhCN = {
 
 const en: typeof zhCN = {
   knowledgeRelations: {
+    businessMapScope:
+      'The map shows located records in this question. Moving the map does not change its question or source scope.',
+    businessTitle: 'Problem and evidence graph',
+    businessHint:
+      'Explore connections among policy, events, research and data. Select an object for evidence. A source association does not establish causality.',
+    businessScope: 'Business period shared by graph, table and map',
+    businessApply: 'Apply to all views',
+    businessLoading: 'Reading the complete scope',
+    businessOverview: 'Overview by object',
+    businessAll: 'Include all observation relations',
+    businessClearFocus: 'Return to overview',
+    businessVisible: 'Visible / scoped relations: ',
+    businessOverviewHint:
+      'Overview collapses observation detail; select an object to expand it. All relations remain available.',
+    businessObjects: 'Find an object',
+    businessEvidence: 'Relations and source evidence',
+
     recordRelations: 'Business relations for this record',
     recordRelationHint:
       'Matches explicit record identities within the case sources and relation filters. Without a case, only this source version is checked.',

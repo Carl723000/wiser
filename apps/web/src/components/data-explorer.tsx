@@ -24,6 +24,7 @@ import { sourceLimitationLabel } from '@/lib/data-foundation-presentation';
 import { EXPLORATION_TOOLS } from '@/lib/navigation';
 import { DataExplorerReadiness } from './data-explorer-readiness';
 import dynamic from 'next/dynamic';
+import { DataExplorerBusiness } from './data-explorer-business';
 import { DataExplorerGraph } from './data-explorer-graph';
 import {
   useMemo,
@@ -610,7 +611,11 @@ export function DataExplorer({
                 {getDictionary(locale).knowledgeRelations.returnGraph}
               </Link>
             ) : null}
-            <h1>{copy.title}</h1>
+            <h1>
+              {result?.spec.businessQuery && initialSaved
+                ? initialSaved.savedView.title
+                : copy.title}
+            </h1>
             <p>{copy.description}</p>
           </div>
           <span className={styles.scope}>{copy.scope}</span>
@@ -996,6 +1001,26 @@ export function DataExplorer({
                   }}
                 />
               </>
+            ) : result && view === 'graph' && result.spec.businessQuery ? (
+              <DataExplorerBusiness
+                key={result.queryId}
+                queryId={result.queryId}
+                scope={result.spec.businessQuery}
+                locale={locale}
+                onInvalidated={invalidate}
+                onApply={(businessQuery) => {
+                  void query(
+                    {
+                      spec: { ...result.spec, businessQuery },
+                      view: 'resources',
+                      first: 25,
+                    },
+                    0,
+                    true,
+                    'graph',
+                  );
+                }}
+              />
             ) : result && view === 'graph' ? (
               <DataExplorerGraph
                 key={result.queryId}
@@ -1121,6 +1146,14 @@ export function DataExplorer({
                     recordId: selectedRecord.recordId,
                   }}
                   returnGraph={returnGraph}
+                  business={
+                    result?.spec.businessQuery
+                      ? {
+                          queryId: result.queryId,
+                          status: result.spec.businessQuery.status,
+                        }
+                      : undefined
+                  }
                 />
                 <Link
                   href={`/${locale}/data-foundation/catalog/${selectedRecord.dataItemId}?versionId=${selectedRecord.versionId}`}
