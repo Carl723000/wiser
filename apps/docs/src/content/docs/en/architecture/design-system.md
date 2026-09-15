@@ -14,8 +14,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
-lastReviewedAt: 2026-09-11
-lastReviewedCommit: 8b6970cd9f73a68ed83ce92fc55d8bec0c1c5401
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: fed66d569160fe50d4ca40cc65ba8758d01f0726
 ---
 
 ## Design direction
@@ -145,3 +145,5 @@ Knowledge graph canvases default to a ForceAtlas2 relationship layout with deter
 A resource opens its content workspace before collapsed governance details. A version-scoped file list, source-file download and local content tabs share the resource identity. Tables preserve scalar source values and provide readable known-field labels; document and structured views expand nested content lazily. The file preview is inert, and unsupported formats retain an explicit download action. Resource names in exploration link directly to content while a separate selection control retains query-wide analysis.
 
 Available raster pixels are visible on entry, separately labeled from asset extent outlines. A keyboard-accessible opacity slider updates the existing layer without rebuilding its source or resetting the camera. Transparent areas must not be described as zero values; source units and ranges remain explicit source-reading requirements.
+
+Map position limitations render in normal document flow after the map canvas. They cannot cover expanded layer controls or retry actions. Browser layout checks cover Chinese/English at 390px and 1440px.

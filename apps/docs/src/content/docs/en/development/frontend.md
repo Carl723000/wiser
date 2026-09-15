@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-11
-lastReviewedCommit: ecb2161da8ade7e2890f5bcdd98840121c478ded
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: fed66d569160fe50d4ca40cc65ba8758d01f0726
 ---
 
 ## Two frontend applications
@@ -182,3 +182,5 @@ Two-dimensional indexed raster bands and NetCDF variables (at most 65,536 pixels
 Native PDF previews use the exact `application/pdf` response type with nosniff and restrictive CSP, without an iframe sandbox that would disable the browser PDF renderer. HTML and other document responses retain the server sandbox policy. Client file extensions cannot relax the response policy for HTML.
 
 Resource content mounts `DataReconciliation` for two fully parsed table assets. Its same-origin reconciliation route uses the verified-session DAL, strict Capability schemas, client idempotency keys and versioned review preconditions. Candidate and human-verified observation metrics are batch-scoped. Result and source-member tables have bounded independent pages; narrow layouts scroll within the table. Access denials clear retained evidence and invalidate in-flight responses.
+
+Map position limitations render in normal document flow after the map canvas. They cannot cover expanded layer controls or retry actions. Browser layout checks cover Chinese/English at 390px and 1440px.

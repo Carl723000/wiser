@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-11
-lastReviewedCommit: ecb2161da8ade7e2890f5bcdd98840121c478ded
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: fed66d569160fe50d4ca40cc65ba8758d01f0726
 ---
 
 ## 两个前端应用
@@ -182,3 +182,5 @@ Portal 根据已验证会话选择主操作：已登录用户进入数据工作�
 原生 PDF 预览仅在响应类型精确为 `application/pdf` 时使用浏览器 PDF 阅读器，保留 nosniff 和受限 CSP；不添加会阻止原生阅读器的 iframe sandbox。HTML 等其他文档仍保留服务端 sandbox 策略，客户端文件扩展名不能放宽 HTML 的响应策略。
 
 资源内容为两份完整解析表格挂载 `DataReconciliation`。同源核验路由复用已验证会话 DAL、严格 Capability 契约、客户端幂等键和审核版本前提。候选与人工核验观测计数仅覆盖本批规则范围。结果和来源成员分别有界分页，窄屏在表格内部滚动。权限拒绝清除保留证据并使旧请求响应失效。
+
+地图位置说明放在画布之后的正文流中，不遮挡展开的图层控件或重试按钮；浏览器布局测试覆盖中英文及390/1440像素宽度。

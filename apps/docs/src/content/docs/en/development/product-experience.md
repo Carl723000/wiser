@@ -15,8 +15,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
-lastReviewedAt: 2026-09-11
-lastReviewedCommit: 8b6970cd9f73a68ed83ce92fc55d8bec0c1c5401
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: fed66d569160fe50d4ca40cc65ba8758d01f0726
 ---
 
 ## What this guide governs
@@ -182,3 +182,5 @@ A resource opens its content workspace before collapsed governance details. A ve
 Resource content provides “Copy verification and observation deduplication”: select two fully parsed tables, explicitly map business keys, measures, units and time, and review candidate groups with source references. Show files, parsed records, candidate observations and verified observations separately. Verification updates only the batch-scoped metric after a human confirms the rules and evidence. The form must not infer mappings from filenames or erase conflicts. Retain the command key on ambiguous retries, clear displayed evidence on access denial, and preserve equivalent Chinese/English, keyboard, small-screen and light/dark states.
 
 Available raster pixels are visible on entry, separately labeled from asset extent outlines. A keyboard-accessible opacity slider updates the existing layer without rebuilding its source or resetting the camera. Transparent areas must not be described as zero values; source units and ranges remain explicit source-reading requirements.
+
+Map position limitations render in normal document flow after the map canvas. They cannot cover expanded layer controls or retry actions. Browser layout checks cover Chinese/English at 390px and 1440px.
