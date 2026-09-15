@@ -904,20 +904,20 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 
 const expectedJsonSchemaHashes = {
   'data.knowledge.relations.import': {
-    input: '9e1ff89f970f971ea5a079cc5b25d9127bfc139ddb30cb6fcdfedf5c32c0be43',
-    output: '0a8ade7bd6243a8425667917651f643109ceed16a63bb454b696cdebe75b6ea3',
+    input: '73a14c4d050d8b32dac11ca07f17463a1667911d817b355c92d2530e656b7279',
+    output: '525aa78f1f6cc1775098c29229281dec8d2c4f01c89493add9592c6ef899dee9',
   },
   'data.knowledge.relations.get': {
     input: '1da03b60eb041eb77e0be2ebfedbab9881708170afa6df8b899d360def5f55c4',
-    output: '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
+    output: '72db7b7c7c1ac7a8b678826b2eb97a13399fdf0a49ae66f128371a31cbbae916',
   },
   'data.knowledge.relations.list': {
     input: 'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
-    output: 'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
+    output: '6cec20d8ba8e5f2209590dcb02ef0909141629123e902f27d52462813be7cab4',
   },
   'data.knowledge.relations.review': {
     input: 'b942992c3638c17b7e34d211bc383be46b59383211be1fef3db3c8f14db4fe8b',
-    output: '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
+    output: '72db7b7c7c1ac7a8b678826b2eb97a13399fdf0a49ae66f128371a31cbbae916',
   },
 
   'data.assessment.create': {
@@ -1831,7 +1831,7 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
     const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
     expect(old.version).toBe('1.0.0');
     expect(DATA_CAPABILITY_REGISTRY[key].version).toBe(
-      key === 'data.knowledge.relations.list' ? '1.4.0' : '1.1.0',
+      key === 'data.knowledge.relations.list' ? '1.5.0' : '1.2.0',
     );
     expect({
       input: jsonSchemaHash(old.inputSchema),
@@ -1854,7 +1854,7 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.3 list', 
     versionId: VERSION_ID,
     relatedSources: sources,
   };
-  expect(current.version).toBe('1.4.0');
+  expect(current.version).toBe('1.5.0');
   expect(jsonSchemaHash(previous.inputSchema)).toBe(
     '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
   );
@@ -1902,4 +1902,39 @@ it('retains the exact inline 1.3 discovery schema when adding persisted scopes',
   expect(previous.inputSchema.safeParse({ queryId: VERSION_ID }).success).toBe(
     false,
   );
+});
+
+it('preserves every pre-cross-source-evidence schema hash', () => {
+  const previousHashes = {
+    'data.knowledge.relations.import': {
+      input: '9e1ff89f970f971ea5a079cc5b25d9127bfc139ddb30cb6fcdfedf5c32c0be43',
+      output:
+        '0a8ade7bd6243a8425667917651f643109ceed16a63bb454b696cdebe75b6ea3',
+    },
+    'data.knowledge.relations.get': {
+      input: '1da03b60eb041eb77e0be2ebfedbab9881708170afa6df8b899d360def5f55c4',
+      output:
+        '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
+    },
+    'data.knowledge.relations.list': {
+      input: 'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
+      output:
+        'e65e1a19e2be5cf6875e57893731337589e8e5a5a24e69e7cec9f6b228e8ac53',
+    },
+    'data.knowledge.relations.review': {
+      input: 'b942992c3638c17b7e34d211bc383be46b59383211be1fef3db3c8f14db4fe8b',
+      output:
+        '21b37034da964471990b7714057f135e519576f4b2d9f8e02b9e465e46b9b1ac',
+    },
+  };
+  for (const [id, hashes] of Object.entries(previousHashes)) {
+    const key = id as keyof typeof previousHashes;
+    const archived = DATA_CAPABILITY_ARCHIVE[key]!.find(
+      (c) => c.version === (key.endsWith('list') ? '1.4.0' : '1.1.0'),
+    )!;
+    expect({
+      input: jsonSchemaHash(archived.inputSchema),
+      output: jsonSchemaHash(archived.outputSchema),
+    }).toEqual(hashes);
+  }
 });

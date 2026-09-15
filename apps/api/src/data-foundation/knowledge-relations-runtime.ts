@@ -6,6 +6,7 @@ import {
 import {
   relationVisibleSql,
   relationSourceVisibleSql,
+  relationEvidenceVisibleSql,
 } from '@wiser/data-infra';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -52,14 +53,12 @@ async function authorize(
   if (checked.rows[0]?.['total'] !== 1) throw fail('NOT_FOUND');
   const evidence = [
     ...new Map(
-      candidates
-        .flatMap((c) => c.evidence)
-        .map((e) => [`${e.assetId}:${e.sourceHash}`, e]),
+      candidates.flatMap((c) => c.evidence).map((e) => [JSON.stringify(e), e]),
     ).values(),
   ];
   if (evidence.length) {
     const saved = await client.query(
-      `select count(*)::int total from jsonb_array_elements($1::jsonb) e join catalog.asset a on a.asset_id=(e->>'assetId')::uuid and a.version_id=$2::uuid and a.content_hash=decode(e->>'sourceHash','hex') and a.lifecycle_state='RAW'`,
+      `select count(*)::int total from jsonb_array_elements($1::jsonb) e cross join (select $2::uuid version_id) owner where ${relationEvidenceVisibleSql('e', 'owner')}`,
       [JSON.stringify(evidence), ref.versionId],
     );
     if (saved.rows[0]?.['total'] !== evidence.length) throw fail('NOT_FOUND');

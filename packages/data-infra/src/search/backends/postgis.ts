@@ -1,3 +1,4 @@
+import { relationFragmentVisibleSql } from '../../postgres/knowledge-relation-visibility.js';
 import type {
   SearchBackendHit,
   SearchBackendPort,
@@ -80,6 +81,7 @@ join catalog.data_item as item
  and item.data_item_id = evidence.data_item_id
 where evidence.tenant_id = $1::uuid
   and evidence.project_id = $2::uuid
+  and ${relationFragmentVisibleSql('evidence')}
   and evidence.security_level = any($3::text[])
   and greatest(evidence.policy_version, version.policy_version, item.policy_version)
     <= $4::bigint

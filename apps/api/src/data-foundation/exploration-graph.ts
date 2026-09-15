@@ -1,3 +1,4 @@
+import { relationFragmentVisibleSql } from '@wiser/data-infra';
 import {
   businessRecordPredicate,
   projectBusinessRecord,
@@ -192,7 +193,7 @@ export async function queryProvenanceGraph(
   }
   const evidenceLimit = detail === 'evidence' ? first : detail ? 0 : 100;
   const evidence = await client.query(
-    `select count(*) over()::text total,evidence.evidence_fragment_id evidence_id,evidence.version_id,ref->>'dataItemId' data_item_id from knowledge.evidence_fragment evidence join jsonb_array_elements($1::jsonb) ref on evidence.version_id=(ref->>'versionId')::uuid order by evidence.version_id,evidence.evidence_fragment_id limit $2::integer offset $3::integer`,
+    `select count(*) over()::text total,evidence.evidence_fragment_id evidence_id,evidence.version_id,ref->>'dataItemId' data_item_id from knowledge.evidence_fragment evidence join jsonb_array_elements($1::jsonb) ref on evidence.version_id=(ref->>'versionId')::uuid where ${relationFragmentVisibleSql('evidence')} order by evidence.version_id,evidence.evidence_fragment_id limit $2::integer offset $3::integer`,
     [
       serialized,
       evidenceLimit ? evidenceLimit + 1 : 0,

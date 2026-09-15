@@ -77,3 +77,26 @@ it('lets readers narrow long endpoint lists by name or source independently', ()
     4,
   );
 });
+
+it('opens evidence from the pinned external version while keeping the owner relation', () => {
+  const externalRows = structuredClone(rows);
+  externalRows[0].candidate.evidence[0].source = {
+    dataItemId: 'metadata',
+    versionId: 'metadata-version',
+    analysisId: 'analysis',
+    recordId: 'record',
+  };
+  render(<BusinessEvidencePathPanel rows={externalRows} locale="zh-CN" />);
+  fireEvent.click(screen.getByText('查看对象之间的联系'));
+  fireEvent.change(screen.getByLabelText('起点'), {
+    target: { value: relationNodeIdentity(rows[0], rows[0].candidate.subject) },
+  });
+  fireEvent.change(screen.getByLabelText('终点'), {
+    target: { value: relationNodeIdentity(rows[1], rows[1].candidate.subject) },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '显示联系路径' }));
+  fireEvent.click(screen.getByText('展开原文依据 (1)'));
+  expect(
+    screen.getByRole('link', { name: 'page:4' }).getAttribute('href'),
+  ).toBe('/api/data-foundation/assets/metadata-version/file');
+});

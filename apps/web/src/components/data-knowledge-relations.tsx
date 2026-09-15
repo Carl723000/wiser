@@ -867,7 +867,7 @@ export function DataKnowledgeRelations({
                     </p>
                     {e.excerpt ? <blockquote>{e.excerpt}</blockquote> : null}
                     <Link
-                      href={`/api/data-foundation/assets/${row.versionId}/${e.assetId}`}
+                      href={`/api/data-foundation/assets/${e.source?.versionId ?? row.versionId}/${e.assetId}`}
                     >
                       {copy.original}
                     </Link>

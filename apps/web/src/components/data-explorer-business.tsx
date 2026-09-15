@@ -442,7 +442,7 @@ export function DataExplorerBusiness({
                   {row.candidate.evidence.map((e, i) => (
                     <li key={i}>
                       <Link
-                        href={`/api/data-foundation/assets/${row.versionId}/${e.assetId}`}
+                        href={`/api/data-foundation/assets/${e.source?.versionId ?? row.versionId}/${e.assetId}`}
                       >
                         {e.locator}
                       </Link>

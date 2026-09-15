@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
 import {
   BusinessProjectionConsumer,
   Neo4jBusinessProjection,
+  relationFragmentVisibleSql,
 } from '@wiser/data-infra';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -87,6 +89,16 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
     const command = () => ({ ...context, idempotencyKey: randomUUID() });
     try {
       await client.query('begin');
+      if (process.env['WISER_TEST_PENDING_MIGRATION'] === '1')
+        await client.query(
+          readFileSync(
+            new URL(
+              '../../../infrastructure/data-foundation/postgres/migrations/0027_cross_source_evidence.sql',
+              import.meta.url,
+            ),
+            'utf8',
+          ),
+        );
       await client.query(`create role ${role} nologin nosuperuser nobypassrls`);
       await client.query(
         `grant usage on schema catalog,service,knowledge,security,event to ${role}`,
@@ -549,6 +561,129 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       await client.query(
         `insert into catalog.asset select (jsonb_populate_record(null::catalog.asset,to_jsonb(s)||jsonb_build_object('asset_id',$2::uuid,'version_id',$3::uuid,'storage_key','synthetic/second/'||$2::text))).* from catalog.asset s where asset_id=$1`,
         [asset, secondAsset, secondVersion],
+      );
+      // A date from another saved source must retain its exact parsed-record pin.
+      const externalAnalysis = randomUUID(),
+        externalRecord = randomUUID(),
+        externalOperation = randomUUID();
+      await client.query(
+        `insert into service.operation(operation_id,tenant_id,project_id,capability_id,actor_id,status,progress_percent,idempotency_key,request_payload,security_level) values($1::uuid,$2,$3,'data.analysis.create',$4,'RUNNING',0,$1::text,'{}','L1_INTERNAL')`,
+        [externalOperation, tenant, project, actor],
+      );
+      await client.query(
+        `insert into service.analysis_run(analysis_id,tenant_id,project_id,version_id,operation_id,parser_version,security_level,policy_version) values($1,$2,$3,$4,$5,'1.0.0','L1_INTERNAL',1)`,
+        [externalAnalysis, tenant, project, secondVersion, externalOperation],
+      );
+      await client.query(
+        `insert into service.analysis_asset(analysis_id,asset_id,tenant_id,project_id,source_hash,status,record_count,feature_count,columns,source_paths,security_level,policy_version) values($1,$2,$3,$4,decode(repeat('a',64),'hex'),'READY',1,0,'[{"key":"date","label":"Date"}]','["metadata.xml"]','L1_INTERNAL',1)`,
+        [externalAnalysis, secondAsset, tenant, project],
+      );
+      await client.query(
+        `insert into catalog.analysis_record(analysis_id,record_id,asset_id,tenant_id,project_id,record_index,record_values,security_level,policy_version) values($1,$2,$3,$4,$5,1,'{"date":"2026-08-24T03:05:19.024Z"}','L1_INTERNAL',1)`,
+        [externalAnalysis, externalRecord, secondAsset, tenant, project],
+      );
+      await client.query(
+        "update service.analysis_run set status='READY',completed_at=clock_timestamp() where analysis_id=$1",
+        [externalAnalysis],
+      );
+      const externalEvidence = {
+        ...input.candidates[0]!.evidence[0]!,
+        assetId: secondAsset,
+        locator: `record:${externalRecord}`,
+        excerpt: '2026-08-24T03:05:19.024Z',
+        source: {
+          dataItemId: secondItem,
+          versionId: secondVersion,
+          analysisId: externalAnalysis,
+          recordId: externalRecord,
+        },
+      };
+      const crossSourceInput = {
+        ...input,
+        mappingVersion: 'cross-evidence.v1',
+        candidates: [
+          {
+            ...input.candidates[0]!,
+            evidence: [input.candidates[0]!.evidence[0]!, externalEvidence],
+          },
+        ],
+      };
+      const crossSourceCommand = command();
+      const crossSource = ImportRelationsOutputSchema.parse(
+        await call('import', crossSourceInput, crossSourceCommand),
+      );
+      expect(crossSource.createdCount).toBe(1);
+      expect(crossSource.items[0]!.candidate.evidence).toContainEqual(
+        externalEvidence,
+      );
+      expect(
+        ImportRelationsOutputSchema.parse(
+          await call('import', crossSourceInput, command()),
+        ).createdCount,
+      ).toBe(0);
+      for (const bad of [
+        { ...externalEvidence, sourceHash: 'c'.repeat(64) },
+        { ...externalEvidence, locator: 'XML date field' },
+        { ...externalEvidence, excerpt: '2020-01-01' },
+        {
+          ...externalEvidence,
+          source: { ...externalEvidence.source, recordId: randomUUID() },
+        },
+        {
+          ...externalEvidence,
+          source: { ...externalEvidence.source, dataItemId: item },
+        },
+        {
+          ...externalEvidence,
+          source: { ...externalEvidence.source, analysisId: randomUUID() },
+        },
+      ]) {
+        await expect(
+          call(
+            'import',
+            {
+              ...crossSourceInput,
+              mappingVersion: randomUUID(),
+              candidates: [{ ...input.candidates[0]!, evidence: [bad] }],
+            },
+            command(),
+          ),
+        ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      }
+      // Visibility is rechecked on every read and retry, including existing imports.
+      await client.query('reset role');
+      await client.query(
+        "update catalog.data_item set publication_status='WITHDRAWN' where data_item_id=$1",
+        [secondItem],
+      );
+      await expect(
+        call('get', { assertionId: crossSource.items[0]!.assertionId }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(
+        RelationListOutputSchema.parse(
+          await call('list', {
+            dataItemId: item,
+            versionId: version,
+            mappingVersion: 'cross-evidence.v1',
+          }),
+        ).totalCount,
+      ).toBe(0);
+      await expect(
+        call('import', crossSourceInput, command()),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(
+        call('import', crossSourceInput, crossSourceCommand),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      const hiddenFragment = await client.query(
+        `select e.evidence_fragment_id from knowledge.evidence_fragment e join knowledge.assertion a using(evidence_fragment_id) where a.assertion_id=$1 and ${relationFragmentVisibleSql('e')}`,
+        [crossSource.items[0]!.assertionId],
+      );
+      expect(hiddenFragment.rows).toHaveLength(0);
+
+      await client.query('reset role');
+      await client.query(
+        "update catalog.data_item set publication_status='PUBLISHED' where data_item_id=$1",
+        [secondItem],
       );
       const originalEntity = {
         key: 'expert:wang',

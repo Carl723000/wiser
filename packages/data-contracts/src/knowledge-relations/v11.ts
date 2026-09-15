@@ -37,14 +37,6 @@ export const RelationEvidenceSchema = z.strictObject({
   locator: Text,
   excerpt: z.string().max(4096).nullable(),
   polarity: z.enum(['SUPPORTS', 'CONTRADICTS']),
-  source: z
-    .strictObject({
-      dataItemId: Id,
-      versionId: Id,
-      analysisId: Id,
-      recordId: Id,
-    })
-    .optional(),
 });
 export const RelationCandidateSchema = z.strictObject({
   subject: RelationEntitySchema,
