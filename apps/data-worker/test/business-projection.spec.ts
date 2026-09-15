@@ -226,3 +226,44 @@ it('connects referenced original nodes without rewriting their source scope', as
   );
   expect(body.parameters.rows[0]?.['versionId']).toBe(row.versionId);
 });
+
+it('retains endpoint kinds and external identifiers through repeated projection', async () => {
+  const request = vi.fn((_input: GraphStacHttpRequest) =>
+    Promise.resolve({ status: 200, body: {} }),
+  );
+  const target = new Neo4jBusinessProjection({
+    baseUrl: 'http://neo4j:7474',
+    database: 'neo4j',
+    username: 'neo4j',
+    password: 'synthetic',
+    http: { request },
+  });
+  const input = {
+    ...row,
+    active: true,
+    candidate: {
+      ...row.candidate,
+      subject: { ...row.candidate.subject, externalId: 'company:1' },
+    },
+  };
+  await target.putBatch([input]);
+  await target.putBatch([input]);
+  const body = request.mock.calls[0]![0].body as {
+    statement: string;
+    parameters: { rows: Record<string, unknown>[] };
+  };
+  expect(body.parameters.rows[0]).toMatchObject({
+    subjectKind: 'ENTERPRISE',
+    subjectExternalId: 'company:1',
+    objectKind: 'EXTERNAL_ENTITY',
+    objectExternalId: 'outside:154',
+  });
+  for (const side of ['subject', 'object']) {
+    const node = side === 'subject' ? 's' : 'o';
+    expect(body.statement).toContain(`${node}.kind=row.${side}Kind`);
+    expect(body.statement).toContain(
+      `${node}.externalId=row.${side}ExternalId`,
+    );
+  }
+  expect(request.mock.calls[0]![0]).toEqual(request.mock.calls[2]![0]);
+});

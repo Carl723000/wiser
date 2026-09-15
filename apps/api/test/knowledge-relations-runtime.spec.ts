@@ -397,3 +397,25 @@ it('does not treat an absent or expired snapshot as an empty successful graph', 
     { code: 'NOT_FOUND' },
   );
 });
+
+it('refuses review 101 when RLS hides previous review records', async () => {
+  const f = fixture();
+  const result = (await f.call('import', f.input)) as {
+    items: { assertionId: string }[];
+  };
+  const id = result.items[0]!.assertionId;
+  f.rows.get(id)!['row_version'] = 101;
+  f.rows.get(id)!['reviews'] = [];
+  await expect(
+    f.call(
+      'review',
+      {
+        assertionId: id,
+        expectedVersion: 101,
+        decision: 'APPROVED',
+        rationale: 'Check hidden review history',
+      },
+      { ...f.context, idempotencyKey: randomUUID() },
+    ),
+  ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+});
