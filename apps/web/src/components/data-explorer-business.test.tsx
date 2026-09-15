@@ -360,3 +360,45 @@ it('limits reading to six real relations while keeping all objects searchable an
   );
   history.mockRestore();
 });
+
+it('defaults to all relations and retains the complete network while inspecting one object', async () => {
+  const observation = {
+    ...row,
+    assertionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    candidate: {
+      ...row.candidate,
+      subject: {
+        ...row.candidate.subject,
+        key: 'measurement',
+        label: '水质观测',
+        kind: 'OBSERVATION' as const,
+      },
+    },
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ items: [row, observation], totalCount: 2 }),
+      ),
+  );
+  const view = render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '全景网络' });
+  expect(
+    screen
+      .getByRole('button', { name: '全景网络' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  const nodes = () =>
+    within(screen.getByRole('list', { name: 'test graph' })).getAllByRole(
+      'listitem',
+    );
+  expect(nodes()).toHaveLength(3);
+  nav.search = new URLSearchParams({
+    saved: 'case',
+    businessEntity: relationNodeIdentity(row, row.candidate.subject),
+  });
+  view.rerender(<DataExplorerBusiness {...props} />);
+  expect(nodes()).toHaveLength(3);
+});

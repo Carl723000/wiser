@@ -27,3 +27,13 @@ it('accepts only unambiguous bounded reading state', () => {
     ).presentation,
   ).toBe('reading');
 });
+
+it('opens the complete network by default and retains explicitly requested reading', () => {
+  expect(readBusinessReading(new URLSearchParams()).presentation).toBe(
+    'network',
+  );
+  expect(
+    readBusinessReading(new URLSearchParams('businessPresentation=reading'))
+      .presentation,
+  ).toBe('reading');
+});

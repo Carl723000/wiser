@@ -17,6 +17,7 @@ const engine = vi.hoisted(() => ({
   destroy: vi.fn(),
   resize: vi.fn(),
   fitView: vi.fn().mockResolvedValue(undefined),
+  fitCenter: vi.fn().mockResolvedValue(undefined),
   zoomTo: vi.fn().mockResolvedValue(undefined),
   getZoom: vi.fn(() => 1),
   getElementPosition: vi.fn((id: string): [number, number] => {
@@ -51,6 +52,7 @@ vi.mock('@antv/g6', () => ({
     destroy = engine.destroy;
     resize = engine.resize;
     fitView = engine.fitView;
+    fitCenter = engine.fitCenter;
     zoomTo = engine.zoomTo;
     getZoom = engine.getZoom;
     getElementPosition = engine.getElementPosition;
@@ -354,4 +356,59 @@ it('cancels unfinished layout when the graph is removed', async () => {
     expect(WorkerDouble.current.terminate).toHaveBeenCalledOnce(),
   );
   expect(engine.render).not.toHaveBeenCalled();
+});
+
+it('recomputes spacing at the current zoom so fitting cannot cancel density changes', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  engine.getZoom.mockReturnValue(0.4);
+  const layoutSettings = {
+    layout: 'network' as const,
+    grouping: 'topology' as const,
+    nodeSpacing: 40,
+    groupSpacing: 200,
+  };
+  const props = {
+    result,
+    locale: 'zh-CN' as const,
+    onSelect: vi.fn(),
+    selectedId: null,
+    layoutSettings,
+    onLayoutSettingsChange: vi.fn(),
+  };
+  const view = render(<KnowledgeGraphCanvas {...props} />);
+  await waitFor(() =>
+    expect(WorkerDouble.current.postMessage).toHaveBeenCalled(),
+  );
+  const first = WorkerDouble.current;
+  await act(async () => {
+    first.onmessage?.({
+      data: [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: 100, y: 0 },
+      ],
+    });
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('knowledge-graph').getAttribute('data-state'),
+    ).toBe('ready'),
+  );
+  view.rerender(
+    <KnowledgeGraphCanvas
+      {...props}
+      layoutSettings={{ ...layoutSettings, nodeSpacing: 80 }}
+    />,
+  );
+  await waitFor(() => expect(WorkerDouble.current).not.toBe(first));
+  await act(async () => {
+    WorkerDouble.current.onmessage?.({
+      data: [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: 200, y: 0 },
+      ],
+    });
+  });
+  await waitFor(() => expect(engine.zoomTo).toHaveBeenCalledWith(0.4, false));
+  expect(engine.fitCenter).toHaveBeenCalled();
 });
