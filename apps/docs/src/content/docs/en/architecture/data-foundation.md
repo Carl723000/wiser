@@ -356,3 +356,5 @@ Exploration 1.12 adds optional `businessQuery` to an explicit version manifest. 
 ### Pinned cross-source evidence
 
 Cross-source relation evidence optionally pins `source.dataItemId`, `versionId`, `analysisId`, and `recordId`, alongside the original asset hash. The locator is `record:<recordId>`; a non-null excerpt must occur in that parsed record. Import/get/review 1.2 and list 1.5 keep prior schemas archived. Every read and retry reauthorizes the owner and all evidence sources; withdrawn, inaccessible, or mismatched evidence cannot contribute to a relation or its evidence/search readback. Dates remain source-supported candidates, not professional approval.
+
+Evidence reads first materialize the exact asset/version/hash under RLS, then validate its owner and optional external record. This prevents repeated catalog scans while retaining every publication, acceptance, security and record check; no visibility result is cached across requests.

@@ -6,7 +6,8 @@ function alias(value: string) {
   return value;
 }
 /** External evidence pins a completed parsed record as well as its original bytes.
- * Legacy local evidence keeps its original locator semantics.
+ * Legacy local evidence keeps its original locator semantics. The pinned asset
+ * is resolved before joins so each evidence does not rescan the whole catalog.
  */
 export function relationEvidenceVisibleSql(
   evidence = 'e',
@@ -14,10 +15,12 @@ export function relationEvidenceVisibleSql(
 ): string {
   const e = alias(evidence),
     b = alias(owner);
-  return `exists(select 1 from catalog.asset s join catalog.data_item_version owner_version on owner_version.version_id=${b}.version_id
-    where s.tenant_id=owner_version.tenant_id and s.project_id=owner_version.project_id and s.asset_id=(${e}->>'assetId')::uuid
-    and s.version_id=coalesce((${e}->'source'->>'versionId')::uuid,${b}.version_id)
-    and s.content_hash=decode(${e}->>'sourceHash','hex') and s.lifecycle_state='RAW'
+  return `exists(with evidence_asset as materialized (
+      select pinned.* from catalog.asset pinned where pinned.asset_id=(${e}->>'assetId')::uuid
+      and pinned.version_id=coalesce((${e}->'source'->>'versionId')::uuid,${b}.version_id)
+      and pinned.content_hash=decode(${e}->>'sourceHash','hex') and pinned.lifecycle_state='RAW'
+    ) select 1 from evidence_asset s join catalog.data_item_version owner_version on owner_version.version_id=${b}.version_id
+    where s.tenant_id=owner_version.tenant_id and s.project_id=owner_version.project_id
     and (not (${e} ? 'source') or exists(
       select 1 from catalog.data_item_version ev join catalog.data_item ei using(tenant_id,project_id,data_item_id)
       join service.analysis_run ar on ar.version_id=ev.version_id and ar.tenant_id=ev.tenant_id and ar.project_id=ev.project_id
