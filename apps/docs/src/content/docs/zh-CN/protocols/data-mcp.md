@@ -25,7 +25,7 @@ lastReviewedCommit: a67f905d4afbb2008494f5ebd7a50fd21953bd99
 
 Data MCP 是现有 WISER MCP Gateway 的静态 `WiserMcpModule`，不是第二套业务实现。stdio 与无状态 Streamable HTTP 都调用 `/api/data/v1`，从不连接 data-postgres、SeaweedFS 或任一投影，也不持有 Supabase service-role key。
 
-模块从 `@wiser/data-contracts` 的有序 Registry 注册 33 个 strict Zod Tool。Tool name、输入 schema、query/command 注解和 REST mapping 在运行时来自同一 Capability definition；不存在 AST 扫描、通用 SQL/Cypher/DSL Tool 或自动发现的数据库命令。
+模块从 `@wiser/data-contracts` 的有序 Registry 注册 36 个 strict Zod Tool。Tool name、输入 schema、query/command 注解和 REST mapping 在运行时来自同一 Capability definition；不存在 AST 扫描、通用 SQL/Cypher/DSL Tool 或自动发现的数据库命令。
 
 ## Data API 配置
 
@@ -88,7 +88,7 @@ pnpm --filter @wiser/mcp start:http
 
 禁止把任一 token 放进 query、Tool 参数、Resource URI、日志、Telemetry 或 Git。`GET /health/live` 与 `/health/ready` 无需认证且禁止缓存；优雅关闭先让 ready 变为 false，再排空在途请求。每个 `/mcp` 请求创建新 server/transport，当前入口不签发或恢复 MCP session。
 
-## 33 个 Tools
+## 36 个 Tools
 
 | MCP Tool                       | Capability                    | 类型    |
 | ------------------------------ | ----------------------------- | ------- |
@@ -241,3 +241,29 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 `data_reconciliation_create`, `data_reconciliation_list`, `data_reconciliation_get`, `data_reconciliation_review` 对应 `data.reconciliation.create/list/get/review`。来源固定、规范化、不可变证据和限额见[副本核验与业务去重](/architecture/data-foundation/#副本关系核验与业务观测去重)。读取需要 `data.query` 和 `data.catalog.read`；创建另需 `data.ingestion.write`，审核另需 `data.publish` 且只能由创建批次的人类身份执行。审核携带 `expectedVersion`；REST 还要求一致的 `If-Match: "v1"`，MCP 将预期版本转为该请求头。两个命令在相同重试中均须保留原 UUID 幂等键。
 
 `get` 接收 `batchId`、`first`（默认 25，最多 100）、可选 `after` 和 `groupIndex`。未指定组号时分页返回观测组摘要；指定时分页返回该组来源成员。使用 `nextCursor` 继续，不得改变绑定的批次、版本和组。`list` 接收 `versionId`，返回本人最近最多 100 批。创建冻结 `left`、`right` 和 `plan`；审核接收 `decision: "verify" | "reject"` 和 `note`。冲突或信息不完整时不能确认；候选的 `independentObservationCount` 为 null，只有人工确认的批次才返回所选规则范围内的计数。Agent 可以提出批次并读取确定性证据，不能以 Agent 身份作最终审核。
+
+## 资料类型检查
+
+通过 HTTP 使用 `data_assessment_create/get/list`，先发现实际契约。复用原件和已完成解析，不为检查元数据重复下载或解析。明确检查对象与出处，单位或坐标系未知就保留未知，同一命令重试复用幂等键。`CHECKS_PASSED` 仅是本项信息一致性检查，不是科学结论；翻页时保留文件、版本、哈希、规则及解析器版本和限制。
+
+`data_assessment_overview` 按明确检查对象返回资料计数和下一步清单。获取前先核对未核查资料，优先复用已保存待解析原件，申请、限流和暂时故障分别处理。不同检查对象的计数不能相加当作独立数据集总数。
+
+`data_knowledge_relations_import/get/list/review` 与 REST 业务关系入口一致。导入证据只创建待审核候选；普通列表默认已通过关系，候选队列需明确请求其状态。委托智能体可在已有权限内整理、导入候选，不能代替人工审核。每条关系保留原件、定位、报告原值及限制；投影存储不作为智能体操作入口。
+
+### 类型化知识候选（关系协议1.1）
+
+关系协议1.1在现有来源绑定流程中增加人物、机构、文档、观点、事件、观测、政策、模型运行及地点。已登记关系规则限制两端对象类型；新增关系必须说明记录性质、时间角色、位置角色和适用条件。计划、历史报道及模拟不能标为采样观测。原件哈希、不可变版本、待审核与权限规则保持不变，保留1.0发现契约。跨资料身份对应与联合查询见下述扩展。
+
+跨资料身份对应：IDENTITY_MATCH显式引用已存在的来源对象，不按同名合并。接收时核对名称、类型和外部标识，拒绝引用链。列表最多联合六十四份明确选择的来源，每次读取重新核权；来源撤回后关联边及计数隐藏。可重建图投影使用原始端点身份。待审对应不等于已批准知识。
+
+关系列表能力1.3沿用原有请求与返回字段，将范围扩为主来源加最多63份关联版本（合计64份）；1.1最多12份与1.2最多32份的发现契约原样归档。每份所选来源在计数和读取前核验权限，任何一份被拒绝都不返回部分结果；每页仍最多100条关系。不迁移权威数据，不改变审核状态或图投影身份。
+
+关系列表1.4增加`queryId`入口，与内联来源清单互斥。先通过已有探索POST能力建立不可变来源范围，之后GET分页只传短标识。每次检查所有者、租户/项目、用途、策略、安全级别、有效期及全部来源；有来源不可见时整次失败，不返回部分成功。经授权的空范围返回零条。内联来源仍限64份，1.0—1.3发现契约保持不变。查询标识会过期，长期入口复用保存视图来恢复原版本。业务时间和记录级条件通过下述探索1.12扩展提供。
+
+探索1.12为明确的版本清单增加可选`businessQuery`，固定审核状态、当前/历史模式、原资料时间筛选及关系版本标识（最多2,000条）。每次读回重新检查来源权限和关系版本，发生变更或不可见时整次失败。关系列表、明确绑定的记录、记录汇总和地图要素共用该范围。`urn:wiser:record:`只能绑定到指定解析批次中、与关系证据文件相符的记录。按日期查询HTML横向表格时需要已核对的原列选择，返回时收起其他时期，原件不变。资料概况和就绪度仍统计来源资产，不能称为筛选后的观测量。保存视图打开/导出1.1保留这些条件，其1.0及探索1.11发现契约保持冻结。保存链接受用途隔离：面向用户的视图须在已授权网页控制台用途下创建，不能直接分享批处理用途中的私人视图。无几何记录保留未定位，不推断位置或专业批准。
+
+### 固定版本的跨来源证据
+
+跨来源关系证据可选填写 `source.dataItemId`、`versionId`、`analysisId` 和 `recordId`，同时保留原文件哈希。定位固定为 `record:<recordId>`；非空摘录须存在于该条解析记录中。导入、详情和审核接口为1.2，列表为1.5，既有契约版本保留。读取与重试均重新校验关系所属资料及全部证据来源；来源撤回、无权访问或定位不匹配的证据不能继续支撑关系或从证据与检索入口泄露。提取的日期仍是有来源的候选，不代表专业审核。
+
+`data_assessment_list` 1.1 通过同一 HTTP 合同接受可选 `assetId`、`latestPerAsset`。可用于显示对应原件的空间说明，不得据此生成位置已核验或业务已批准的结论。

@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: bac8703efbf93c408d68b6f7a8ca8305d9565c1b
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -182,3 +182,17 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 `0022_observation_reconciliation.sql` 增加不可变候选与审核证据，强制所有者/范围 RLS、单向乐观版本审核及最小列权限。`pnpm test:postgres:data-api` 包含 `data-reconciliation.integration.spec.ts`，仅在已迁移的隔离测试数据库运行；使用无 BYPASSRLS 角色验证来源重新授权、幂等、分页、审核冲突及原记录不变。
 
 运行角色配置在通用表权限授予后，显式撤销核验证据的整表更新权，仅恢复 `status`、`row_version`、`reviewed_at`、`review_note` 四个审核字段的更新权。重复配置也必须保留此边界，并继续受强制 RLS 和不可变证据触发器保护。
+
+迁移`0023_exploration_point_guard.sql`在瓦片点聚合前加入仅含非空点的物化阶段。可回滚的探索集成测试组合十万个点、一条线和一个面，并在保存点内调整类型检查的规划成本，分别解码原始与高德瓦片。测试验证合法的条件重排不会对非点几何读取X/Y坐标，同时保留记录身份、点计数与既有授权边界。
+
+## 资料检查证据
+
+`0024_intake_assessment.sql` 新增强制 RLS、不可改写的 `service.intake_assessment`，插入时绑定资料、版本、文件、哈希和可选已完成分析，安全等级不能低于原件。运行角色配置在通用授权后撤销修改及删除权限，不迁移旧资料或发布状态。隔离 PostgreSQL 测试 `apps/api/test/data-assessment.integration.spec.ts` 验证证据、过期哈希、幂等重试、分页、不可改写和来源撤回，已加入 `pnpm test:postgres:data-api`。
+
+迁移 `0025_knowledge_relations.sql`、`0026_business_projection_cursor.sql` 增加强制 RLS 的来源绑定和内部可续跑投影位点。断言置信度允许 null 表达未知，历史数值保留。所属范围外键和来源约束核对 RAW 原件、版本与哈希，关系证据、审核历史及断言正文保持不可变；状态改变必须匹配下一版本的审核记录。关系数据库实测覆盖重复命令、映射变更、人工审核、过期审核拒绝、跨项目、证据不可变及来源撤回。仅对隔离测试目标配置 `DATA_TEST_NEO4J_URL`（可选 `DATA_TEST_NEO4J_PASSWORD`），即可追加投影删除、中断重试、重建与撤回移除验证。
+
+`0027_cross_source_evidence.sql` 兼容扩展关系绑定约束，允许引用同租户、同项目另一份资料的固定解析记录。通过校验和迁移程序应用，不重写既有关系及历史。PostgreSQL集成测试可用 `WISER_TEST_PENDING_MIGRATION=1` 在最终回滚的事务内先验证新迁移；该开关仅供测试，不会升级正在运行的平台。
+
+`0028_relation_integrity.sql` 追加在校验和不变的0027之后。内部 `security.relation_entity_definition` 开启RLS，不授予运行角色策略或权限；仅其所有者的SECURITY DEFINER触发器可访问，固定 `pg_catalog` 搜索路径并检查新行范围。运行角色配置在通用授权后再次撤销该表访问。迁移先检查历史身份冲突，再回填。集成测试在回滚事务中验证待应用0028，覆盖隐藏的高安全级别定义、高低权限交替审核100次、第101次拒绝及定义表不可读。不得改名或重新编号已应用迁移。
+
+机制依据：[PostgreSQL RLS完整性边界](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)及[安全的SECURITY DEFINER函数](https://www.postgresql.org/docs/current/sql-createfunction.html)。

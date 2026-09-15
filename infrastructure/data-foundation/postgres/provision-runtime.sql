@@ -161,6 +161,12 @@ grant execute on functions to wiser_data_runtime;
 
 -- Query manifests are immutable, expiring caches owned by the verified caller.
 do $$ begin
+  if to_regclass('knowledge.assertion_binding') is not null then
+    revoke update,delete on knowledge.assertion_binding from wiser_data_runtime;
+  end if;
+  if to_regclass('service.intake_assessment') is not null then
+    revoke update,delete on service.intake_assessment from wiser_data_runtime;
+  end if;
   if to_regclass('service.observation_reconciliation') is not null then
     revoke update on service.observation_reconciliation from wiser_data_runtime;
     grant update(status,row_version,reviewed_at,review_note) on service.observation_reconciliation to wiser_data_runtime;
@@ -173,6 +179,10 @@ do $$ begin
   if to_regclass('service.exploration_snapshot') is not null then
     grant select, insert, delete on service.exploration_snapshot to wiser_data_runtime;
     revoke update on service.exploration_snapshot from wiser_data_runtime;
+  end if;
+  if to_regclass('security.relation_entity_definition') is not null then
+    revoke all on security.relation_entity_definition from wiser_data_runtime;
+    revoke execute on function security.guard_relation_entity_definition() from wiser_data_runtime;
   end if;
 end $$;
 

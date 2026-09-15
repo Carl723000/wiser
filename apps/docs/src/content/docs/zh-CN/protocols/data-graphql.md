@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: a67f905d4afbb2008494f5ebd7a50fd21953bd99
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## 入口与权威契约
@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-实现使用 Mercurius 的 schema-first SDL，不使用 decorator 或 TypeScript AST 扫描。GraphQL field 只是 33 项 Capability 的投影；resolver 与 REST 调用同一个 `DataCapabilityHandler`，因此输入/输出 Zod 校验、Scope、安全 ceiling、Purpose、timeout、幂等和 audit 语义一致。
+实现使用 Mercurius 的 schema-first SDL，不使用 decorator 或 TypeScript AST 扫描。GraphQL field 只是 41 项 Capability 的投影；resolver 与 REST 调用同一个 `DataCapabilityHandler`，因此输入/输出 Zod 校验、Scope、安全 ceiling、Purpose、timeout、幂等和 audit 语义一致。
 
 GraphQL 与 Mercurius 的精确兼容版本由 `apps/api/package.json` 和根 lockfile 定义，并由 API typecheck/build 验证。协议文档不复制会随依赖升级变化的版本清单。
 
@@ -217,3 +217,29 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 `createDataReconciliation`, `dataReconciliations`, `dataReconciliation`, `reviewDataReconciliation` 对应 `data.reconciliation.create/list/get/review`。来源固定、规范化、不可变证据和限额见[副本核验与业务去重](/architecture/data-foundation/#副本关系核验与业务观测去重)。读取需要 `data.query` 和 `data.catalog.read`；创建另需 `data.ingestion.write`，审核另需 `data.publish` 且只能由创建批次的人类身份执行。审核携带 `expectedVersion`；REST 还要求一致的 `If-Match: "v1"`，MCP 将预期版本转为该请求头。两个命令在相同重试中均须保留原 UUID 幂等键。
 
 `get` 接收 `batchId`、`first`（默认 25，最多 100）、可选 `after` 和 `groupIndex`。未指定组号时分页返回观测组摘要；指定时分页返回该组来源成员。使用 `nextCursor` 继续，不得改变绑定的批次、版本和组。`list` 接收 `versionId`，返回本人最近最多 100 批。创建冻结 `left`、`right` 和 `plan`；审核接收 `decision: "verify" | "reject"` 和 `note`。冲突或信息不完整时不能确认；候选的 `independentObservationCount` 为 null，只有人工确认的批次才返回所选规则范围内的计数。Agent 可以提出批次并读取确定性证据，不能以 Agent 身份作最终审核。
+
+## 资料检查字段
+
+`createDataAssessment(input: JSON!)`、`dataAssessment(input: JSON!)` 和 `dataAssessments(input: JSON!)` 分别映射 `data.assessment.create/get/list`，共用严格输入输出、原件授权及命令幂等。JSON 标量不绕过校验。报告区分原件保存事实、范围声明、类型检查发现和位置待核验，不修改发布状态。
+
+`dataAssessmentOverview(input: JSON!)` 映射 `data.assessment.overview`，保持检查对象、授权范围、资料计数口径与分页含义一致。
+
+`importDataRelations`、`reviewDataRelation` 为 JSON 输入 mutation；`dataRelation`、`dataRelations` 为 JSON 输入 query。它们映射到与 REST 相同的业务关系能力，保留原件哈希、默认仅已通过列表、人工审核、预期版本及命令幂等要求。邻域查询固定来源版本，并可按实体和映射筛选，不隐式合并来源内身份。
+
+### 类型化知识候选（关系协议1.1）
+
+关系协议1.1在现有来源绑定流程中增加人物、机构、文档、观点、事件、观测、政策、模型运行及地点。已登记关系规则限制两端对象类型；新增关系必须说明记录性质、时间角色、位置角色和适用条件。计划、历史报道及模拟不能标为采样观测。原件哈希、不可变版本、待审核与权限规则保持不变，保留1.0发现契约。跨资料身份对应与联合查询见下述扩展。
+
+跨资料身份对应：IDENTITY_MATCH显式引用已存在的来源对象，不按同名合并。接收时核对名称、类型和外部标识，拒绝引用链。列表最多联合六十四份明确选择的来源，每次读取重新核权；来源撤回后关联边及计数隐藏。可重建图投影使用原始端点身份。待审对应不等于已批准知识。
+
+关系列表能力1.3沿用原有请求与返回字段，将范围扩为主来源加最多63份关联版本（合计64份）；1.1最多12份与1.2最多32份的发现契约原样归档。每份所选来源在计数和读取前核验权限，任何一份被拒绝都不返回部分结果；每页仍最多100条关系。不迁移权威数据，不改变审核状态或图投影身份。
+
+关系列表1.4增加`queryId`入口，与内联来源清单互斥。先通过已有探索POST能力建立不可变来源范围，之后GET分页只传短标识。每次检查所有者、租户/项目、用途、策略、安全级别、有效期及全部来源；有来源不可见时整次失败，不返回部分成功。经授权的空范围返回零条。内联来源仍限64份，1.0—1.3发现契约保持不变。查询标识会过期，长期入口复用保存视图来恢复原版本。业务时间和记录级条件通过下述探索1.12扩展提供。
+
+探索1.12为明确的版本清单增加可选`businessQuery`，固定审核状态、当前/历史模式、原资料时间筛选及关系版本标识（最多2,000条）。每次读回重新检查来源权限和关系版本，发生变更或不可见时整次失败。关系列表、明确绑定的记录、记录汇总和地图要素共用该范围。`urn:wiser:record:`只能绑定到指定解析批次中、与关系证据文件相符的记录。按日期查询HTML横向表格时需要已核对的原列选择，返回时收起其他时期，原件不变。资料概况和就绪度仍统计来源资产，不能称为筛选后的观测量。保存视图打开/导出1.1保留这些条件，其1.0及探索1.11发现契约保持冻结。保存链接受用途隔离：面向用户的视图须在已授权网页控制台用途下创建，不能直接分享批处理用途中的私人视图。无几何记录保留未定位，不推断位置或专业批准。
+
+### 固定版本的跨来源证据
+
+跨来源关系证据可选填写 `source.dataItemId`、`versionId`、`analysisId` 和 `recordId`，同时保留原文件哈希。定位固定为 `record:<recordId>`；非空摘录须存在于该条解析记录中。导入、详情和审核接口为1.2，列表为1.5，既有契约版本保留。读取与重试均重新校验关系所属资料及全部证据来源；来源撤回、无权访问或定位不匹配的证据不能继续支撑关系或从证据与检索入口泄露。提取的日期仍是有来源的候选，不代表专业审核。
+
+`dataAssessments` 使用检查列表 1.1：可选 `assetId` 限定原文件，`latestPerAsset: true` 先逐文件选择最新且仍可访问的检查，再有界分页；缺项或失效声明不退回旧结论，默认仍返回历史。

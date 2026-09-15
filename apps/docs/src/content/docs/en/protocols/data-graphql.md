@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: a67f905d4afbb2008494f5ebd7a50fd21953bd99
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Endpoint and authority contract
@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 33 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
+It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 41 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
 
 `apps/api/package.json` and the root lockfile define the exact compatible GraphQL and Mercurius versions, and API typecheck/build verifies that combination. Protocol prose does not duplicate a version inventory that changes during dependency upgrades.
 
@@ -217,3 +217,29 @@ Saved-view queries are `dataExploreViews(input: JSON!)`, `dataExploreView(input:
 `createDataReconciliation`, `dataReconciliations`, `dataReconciliation`, `reviewDataReconciliation` project `data.reconciliation.create/list/get/review`. See [copy verification and business deduplication](/en/architecture/data-foundation/#copy-verification-and-business-observation-deduplication) for source pins, normalization, immutable evidence and limits. Reads require `data.query` and `data.catalog.read`; creation additionally requires `data.ingestion.write`, review requires `data.publish` and the creating human identity. Review requires `expectedVersion`; REST also requires matching `If-Match: "v1"`. MCP forwards its expected version as that header. Both commands require a stable UUID idempotency key across identical retries.
 
 `get` takes `batchId`, `first` (default 25, maximum 100), optional `after`, and optional `groupIndex`. Without a group index it pages group summaries; with it, it pages that group's source members. Continue with the returned `nextCursor` without changing the batch/version/group. `list` takes `versionId` and returns at most 100 recent owned batches. Creation freezes `left`, `right` and `plan`; review accepts `decision: "verify" | "reject"` and `note`. Conflicts or incomplete records block verification. Candidate results have null `independentObservationCount`; only a human-verified batch has a count within the declared rules. Agents may propose batches and read deterministic evidence but cannot issue the final review as an Agent identity.
+
+## Intake assessment fields
+
+`createDataAssessment(input: JSON!)`, `dataAssessment(input: JSON!)` and `dataAssessments(input: JSON!)` map to `data.assessment.create/get/list`. The JSON scalar preserves the strict shared schemas, source reauthorization and command idempotency. Reports distinguish saved originals, declared coverage, typed check findings and unverified position; they do not modify publication.
+
+`dataAssessmentOverview(input: JSON!)` maps to `data.assessment.overview`, retaining the exact target, authorization, count grain and paging semantics.
+
+`importDataRelations` and `reviewDataRelation` are JSON-input mutations; `dataRelation` and `dataRelations` are JSON-input queries. All map to the same versioned business-relation capabilities as REST, including exact source hashes, default approved-only lists, human review, optimistic versions and command idempotency. Graph neighborhoods use the source version and optional entity/mapping filter; they never implicitly merge source-local identities.
+
+### Typed knowledge candidates (relations 1.1)
+
+Relations 1.1 adds persons, organizations, documents, claims, events, observations, policies, model runs and places through the existing source-bound workflow. Registered predicates constrain endpoint kinds; each extended relation requires explicit record nature, time role, location role and applicability. Plans, historical reports and simulations cannot be declared sampling observations. Source hashes, immutable versions, pending review and permissions remain unchanged. The 1.0 discovery schemas are retained. This extension now also supports explicit cross-source identity correspondence as described below.
+
+Explicit IDENTITY_MATCH candidates reference existing source entities, preserving versioned identities rather than merging equal labels. Import checks names, kinds and external IDs, refusing reference chains. Lists accept at most sixty-four selected sources and source-scoped entity focus. Every source and referenced endpoint is reauthorized on each read; withdrawal hides related edges and counts. Rebuildable projections retain original endpoint identities. Pending correspondence is not approved knowledge.
+
+List capability 1.3 supports a primary source plus at most 63 related versions (64 total), using the existing request and response fields. The 1.1 twelve-source and 1.2 thirty-two-source discovery schemas remain archived unchanged. Every selected source is authorized before counting or reading; no partial result is returned when any source is denied. Pagination remains at most 100 relations per response. This bounded expansion does not change authority data, review state or projection identities.
+
+List capability 1.4 additionally accepts `queryId` instead of inline source IDs. Create the immutable source manifest through the existing exploration POST capability; GET relation pages then use its short ID. Owner, tenant/project, purpose, policy, security level, expiry and every source are rechecked. Missing or denied members fail the request, never a partial success. An empty authorized manifest returns zero. Inline scope retains the 64-source bound; discovery versions 1.0–1.3 remain unchanged. A query ID expires; use existing saved views to reopen pinned versions. Business conditions are available through exploration 1.12 as described below.
+
+Exploration 1.12 adds optional `businessQuery` to an explicit version manifest. It fixes review status, current/history mode, source-time filters and compact assertion/version pins (at most 2,000). Every read rechecks source authorization and authority versions; a changed or unavailable pin fails the whole scope. Relation pages, bound records, record aggregates and map features use this same scope. Explicit `urn:wiser:record:` identities bind only to records in the pinned analysis with a matching evidence asset. Every date-filtered HTML table row requires original-column selections backed by the selected assertion’s pinned table/row/column evidence, even when only one declared period is currently visible. Caller-supplied month columns and unrestricted whole-row text are rejected; the result omits other periods without altering the original asset or claiming daily observations. Resource inventory/readiness counts still describe source assets, not scoped observations. Saved-view open/export 1.1 retain the new scope, while their 1.0 and exploration 1.11 discovery schemas stay frozen. Saved links are purpose-scoped: create a user-facing view with the authorized web-console purpose, not an unrelated batch-test purpose. Geometry-free records remain unlocated; no location or scientific approval is inferred.
+
+### Pinned cross-source evidence
+
+Cross-source relation evidence optionally pins `source.dataItemId`, `versionId`, `analysisId`, and `recordId`, alongside the original asset hash. The locator is `record:<recordId>`; a non-null excerpt must occur in that parsed record. Import/get/review 1.2 and list 1.5 keep prior schemas archived. Every read and retry reauthorizes the owner and all evidence sources; withdrawn, inaccessible, or mismatched evidence cannot contribute to a relation or its evidence/search readback. Dates remain source-supported candidates, not professional approval.
+
+`dataAssessments` uses assessment list 1.1: optional `assetId` selects an exact original, and `latestPerAsset: true` returns one newest authorized report per file before bounded pagination. Missing or stale declarations are not replaced with older claims; the default still returns history.

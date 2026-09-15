@@ -1,3 +1,8 @@
+import {
+  businessRecordPredicate,
+  projectBusinessRecord,
+  type BusinessRecordPin,
+} from './business-query-runtime.js';
 import { spatialPredicate } from './exploration-spatial.js';
 import { z } from 'zod';
 import { queryFilteredRecords } from './exploration-filtered-records.js';
@@ -29,7 +34,8 @@ const RECORDS = `from catalog.analysis_record record join jsonb_array_elements($
     and (not $4::boolean or record.geom is not null)
     and ($5::float8[] is null or st_intersects(record.geom,st_makeenvelope(($5::float8[])[1],($5::float8[])[2],($5::float8[])[3],($5::float8[])[4],4326)))
     and ($6::jsonb is null or service.exploration_record_matches(record.record_values,$6))
-    and ($7::float8[] is null or ${spatialPredicate('record.geom', '$7::float8[]')})`;
+    and ($7::float8[] is null or ${spatialPredicate('record.geom', '$7::float8[]')})
+    and ($8::jsonb is null or ${businessRecordPredicate('record', '$8')})`;
 
 export async function queryAnalysisView(
   client: QueryAdapterPgClient,
@@ -37,6 +43,7 @@ export async function queryAnalysisView(
   queryId: string,
   input: ExplorationQueryInput,
   spec: QuerySpec = {},
+  businessPins?: readonly BusinessRecordPin[],
 ) {
   const recordQuery = spec.recordQuery;
   if (
@@ -97,6 +104,8 @@ export async function queryAnalysisView(
       ? (recordQuery?.assetId ??
         input.assetId ??
         recordAssetId ??
+        businessPins?.find((pin) => pin.versionId === ref?.versionId)
+          ?.assetId ??
         (spec.spatialBounds
           ? assets.find((asset) => (asset.featureCount ?? 0) > 0)?.assetId
           : undefined) ??
@@ -144,6 +153,7 @@ export async function queryAnalysisView(
     input.bbox ?? null,
     recordQuery ? JSON.stringify(recordQuery.filters) : null,
     spec.spatialBounds ?? null,
+    businessPins ? JSON.stringify(businessPins) : null,
   ];
   const maximumBytes =
     RECORD_PAGE_BYTES -
@@ -153,7 +163,7 @@ export async function queryAnalysisView(
     throw new DataCapabilityHandlerError('VALIDATION_FAILED');
   const filtered =
     input.view === 'records' &&
-    (recordQuery || spec.spatialBounds) &&
+    (recordQuery || spec.spatialBounds || businessPins) &&
     selectedAssetId
       ? await queryFilteredRecords(client, {
           analysisId: ref?.analysisId ?? null,
@@ -164,6 +174,17 @@ export async function queryAnalysisView(
           query: recordQuery ?? { assetId: selectedAssetId, filters: [] },
           ...(spec.spatialBounds ? { spatialBounds: spec.spatialBounds } : {}),
           maximumBytes,
+          ...(businessPins
+            ? {
+                recordIds: businessPins
+                  .filter(
+                    (pin) =>
+                      pin.versionId === ref?.versionId &&
+                      pin.assetId === selectedAssetId,
+                  )
+                  .map((pin) => pin.recordId),
+              }
+            : {}),
         })
       : null;
   const counted = filtered
@@ -215,7 +236,7 @@ export async function queryAnalysisView(
         }
       : await client.query(
           `select record.*,ref->>'dataItemId' data_item_id,ref->>'versionId' version_id,st_asgeojson(record.geom)::jsonb geometry ${RECORDS}
-      order by ref->>'dataItemId',ref->>'versionId',record.asset_id,record.record_index limit $8::integer offset $9::integer`,
+      order by ref->>'dataItemId',ref->>'versionId',record.asset_id,record.record_index limit $9::integer offset $10::integer`,
           [...params, input.first + 1, offset],
         );
   const records = page.rows.slice(0, input.first).map((row) =>
@@ -234,7 +255,16 @@ export async function queryAnalysisView(
               z.record(z.string(), z.json()).parse(row['record_values']),
             ).filter(([key]) => recordQuery.columns!.includes(key)),
           )
-        : row['record_values'],
+        : businessPins
+          ? projectBusinessRecord(
+              row['record_values'],
+              businessPins.find(
+                (pin) =>
+                  pin.recordId === row['record_id'] &&
+                  pin.analysisId === row['analysis_id'],
+              )!,
+            )
+          : row['record_values'],
     }),
   );
   if (input.view === 'records' && records.length === 0 && totalCount > offset)

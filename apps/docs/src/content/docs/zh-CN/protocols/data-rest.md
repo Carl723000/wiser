@@ -1,6 +1,6 @@
 ---
 title: Data REST API
-description: Data Foundation 33 项 Capability、OpenAPI、受控 Resource、幂等、SSE 与资产下载协议。
+description: Data Foundation 41 项 Capability、OpenAPI、受控 Resource、幂等、SSE 与资产下载协议。
 docType: protocol-reference
 scope: data-rest-api
 status: active
@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: a67f905d4afbb2008494f5ebd7a50fd21953bd99
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## 协议边界
@@ -51,7 +51,7 @@ MCP、Skill 和 Web 的服务端 DAL 都通过这个 HTTP 边界工作。任何�
 
 ## OpenAPI 契约投影
 
-共享 `GET /openapi.json` 返回 OpenAPI 3.1 文档，标题固定为 **WISER Platform API**，同时覆盖 Platform、Agent EXCON 与 Data Foundation。Data 的 33 项 Capability 不维护第二份手写 Schema：Fastify 在注册路由时直接把 Registry 的 Zod 4 输入/输出转换成 draft-7 JSON Schema，再按 path、query、body 与 required Header 投影为 OpenAPI operation。
+共享 `GET /openapi.json` 返回 OpenAPI 3.1 文档，标题固定为 **WISER Platform API**，同时覆盖 Platform、Agent EXCON 与 Data Foundation。Data 的 41 项 Capability 不维护第二份手写 Schema：Fastify 在注册路由时直接把 Registry 的 Zod 4 输入/输出转换成 draft-7 JSON Schema，再按 path、query、body 与 required Header 投影为 OpenAPI operation。
 
 每个 Data operation 都带 `data-foundation` tag、稳定 `operationId`、`bearerAuth`、成功状态的响应 Schema，以及 command 的 `Idempotency-Key` 和版本化 command 的 `If-Match`。Fastify 的 schema compiler 在这里服务于 OpenAPI 投影；运行时唯一业务门禁仍是同一 `DataCapabilityHandler` 的 strict Zod 输入/输出校验，不能让生成文档变成第二个行为来源。
 
@@ -85,32 +85,51 @@ If-Match: "v3"
 
 适用范围是 upload Session complete、ingestion submit/approve/reject 与 Operation cancel。Header 与 body 中已有的 `expectedVersion` 必须一致。成功响应在能找到聚合版本时返回 `ETag: "vN"`。所有身份、业务与错误响应使用 `private, no-store`。
 
-## 33 项 Capability 路由
+## 41 项 Capability 路由
 
-| Capability                    | 方法与路径                                                | 成功               |
-| ----------------------------- | --------------------------------------------------------- | ------------------ |
-| `data.catalog.search`         | `GET /catalog/data-items`                                 | `200`              |
-| `data.catalog.get`            | `GET /catalog/data-items/:dataItemId`                     | `200`              |
-| `data.query`                  | `POST /query`                                             | `200`              |
-| `data.search.federated`       | `POST /search`                                            | `200`              |
-| `data.knowledge.search`       | `POST /knowledge/search`                                  | `200`              |
-| `data.graph.expand`           | `POST /graph/expand`                                      | `200`              |
-| `data.graph.findPath`         | `POST /graph/find-path`                                   | `200`              |
-| `data.geo.query`              | `POST /geo/query`                                         | `200`              |
-| `data.geo.intersect`          | `POST /geo/intersect`                                     | `200`              |
-| `data.ingestion.create`       | `POST /ingestions`                                        | `202`              |
-| `data.ingestion.submit`       | `POST /ingestions/:ingestionId/submit`                    | `202`              |
-| `data.operation.get`          | `GET /operations/:operationId`                            | `200`              |
-| `data.catalog.create`         | `POST /catalog/data-items`                                | `201`              |
-| `data.catalog.versions.list`  | `GET /catalog/data-items/:dataItemId/versions`            | `200`              |
-| `data.catalog.versions.get`   | `GET /catalog/data-items/:dataItemId/versions/:versionId` | `200`              |
-| `data.uploadSession.create`   | `POST /upload-sessions`                                   | `201`              |
-| `data.uploadSession.complete` | `POST /upload-sessions/:uploadSessionId/complete`         | `200`              |
-| `data.ingestion.get`          | `GET /ingestions/:ingestionId`                            | `200`              |
-| `data.ingestion.approve`      | `POST /ingestions/:ingestionId/approve`                   | `202`              |
-| `data.ingestion.reject`       | `POST /ingestions/:ingestionId/reject`                    | `200`              |
-| `data.operation.cancel`       | `POST /operations/:operationId/cancel`                    | `200`              |
-| `data.operation.events`       | `GET /operations/:operationId/events`                     | `200` SSE snapshot |
+| Capability                        | 方法与路径                                                | 成功  |
+| --------------------------------- | --------------------------------------------------------- | ----- |
+| `data.catalog.search`             | `GET /catalog/data-items`                                 | `200` |
+| `data.catalog.get`                | `GET /catalog/data-items/:dataItemId`                     | `200` |
+| `data.query`                      | `POST /query`                                             | `200` |
+| `data.search.federated`           | `POST /search`                                            | `200` |
+| `data.knowledge.search`           | `POST /knowledge/search`                                  | `200` |
+| `data.graph.expand`               | `POST /graph/expand`                                      | `200` |
+| `data.graph.findPath`             | `POST /graph/find-path`                                   | `200` |
+| `data.geo.query`                  | `POST /geo/query`                                         | `200` |
+| `data.geo.intersect`              | `POST /geo/intersect`                                     | `200` |
+| `data.ingestion.create`           | `POST /ingestions`                                        | `202` |
+| `data.ingestion.submit`           | `POST /ingestions/:ingestionId/submit`                    | `202` |
+| `data.operation.get`              | `GET /operations/:operationId`                            | `200` |
+| `data.catalog.create`             | `POST /catalog/data-items`                                | `201` |
+| `data.catalog.versions.list`      | `GET /catalog/data-items/:dataItemId/versions`            | `200` |
+| `data.catalog.versions.get`       | `GET /catalog/data-items/:dataItemId/versions/:versionId` | `200` |
+| `data.uploadSession.create`       | `POST /upload-sessions`                                   | `201` |
+| `data.uploadSession.complete`     | `POST /upload-sessions/:uploadSessionId/complete`         | `200` |
+| `data.ingestion.get`              | `GET /ingestions/:ingestionId`                            | `200` |
+| `data.ingestion.approve`          | `POST /ingestions/:ingestionId/approve`                   | `202` |
+| `data.ingestion.reject`           | `POST /ingestions/:ingestionId/reject`                    | `200` |
+| `data.operation.cancel`           | `POST /operations/:operationId/cancel`                    | `200` |
+| `data.operation.events`           | `GET /operations/:operationId/events`                     | `200` |
+| `data.explore.view.create`        | `POST /explore/views`                                     | `200` |
+| `data.explore.view.list`          | `GET /explore/views`                                      | `200` |
+| `data.explore.view.open`          | `POST /explore/views/:viewId/open`                        | `200` |
+| `data.explore.view.revoke`        | `POST /explore/views/:viewId/revoke`                      | `200` |
+| `data.explore.export`             | `POST /explore/export`                                    | `200` |
+| `data.explore.query`              | `POST /explore/query`                                     | `200` |
+| `data.analysis.create`            | `POST /analyses`                                          | `202` |
+| `data.reconciliation.create`      | `POST /reconciliations`                                   | `201` |
+| `data.reconciliation.get`         | `GET /reconciliations/:batchId`                           | `200` |
+| `data.reconciliation.review`      | `POST /reconciliations/:batchId/review`                   | `200` |
+| `data.reconciliation.list`        | `GET /reconciliations`                                    | `200` |
+| `data.assessment.create`          | `POST /assessments`                                       | `201` |
+| `data.assessment.get`             | `GET /assessments/:assessmentId`                          | `200` |
+| `data.assessment.list`            | `GET /assessments`                                        | `200` |
+| `data.assessment.overview`        | `GET /assessments/overview`                               | `200` |
+| `data.knowledge.relations.import` | `POST /knowledge/relations`                               | `201` |
+| `data.knowledge.relations.get`    | `GET /knowledge/relations/:assertionId`                   | `200` |
+| `data.knowledge.relations.list`   | `GET /knowledge/relations`                                | `200` |
+| `data.knowledge.relations.review` | `POST /knowledge/relations/:assertionId/review`           | `200` |
 
 表中路径相对于 `/api/data/v1`。准确输入、输出、Scope 与 timeout 必须从 discovery schema 获取，不能复制旧客户端类型代替运行时契约。
 
@@ -154,6 +173,8 @@ GeoServer、STAC API、TiTiler 与 Martin 没有宿主 published port；浏览�
 四个上游 origin 来自启动时校验的内部配置，禁止 userinfo/query/fragment、redirect 与动态 host。代理 query、tile coordinate、TMS、format、content type 均为严格 allowlist；默认 timeout 5 秒、响应上限 8 MiB，并只转发安全 ETag/Last-Modified。每次 ALLOWED/DENIED/FAILED 记录 `data.geo.read`、目标与 route hash；未认证拒绝只记录脱敏平台日志，不能伪造 actor audit。
 
 MapLibre 不把 API Bearer 放进 tile URL。登录后的浏览器只请求同源 `/api/data-foundation/geo/...`；Next Route Handler 重新验证 Supabase Session，以 server-only access token 和固定 Tenant/Project/Purpose 转发上述 Fastify 路由，同时再次限制 path/query/content/response size。该 Web 路径不是第二套 GIS 业务逻辑。
+
+权威授权通过后，只有 TiTiler PNG 返回坐标与当前请求完全一致的越界响应（`404` JSON 且仅含 `detail: Tile(x=…, y=…, z=…) is outside bounds`）才转换为透明的 256 像素 PNG。资产缺失、权限拒绝、格式异常及其他错误仍然失败。正常 HEAD 保持 HEAD；只有 PNG HEAD 的越界候选响应才在同一超时和正文上限内补取一次 GET。响应继续审计并使用 `no-store`。
 
 ## 上传与入库
 
@@ -312,3 +333,35 @@ Data REST 错误是扁平安全 envelope：
 `POST /reconciliations`, `GET /reconciliations?versionId=...`, `GET /reconciliations/{batchId}`, `POST /reconciliations/{batchId}/review` 对应 `data.reconciliation.create/list/get/review`。来源固定、规范化、不可变证据和限额见[副本核验与业务去重](/architecture/data-foundation/#副本关系核验与业务观测去重)。读取需要 `data.query` 和 `data.catalog.read`；创建另需 `data.ingestion.write`，审核另需 `data.publish` 且只能由创建批次的人类身份执行。审核携带 `expectedVersion`；REST 还要求一致的 `If-Match: "v1"`，MCP 将预期版本转为该请求头。两个命令在相同重试中均须保留原 UUID 幂等键。
 
 `get` 接收 `batchId`、`first`（默认 25，最多 100）、可选 `after` 和 `groupIndex`。未指定组号时分页返回观测组摘要；指定时分页返回该组来源成员。使用 `nextCursor` 继续，不得改变绑定的批次、版本和组。`list` 接收 `versionId`，返回本人最近最多 100 批。创建冻结 `left`、`right` 和 `plan`；审核接收 `decision: "verify" | "reject"` 和 `note`。冲突或信息不完整时不能确认；候选的 `independentObservationCount` 为 null，只有人工确认的批次才返回所选规则范围内的计数。Agent 可以提出批次并读取确定性证据，不能以 Agent 身份作最终审核。
+
+## 资料检查接口
+
+`POST /api/data/v1/assessments` 对应 `data.assessment.create`，要求 `data.catalog.read`、`data.ingestion.write` 及 UUID `Idempotency-Key`。传入 `dataItemId`、固定 `versionId`、`assetId` 和严格的 `declaration`，包含预期文件哈希、资料类型、检查对象、取得与访问条件、覆盖范围、依据及可选类型信息。目标必须是已提交且当前可见的 RAW 原件。返回 `{ assessment }`，保留服务器读取的哈希、解析器版本、分析标识、检查时间、声明和确定性发现；过期自查不替代服务器重查。
+
+`GET /api/data/v1/assessments/:assessmentId` 读取单条；`GET /api/data/v1/assessments?dataItemId=…&versionId=…&first=25` 分页读取，通过 `after=nextCursor` 继续，每页最多 100 条，均要求 `data.catalog.read`。读取和同键重试都会重新核对原件权限，来源撤回后不可读取。报告不授予权限、批准发布或认证位置；`REMOTE_QUERY_REPORTED` 保持未独立核验，声明范围完整也不等于已独立测得整个数据集总量。
+
+`GET /api/data/v1/assessments/overview` 对应 `data.assessment.overview`，要求 `data.catalog.read` 和明确的检查对象，可传入 `query`、`action`、`first`（1–100）及不透明 `after` 游标。总数、已记录数、未核查数和下一步计数共用完整授权范围的资料分母；`selectedCount` 是当前下一步条件的资料数，不是本页数量。明细固定资料/版本并保留最近适用报告的时间。没有检查就是 `UNCHECKED`，不表示不可取得。
+
+`data.knowledge.relations.import/get/list/review` 提供业务关系的受控入口。每次导入最多 100 个候选、每个候选至多 100,000 字节、每次至多 256 KiB，固定已获授权并发布的资料版本及原件哈希，每个三元组最多保留 64 处证据。`mappingVersion` 划分来源内身份；同一映射下属性冲突会失败，更正使用新映射及明确的 `supersedesId`。列表默认只返回 `APPROVED`，支持来源范围内的 `entityKey`/`mappingVersion`，给出所选状态的关系总数，每页最多 100 条，UUID 游标绑定版本。读取与命令重试均重新检查全部来源。导入要求目录读取及接入写入权限；审核要求目录读取、发布权限、人工身份、预期断言版本和说明。关系审核与资料接收独立，已有来源溯源图保持独立。
+
+### 类型化知识候选（关系协议1.1）
+
+关系协议1.1在现有来源绑定流程中增加人物、机构、文档、观点、事件、观测、政策、模型运行及地点。已登记关系规则限制两端对象类型；新增关系必须说明记录性质、时间角色、位置角色和适用条件。计划、历史报道及模拟不能标为采样观测。原件哈希、不可变版本、待审核与权限规则保持不变，保留1.0发现契约。跨资料身份对应与联合查询见下述扩展。
+
+跨资料身份对应：IDENTITY_MATCH显式引用已存在的来源对象，不按同名合并。接收时核对名称、类型和外部标识，拒绝引用链。列表最多联合六十四份明确选择的来源，每次读取重新核权；来源撤回后关联边及计数隐藏。可重建图投影使用原始端点身份。待审对应不等于已批准知识。
+
+关系列表将`relatedSources`（最多六十三份额外资料的`{dataItemId, versionId}`）及`entityReference`（`{dataItemId, versionId, mappingVersion, entityKey}`）作为JSON文本进行URL编码传递；其余查询字段保持标量。无效JSON、过大输入及不合规身份在执行前被拒绝。
+
+关系列表能力1.3沿用原有请求与返回字段，将范围扩为主来源加最多63份关联版本（合计64份）；1.1最多12份与1.2最多32份的发现契约原样归档。每份所选来源在计数和读取前核验权限，任何一份被拒绝都不返回部分结果；每页仍最多100条关系。不迁移权威数据，不改变审核状态或图投影身份。
+
+关系列表1.4增加`queryId`入口，与内联来源清单互斥。先通过已有探索POST能力建立不可变来源范围，之后GET分页只传短标识。每次检查所有者、租户/项目、用途、策略、安全级别、有效期及全部来源；有来源不可见时整次失败，不返回部分成功。经授权的空范围返回零条。内联来源仍限64份，1.0—1.3发现契约保持不变。查询标识会过期，长期入口复用保存视图来恢复原版本。业务时间和记录级条件通过下述探索1.12扩展提供。
+
+探索1.12为明确的版本清单增加可选`businessQuery`，固定审核状态、当前/历史模式、原资料时间筛选及关系版本标识（最多2,000条）。每次读回重新检查来源权限和关系版本，发生变更或不可见时整次失败。关系列表、明确绑定的记录、记录汇总和地图要素共用该范围。`urn:wiser:record:`只能绑定到指定解析批次中、与关系证据文件相符的记录。按日期查询HTML横向表格时需要已核对的原列选择，返回时收起其他时期，原件不变。资料概况和就绪度仍统计来源资产，不能称为筛选后的观测量。保存视图打开/导出1.1保留这些条件，其1.0及探索1.11发现契约保持冻结。保存链接受用途隔离：面向用户的视图须在已授权网页控制台用途下创建，不能直接分享批处理用途中的私人视图。无几何记录保留未定位，不推断位置或专业批准。
+
+### 固定版本的跨来源证据
+
+跨来源关系证据可选填写 `source.dataItemId`、`versionId`、`analysisId` 和 `recordId`，同时保留原文件哈希。定位固定为 `record:<recordId>`；非空摘录须存在于该条解析记录中。导入、详情和审核接口为1.2，列表为1.5，既有契约版本保留。读取与重试均重新校验关系所属资料及全部证据来源；来源撤回、无权访问或定位不匹配的证据不能继续支撑关系或从证据与检索入口泄露。提取的日期仍是有来源的候选，不代表专业审核。
+
+检查列表能力 1.1 新增可选 `assetId` 和 `latestPerAsset`（REST 使用 `true` / `false`）。启用后先按 `created_at DESC, assessment_id DESC` 选出每份可访问原件的最新检查，再按既有检查编号分页。较新记录即使缺项或声明与原件不符，也不会暗中退回较旧完整说明。省略参数仍查询完整历史，1.0 输入合同保留；无需迁移或修改返回结构。
+
+栅格显示查询接受 `bidx`（1–256）、有限且严格递增的十进制 `rescale=min,max`、可选的有限十进制 `nodata`、白名单重采样方式、`colormap_name` 与 `return_mask`。`nodata` 经两层白名单传至 TiTiler，不修改原件元数据。单位标签仅是浏览器中的填写说明，不作为查询参数，也不执行单位换算。来源选择与鉴权规则保持不变。

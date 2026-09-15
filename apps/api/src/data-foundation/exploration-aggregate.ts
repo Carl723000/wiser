@@ -1,3 +1,7 @@
+import {
+  businessRecordPredicate,
+  type BusinessRecordPin,
+} from './business-query-runtime.js';
 import { spatialPredicate } from './exploration-spatial.js';
 import { z } from 'zod';
 import {
@@ -20,6 +24,7 @@ export async function queryAggregate(
   refs: readonly AnalysisVersionRef[],
   input: ExplorationQueryInput,
   spec: QuerySpec,
+  businessPins?: readonly BusinessRecordPin[],
 ) {
   const aggregate = input.aggregate;
   if (!aggregate) throw new DataCapabilityHandlerError('VALIDATION_FAILED');
@@ -46,6 +51,15 @@ export async function queryAggregate(
     ...('field' in measure ? [measure.field, measure.unitField] : []),
   ].filter((field) => field !== undefined);
   if (requested.some((field) => !fields.has(field)))
+    throw new DataCapabilityHandlerError('VALIDATION_FAILED');
+  if (
+    businessPins?.some(
+      (pin) =>
+        pin.assetId === aggregate.assetId &&
+        pin.selection &&
+        requested.some((field) => !pin.selection!.keepFields.includes(field)),
+    )
+  )
     throw new DataCapabilityHandlerError('VALIDATION_FAILED');
   const parameters: unknown[] = [ref.analysisId, aggregate.assetId];
   const { bind, scalar, predicates, expressions } =
@@ -94,12 +108,15 @@ export async function queryAggregate(
       : group?.type === 'number'
         ? `(page.key::numeric+${interval})::text`
         : 'null::text';
+  const allowed = businessPins
+    ? businessRecordPredicate('r', bind(JSON.stringify(businessPins), 'jsonb'))
+    : 'true';
   const spatial = spec.spatialBounds
     ? spatialPredicate('r.geom', bind(spec.spatialBounds, 'float8[]'))
     : 'true';
   const result = await client.query(
     `with valued as materialized (
-    select ${expressions.length ? expressions.join(',') : '1 placeholder'} from catalog.analysis_record r where r.analysis_id=$1::uuid and r.asset_id=$2::uuid and ${spatial}
+    select ${expressions.length ? expressions.join(',') : '1 placeholder'} from catalog.analysis_record r where r.analysis_id=$1::uuid and r.asset_id=$2::uuid and ${spatial} and ${allowed}
   ), matched as (select ${key} key,${unit ? `(case when length(${unit})<=4096 then ${unit} end)` : 'null::text'} unit,${numeric} value,${present} present from valued where ${where.length ? where.join(' and ') : 'true'}),
   grouped as materialized (
     select key,unit,count(*)::text count,count(value)::text valid_count,count(*) filter(where not present)::text missing_count,count(*) filter(where present and value is null)::text invalid_count,(${operation})::text value

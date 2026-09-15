@@ -69,6 +69,85 @@ const point = {
 };
 
 const validInputs = {
+  'data.knowledge.relations.import': {
+    dataItemId: DATA_ITEM_ID,
+    versionId: VERSION_ID,
+    mappingVersion: 'test.v1',
+    candidates: [
+      {
+        subject: {
+          key: 'enterprise:1',
+          label: 'Enterprise',
+          kind: 'ENTERPRISE',
+          externalId: null,
+        },
+        predicate: 'HAS_DECLARED_MONITORING_POINT',
+        object: {
+          key: 'point:1',
+          label: 'Point',
+          kind: 'MONITORING_POINT',
+          externalId: null,
+        },
+        qualifiers: {
+          measure: null,
+          unit: null,
+          observedAt: null,
+          missing: true,
+          spatialScope: null,
+          limitations: [],
+          reportedConclusion: null,
+        },
+        generation: { method: 'SOURCE_TABLE', model: null },
+        evidence: [
+          {
+            assetId: ASSET_ID,
+            sourceHash: 'a'.repeat(64),
+            locator: 'PDF page 1, row 1',
+            excerpt: null,
+            polarity: 'SUPPORTS',
+          },
+        ],
+        supersedesId: null,
+      },
+    ],
+  },
+  'data.knowledge.relations.get': { assertionId: OPERATION_ID },
+  'data.knowledge.relations.list': {
+    dataItemId: DATA_ITEM_ID,
+    versionId: VERSION_ID,
+  },
+  'data.knowledge.relations.review': {
+    assertionId: OPERATION_ID,
+    expectedVersion: 1,
+    decision: 'APPROVED',
+    rationale: 'Source checked',
+  },
+  'data.assessment.overview': { target: 'DATASET', first: 25 },
+  'data.assessment.create': {
+    dataItemId: DATA_ITEM_ID,
+    versionId: VERSION_ID,
+    assetId: ASSET_ID,
+    declaration: {
+      kind: 'TABLE',
+      target: 'DATASET',
+      expectedSourceHash: 'a'.repeat(64),
+      entry: 'UNCHECKED',
+      access: 'UNKNOWN',
+      acquisition: 'ORIGINAL_ACQUIRED',
+      coverage: 'UNKNOWN',
+      evidence: 'Original header',
+      metadata: {},
+    },
+  },
+  'data.assessment.get': { assessmentId: OPERATION_ID },
+  'data.assessment.list': {
+    dataItemId: DATA_ITEM_ID,
+    versionId: VERSION_ID,
+    assetId: OPERATION_ID,
+    latestPerAsset: true,
+    first: 25,
+  },
+
   'data.reconciliation.create': {
     title: 'Observations',
     left: {
@@ -353,6 +432,59 @@ function appWith(
 }
 
 describe('Data Foundation REST module', () => {
+  it('accepts a short persisted relation scope over the existing GET endpoint', async () => {
+    const { app } = appWith();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/knowledge/relations?queryId=${VERSION_ID}`,
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ input: unknown }>().input).toMatchObject({
+      queryId: VERSION_ID,
+    });
+  });
+
+  it('decodes bounded relation source and entity references over HTTP', async () => {
+    const { app } = appWith();
+    const relatedSources = [
+      { dataItemId: DATA_ITEM_ID, versionId: VERSION_ID },
+    ];
+    const entityReference = {
+      ...relatedSources[0],
+      mappingVersion: 'source-v1',
+      entityKey: 'person:1',
+    };
+    const query = new URLSearchParams({
+      dataItemId: DATA_ITEM_ID,
+      versionId: VERSION_ID,
+      relatedSources: JSON.stringify(relatedSources),
+      entityReference: JSON.stringify(entityReference),
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/knowledge/relations?${query.toString()}`,
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ input: unknown }>().input).toMatchObject({
+      relatedSources,
+      entityReference,
+    });
+    for (const bad of ['{', 'null', '"text"']) {
+      query.set('entityReference', bad);
+      expect(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/data/v1/knowledge/relations?${query.toString()}`,
+            headers: authHeaders(),
+          })
+        ).statusCode,
+      ).toBe(422);
+    }
+  });
+
   it('maps every Registry REST route to the same authenticated Capability Handler', async () => {
     const { app, handler } = appWith();
 

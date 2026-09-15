@@ -20,6 +20,7 @@ type ProbeProps = {
 };
 const probe = vi.hoisted(() => ({
   props: {} as ProbeProps,
+  source: {} as Record<string, unknown>,
   layers: new Map<string, { layout?: Record<string, unknown> }>(),
   fitBounds: vi.fn(),
   easeTo: vi.fn(),
@@ -53,7 +54,13 @@ vi.mock('react-map-gl/maplibre', async () => {
       }));
       return <div>{props.children}</div>;
     }),
-    Source: ({ children }: { children?: ReactNode }) => children,
+    Source: ({
+      children,
+      ...props
+    }: { children?: ReactNode } & Record<string, unknown>) => {
+      probe.source = props;
+      return children;
+    },
     Layer: (props: { id: string; layout?: Record<string, unknown> }) => {
       probe.layers.set(props.id, props);
       return null;
@@ -123,7 +130,18 @@ it('invalidates denied tiles and offers a fresh map attempt without retaining th
       locale="en"
     />,
   );
+  act(() => probe.props.onIdle?.());
+  expect(
+    screen
+      .getByTestId('explorer-map')
+      .getAttribute('data-rendered-feature-count'),
+  ).toBe('1');
   act(() => probe.props.onError?.({ error: { status: 403 } }));
+  expect(
+    screen
+      .getByTestId('explorer-map')
+      .getAttribute('data-rendered-feature-count'),
+  ).toBe('0');
   expect(onInvalidated).toHaveBeenCalledWith(id, 403);
   await user.click(screen.getByRole('button', { name: 'Reload map' }));
   act(() => probe.props.onLoad?.());
@@ -246,4 +264,105 @@ it('refuses mismatched record responses and propagates revoked feature permissio
       expect(onInvalidated).toHaveBeenCalledWith(id, 403);
     rendered.unmount();
   }
+});
+
+it.each(['zh-CN', 'en'] as const)(
+  'keeps position and scale limitations visible in %s while map features are renderable',
+  (locale) => {
+    render(
+      <DataExplorerMap
+        result={result}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onInvalidated={vi.fn()}
+        locale={locale}
+      />,
+    );
+    expect(screen.getByRole('note').textContent).toContain(
+      locale === 'zh-CN'
+        ? '位置尚待独立核对'
+        : 'Position still needs independent verification',
+    );
+    expect(screen.getByRole('note').textContent).toContain(
+      locale === 'zh-CN' ? '尺度' : 'scale',
+    );
+  },
+);
+
+it('renders a complete business scope from authorized GeoJSON rather than the unfiltered tile source', async () => {
+  const businessResult = {
+    ...result,
+    totalCount: 0,
+    spec: {
+      versions: [{ dataItemId: id, versionId: id }],
+      businessQuery: {
+        schemaVersion: 1 as const,
+        status: 'PENDING_REVIEW' as const,
+        revisionMode: 'current' as const,
+        filters: {
+          kind: 'ALL' as const,
+          timeRole: 'ALL' as const,
+          from: null,
+          to: null,
+          includeUndated: true,
+        },
+      },
+    },
+  };
+  render(
+    <DataExplorerMap
+      result={businessResult}
+      selectedId={null}
+      onSelect={vi.fn()}
+      onInvalidated={vi.fn()}
+      locale="en"
+    />,
+  );
+  await waitFor(() => expect(probe.source['type']).toBe('geojson'));
+  expect(probe.source).not.toHaveProperty('tiles');
+  expect(probe.source['data']).toEqual({
+    type: 'FeatureCollection',
+    features: [],
+  });
+});
+it('invalidates an expired business-map page instead of falling back to broader tiles', async () => {
+  const invalidate = vi.fn();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: false, status: 410 })),
+  );
+  const businessResult = {
+    ...result,
+    nextCursor: 'next',
+    spec: {
+      versions: [{ dataItemId: id, versionId: id }],
+      businessQuery: {
+        schemaVersion: 1 as const,
+        status: 'PENDING_REVIEW' as const,
+        revisionMode: 'current' as const,
+        filters: {
+          kind: 'ALL' as const,
+          timeRole: 'ALL' as const,
+          from: null,
+          to: null,
+          includeUndated: true,
+        },
+      },
+    },
+  };
+  render(
+    <DataExplorerMap
+      result={businessResult}
+      selectedId={null}
+      onSelect={vi.fn()}
+      onInvalidated={invalidate}
+      locale="en"
+    />,
+  );
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith(id, 410));
+  expect(screen.getByRole('status')).toBeTruthy();
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'Reload map' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 });

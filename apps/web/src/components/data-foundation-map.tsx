@@ -4,7 +4,6 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import {
   setWorkerUrl,
-  LngLatBounds,
   Map as MapLibreMap,
   NavigationControl,
   type StyleSpecification,
@@ -17,6 +16,9 @@ import type {
 } from '@/lib/data-foundation';
 
 import styles from './data-foundation-map.module.css';
+import { requireIntegerMapZoom } from '@/lib/map-integer-zoom';
+import { DataRasterDisplay } from './data-raster-display';
+import { rasterDisplayUrl, type RasterDisplay } from '@/lib/raster-display';
 import { AmapBasemap, type AmapBasemapHandle } from './amap-basemap';
 import {
   amapCoordinates,
@@ -25,30 +27,9 @@ import {
 } from '@/lib/amap-coordinates';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { registerAmapRaster } from '@/lib/amap-raster-protocol';
+import { mapDisplayBounds } from '@/lib/data-foundation-map-bounds';
 
 setWorkerUrl('/vendor/maplibre/6.8.0/maplibre-gl-worker.mjs');
-
-function collectBounds(value: unknown, bounds: LngLatBounds): LngLatBounds {
-  if (!Array.isArray(value)) return bounds;
-  const coordinates: readonly unknown[] = value;
-  const longitude: unknown = coordinates[0];
-  const latitude: unknown = coordinates[1];
-  if (
-    typeof longitude === 'number' &&
-    Number.isFinite(longitude) &&
-    typeof latitude === 'number' &&
-    Number.isFinite(latitude) &&
-    longitude >= -180 &&
-    longitude <= 180 &&
-    latitude >= -90 &&
-    latitude <= 90
-  ) {
-    bounds.extend([longitude, latitude]);
-    return bounds;
-  }
-  for (const child of coordinates) collectBounds(child, bounds);
-  return bounds;
-}
 
 type Position = [number, number, ...number[]];
 
@@ -93,42 +74,37 @@ function geoJsonData(
   return {
     type: 'FeatureCollection' as const,
     features: features.features.map((feature) => {
+      const coordinates = amapCoordinates(feature.geometry.coordinates, crs);
       const geometry = (() => {
         switch (feature.geometry.type) {
           case 'Point':
             return {
               type: 'Point' as const,
-              coordinates: position(feature.geometry.coordinates),
+              coordinates: position(coordinates),
             };
           case 'MultiPoint':
           case 'LineString':
             return {
               type: feature.geometry.type,
-              coordinates: positions(feature.geometry.coordinates),
+              coordinates: positions(coordinates),
             };
           case 'MultiLineString':
           case 'Polygon':
             return {
               type: feature.geometry.type,
-              coordinates: rings(feature.geometry.coordinates),
+              coordinates: rings(coordinates),
             };
           case 'MultiPolygon':
             return {
               type: 'MultiPolygon' as const,
-              coordinates: polygons(feature.geometry.coordinates),
+              coordinates: polygons(coordinates),
             };
         }
       })();
       return {
         type: 'Feature' as const,
         id: feature.id,
-        geometry: {
-          ...geometry,
-          coordinates: amapCoordinates(
-            geometry.coordinates,
-            crs,
-          ) as typeof geometry.coordinates,
-        },
+        geometry,
         properties: feature.properties,
       };
     }),
@@ -194,6 +170,7 @@ export function DataFoundationMap({
   features,
   labels,
   rasterTileUrl,
+  requestedBounds,
   selectedVersion,
   selectedName,
   stacExtents,
@@ -205,6 +182,7 @@ export function DataFoundationMap({
   readonly features: MapFeatureCollectionDto;
   readonly labels: MapLayerLabels;
   readonly rasterTileUrl?: string;
+  readonly requestedBounds?: readonly [number, number, number, number];
   readonly selectedVersion?: string;
   readonly selectedName?: string;
   readonly stacExtents: readonly StacExtentDto[];
@@ -214,12 +192,56 @@ export function DataFoundationMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const basemap = useRef<AmapBasemapHandle>(null);
   const amapCopy = getDictionary(locale).dataFoundation.amap;
+  const mapCopy = getDictionary(locale).dataFoundation.mapPage;
+  const rasterCopy = getDictionary(locale).rasterDisplay;
+  const rasterRef = useRef<ReturnType<typeof registerAmapRaster> | null>(null);
+  const displayRef = useRef<RasterDisplay | null>(null);
+  const sourceTemplate = useRef(rasterTileUrl);
+  const [rasterState, setRasterState] = useState<
+    'loading' | 'ready' | 'failed'
+  >('loading');
+  const rasterFailed = useRef(false);
+  const [integerZoom, setIntegerZoom] = useState(false);
+  const integerZoomRef = useRef(false);
+  function applyDisplay(display: RasterDisplay | null) {
+    displayRef.current = display;
+    const map = mapRef.current;
+    if (!map || !rasterTileUrl) return;
+    const replace = () => {
+      if (mapRef.current !== map) return;
+      const style = map.getStyle();
+      const source = style.sources['governed-raster'];
+      const index = style.layers.findIndex(
+        (layer) => layer.id === 'governed-raster-layer',
+      );
+      const layer = style.layers[index];
+      if (source?.type !== 'raster' || !layer) return;
+      const next = registerAmapRaster(
+        rasterDisplayUrl(rasterTileUrl, displayRef.current),
+      );
+      const previous = rasterRef.current;
+      // Detach the old source before stopping its worker, so late failures cannot
+      // change the new attempt's state. Other layers and the camera stay intact.
+      map.removeLayer(layer.id);
+      map.removeSource('governed-raster');
+      previous?.dispose();
+      rasterRef.current = next;
+      rasterFailed.current = false;
+      setRasterState('loading');
+      map.addSource('governed-raster', { ...source, tiles: [next.url] });
+      map.addLayer(layer, style.layers[index + 1]?.id);
+    };
+    if (map.isStyleLoaded()) replace();
+    else map.once('load', replace);
+  }
+
+  const [rasterOpacity, setRasterOpacity] = useState(78);
   const [visible, setVisible] = useState<Readonly<Record<MapLayer, boolean>>>(
     () => ({
       authority: true,
       stac: stacExtents.length > 0,
       vector: vectorTileUrl !== undefined,
-      raster: false,
+      raster: rasterTileUrl !== undefined,
     }),
   );
 
@@ -228,7 +250,16 @@ export function DataFoundationMap({
     const color = (name: string, fallback: string) =>
       getComputedStyle(container.current!).getPropertyValue(name).trim() ||
       fallback;
-    const raster = rasterTileUrl ? registerAmapRaster(rasterTileUrl) : null;
+    if (sourceTemplate.current !== rasterTileUrl) {
+      sourceTemplate.current = rasterTileUrl;
+      displayRef.current = null;
+      rasterFailed.current = false;
+      setRasterState('loading');
+    }
+    const raster = rasterTileUrl
+      ? registerAmapRaster(rasterDisplayUrl(rasterTileUrl, displayRef.current))
+      : null;
+    rasterRef.current = raster;
     const sources: StyleSpecification['sources'] = {
       authority: { type: 'geojson', data: geoJsonData(features, displayCrs) },
     };
@@ -405,6 +436,17 @@ export function DataFoundationMap({
       },
     });
     mapRef.current = map;
+    if (integerZoomRef.current) requireIntegerMapZoom(map);
+    map.on('error', (event) => {
+      if ('sourceId' in event && event.sourceId === 'governed-raster') {
+        rasterFailed.current = true;
+        setRasterState('failed');
+      }
+    });
+    map.on('sourcedata', (event) => {
+      if (event.sourceId === 'governed-raster' && !rasterFailed.current)
+        setRasterState(event.isSourceLoaded ? 'ready' : 'loading');
+    });
     map.touchZoomRotate.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
     const sync = () => {
@@ -421,23 +463,14 @@ export function DataFoundationMap({
     map.on('resize', sync);
     map.on('load', sync);
     map.once('load', () => {
-      const bounds = new LngLatBounds();
-      for (const feature of features.features) {
-        collectBounds(
-          amapCoordinates(feature.geometry.coordinates, displayCrs),
-          bounds,
-        );
-      }
-      for (const extent of stacExtents) {
-        bounds.extend(
-          toAmap([extent.bbox[0], extent.bbox[1]]) as [number, number],
-        );
-        bounds.extend(
-          toAmap([extent.bbox[2], extent.bbox[3]]) as [number, number],
-        );
-      }
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: 52, maxZoom: 11, duration: 0 });
+      const bounds = mapDisplayBounds(
+        features.features.map((feature) => feature.geometry.coordinates),
+        stacExtents.map((extent) => extent.bbox),
+        displayCrs,
+        requestedBounds,
+      );
+      if (bounds !== undefined) {
+        map.fitBounds([...bounds], { padding: 52, maxZoom: 11, duration: 0 });
       }
     });
     const updateTheme = () => {
@@ -503,12 +536,14 @@ export function DataFoundationMap({
     return () => {
       mapRef.current = null;
       map.remove();
-      raster?.dispose();
+      rasterRef.current?.dispose();
+      rasterRef.current = null;
     };
   }, [
     features,
     labels.controls,
     rasterTileUrl,
+    requestedBounds,
     stacExtents,
     vectorTileUrl,
     displayCrs,
@@ -545,6 +580,23 @@ export function DataFoundationMap({
       instance.off('load', update);
     };
   }, [visible]);
+  useEffect(() => {
+    const instance = mapRef.current;
+    if (!instance) return;
+    const update = () => {
+      if (instance.getLayer('governed-raster-layer'))
+        instance.setPaintProperty(
+          'governed-raster-layer',
+          'raster-opacity',
+          rasterOpacity / 100,
+        );
+    };
+    update();
+    instance.on('load', update);
+    return () => {
+      instance.off('load', update);
+    };
+  }, [rasterOpacity, rasterTileUrl]);
 
   const controls: readonly {
     readonly id: MapLayer;
@@ -591,6 +643,41 @@ export function DataFoundationMap({
             </label>
           ))}
         </fieldset>
+        {rasterTileUrl ? (
+          <div className={styles.rasterControls}>
+            <label>
+              <span>{mapCopy.rasterOpacity}</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={rasterOpacity}
+                disabled={!visible.raster}
+                onChange={(event) =>
+                  setRasterOpacity(Number(event.target.value))
+                }
+              />
+            </label>
+            <output>{rasterOpacity}%</output>
+            <p>{mapCopy.rasterMeaning}</p>
+            {visible.raster ? (
+              <p role="status">
+                {rasterCopy[rasterState]}{' '}
+                {rasterState === 'failed' ? (
+                  <button onClick={() => applyDisplay(displayRef.current)}>
+                    {rasterCopy.retry}
+                  </button>
+                ) : null}
+              </p>
+            ) : null}
+            <DataRasterDisplay
+              key={rasterTileUrl}
+              locale={locale}
+              onApply={applyDisplay}
+            />
+          </div>
+        ) : null}
         <dl>
           <div>
             <dt>{labels.selectedVersion}</dt>
@@ -603,6 +690,7 @@ export function DataFoundationMap({
             <dd>{amapCopy.aligned}</dd>
           </div>
         </dl>
+        {integerZoom ? <p role="status">{rasterCopy.integerZoom}</p> : null}
       </div>
       <div
         className={styles.map}
@@ -610,7 +698,16 @@ export function DataFoundationMap({
         aria-label={ariaLabel}
         data-testid="data-foundation-map"
       >
-        <AmapBasemap ref={basemap} locale={locale} />
+        <AmapBasemap
+          ref={basemap}
+          locale={locale}
+          onIntegerZoom={() => {
+            if (integerZoomRef.current) return;
+            integerZoomRef.current = true;
+            setIntegerZoom(true);
+            if (mapRef.current) requireIntegerMapZoom(mapRef.current);
+          }}
+        />
         <div ref={container} className={styles.overlay} />
       </div>
     </section>

@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: a67f905d4afbb2008494f5ebd7a50fd21953bd99
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 # WISER Web / 产品前端
@@ -99,3 +99,41 @@ Portal actions use verified sessions; catalog pages preserve name filters across
 Data discovery uses 25-row catalog/quality pages and 10-row search/knowledge pages. Search result names are loaded through authorized exact-version HTTP reads; source conditions and protocol details remain inspectable. Resource links preserve versions across shared exploration. Intake and Agent access reuse the public setup-copy action. The product review browser suite uses the admitted research case and checks both locales, themes and viewport sizes.
 
 Resource content includes a rule-scoped, non-destructive copy-verification and observation-deduplication workflow through `/api/data-foundation/reconciliation/{action}`. Candidates, conflicts, source references and human verification remain distinct. / 资源内容通过同源接口提供规则范围内的无损副本核验与业务去重，分别呈现候选、冲突、来源引用与人工确认。
+
+Resource content includes per-file acquisition and typed information checks through the existing authenticated HTTP DAL. Unknown fields remain explicit; reports do not approve publication or verify position.
+
+Resource content also provides source-bound business relations: separate review queues, exact original evidence, human review and an approved-only graph using the shared canvas. / 资料内容同时提供固定来源的业务关系，分别展示审核队列、原件依据及人工审核，并复用共享画布展示已通过关系。
+
+Relation exploration accepts up to thirty-one additional source-version links and an explicit pending-graph preview. Identity correspondences preserve source-local objects and authorized evidence; linked source pages retain map entry points. Structured source and entity filters use JSON-encoded HTTP query parameters. / 关联探索可添加最多三十一份其他来源版本，并显式打开待审图预览。身份对应保留各来源对象和有权限的证据，来源入口可继续查看地图。HTTP查询以JSON编码传递来源集合与对象筛选。
+
+Business-relation URLs restore source versions, review state, focus and bounded cumulative pages through session-verified reads. / 业务关系链接可恢复来源版本、审核状态、对象焦点及有界累计页，每次重新核对会话和访问权限。
+
+Relation lists and deep-link restoration share the contract limit of 63 additional sources. Oversized scopes are rejected rather than truncated. Restoration reauthorizes each source; the API page size remains 100 and cumulative browser loading remains bounded to ten pages.
+
+Business graph source links add a bounded, validated `returnRelations` context. Exploration preserves it across query URL replacement and tab changes; the return action reopens the original graph scope, review state and focus with fresh authorization. It is a navigation origin only. The authenticated regression `e2e-live/business-relation-navigation.case.ts` uses `WISER_WEB_LIVE_RELATION_URL` for a real loopback case and the existing live-test credentials. It tests source records, refresh, map/record tabs and return; it does not establish map alignment or scientific validity.
+
+业务图来源链接携带有界、经过校验的`returnRelations`返回信息。探索页改写查询地址、切换标签时保留该信息，返回时重新授权并恢复原图来源范围、审核状态与焦点；返回信息只代表导航来处。真实浏览器回归`e2e-live/business-relation-navigation.case.ts`使用`WISER_WEB_LIVE_RELATION_URL`指定本机真实案例，凭据沿用既有测试配置；覆盖来源记录、刷新、地图/记录切换及返回，不证明地图对齐或科学有效性。
+
+Business relations offer optional type and time filters over loaded, authorized rows. Either endpoint can match the selected kind; time-role selection is exact. Date comparisons overlap explicit source periods, preserving year/month precision as intervals. Missing, incomplete, reversed or unrecognized periods remain unknown; a point observation is used only with an explicit observation-time role. The unknown-period option applies to date filtering after type/role selection. The graph and evidence list use the same subset and show matched, loaded and total counts separately. Pagination retains nonmatching rows so clearing filters restores them. Strict URL filters survive refresh, history and source-exploration return; they neither query new data nor claim source maps/records use the same temporal conditions. Node labels include localized types without merging source identities.
+
+An observation node may declare `urn:wiser:record:<recordId>` as its external ID, scoped to its own source version or explicit referenced source. The Web offers exact record and spatial-content links only for a valid UUID binding on an OBSERVATION node; it never infers a record from a label or assigns geometry to a document. These links retain the applied graph return context and reauthorize/read all record identities on opening. The URI is a navigation declaration, not server attestation of scientific identity or professional approval; evidence and pending status remain visible. Ordinary external IDs are unchanged.
+
+观测记录节点可用`urn:wiser:record:<recordId>`声明平台记录标识，范围限定在自身来源版本或显式引用来源。网页只对OBSERVATION节点的合法UUID绑定提供精确记录与空间内容链接，不从名称猜记录，也不给文档虚设几何。链接保留原业务图返回状态，打开时重新鉴权并核对完整记录身份。此标识是导航声明，不代表服务端已认定科学身份或通过专业审核；证据和待审状态仍保留。其他外部标识不受影响。
+
+精确记录入口直接显示授权后的目标行，含非第一页记录；“浏览本文件记录”恢复同一查询下的文件分页。保存视图仍恢复原页。 / Exact-record entries show the authorized target even off page one; browsing resumes file pagination under the same query, while saved views retain their original page.
+
+Record inspection offers an on-demand reverse lookup of explicit record bindings through authorized, paged relation lists. It retains a valid case source scope and relationship filters, defaults to approved records without a case, and requires an explicit pending selection otherwise. Partial, empty and unavailable results are distinct; denial clears retained bindings. Opening a match focuses its source-bound business node, while the previous graph return action remains independent. Selecting a different record aborts and clears the previous lookup; matching never uses labels or invented geometry.
+
+记录检查区通过已授权的分页业务关系列表反查明确记录绑定，沿用有效案例来源和关系筛选。没有案例时默认仅查当前版本已通过关系，待审范围须明确选择。部分完成、无绑定和读取失败分别显示；拒绝访问时清空结果。点击匹配项进入来源限定的业务节点，原图返回入口独立保留。切换记录中止并清空此前查询，不按名称或虚构几何匹配。
+
+Business relation correction display preserves immutable history and same-review-queue boundaries; see [product rules](../docs/src/content/docs/en/development/product-experience.md). / 业务图更正显示保留不可变历史与同一审核队列边界，见[产品规则](../docs/src/content/docs/zh-CN/development/product-experience.md)。
+
+Business-scoped exploration renders the shared problem/evidence graph, with explicit observation-detail expansion and query-preserving evidence/table/map links. Saved entries retain the web-console purpose and reauthorize on reopening.
+
+Business object source captions use the current authorized relation set and preserve canonical referenced source/version identities. They add no metadata request or graph merge.
+
+The optional business path reader follows only loaded, authorized source-qualified identities, preserves original edge directions, and limits each inspected connection to eight edges without changing the shared query.
+
+Spatial-source disclosures on resources, records and version maps read the latest authorized report per original only when expanded. The shared assessment DAL keeps source identities fixed; scale warnings remain visible, while unknown or stale declarations never imply verified position or business suitability.
+
+Version maps provide display-only single-band ranges, missing-value codes, unit labels and legends; retry preserves the map camera and opacity. AMap non-WebGL fallback uses explained integer zoom on both map surfaces. / 版本地图提供仅影响显示的单波段范围、缺测码、单位标签和图例，重试保留视角与透明度；高德回退为非 WebGL 模式时，两个地图页面均提供整数缩放说明。

@@ -1,3 +1,31 @@
+import * as RelationsV11 from '../knowledge-relations/v11.ts';
+import * as SavedV1 from '../exploration/saved-v1.ts';
+import {
+  ExplorationQueryInputV111Schema,
+  ExplorationResultV111Schema,
+} from '../exploration/v111.ts';
+import * as RelationsV1 from '../knowledge-relations/v1.ts';
+import {
+  ImportRelationsInputSchema,
+  ImportRelationsOutputSchema,
+  RelationGetInputSchema,
+  RelationOutputSchema,
+  RelationReviewInputSchema,
+  RelationListInputSchema,
+  RelationListOutputSchema,
+} from '../knowledge-relations/index.ts';
+import {
+  AssessmentOverviewInputSchema,
+  AssessmentOverviewOutputSchema,
+} from '../assessment/index.ts';
+import {
+  CreateAssessmentInputSchema,
+  AssessmentOutputSchema,
+  GetAssessmentInputSchema,
+  ListAssessmentsInputSchema,
+  ListAssessmentsInputV1Schema,
+  ListAssessmentsOutputSchema,
+} from '../assessment/index.ts';
 import {
   CreateReconciliationInputSchema,
   CreateReconciliationOutputSchema,
@@ -135,6 +163,14 @@ export const DATA_CAPABILITY_IDS = [
   'data.reconciliation.get',
   'data.reconciliation.review',
   'data.reconciliation.list',
+  'data.assessment.create',
+  'data.assessment.get',
+  'data.assessment.list',
+  'data.assessment.overview',
+  'data.knowledge.relations.import',
+  'data.knowledge.relations.get',
+  'data.knowledge.relations.list',
+  'data.knowledge.relations.review',
 ] as const;
 
 export const DataCapabilityIdSchema = z.enum(DATA_CAPABILITY_IDS);
@@ -979,7 +1015,7 @@ const capabilityRegistry = {
   }),
   'data.explore.view.open': defineCapability({
     id: 'data.explore.view.open',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'query',
     inputSchema: OpenExplorationViewInputSchema,
     outputSchema: OpenExplorationViewOutputSchema,
@@ -1024,7 +1060,7 @@ const capabilityRegistry = {
   }),
   'data.explore.export': defineCapability({
     id: 'data.explore.export',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'query',
     inputSchema: ExportExplorationInputSchema,
     outputSchema: ExportExplorationOutputSchema,
@@ -1045,7 +1081,7 @@ const capabilityRegistry = {
   }),
   'data.explore.query': defineCapability({
     id: 'data.explore.query',
-    version: '1.11.0',
+    version: '1.12.0',
     kind: 'query',
     inputSchema: ExplorationQueryInputSchema,
     outputSchema: ExplorationResultSchema,
@@ -1179,6 +1215,177 @@ const capabilityRegistry = {
     mcpMapping: { toolName: 'data_reconciliation_list' },
     skillMapping: { operation: 'data.reconciliation.list' },
   }),
+  'data.assessment.create': defineCapability({
+    id: 'data.assessment.create',
+    version: '1.0.0',
+    kind: 'command',
+    inputSchema: CreateAssessmentInputSchema,
+    outputSchema: AssessmentOutputSchema,
+    requiredScopes: ['data.catalog.read', 'data.ingestion.write'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/assessments',
+      successStatus: 201,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'createDataAssessment',
+    },
+    mcpMapping: { toolName: 'data_assessment_create' },
+    skillMapping: { operation: 'data.assessment.create' },
+  }),
+  'data.assessment.get': defineCapability({
+    id: 'data.assessment.get',
+    version: '1.0.0',
+    kind: 'query',
+    inputSchema: GetAssessmentInputSchema,
+    outputSchema: AssessmentOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/assessments/:assessmentId',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataAssessment' },
+    mcpMapping: { toolName: 'data_assessment_get' },
+    skillMapping: { operation: 'data.assessment.get' },
+  }),
+  'data.assessment.list': defineCapability({
+    id: 'data.assessment.list',
+    version: '1.1.0',
+    kind: 'query',
+    inputSchema: ListAssessmentsInputSchema,
+    outputSchema: ListAssessmentsOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/assessments',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataAssessments' },
+    mcpMapping: { toolName: 'data_assessment_list' },
+    skillMapping: { operation: 'data.assessment.list' },
+  }),
+  'data.assessment.overview': defineCapability({
+    id: 'data.assessment.overview',
+    version: '1.0.0',
+    kind: 'query',
+    inputSchema: AssessmentOverviewInputSchema,
+    outputSchema: AssessmentOverviewOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'DETAILED',
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/assessments/overview',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataAssessmentOverview' },
+    mcpMapping: { toolName: 'data_assessment_overview' },
+    skillMapping: { operation: 'data.assessment.overview' },
+  }),
+  'data.knowledge.relations.import': defineCapability({
+    id: 'data.knowledge.relations.import',
+    version: '1.2.0',
+    kind: 'command',
+    inputSchema: ImportRelationsInputSchema,
+    outputSchema: ImportRelationsOutputSchema,
+    requiredScopes: ['data.catalog.read', 'data.ingestion.write'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/knowledge/relations',
+      successStatus: 201,
+    },
+    graphqlMapping: { operationType: 'mutation', field: 'importDataRelations' },
+    mcpMapping: { toolName: 'data_knowledge_relations_import' },
+    skillMapping: { operation: 'data.knowledge.relations.import' },
+  }),
+  'data.knowledge.relations.get': defineCapability({
+    id: 'data.knowledge.relations.get',
+    version: '1.2.0',
+    kind: 'query',
+    inputSchema: RelationGetInputSchema,
+    outputSchema: RelationOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/knowledge/relations/:assertionId',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataRelation' },
+    mcpMapping: { toolName: 'data_knowledge_relations_get' },
+    skillMapping: { operation: 'data.knowledge.relations.get' },
+  }),
+  'data.knowledge.relations.list': defineCapability({
+    id: 'data.knowledge.relations.list',
+    version: '1.5.0',
+    kind: 'query',
+    inputSchema: RelationListInputSchema,
+    outputSchema: RelationListOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/knowledge/relations',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataRelations' },
+    mcpMapping: { toolName: 'data_knowledge_relations_list' },
+    skillMapping: { operation: 'data.knowledge.relations.list' },
+  }),
+  'data.knowledge.relations.review': defineCapability({
+    id: 'data.knowledge.relations.review',
+    version: '1.2.0',
+    kind: 'command',
+    inputSchema: RelationReviewInputSchema,
+    outputSchema: RelationOutputSchema,
+    requiredScopes: ['data.catalog.read', 'data.publish'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/knowledge/relations/:assertionId/review',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'mutation', field: 'reviewDataRelation' },
+    mcpMapping: { toolName: 'data_knowledge_relations_review' },
+    skillMapping: { operation: 'data.knowledge.relations.review' },
+  }),
 } satisfies Record<DataCapabilityId, Readonly<CapabilityDefinition>>;
 
 export const DATA_CAPABILITY_REGISTRY: Readonly<
@@ -1186,6 +1393,103 @@ export const DATA_CAPABILITY_REGISTRY: Readonly<
 > = Object.freeze(capabilityRegistry);
 
 const capabilityArchive = {
+  'data.assessment.list': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.assessment.list'],
+      version: '1.0.0',
+      inputSchema: ListAssessmentsInputV1Schema,
+    }),
+  ]),
+  'data.knowledge.relations.import': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.import'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.ImportRelationsInputSchema,
+      outputSchema: RelationsV1.ImportRelationsOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.import'],
+      version: '1.1.0',
+      inputSchema: RelationsV11.ImportRelationsInputSchema,
+      outputSchema: RelationsV11.ImportRelationsOutputSchema,
+    }),
+  ]),
+  'data.knowledge.relations.get': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.get'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.RelationGetInputSchema,
+      outputSchema: RelationsV1.RelationOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.get'],
+      version: '1.1.0',
+      inputSchema: RelationsV11.RelationGetInputSchema,
+      outputSchema: RelationsV11.RelationOutputSchema,
+    }),
+  ]),
+  'data.knowledge.relations.list': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.RelationListInputSchema,
+      outputSchema: RelationsV1.RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.1.0',
+      inputSchema: RelationsV11.RelationListInputV11Schema,
+      outputSchema: RelationsV11.RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.2.0',
+      inputSchema: RelationsV11.RelationListInputV12Schema,
+      outputSchema: RelationsV11.RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.3.0',
+      inputSchema: RelationsV11.RelationListInputV13Schema,
+      outputSchema: RelationsV11.RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.4.0',
+      inputSchema: RelationsV11.RelationListInputSchema,
+      outputSchema: RelationsV11.RelationListOutputSchema,
+    }),
+  ]),
+  'data.knowledge.relations.review': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.review'],
+      version: '1.0.0',
+      inputSchema: RelationsV1.RelationReviewInputSchema,
+      outputSchema: RelationsV1.RelationOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.review'],
+      version: '1.1.0',
+      inputSchema: RelationsV11.RelationReviewInputSchema,
+      outputSchema: RelationsV11.RelationOutputSchema,
+    }),
+  ]),
+  'data.explore.view.open': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.open'],
+      version: '1.0.0',
+      inputSchema: SavedV1.OpenExplorationViewInputSchema,
+      outputSchema: SavedV1.OpenExplorationViewOutputSchema,
+    }),
+  ]),
+  'data.explore.export': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.explore.export'],
+      version: '1.0.0',
+      inputSchema: SavedV1.ExportExplorationInputSchema,
+      outputSchema: SavedV1.ExportExplorationOutputSchema,
+    }),
+  ]),
   'data.explore.query': Object.freeze([
     defineCapability({
       ...capabilityRegistry['data.explore.query'],
@@ -1252,6 +1556,12 @@ const capabilityArchive = {
       version: '1.10.0',
       inputSchema: ExplorationQueryInputV110Schema,
       outputSchema: ExplorationResultV110Schema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.query'],
+      version: '1.11.0',
+      inputSchema: ExplorationQueryInputV111Schema,
+      outputSchema: ExplorationResultV111Schema,
     }),
   ]),
   'data.catalog.search': Object.freeze([

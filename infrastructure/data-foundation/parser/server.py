@@ -25,6 +25,7 @@ SLOTS = threading.BoundedSemaphore(2)
 KINDS = {
     "doc",
     "docx",
+    "xml",
     "xlsx",
     "xls",
     "html",

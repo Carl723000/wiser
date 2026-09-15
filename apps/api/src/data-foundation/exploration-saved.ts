@@ -1,3 +1,7 @@
+import {
+  loadBusinessRelations,
+  bindBusinessRecords,
+} from './business-query-runtime.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -115,6 +119,19 @@ async function validateReferences(
 ) {
   const refs = snapshot.version_refs;
   const serialized = JSON.stringify(refs);
+  const business = snapshot.spec.businessQuery;
+  const relations = business
+    ? await loadBusinessRelations(client, refs, business)
+    : undefined;
+  const pins = business
+    ? await bindBusinessRecords(
+        client,
+        refs,
+        business,
+        relations!.items,
+        relations!.all,
+      )
+    : undefined;
   for (const request of Object.values(view.requests)) {
     if (!request) continue;
     if (
@@ -157,6 +174,15 @@ async function validateReferences(
       : []),
   ];
   for (const request of recordRequests) {
+    if (
+      pins &&
+      !pins.some(
+        (pin) =>
+          pin.recordId === request.recordId &&
+          pin.versionId === request.versionId,
+      )
+    )
+      throw new DataCapabilityHandlerError('NOT_FOUND');
     const found = await client.query(
       `select 1 from catalog.analysis_record record join jsonb_array_elements($1::jsonb) ref on record.analysis_id=(ref->>'analysisId')::uuid where record.record_id=$2::uuid and ref->>'versionId'=$3::text and ($4::jsonb is null or (record.asset_id=($4->>'assetId')::uuid and service.exploration_record_matches(record.record_values,$4->'filters'))) and ($5::float8[] is null or ${spatialPredicate('record.geom', '$5::float8[]')})`,
       [

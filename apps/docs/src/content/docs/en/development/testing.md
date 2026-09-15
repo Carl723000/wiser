@@ -281,3 +281,9 @@ Before a change is ready to hand off:
 - A multi-commit branch runs `docpact lint --root . --merge-base <base-ref> --mode enforce --fail-on-uncovered-change --fail-on-stale-docs` so committed Red/Green slices are included.
 - Required focused gates, integration smoke, and final `pnpm verify` all pass.
 - The Git diff contains only intended scope and passes `git diff --check`; Red is a recoverable checkpoint, while the final commit is Green and single-purpose.
+
+The Data API PostgreSQL integration command runs its test files sequentially. Their temporary roles still grant privileges on shared schemas, so concurrent fixtures can collide in PostgreSQL system catalogs even when business rows use distinct tenants. All fixtures and rollback checks remain enabled.
+
+### Explicit source-case browser suite
+
+The three version-bound business/record navigation regressions use admitted local source data, including a TCI band and independently checked observation counts. Run `pnpm --filter @wiser/web test:e2e:data-case` with `WISER_WEB_LIVE_BASE_URL`, the existing live credentials, `WISER_WEB_LIVE_RELATION_URL`, `WISER_WEB_LIVE_RECORD_URL`, and `WISER_WEB_LIVE_OBSERVATION_COUNT`. The relation URL must identify the fixed catalog version and relation view; the record URL must carry its fixed record focus. Missing or invalid case inputs fail explicitly. These `e2e-live/*.case.ts` tests retain all assertions and are collected by `playwright.case.config.ts`; they are not portable CI fixtures. `test:e2e:data-live` continues to collect all existing `*.spec.ts` suites against the CI smoke stack. The discovery regression invokes Playwright with synthetic inputs and `--list` only; it does not claim a real-case browser run.

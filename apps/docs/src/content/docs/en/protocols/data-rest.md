@@ -1,6 +1,6 @@
 ---
 title: Data REST API
-description: Data Foundation's 33 Capabilities, OpenAPI, governed Resources, idempotency, SSE, and asset-download protocol.
+description: Data Foundation's 41 Capabilities, OpenAPI, governed Resources, idempotency, SSE, and asset-download protocol.
 docType: protocol-reference
 scope: data-rest-api
 status: active
@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: a67f905d4afbb2008494f5ebd7a50fd21953bd99
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Protocol boundary
@@ -32,7 +32,7 @@ These non-cacheable reads require no identity:
 | Method | Path                                               | Result                                                                             |
 | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `GET`  | `/api/data/v1/health`                              | data-postgres, object-store, Worker readiness; any missing authority returns `503` |
-| `GET`  | `/api/data/v1/capabilities`                        | ordered 33-item Registry, draft-7 I/O Schemas, and four mappings                   |
+| `GET`  | `/api/data/v1/capabilities`                        | ordered 41-item Registry, draft-7 I/O Schemas, and four mappings                   |
 | `GET`  | `/api/data/v1/capabilities/:capabilityId/:version` | one fixed Capability version; unknown version returns `404`                        |
 
 A ready response has this core shape:
@@ -51,7 +51,7 @@ A ready response has this core shape:
 
 ## OpenAPI contract projection
 
-Shared `GET /openapi.json` returns OpenAPI 3.1 with the fixed title **WISER Platform API**, covering Platform, Agent EXCON, and Data Foundation. The 33 Data Capabilities do not maintain another handwritten schema. At route registration, Fastify converts Registry Zod 4 input/output into draft-7 JSON Schema and projects it into path, query, body, and required-header OpenAPI operations.
+Shared `GET /openapi.json` returns OpenAPI 3.1 with the fixed title **WISER Platform API**, covering Platform, Agent EXCON, and Data Foundation. The 41 Data Capabilities do not maintain another handwritten schema. At route registration, Fastify converts Registry Zod 4 input/output into draft-7 JSON Schema and projects it into path, query, body, and required-header OpenAPI operations.
 
 Every Data operation has the `data-foundation` tag, a stable `operationId`, `bearerAuth`, its successful response Schema, plus `Idempotency-Key` for commands and `If-Match` for versioned commands. Fastify schema compilers serve the OpenAPI projection here; the single runtime behavior gate remains strict Zod input/output validation in the shared `DataCapabilityHandler`. Generated documentation never becomes a second behavior source.
 
@@ -85,32 +85,51 @@ If-Match: "v3"
 
 This applies to upload Session completion, ingestion submit/approve/reject, and Operation cancel. The header must equal an `expectedVersion` already present in the body. Successful responses include `ETag: "vN"` when an aggregate version is present. Identity, business, and error responses are all `private, no-store`.
 
-## The 33 Capability routes
+## The 41 Capability routes
 
-| Capability                    | Method and path                                           | Success            |
-| ----------------------------- | --------------------------------------------------------- | ------------------ |
-| `data.catalog.search`         | `GET /catalog/data-items`                                 | `200`              |
-| `data.catalog.get`            | `GET /catalog/data-items/:dataItemId`                     | `200`              |
-| `data.query`                  | `POST /query`                                             | `200`              |
-| `data.search.federated`       | `POST /search`                                            | `200`              |
-| `data.knowledge.search`       | `POST /knowledge/search`                                  | `200`              |
-| `data.graph.expand`           | `POST /graph/expand`                                      | `200`              |
-| `data.graph.findPath`         | `POST /graph/find-path`                                   | `200`              |
-| `data.geo.query`              | `POST /geo/query`                                         | `200`              |
-| `data.geo.intersect`          | `POST /geo/intersect`                                     | `200`              |
-| `data.ingestion.create`       | `POST /ingestions`                                        | `202`              |
-| `data.ingestion.submit`       | `POST /ingestions/:ingestionId/submit`                    | `202`              |
-| `data.operation.get`          | `GET /operations/:operationId`                            | `200`              |
-| `data.catalog.create`         | `POST /catalog/data-items`                                | `201`              |
-| `data.catalog.versions.list`  | `GET /catalog/data-items/:dataItemId/versions`            | `200`              |
-| `data.catalog.versions.get`   | `GET /catalog/data-items/:dataItemId/versions/:versionId` | `200`              |
-| `data.uploadSession.create`   | `POST /upload-sessions`                                   | `201`              |
-| `data.uploadSession.complete` | `POST /upload-sessions/:uploadSessionId/complete`         | `200`              |
-| `data.ingestion.get`          | `GET /ingestions/:ingestionId`                            | `200`              |
-| `data.ingestion.approve`      | `POST /ingestions/:ingestionId/approve`                   | `202`              |
-| `data.ingestion.reject`       | `POST /ingestions/:ingestionId/reject`                    | `200`              |
-| `data.operation.cancel`       | `POST /operations/:operationId/cancel`                    | `200`              |
-| `data.operation.events`       | `GET /operations/:operationId/events`                     | `200` SSE snapshot |
+| Capability                        | Method and path                                           | Success |
+| --------------------------------- | --------------------------------------------------------- | ------- |
+| `data.catalog.search`             | `GET /catalog/data-items`                                 | `200`   |
+| `data.catalog.get`                | `GET /catalog/data-items/:dataItemId`                     | `200`   |
+| `data.query`                      | `POST /query`                                             | `200`   |
+| `data.search.federated`           | `POST /search`                                            | `200`   |
+| `data.knowledge.search`           | `POST /knowledge/search`                                  | `200`   |
+| `data.graph.expand`               | `POST /graph/expand`                                      | `200`   |
+| `data.graph.findPath`             | `POST /graph/find-path`                                   | `200`   |
+| `data.geo.query`                  | `POST /geo/query`                                         | `200`   |
+| `data.geo.intersect`              | `POST /geo/intersect`                                     | `200`   |
+| `data.ingestion.create`           | `POST /ingestions`                                        | `202`   |
+| `data.ingestion.submit`           | `POST /ingestions/:ingestionId/submit`                    | `202`   |
+| `data.operation.get`              | `GET /operations/:operationId`                            | `200`   |
+| `data.catalog.create`             | `POST /catalog/data-items`                                | `201`   |
+| `data.catalog.versions.list`      | `GET /catalog/data-items/:dataItemId/versions`            | `200`   |
+| `data.catalog.versions.get`       | `GET /catalog/data-items/:dataItemId/versions/:versionId` | `200`   |
+| `data.uploadSession.create`       | `POST /upload-sessions`                                   | `201`   |
+| `data.uploadSession.complete`     | `POST /upload-sessions/:uploadSessionId/complete`         | `200`   |
+| `data.ingestion.get`              | `GET /ingestions/:ingestionId`                            | `200`   |
+| `data.ingestion.approve`          | `POST /ingestions/:ingestionId/approve`                   | `202`   |
+| `data.ingestion.reject`           | `POST /ingestions/:ingestionId/reject`                    | `200`   |
+| `data.operation.cancel`           | `POST /operations/:operationId/cancel`                    | `200`   |
+| `data.operation.events`           | `GET /operations/:operationId/events`                     | `200`   |
+| `data.explore.view.create`        | `POST /explore/views`                                     | `200`   |
+| `data.explore.view.list`          | `GET /explore/views`                                      | `200`   |
+| `data.explore.view.open`          | `POST /explore/views/:viewId/open`                        | `200`   |
+| `data.explore.view.revoke`        | `POST /explore/views/:viewId/revoke`                      | `200`   |
+| `data.explore.export`             | `POST /explore/export`                                    | `200`   |
+| `data.explore.query`              | `POST /explore/query`                                     | `200`   |
+| `data.analysis.create`            | `POST /analyses`                                          | `202`   |
+| `data.reconciliation.create`      | `POST /reconciliations`                                   | `201`   |
+| `data.reconciliation.get`         | `GET /reconciliations/:batchId`                           | `200`   |
+| `data.reconciliation.review`      | `POST /reconciliations/:batchId/review`                   | `200`   |
+| `data.reconciliation.list`        | `GET /reconciliations`                                    | `200`   |
+| `data.assessment.create`          | `POST /assessments`                                       | `201`   |
+| `data.assessment.get`             | `GET /assessments/:assessmentId`                          | `200`   |
+| `data.assessment.list`            | `GET /assessments`                                        | `200`   |
+| `data.assessment.overview`        | `GET /assessments/overview`                               | `200`   |
+| `data.knowledge.relations.import` | `POST /knowledge/relations`                               | `201`   |
+| `data.knowledge.relations.get`    | `GET /knowledge/relations/:assertionId`                   | `200`   |
+| `data.knowledge.relations.list`   | `GET /knowledge/relations`                                | `200`   |
+| `data.knowledge.relations.review` | `POST /knowledge/relations/:assertionId/review`           | `200`   |
 
 Paths in the table are relative to `/api/data/v1`. Obtain exact inputs, outputs, scopes, and timeouts from discovery schema; do not substitute stale client types for the runtime contract.
 
@@ -155,6 +174,8 @@ All four upstream origins come from startup-validated internal configuration; us
 
 MapLibre never embeds the API Bearer in a tile URL. An authenticated browser requests only same-origin `/api/data-foundation/geo/...`; the Next Route Handler revalidates the Supabase Session and forwards to these Fastify routes with a server-only access token and fixed Tenant/Project/Purpose while bounding path, query, content, and response size again. This Web path is not another GIS business implementation.
 
+After authority checks, an exact TiTiler PNG coverage miss (`404` JSON containing only `detail: Tile(x=…, y=…, z=…) is outside bounds`, with coordinates matching the request) becomes a transparent 256-pixel PNG. Missing assets, authorization failures, malformed or other error responses remain failures. A successful HEAD stays HEAD; only a PNG HEAD coverage candidate is retried once as GET within the same timeout and body limit. Responses remain audited and `no-store`.
+
 ## Upload and ingestion
 
 `data.ingestion.create` 1.1 accepts optional `sourceRegistration`; ingestion get/reject 1.1 preserve that descriptor. Their 1.0 schemas remain in the immutable discovery archive. Obtain the full strict schema from discovery. The descriptor contains source/bundle identity, kind, name, provider, access state, explicit completeness, limitations, and `manifestAssetId` / `manifestSha256`. The manifest asset must be among the completed upload assets supplied to ingestion.
@@ -183,7 +204,7 @@ Publication consumer respects terminal Operations. Even after all five completio
 
 ## Evidence and STAC Resource reads
 
-These governed GETs are not part of the 33 business Capabilities. They specifically back MCP Resources while still using unified Auth, data-postgres RLS, post-authorization audit, and no-store:
+These governed GETs are not part of the 41 business Capabilities. They specifically back MCP Resources while still using unified Auth, data-postgres RLS, post-authorization audit, and no-store:
 
 | Path                                                        | Scope                 | Authority and output boundary                                                                                                                                       |
 | ----------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -312,3 +333,35 @@ AMap vector display routes add `/geo/tiles/vector/amap/queries/{queryId}/{z}/{x}
 `POST /reconciliations`, `GET /reconciliations?versionId=...`, `GET /reconciliations/{batchId}`, `POST /reconciliations/{batchId}/review` project `data.reconciliation.create/list/get/review`. See [copy verification and business deduplication](/en/architecture/data-foundation/#copy-verification-and-business-observation-deduplication) for source pins, normalization, immutable evidence and limits. Reads require `data.query` and `data.catalog.read`; creation additionally requires `data.ingestion.write`, review requires `data.publish` and the creating human identity. Review requires `expectedVersion`; REST also requires matching `If-Match: "v1"`. MCP forwards its expected version as that header. Both commands require a stable UUID idempotency key across identical retries.
 
 `get` takes `batchId`, `first` (default 25, maximum 100), optional `after`, and optional `groupIndex`. Without a group index it pages group summaries; with it, it pages that group's source members. Continue with the returned `nextCursor` without changing the batch/version/group. `list` takes `versionId` and returns at most 100 recent owned batches. Creation freezes `left`, `right` and `plan`; review accepts `decision: "verify" | "reject"` and `note`. Conflicts or incomplete records block verification. Candidate results have null `independentObservationCount`; only a human-verified batch has a count within the declared rules. Agents may propose batches and read deterministic evidence but cannot issue the final review as an Agent identity.
+
+## Intake assessment
+
+`POST /api/data/v1/assessments` (`data.assessment.create`) requires `data.catalog.read`, `data.ingestion.write` and a UUID `Idempotency-Key`. Supply `dataItemId`, immutable `versionId`, `assetId` and the strict `declaration` including expected file hash, material type, target object, access/acquisition/coverage, evidence and optional typed metadata. The selected original must already be a visible committed RAW asset. The response is `{ assessment }`, including server-read hash, parser version, analysis identity, check time, declarations and deterministic rule findings. A stale self-check never replaces the server computation.
+
+`GET /api/data/v1/assessments/:assessmentId` and `GET /api/data/v1/assessments?dataItemId=…&versionId=…&first=25` require `data.catalog.read`; continue using `after=nextCursor`, up to 100 per page. Both reads and identical command retries reauthorize the exact source; withdrawal makes it unavailable. Reports do not grant access, approve publication or certify position. `REMOTE_QUERY_REPORTED` deliberately remains unverified; declared complete coverage is not an independently measured whole-dataset count.
+
+`GET /api/data/v1/assessments/overview` (`data.assessment.overview`, `data.catalog.read`) requires the target object and optionally accepts `query`, `action`, `first` (1–100) and an opaque `after` resource cursor. `totalCount`, `checkedCount`, `uncheckedCount`, and next-action counts share the whole authorized filtered resource denominator; `selectedCount` describes the selected action, independently of the bounded page. Each item pins a resource/version and its latest applicable report time. No check means `UNCHECKED`, not inaccessible.
+
+`data.knowledge.relations.import/get/list/review` is the governed business-relation workflow. Import is bounded to 100 candidates, 100,000 bytes per candidate and 256 KiB per command, pins an authorized published DataItem/Version and all saved source hashes, and accepts up to 64 evidence locations per triple. `mappingVersion` scopes stable source-local identities; changed attributes under the same mapping are conflicts, while corrections use another mapping and an explicit `supersedesId`. `list` defaults to `APPROVED`, supports source-scoped `entityKey`/`mappingVersion`, reports the count for that status and uses at most 100 rows with a version-bound UUID cursor. Every source is reauthorized on reads and command retries. Import requires catalog read plus ingestion write; review requires catalog read plus publish and a human principal, an expected assertion version and rationale. Review remains independent of asset acceptance. The legacy source-provenance graph stays separate.
+
+### Typed knowledge candidates (relations 1.1)
+
+Relations 1.1 adds persons, organizations, documents, claims, events, observations, policies, model runs and places through the existing source-bound workflow. Registered predicates constrain endpoint kinds; each extended relation requires explicit record nature, time role, location role and applicability. Plans, historical reports and simulations cannot be declared sampling observations. Source hashes, immutable versions, pending review and permissions remain unchanged. The 1.0 discovery schemas are retained. This extension now also supports explicit cross-source identity correspondence as described below.
+
+Explicit IDENTITY_MATCH candidates reference existing source entities, preserving versioned identities rather than merging equal labels. Import checks names, kinds and external IDs, refusing reference chains. Lists accept at most sixty-four selected sources and source-scoped entity focus. Every source and referenced endpoint is reauthorized on each read; withdrawal hides related edges and counts. Rebuildable projections retain original endpoint identities. Pending correspondence is not approved knowledge.
+
+For relation lists, URL-encode JSON in `relatedSources` (up to sixty-three additional `{dataItemId, versionId}` objects) and `entityReference` (`{dataItemId, versionId, mappingVersion, entityKey}`). Other query fields remain scalar. Invalid JSON, oversized input and malformed identities are rejected before execution.
+
+List capability 1.3 supports a primary source plus at most 63 related versions (64 total), using the existing request and response fields. The 1.1 twelve-source and 1.2 thirty-two-source discovery schemas remain archived unchanged. Every selected source is authorized before counting or reading; no partial result is returned when any source is denied. Pagination remains at most 100 relations per response. This bounded expansion does not change authority data, review state or projection identities.
+
+List capability 1.4 additionally accepts `queryId` instead of inline source IDs. Create the immutable source manifest through the existing exploration POST capability; GET relation pages then use its short ID. Owner, tenant/project, purpose, policy, security level, expiry and every source are rechecked. Missing or denied members fail the request, never a partial success. An empty authorized manifest returns zero. Inline scope retains the 64-source bound; discovery versions 1.0–1.3 remain unchanged. A query ID expires; use existing saved views to reopen pinned versions. Business conditions are available through exploration 1.12 as described below.
+
+Exploration 1.12 adds optional `businessQuery` to an explicit version manifest. It fixes review status, current/history mode, source-time filters and compact assertion/version pins (at most 2,000). Every read rechecks source authorization and authority versions; a changed or unavailable pin fails the whole scope. Relation pages, bound records, record aggregates and map features use this same scope. Explicit `urn:wiser:record:` identities bind only to records in the pinned analysis with a matching evidence asset. Every date-filtered HTML table row requires original-column selections backed by the selected assertion’s pinned table/row/column evidence, even when only one declared period is currently visible. Caller-supplied month columns and unrestricted whole-row text are rejected; the result omits other periods without altering the original asset or claiming daily observations. Resource inventory/readiness counts still describe source assets, not scoped observations. Saved-view open/export 1.1 retain the new scope, while their 1.0 and exploration 1.11 discovery schemas stay frozen. Saved links are purpose-scoped: create a user-facing view with the authorized web-console purpose, not an unrelated batch-test purpose. Geometry-free records remain unlocated; no location or scientific approval is inferred.
+
+### Pinned cross-source evidence
+
+Cross-source relation evidence optionally pins `source.dataItemId`, `versionId`, `analysisId`, and `recordId`, alongside the original asset hash. The locator is `record:<recordId>`; a non-null excerpt must occur in that parsed record. Import/get/review 1.2 and list 1.5 keep prior schemas archived. Every read and retry reauthorizes the owner and all evidence sources; withdrawn, inaccessible, or mismatched evidence cannot contribute to a relation or its evidence/search readback. Dates remain source-supported candidates, not professional approval.
+
+Assessment list capability 1.1 adds optional `assetId` and `latestPerAsset` (REST `true` / `false`). With `latestPerAsset=true`, choose the newest visible report per original by `created_at DESC, assessment_id DESC` before applying the existing assessment-ID pagination. A newer incomplete or source-mismatched declaration is returned instead of silently falling back to an older complete one. Omitted options preserve full history; the immutable 1.0 input schema remains in the archive. No migration or public output changes are needed.
+
+Raster display queries accept `bidx` (1–256), a finite strictly increasing decimal `rescale=min,max`, optional finite decimal `nodata`, allowlisted resampling, `colormap_name` and `return_mask`. The `nodata` override is forwarded through both allowlists to TiTiler without changing source metadata. Unit labels are browser-only declarations, never a query parameter or a unit conversion. Source selection and authorization are unchanged.

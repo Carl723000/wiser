@@ -4,6 +4,8 @@ import {
   type InvalidateExploration,
 } from '@/lib/exploration-request';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import type { FeatureCollection } from 'geojson';
+import { loadBusinessMap, businessMapBounds } from '@/lib/business-map';
 import * as maplibre from 'maplibre-gl';
 import Map, {
   Source,
@@ -22,6 +24,7 @@ import {
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './data-explorer.module.css';
 import { AmapBasemap, type AmapBasemapHandle } from './amap-basemap';
+import { requireIntegerMapZoom } from '@/lib/map-integer-zoom';
 import { authorityCamera, displayCamera } from '@/lib/amap-camera';
 import { toAmap, fromAmap } from '@/lib/amap-coordinates';
 import { useExplorationViewState } from './exploration-view-context';
@@ -49,8 +52,46 @@ export default function DataExplorerMap({
   const map = useRef<MapRef>(null);
   const basemap = useRef<AmapBasemapHandle>(null);
   const [ready, setReady] = useState(false);
+  const integerZoom = useRef(false);
+  const [integerZoomNotice, setIntegerZoomNotice] = useState(false);
   const [renderedCount, setRenderedCount] = useState(0);
   const [failed, setFailed] = useState(false);
+  const business = Boolean(result.spec.businessQuery);
+  const [retry, setRetry] = useState(0);
+  const [businessMap, setBusinessMap] = useState<FeatureCollection | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!business) return;
+    const controller = new AbortController();
+    void loadBusinessMap(result, async (after) => {
+      const response = await fetch('/api/data-foundation/explore', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          queryId: result.queryId,
+          view: 'map',
+          first: 200,
+          after,
+        }),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        if (invalidatesExploration(response.status))
+          onInvalidated(result.queryId, response.status);
+        throw Error('Map unavailable');
+      }
+      return ExplorationResultSchema.parse(await response.json());
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setBusinessMap(data);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, [business, result, onInvalidated, retry]);
   const [layers, setLayers] = useState(
     savedMap?.layers ?? {
       points: true,
@@ -90,20 +131,18 @@ export default function DataExplorerMap({
   useEffect(() => setSelected(selectedId), [selectedId]);
   useEffect(() => () => pending.current?.abort(), []);
   function fit() {
-    const extent = result.spec.spatialBounds ?? result.spatial?.bounds;
+    const extent = business
+      ? businessMapBounds(businessMap)
+      : (result.spec.spatialBounds ?? result.spatial?.bounds);
+    const display = (point: [number, number]): [number, number] =>
+      business ? point : (toAmap(point) as [number, number]);
     if (extent)
       map.current?.fitBounds(
         [
-          toAmap([extent[0], Math.max(-85.0511287798066, extent[1])]) as [
-            number,
-            number,
-          ],
-          toAmap([extent[2], Math.min(85.0511287798066, extent[3])]) as [
-            number,
-            number,
-          ],
+          display([extent[0], Math.max(-85.0511287798066, extent[1])]),
+          display([extent[2], Math.min(85.0511287798066, extent[3])]),
         ],
-        { padding: 60, maxZoom: 5.5, duration: 0 },
+        { padding: 60, maxZoom: business ? 14 : 5.5, duration: 0 },
       );
   }
   function filterArea() {
@@ -170,6 +209,7 @@ export default function DataExplorerMap({
       onSelect(record);
     } catch {
       if (!controller.signal.aborted) {
+        setRenderedCount(0);
         setFailed(true);
         setReady(false);
       }
@@ -177,7 +217,7 @@ export default function DataExplorerMap({
   }
   useEffect(() => {
     if (ready && !savedMap?.camera) fit();
-  }, [ready, result]);
+  }, [ready, result, businessMap]);
   const tiles = useMemo(
     () => [
       `${window.location.origin}/api/data-foundation/geo/tiles/vector/amap/queries/${result.queryId}/{z}/{x}/{y}.pbf`,
@@ -189,281 +229,316 @@ export default function DataExplorerMap({
     [],
   );
   return (
-    <div
-      className={styles.mapCanvas}
-      data-testid="explorer-map"
-      data-ready={ready}
-      data-rendered-feature-count={renderedCount}
-      data-selected-record={selected ?? ''}
-    >
-      <AmapBasemap ref={basemap} locale={locale} />
-      {failed ? null : (
-        <Map
-          ref={map}
-          mapLib={maplibre}
-          initialViewState={displayCamera(
-            savedMap?.camera ?? {
-              longitude: 105,
-              latitude: 35,
-              zoom: 2,
-              bearing: 0,
-              pitch: 0,
-            },
-          )}
-          mapStyle={style}
-          style={{
-            height: '100%',
-            width: '100%',
-            clipPath: 'inset(0 0 28px 0)',
+    <>
+      <div
+        className={styles.mapCanvas}
+        data-testid="explorer-map"
+        data-ready={ready}
+        data-rendered-feature-count={renderedCount}
+        data-selected-record={selected ?? ''}
+      >
+        <AmapBasemap
+          ref={basemap}
+          locale={locale}
+          onIntegerZoom={() => {
+            if (integerZoom.current) return;
+            integerZoom.current = true;
+            setIntegerZoomNotice(true);
+            if (map.current) requireIntegerMapZoom(map.current.getMap());
           }}
-          minZoom={1}
-          maxZoom={21}
-          dragRotate={false}
-          pitchWithRotate={false}
-          maxPitch={0}
-          attributionControl={false}
-          renderWorldCopies={false}
-          locale={{
-            'Map.Title': controls.title,
-            'NavigationControl.ZoomIn': controls.zoomIn,
-            'NavigationControl.ZoomOut': controls.zoomOut,
-            'NavigationControl.ResetBearing': controls.resetBearing,
-            'AttributionControl.ToggleAttribution': controls.toggleAttribution,
-          }}
-          interactiveLayerIds={[
-            'records-points',
-            'records-lines',
-            'records-polygons',
-          ]}
-          onLoad={() => {
-            const instance = map.current?.getMap();
-            instance?.touchZoomRotate.disableRotation();
-            if (instance)
-              basemap.current?.syncCamera({
-                longitude: instance.getCenter().lng,
-                latitude: instance.getCenter().lat,
-                zoom: instance.getZoom(),
+        />
+        {failed || (business && !businessMap) ? null : (
+          <Map
+            ref={map}
+            mapLib={maplibre}
+            initialViewState={displayCamera(
+              savedMap?.camera ?? {
+                longitude: 105,
+                latitude: 35,
+                zoom: 2,
                 bearing: 0,
                 pitch: 0,
-              });
-            setReady(true);
-          }}
-          onMove={(event) =>
-            basemap.current?.syncCamera({
-              ...event.viewState,
-              bearing: 0,
-              pitch: 0,
-            })
-          }
-          onMoveEnd={(event) => {
-            const { longitude, latitude, zoom, bearing, pitch } =
-              event.viewState;
-            camera.current = authorityCamera({
-              longitude: ((((longitude + 180) % 360) + 360) % 360) - 180,
-              latitude,
-              zoom,
-              bearing: ((((bearing + 180) % 360) + 360) % 360) - 180,
-              pitch,
-            });
-            viewState?.reportMap({ camera: camera.current, layers });
-          }}
-          onIdle={() => {
-            const instance = map.current?.getMap();
-            if (!instance) return;
-            const layers = [
+              },
+            )}
+            mapStyle={style}
+            style={{
+              height: '100%',
+              width: '100%',
+              clipPath: 'inset(0 0 28px 0)',
+            }}
+            minZoom={1}
+            maxZoom={21}
+            dragRotate={false}
+            pitchWithRotate={false}
+            maxPitch={0}
+            attributionControl={false}
+            renderWorldCopies={false}
+            locale={{
+              'Map.Title': controls.title,
+              'NavigationControl.ZoomIn': controls.zoomIn,
+              'NavigationControl.ZoomOut': controls.zoomOut,
+              'NavigationControl.ResetBearing': controls.resetBearing,
+              'AttributionControl.ToggleAttribution':
+                controls.toggleAttribution,
+            }}
+            interactiveLayerIds={[
               'records-points',
               'records-lines',
               'records-polygons',
-            ].filter((id) => instance.getLayer(id));
-            if (layers.length === 0) return;
-            setRenderedCount(
-              new Set(
-                instance
-                  .queryRenderedFeatures({ layers })
-                  .map((feature) =>
-                    String(
-                      feature.properties?.['recordId'] ??
-                        feature.properties?.['clusterId'],
-                    ),
-                  ),
-              ).size,
-            );
-          }}
-          onError={(event) => {
-            const error: unknown = event.error;
-            if (
-              typeof error === 'object' &&
-              error !== null &&
-              'status' in error &&
-              typeof error.status === 'number' &&
-              invalidatesExploration(error.status)
-            )
-              onInvalidated(result.queryId, error.status);
-            setFailed(true);
-            setReady(false);
-          }}
-          onClick={(event) => {
-            const properties = event.features?.[0]?.properties;
-            if (!properties) return;
-            if (properties['cluster'] === true) {
-              map.current?.easeTo({
-                center: event.lngLat,
-                zoom: Math.min(21, (map.current?.getZoom() ?? 0) + 2),
-                duration: 0,
+            ]}
+            onLoad={() => {
+              if (integerZoom.current && map.current)
+                requireIntegerMapZoom(map.current.getMap());
+              const instance = map.current?.getMap();
+              instance?.touchZoomRotate.disableRotation();
+              if (instance)
+                basemap.current?.syncCamera({
+                  longitude: instance.getCenter().lng,
+                  latitude: instance.getCenter().lat,
+                  zoom: instance.getZoom(),
+                  bearing: 0,
+                  pitch: 0,
+                });
+              setReady(true);
+            }}
+            onMove={(event) =>
+              basemap.current?.syncCamera({
+                ...event.viewState,
+                bearing: 0,
+                pitch: 0,
+              })
+            }
+            onMoveEnd={(event) => {
+              const { longitude, latitude, zoom, bearing, pitch } =
+                event.viewState;
+              camera.current = authorityCamera({
+                longitude: ((((longitude + 180) % 360) + 360) % 360) - 180,
+                latitude,
+                zoom,
+                bearing: ((((bearing + 180) % 360) + 360) % 360) - 180,
+                pitch,
               });
-            } else void select(properties);
-          }}
-        >
-          <NavigationControl position="top-right" showCompass={false} />
-          <Source
-            id="records"
-            type="vector"
-            tiles={tiles}
-            minzoom={0}
-            maxzoom={22}
+              viewState?.reportMap({ camera: camera.current, layers });
+            }}
+            onIdle={() => {
+              const instance = map.current?.getMap();
+              if (!instance) return;
+              const layers = [
+                'records-points',
+                'records-lines',
+                'records-polygons',
+              ].filter((id) => instance.getLayer(id));
+              if (layers.length === 0) return;
+              setRenderedCount(
+                new Set(
+                  instance
+                    .queryRenderedFeatures({ layers })
+                    .map((feature) =>
+                      String(
+                        feature.properties?.['recordId'] ??
+                          feature.properties?.['clusterId'],
+                      ),
+                    ),
+                ).size,
+              );
+            }}
+            onError={(event) => {
+              const error: unknown = event.error;
+              if (
+                typeof error === 'object' &&
+                error !== null &&
+                'status' in error &&
+                typeof error.status === 'number' &&
+                invalidatesExploration(error.status)
+              )
+                onInvalidated(result.queryId, error.status);
+              setRenderedCount(0);
+              setFailed(true);
+              setReady(false);
+            }}
+            onClick={(event) => {
+              const properties = event.features?.[0]?.properties;
+              if (!properties) return;
+              if (properties['cluster'] === true) {
+                map.current?.easeTo({
+                  center: event.lngLat,
+                  zoom: Math.min(21, (map.current?.getZoom() ?? 0) + 2),
+                  duration: 0,
+                });
+              } else void select(properties);
+            }}
           >
-            <Layer
-              source-layer="exploration"
-              id="records-polygons"
-              layout={{ visibility: layers.polygons ? 'visible' : 'none' }}
-              type="fill"
-              filter={['==', ['geometry-type'], 'Polygon']}
-              paint={{ 'fill-color': palette.accent, 'fill-opacity': 0.3 }}
-            />
-            <Layer
-              source-layer="exploration"
-              id="records-lines"
-              layout={{
-                visibility:
-                  layers.lines || layers.polygons ? 'visible' : 'none',
-              }}
-              type="line"
-              filter={[
-                'in',
-                ['geometry-type'],
-                [
-                  'literal',
+            <NavigationControl position="top-right" showCompass={false} />
+            <Source
+              id="records"
+              {...(business && businessMap
+                ? { type: 'geojson' as const, data: businessMap }
+                : { type: 'vector' as const, tiles, minzoom: 0, maxzoom: 22 })}
+            >
+              <Layer
+                {...(business ? {} : { 'source-layer': 'exploration' })}
+                id="records-polygons"
+                layout={{ visibility: layers.polygons ? 'visible' : 'none' }}
+                type="fill"
+                filter={['==', ['geometry-type'], 'Polygon']}
+                paint={{ 'fill-color': palette.accent, 'fill-opacity': 0.3 }}
+              />
+              <Layer
+                {...(business ? {} : { 'source-layer': 'exploration' })}
+                id="records-lines"
+                layout={{
+                  visibility:
+                    layers.lines || layers.polygons ? 'visible' : 'none',
+                }}
+                type="line"
+                filter={[
+                  'in',
+                  ['geometry-type'],
                   [
-                    ...(layers.lines ? ['LineString'] : []),
-                    ...(layers.polygons ? ['Polygon'] : []),
-                  ],
-                ],
-              ]}
-              paint={{
-                'line-color': [
-                  'case',
-                  ['==', ['get', 'recordId'], selected ?? ''],
-                  palette.selected,
-                  palette.accent,
-                ],
-                'line-width': 3,
-              }}
-            />
-            <Layer
-              source-layer="exploration"
-              id="records-points"
-              layout={{ visibility: layers.points ? 'visible' : 'none' }}
-              type="circle"
-              filter={['==', ['geometry-type'], 'Point']}
-              paint={{
-                'circle-color': [
-                  'case',
-                  ['==', ['get', 'recordId'], selected ?? ''],
-                  palette.selected,
-                  palette.accent,
-                ],
-                'circle-radius': [
-                  'case',
-                  ['==', ['get', 'recordId'], selected ?? ''],
-                  10,
-                  [
-                    'case',
-                    ['==', ['get', 'cluster'], true],
+                    'literal',
                     [
-                      'step',
-                      ['get', 'count'],
-                      16,
-                      100,
-                      20,
-                      1000,
-                      24,
-                      10000,
-                      30,
+                      ...(layers.lines ? ['LineString'] : []),
+                      ...(layers.polygons ? ['Polygon'] : []),
                     ],
-                    6,
                   ],
-                ],
-                'circle-stroke-color': palette.ink,
-                'circle-stroke-width': 2,
-              }}
-            />
-            <Layer
-              source-layer="exploration"
-              id="records-cluster-labels"
-              type="symbol"
-              filter={['==', ['get', 'cluster'], true]}
-              layout={{
-                visibility: layers.points ? 'visible' : 'none',
-                'text-field': ['to-string', ['get', 'count']],
-                'text-font': ['Arial', 'sans-serif'],
-                'text-size': 12,
-                'text-allow-overlap': true,
-                'text-ignore-placement': true,
-              }}
-              paint={{ 'text-color': palette.background }}
-            />
-          </Source>
-        </Map>
-      )}
-      <div className={styles.mapSummary}>
-        <button onClick={fit}>{copy.fitMap}</button>
-        {onBounds ? (
-          <button disabled={!ready || failed} onClick={filterArea}>
-            {copy.mapLayers.filter}
-          </button>
-        ) : null}
-        <span>
-          {copy.shownFeatures} {renderedCount.toLocaleString(locale)} ·{' '}
-          {copy.spatialRecords}{' '}
-          {(
-            result.spatial?.mercatorFeatureCount ?? result.totalCount
-          ).toLocaleString(locale)}
-        </span>
-      </div>
-      {!failed ? (
-        <details className={styles.mapLegend}>
-          <summary>{copy.mapLayers.title}</summary>
-          <fieldset>
-            {(['points', 'lines', 'polygons'] as const).map((key) => (
-              <label key={key}>
-                <input
-                  type="checkbox"
-                  checked={layers[key]}
-                  onChange={(event) =>
-                    setLayers((value) => ({
-                      ...value,
-                      [key]: event.target.checked,
-                    }))
-                  }
-                />
-                {copy.mapLayers[key]}
-              </label>
-            ))}
-            <p>
-              <span className={styles.selectedSwatch} aria-hidden="true" />
-              {copy.mapLayers.selected}
-            </p>
-            <p>{copy.mapLayers.clusters}</p>
-            <p>{copy.mapLayers.hint}</p>
-          </fieldset>
-        </details>
-      ) : null}
-      {failed ? (
-        <div className={styles.mapNotice} role="status">
-          {copy.mapUnavailable}
-          <button onClick={() => setFailed(false)}>{copy.retryMap}</button>
+                ]}
+                paint={{
+                  'line-color': [
+                    'case',
+                    ['==', ['get', 'recordId'], selected ?? ''],
+                    palette.selected,
+                    palette.accent,
+                  ],
+                  'line-width': 3,
+                }}
+              />
+              <Layer
+                {...(business ? {} : { 'source-layer': 'exploration' })}
+                id="records-points"
+                layout={{ visibility: layers.points ? 'visible' : 'none' }}
+                type="circle"
+                filter={['==', ['geometry-type'], 'Point']}
+                paint={{
+                  'circle-color': [
+                    'case',
+                    ['==', ['get', 'recordId'], selected ?? ''],
+                    palette.selected,
+                    palette.accent,
+                  ],
+                  'circle-radius': [
+                    'case',
+                    ['==', ['get', 'recordId'], selected ?? ''],
+                    10,
+                    [
+                      'case',
+                      ['==', ['get', 'cluster'], true],
+                      [
+                        'step',
+                        ['get', 'count'],
+                        16,
+                        100,
+                        20,
+                        1000,
+                        24,
+                        10000,
+                        30,
+                      ],
+                      6,
+                    ],
+                  ],
+                  'circle-stroke-color': palette.ink,
+                  'circle-stroke-width': 2,
+                }}
+              />
+              <Layer
+                {...(business ? {} : { 'source-layer': 'exploration' })}
+                id="records-cluster-labels"
+                type="symbol"
+                filter={['==', ['get', 'cluster'], true]}
+                layout={{
+                  visibility: layers.points ? 'visible' : 'none',
+                  'text-field': ['to-string', ['get', 'count']],
+                  'text-font': ['Arial', 'sans-serif'],
+                  'text-size': 12,
+                  'text-allow-overlap': true,
+                  'text-ignore-placement': true,
+                }}
+                paint={{ 'text-color': palette.background }}
+              />
+            </Source>
+          </Map>
+        )}
+        <div className={styles.mapSummary}>
+          <button onClick={fit}>{copy.fitMap}</button>
+          {onBounds && !business ? (
+            <button disabled={!ready || failed} onClick={filterArea}>
+              {copy.mapLayers.filter}
+            </button>
+          ) : null}
+          <span>
+            {copy.shownFeatures} {renderedCount.toLocaleString(locale)} ·{' '}
+            {copy.spatialRecords}{' '}
+            {(
+              result.spatial?.mercatorFeatureCount ?? result.totalCount
+            ).toLocaleString(locale)}
+          </span>
         </div>
+        {!failed ? (
+          <details className={styles.mapLegend}>
+            <summary>{copy.mapLayers.title}</summary>
+            <fieldset>
+              {(['points', 'lines', 'polygons'] as const).map((key) => (
+                <label key={key}>
+                  <input
+                    type="checkbox"
+                    checked={layers[key]}
+                    onChange={(event) =>
+                      setLayers((value) => ({
+                        ...value,
+                        [key]: event.target.checked,
+                      }))
+                    }
+                  />
+                  {copy.mapLayers[key]}
+                </label>
+              ))}
+              <p>
+                <span className={styles.selectedSwatch} aria-hidden="true" />
+                {copy.mapLayers.selected}
+              </p>
+              <p>{copy.mapLayers.clusters}</p>
+              <p>{copy.mapLayers.hint}</p>
+            </fieldset>
+          </details>
+        ) : null}
+        {failed ? (
+          <div className={styles.mapNotice} role="status">
+            {copy.mapUnavailable}
+            <button
+              onClick={() => {
+                setFailed(false);
+                setRetry((value) => value + 1);
+              }}
+            >
+              {copy.retryMap}
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <p role="note" className={styles.mapPositionNote}>
+        {getDictionary(locale).dataFoundation.amap.positionLimit}
+        {business ? (
+          <span>
+            {' '}
+            {getDictionary(locale).knowledgeRelations.businessMapScope}
+          </span>
+        ) : null}
+      </p>
+      {integerZoomNotice && !failed ? (
+        <p className={styles.mapPositionNote}>
+          {getDictionary(locale).rasterDisplay.integerZoom}
+        </p>
       ) : null}
-    </div>
+    </>
   );
 }

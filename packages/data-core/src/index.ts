@@ -8,3 +8,6 @@ export * from './security/index.js';
 export * from './exploration-readiness.js';
 export * from './exploration-path.js';
 export * from './reconciliation.js';
+export * from './intake-assessment.ts';
+export * from './knowledge-relations.js';
+export * from './business-query.js';

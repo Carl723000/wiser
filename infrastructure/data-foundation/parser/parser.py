@@ -1,5 +1,6 @@
 """Bounded extraction of source content. Source files never supply executable code."""
 
+import hashlib
 import math
 import re
 import stat
@@ -228,6 +229,40 @@ def legacy_workbook(path):
         book.release_resources()
 
 
+class DeclaredHtmlEncoding(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.encoding = None
+        self.stopped = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "body":
+            self.stopped = True
+        if tag != "meta" or self.stopped or self.encoding is not None:
+            return
+        attrs = dict(attrs)
+        value = attrs.get("charset")
+        if value is None and (attrs.get("http-equiv") or "").lower() == "content-type":
+            match = re.search(r"charset\s*=\s*['\"]?([\w-]+)", attrs.get("content") or "", re.I)
+            value = match[1] if match else None
+        if value is not None:
+            self.encoding = value.strip().lower()
+
+
+def decode_html(raw):
+    encoding = "utf-8-sig"
+    if not raw.startswith(b"\xef\xbb\xbf"):
+        declaration = DeclaredHtmlEncoding()
+        # Inspect only the bounded header for explicit declarations, not heuristics.
+        declaration.feed(raw[:16384].decode("ascii", errors="ignore"))
+        declared = declaration.encoding
+        if declared in ("gb2312", "gbk", "gb18030"):
+            encoding = "gb18030"
+        elif declared not in (None, "utf-8", "utf8"):
+            raise ParseError("INVALID_CONTENT")
+    return raw.decode(encoding), encoding
+
+
 class VisibleText(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -271,7 +306,15 @@ class VisibleText(HTMLParser):
 
 
 def document(path, kind):
-    yield schema(["Text", "Source location"])
+    yield schema(
+        ["Text", "Source location", "Source table structure"] if kind in ("html", "doc", "docx") else ["Text", "Source location"],
+        [
+            {"key": "__text_encoding", "label": "Text encoding issues"},
+            {"key": "__source_encoding", "label": "Source text encoding"},
+        ],
+    )
+    source_encoding = None
+    html_source = None
     if kind == "pdf":
         from pypdf import PdfReader
 
@@ -291,12 +334,15 @@ def document(path, kind):
 
         segments = word_segments(path)
     else:
-        text = path.read_text(encoding="utf-8-sig")
         if kind == "html":
+            text, source_encoding = decode_html(path.read_bytes())
+            html_source = text
             parser = VisibleText()
             parser.feed(text)
             parser.close()
             text = "".join(parser.parts)
+        else:
+            text = path.read_text(encoding="utf-8-sig")
         segments = ((text, "document"),)
     total = 0
     for text, location in segments:
@@ -309,7 +355,41 @@ def document(path, kind):
                 yield {"type": "warning", "reason": "TEXT_LIMIT"}
                 return
             for start in range(0, len(paragraph), 16000):
-                yield record({"c1": paragraph[start : start + 16000], "c2": location})
+                chunk = paragraph[start : start + 16000]
+                values = {"c1": chunk, "c2": location}
+                if source_encoding:
+                    values["__source_encoding"] = source_encoding
+                offsets = [index for index, char in enumerate(chunk) if char == "\x00"]
+                if offsets:
+                    # PostgreSQL JSONB cannot represent U+0000. Preserve its exact
+                    # positions rather than guessing a missing scientific symbol.
+                    values["c1"] = chunk.replace("\x00", "�")
+                    values["__text_encoding"] = {
+                        "code": "U+0000",
+                        "offsets": offsets,
+                        "offsetUnit": "UNICODE_CODE_POINT",
+                        "originalTextSha256": hashlib.sha256(chunk.encode("utf-8")).hexdigest(),
+                    }
+                    yield {"type": "warning", "reason": "TEXT_ENCODING_REPLACED"}
+                yield record(values)
+    if html_source is not None:
+        from html_content import html_table_rows
+
+        for item in html_table_rows(html_source):
+            if 'warning' in item:
+                yield {'type': 'warning', 'reason': item['warning']}
+            else:
+                location = f"table:{item['tableIndex']}/row:{item['rowIndex']}"
+                yield record({'c1': ' | '.join(cell['text'] for cell in item['cells']), 'c2': location, 'c3': item, **({'__source_encoding': source_encoding} if source_encoding else {})})
+    if kind in ("doc", "docx"):
+        from word_tables import word_table_rows
+
+        for item in word_table_rows(path):
+            if 'warning' in item:
+                yield {'type': 'warning', 'reason': item['warning']}
+            else:
+                location = f"{item['sourcePart']}#table:{item['tableIndex']}/row:{item['rowIndex']}"
+                yield record({'c1': ' | '.join(cell['text'] for cell in item['cells']), 'c2': location, 'c3': item, **({'__source_encoding': source_encoding} if source_encoding else {})})
     if kind == "pdf" and total == 0:
         yield {"type": "warning", "reason": "TEXT_UNAVAILABLE"}
 
@@ -328,6 +408,10 @@ def parse_asset(path, kind, maximum_records=MAX_RECORDS):
             events = workbook(path)
         elif kind == "xls":
             events = legacy_workbook(path)
+        elif kind == "xml":
+            from xml_content import xml_content
+
+            events = xml_content(path)
         elif kind in ("html", "md", "pdf", "txt", "doc", "docx"):
             events = document(path, kind)
         elif kind in ("shp", "tif", "tiff", "adf", "nc"):

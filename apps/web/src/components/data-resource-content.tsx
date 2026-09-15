@@ -18,6 +18,9 @@ import {
 } from '@/lib/data-content-presentation';
 import { invalidatesExploration } from '@/lib/exploration-request';
 import { DataRasterView } from './data-raster-view';
+import { DataKnowledgeRelations } from './data-knowledge-relations';
+import { DataSpatialSource } from './data-spatial-source';
+import { DataAssessment } from './data-assessment';
 import { DataReconciliation } from './data-reconciliation';
 import { DataContentValue } from './data-content-value';
 import { DataExplorerGraph } from './data-explorer-graph';
@@ -240,6 +243,26 @@ export function DataResourceContent({
           </Link>
         ) : null}
       </header>
+      <DataKnowledgeRelations
+        key={versionId}
+        locale={locale}
+        dataItemId={dataItemId}
+        versionId={versionId}
+      />
+      <DataSpatialSource
+        locale={locale}
+        dataItemId={dataItemId}
+        versionId={versionId}
+        assetId={asset?.assetId}
+        geometryAvailable={(asset?.featureCount ?? 0) > 0}
+      />
+      <DataAssessment
+        key={fileId}
+        locale={locale}
+        dataItemId={dataItemId}
+        versionId={versionId}
+        asset={asset ?? null}
+      />
       <DataReconciliation
         locale={locale}
         dataItemId={dataItemId}

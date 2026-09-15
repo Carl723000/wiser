@@ -1,9 +1,11 @@
 import io
+import hashlib
 import tempfile
 import unittest
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from openpyxl import Workbook
 from parser import ParseError, parse_asset
@@ -57,6 +59,41 @@ class SourceParserTest(unittest.TestCase):
                 "pdf",
             )
 
+    def test_pdf_null_text_retains_readable_content_and_explicit_uncertainty(self):
+        text = "氮😀 concentration: 1 mg L\x001; literal � remains."
+        reader = Mock(is_encrypted=False)
+        reader.pages = [Mock(), Mock()]
+        reader.pages[0].extract_text.return_value = text
+        reader.pages[1].extract_text.return_value = "Unaffected page"
+        with patch("pypdf.PdfReader", return_value=reader):
+            events = self.events("encoding.pdf", b"%PDF-1.7\nfixture", "pdf")
+        rows = [event for event in events if event["type"] == "record"]
+        self.assertEqual(rows[0]["values"]["c1"], text.replace("\x00", "�"))
+        self.assertEqual(rows[0]["values"]["c2"], "page:1")
+        issues = rows[0]["values"]["__text_encoding"]
+        self.assertEqual(issues["code"], "U+0000")
+        self.assertEqual(issues["offsets"], [text.index("\x00")])
+        self.assertEqual(issues["offsetUnit"], "UNICODE_CODE_POINT")
+        self.assertEqual(issues["originalTextSha256"], hashlib.sha256(text.encode()).hexdigest())
+        restored = list(rows[0]["values"]["c1"])
+        for offset in issues["offsets"]:
+            restored[offset] = "\x00"
+        self.assertEqual("".join(restored), text)
+        self.assertEqual(rows[1]["values"]["c1"], "Unaffected page")
+        self.assertNotIn("__text_encoding", rows[1]["values"])
+        self.assertEqual(events[-1]["status"], "PARTIAL")
+        self.assertEqual(events[-1]["reason"], "TEXT_ENCODING_REPLACED")
+        self.assertEqual(events[-1]["recordCount"], 2)
+
+    def test_null_offsets_are_chunk_local_and_regular_text_remains_ready(self):
+        events = self.events("long.txt", b"a" * 15999 + b"\x00\x00b", "txt")
+        rows = [event for event in events if event["type"] == "record"]
+        self.assertEqual(rows[0]["values"]["__text_encoding"]["offsets"], [15999])
+        self.assertEqual(rows[1]["values"]["__text_encoding"]["offsets"], [0])
+        self.assertEqual(events[-1]["status"], "PARTIAL")
+        regular = self.events("normal.txt", "Normal � text".encode(), "txt")
+        self.assertEqual(regular[-1]["status"], "READY")
+
     def test_disguised_excel_is_invalid(self):
         with self.assertRaisesRegex(ParseError, "INVALID_FORMAT"):
             self.events("bad.xlsx", b"<html>Please sign in</html>", "xlsx")
@@ -81,6 +118,50 @@ class SourceParserTest(unittest.TestCase):
         events = self.events("note.md", "# 河流\n\n测站 001，水位未知。".encode(), "md")
         self.assertIn("测站 001", str(events))
         self.assertEqual(events[-1]["status"], "READY")
+
+    def test_html_declared_chinese_encoding_preserves_text_and_provenance(self):
+        for meta in (
+            '<meta charset="gb2312">',
+            '<meta http-equiv="Content-Type" content="text/html; charset=gbk">',
+        ):
+            with self.subTest(meta=meta):
+                raw = (meta + '<p>王浩：社会水循环；测站001。</p>').encode('gb18030')
+                events = self.events('speech.html', raw, 'html')
+                rows = [e for e in events if e['type'] == 'record']
+                self.assertEqual(rows[0]['values']['c1'], '王浩：社会水循环；测站001。')
+                self.assertEqual(rows[0]['values']['__source_encoding'], 'gb18030')
+                self.assertEqual(events[-1]['status'], 'READY')
+
+    def test_gbk_table_combines_decoding_with_stable_source_cells(self):
+        raw = ('<meta charset="gbk"><p>永定河监测</p><table>'
+               '<tr><th>指标</th><th>六月</th><th>八月</th></tr>'
+               '<tr><td>溶解氧</td><td>8.55</td><td>11.14</td></tr>'
+               '</table>').encode('gbk')
+        events = self.events('months.html', raw, 'html')
+        records = [e['values'] for e in events if e['type'] == 'record']
+        tables = [r for r in records if r.get('c3')]
+        self.assertEqual(len(tables), 2)
+        self.assertEqual(tables[0]['c3']['cells'][1]['text'], '六月')
+        self.assertEqual(tables[1]['c2'], 'table:1/row:2')
+        self.assertEqual(tables[1]['c3']['cells'][1], {'column': 2, 'columnSpan': 1, 'rowSpan': 1, 'header': False, 'text': '8.55'})
+        self.assertEqual(tables[1]['__source_encoding'], 'gb18030')
+        self.assertEqual(events[-1]['status'], 'READY')
+        self.assertEqual(events[-1]['featureCount'], 0)
+
+    def test_html_encoding_does_not_guess_undeclared_or_invalid_bytes(self):
+        for raw in (b'<meta charset="not-a-codec"><p>x</p>', b'<p>\xff</p>', b'<meta charset="gbk"><p>\x81</p>'):
+            with self.subTest(raw=raw), self.assertRaisesRegex(ParseError, 'INVALID_CONTENT'):
+                self.events('invalid.html', raw, 'html')
+
+    def test_html_utf8_bom_overrides_legacy_meta_and_ignores_comment_declaration(self):
+        for raw in (
+            b'\xef\xbb\xbf' + '<meta charset="gbk"><p>永定河</p>'.encode(),
+            '<!-- <meta charset="gbk"> --><p>永定河</p>'.encode(),
+        ):
+            events = self.events('utf8.html', raw, 'html')
+            rows = [e for e in events if e['type']=='record']
+            self.assertEqual(rows[0]['values']['c1'], '永定河')
+            self.assertEqual(rows[0]['values']['__source_encoding'], 'utf-8-sig')
 
     def test_archive_rejects_traversal_and_reports_members_without_running_them(self):
         output = io.BytesIO()

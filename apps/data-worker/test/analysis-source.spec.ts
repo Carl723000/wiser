@@ -69,3 +69,19 @@ describe('version-local analysis format groups', () => {
     ).toMatchObject({ format: null, companionOf: null });
   });
 });
+
+it('routes admitted XML metadata by suffix or media type without companions', () => {
+  for (const media of ['application/xml', 'text/xml; charset=utf-8']) {
+    expect(resolveAnalysisSource('xml', media, []).format).toBe('xml');
+  }
+  expect(
+    resolveAnalysisSource('xml', 'application/octet-stream', [
+      { assetId: 'xml', path: 'MTD_MSIL2A.xml' },
+    ]),
+  ).toEqual({
+    format: 'xml',
+    path: 'MTD_MSIL2A.xml',
+    companions: [],
+    companionOf: null,
+  });
+});

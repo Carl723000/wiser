@@ -19,9 +19,20 @@ const engine = vi.hoisted(() => ({
   fitView: vi.fn().mockResolvedValue(undefined),
   zoomTo: vi.fn().mockResolvedValue(undefined),
   getZoom: vi.fn(() => 1),
+  getElementPosition: vi.fn((id: string): [number, number] => {
+    const node = engine.options?.data?.nodes?.find((n) => n.id === id);
+    return [Number(node?.style?.x), Number(node?.style?.y)];
+  }),
   focusElement: vi.fn().mockResolvedValue(undefined),
   draw: vi.fn().mockResolvedValue(undefined),
-  updateNodeData: vi.fn(),
+  updateNodeData: vi.fn<
+    (
+      nodes: {
+        id: string;
+        style?: { labelVisibility?: string; labelLineHeight?: number };
+      }[],
+    ) => void
+  >(),
   updateEdgeData: vi.fn(),
   setElementState: vi.fn().mockResolvedValue(undefined),
   click: null as ((event: { target: { id: string } }) => void) | null,
@@ -42,6 +53,7 @@ vi.mock('@antv/g6', () => ({
     fitView = engine.fitView;
     zoomTo = engine.zoomTo;
     getZoom = engine.getZoom;
+    getElementPosition = engine.getElementPosition;
     focusElement = engine.focusElement;
     draw = engine.draw;
     updateNodeData = engine.updateNodeData;
@@ -77,6 +89,86 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  engine.getZoom.mockReturnValue(1);
+});
+
+it('avoids overlapping overview labels and prioritizes a newly selected object without replacing the graph', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  engine.getZoom.mockReturnValue(0.1);
+  const crowded = {
+    nodes: Array.from({ length: 20 }, (_, i) => ({
+      entityId: String(i),
+      label: `流域资料 ${i}`,
+      overviewLabel: true,
+    })),
+    edges: [],
+  };
+  const props = {
+    locale: 'zh-CN' as const,
+    result: crowded,
+    onSelect: vi.fn(),
+  };
+  const rendered = render(
+    <KnowledgeGraphCanvas {...props} selectedId={null} />,
+  );
+  await waitFor(() =>
+    expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
+  );
+  await act(async () => {
+    WorkerDouble.current.onmessage?.({
+      data: crowded.nodes.map((n, i) => ({ id: n.entityId, x: i * 30, y: 0 })),
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('knowledge-graph').getAttribute('data-state'),
+    ).toBe('ready'),
+  );
+  const visible = () =>
+    engine.updateNodeData.mock.calls
+      .at(-1)?.[0]
+      .filter((n) => n.style?.labelVisibility === 'visible');
+  await waitFor(() => expect(visible()).toHaveLength(1));
+  expect(visible()?.[0].style?.labelLineHeight).toBe(160);
+  rendered.rerender(<KnowledgeGraphCanvas {...props} selectedId="19" />);
+  await waitFor(() => expect(visible()?.map((n) => n.id)).toEqual(['19']));
+  expect(engine.render).toHaveBeenCalledOnce();
+});
+
+it('fits only after the first readable-label draw and does not refit on selection', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  let finishDraw!: () => void;
+  engine.draw.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishDraw = resolve;
+      }),
+  );
+  const props = { locale: 'zh-CN' as const, result, onSelect: vi.fn() };
+  const rendered = render(
+    <KnowledgeGraphCanvas {...props} selectedId={null} />,
+  );
+  await waitFor(() =>
+    expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
+  );
+  act(() => {
+    WorkerDouble.current.onmessage?.({
+      data: [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: 0, y: 800 },
+      ],
+    });
+  });
+  await waitFor(() => expect(engine.draw).toHaveBeenCalledOnce());
+  expect(engine.fitView).not.toHaveBeenCalled();
+  act(() => finishDraw());
+  await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
+  rendered.rerender(<KnowledgeGraphCanvas {...props} selectedId="b" />);
+  await waitFor(() => expect(engine.draw).toHaveBeenCalledTimes(2));
+  expect(engine.fitView).toHaveBeenCalledOnce();
 });
 
 it('renders worker positions, preserves the canvas on selection and disposes after rendering', async () => {
@@ -115,7 +207,7 @@ it('renders worker positions, preserves the canvas on selection and disposes aft
     clientHeight: { value: 440 },
   });
   act(() => ResizeDouble.callback());
-  await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
+  await waitFor(() => expect(engine.fitView).toHaveBeenCalledTimes(2));
   expect(WorkerDouble.current.terminate).toHaveBeenCalledOnce();
   rendered.rerender(
     <KnowledgeGraphCanvas
@@ -175,6 +267,72 @@ it('renders worker positions, preserves the canvas on selection and disposes aft
   expect(selected).toHaveBeenCalledWith('a');
   rendered.unmount();
   await waitFor(() => expect(engine.destroy).toHaveBeenCalledOnce());
+});
+
+it('uses current theme colors for rendered node and edge labels without resetting the view', async () => {
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('ResizeObserver', ResizeDouble);
+  const originalStyle = document.documentElement.getAttribute('style');
+  const originalTheme = document.documentElement.getAttribute('data-theme');
+  const theme = (foreground: string, background: string) => {
+    document.documentElement.style.setProperty('--text-primary', foreground);
+    document.documentElement.style.setProperty('--surface', background);
+    document.documentElement.style.setProperty('--accent', foreground);
+    document.documentElement.style.setProperty('--border-strong', foreground);
+  };
+  const resolve = (style: unknown) =>
+    typeof style === 'function'
+      ? (style as (datum: { data: { kind: string } }) => unknown)({
+          data: { kind: 'PLACE' },
+        })
+      : style;
+  try {
+    theme('#12343d', '#edf5f6');
+    render(
+      <KnowledgeGraphCanvas
+        locale="zh-CN"
+        result={result}
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(WorkerDouble.current.postMessage).toHaveBeenCalledOnce(),
+    );
+    act(() =>
+      WorkerDouble.current.onmessage?.({
+        data: [
+          { id: 'a', x: 0, y: 0 },
+          { id: 'b', x: 300, y: 300 },
+        ],
+      }),
+    );
+    await waitFor(() => expect(engine.fitView).toHaveBeenCalledOnce());
+    const node = engine.options?.node?.style as Record<string, unknown>;
+    const edge = engine.options?.edge?.style as Record<string, unknown>;
+    expect(resolve(node['labelFill'])).toBe('#12343d');
+    theme('#e8f3f4', '#0b303a');
+    const draws = engine.draw.mock.calls.length;
+    act(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await waitFor(() =>
+      expect(engine.draw.mock.calls.length).toBeGreaterThan(draws),
+    );
+    expect(resolve(node['labelFill'])).toBe('#e8f3f4');
+    expect(resolve(node['fill'])).toBe('#e8f3f4');
+    expect(resolve(edge['labelFill'])).toBe('#e8f3f4');
+    expect(resolve(edge['labelBackgroundFill'])).toBe('#0b303a');
+    expect(resolve(edge['stroke'])).toBe('#e8f3f4');
+    expect(engine.render).toHaveBeenCalledOnce();
+    expect(engine.fitView).toHaveBeenCalledOnce();
+  } finally {
+    cleanup();
+    if (originalStyle === null)
+      document.documentElement.removeAttribute('style');
+    else document.documentElement.setAttribute('style', originalStyle);
+    if (originalTheme === null)
+      document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', originalTheme);
+  }
 });
 
 it('cancels unfinished layout when the graph is removed', async () => {

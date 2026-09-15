@@ -8,6 +8,7 @@ const mediaTypes = {
   xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
   xls: ['application/vnd.ms-excel'],
   html: ['text/html'],
+  xml: ['application/xml', 'text/xml'],
   md: ['text/markdown'],
   pdf: ['application/pdf'],
   txt: ['text/plain'],

@@ -1,12 +1,19 @@
 'use client';
+import {
+  relationReturnHref,
+  withRelationReturn,
+} from '@/lib/relation-navigation';
+import { DataSpatialSource } from './data-spatial-source';
 import { dataResourceName } from '@/lib/data-foundation-presentation';
 
 import { graphNodeLabel } from '@/lib/data-graph-label';
 
+import { DataRecordRelations } from './data-record-relations';
 import { DataExplorerInspector } from './data-explorer-inspector';
 import { DataExplorerSaved } from './data-explorer-saved';
 import { ExplorationViewContext } from './exploration-view-context';
 import { createExplorationViewState } from '@/lib/exploration-view-state';
+import { withBusinessFocus } from '@/lib/exploration-business-focus';
 import { invalidatesExploration } from '@/lib/exploration-request';
 import {
   explorationHref,
@@ -19,6 +26,8 @@ import { sourceLimitationLabel } from '@/lib/data-foundation-presentation';
 import { EXPLORATION_TOOLS } from '@/lib/navigation';
 import { DataExplorerReadiness } from './data-explorer-readiness';
 import dynamic from 'next/dynamic';
+import { DataExplorerBusiness } from './data-explorer-business';
+import { DataExplorerRecordSources } from './data-explorer-record-sources';
 import { DataExplorerGraph } from './data-explorer-graph';
 import {
   useMemo,
@@ -44,6 +53,13 @@ import {
   type RecordQuery,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import {
+  readRecordFocus,
+  withRecordFocus,
+  focusRecordRequest,
+  checkedFocusedRecord,
+  type RecordFocus,
+} from '@/lib/exploration-record-focus';
 import { explorationSelectionReducer } from '@/lib/exploration-selection';
 import {
   DataExplorerAnalysis,
@@ -59,15 +75,28 @@ const DataExplorerAggregate = dynamic(
   { ssr: false },
 );
 
-export function DataExplorer({
+export function DataExplorer(props: Parameters<typeof DataExplorerSession>[0]) {
+  // A server navigation is a new view session; client tab changes keep their own state.
+  const route = [
+    props.locale,
+    props.initialResult?.queryId,
+    props.initialView ?? 'resources',
+    props.initialFocusedRecord?.recordId,
+  ];
+  return <DataExplorerSession key={JSON.stringify(route)} {...props} />;
+}
+
+function DataExplorerSession({
   locale,
   initialResult,
   initialFailure,
   initialText,
   initialView = 'resources',
   initialSaved,
+  initialFocusedRecord,
 }: {
   readonly initialSaved?: OpenExplorationViewOutput;
+  readonly initialFocusedRecord?: ExplorationRecord;
   readonly locale: Locale;
   readonly initialResult: ExplorationResult | null;
   readonly initialFailure: 'expired' | 'unavailable' | null;
@@ -76,6 +105,29 @@ export function DataExplorer({
 }) {
   const copy = getDictionary(locale).dataFoundation.explorer;
   const [result, setResult] = useState(initialResult);
+  const [returnGraph, setReturnGraph] = useState<string | null>(null);
+  function queryHref(queryId: string, tab: ExplorationView, keepFocus = true) {
+    const values = new URLSearchParams(window.location.search).getAll(
+      'recordFocus',
+    );
+    const focus = keepFocus
+      ? readRecordFocus(values.length > 1 ? values : values[0])
+      : null;
+    return withRecordFocus(
+      withRelationReturn(
+        withBusinessFocus(
+          explorationHref(locale, queryId, tab),
+          window.location.search,
+          initialSaved && {
+            viewId: initialSaved.savedView.viewId,
+            queryId: initialSaved.result.queryId,
+          },
+        ),
+        window.location.search,
+      ),
+      focus,
+    );
+  }
   const [text, setText] = useState(initialResult?.spec.text ?? initialText);
   const [quality, setQuality] = useState(
     initialResult?.spec.qualityGrades?.[0] ?? '',
@@ -92,8 +144,13 @@ export function DataExplorer({
   >(initialResult?.spec.readiness?.spatial?.[0] ?? '');
   const [selection, dispatch] = useReducer(explorationSelectionReducer, {
     queryId: initialResult?.queryId ?? null,
-    resource: initialSaved?.selectedResource ?? null,
-    record: initialSaved?.selectedRecord ?? null,
+    resource:
+      initialSaved?.selectedResource ??
+      initialResult?.resources.find(
+        (r) => r.versionId === initialFocusedRecord?.versionId,
+      ) ??
+      null,
+    record: initialSaved?.selectedRecord ?? initialFocusedRecord ?? null,
     node: initialSaved?.selectedNode ?? null,
   });
   const selected = selection.resource;
@@ -112,8 +169,23 @@ export function DataExplorer({
   const onAnalysisData = useCallback((data: ExplorationResult) => {
     if (data.assets) setRecordAssets(data.assets);
   }, []);
+  function rememberRecord(record: ExplorationRecord | null) {
+    if (!result) return;
+    const href = withRecordFocus(
+      queryHref(result.queryId, view, false),
+      record
+        ? {
+            dataItemId: record.dataItemId,
+            versionId: record.versionId,
+            recordId: record.recordId,
+          }
+        : null,
+    );
+    window.history.replaceState(window.history.state, '', href);
+  }
   const selectRecord = useCallback(
     (record: ExplorationRecord) => {
+      rememberRecord(record);
       if (result)
         dispatch({
           type: 'record',
@@ -125,10 +197,11 @@ export function DataExplorer({
             ) ?? null,
         });
     },
-    [result],
+    [result, view, locale],
   );
   const selectNode = useCallback(
     (node: ExplorationGraphNode) => {
+      rememberRecord(node.record ?? null);
       if (result)
         dispatch({
           type: 'node',
@@ -140,9 +213,10 @@ export function DataExplorer({
             ) ?? null,
         });
     },
-    [result],
+    [result, view, locale],
   );
   const setSelected = (resource: ExplorationResource | null) => {
+    rememberRecord(null);
     if (result)
       dispatch({ type: 'resource', queryId: result.queryId, resource });
   };
@@ -295,6 +369,7 @@ export function DataExplorer({
     reset: boolean,
     restoreView?: ExplorationView,
     historyAction?: 'pushState' | 'replaceState',
+    restoreFocus?: RecordFocus,
   ) {
     pending.current?.abort();
     const controller = new AbortController();
@@ -322,6 +397,23 @@ export function DataExplorer({
       }
       const next = ExplorationResultSchema.parse(await response.json());
       if (controller.signal.aborted) return;
+      let restoredRecord: ExplorationRecord | null = null;
+      if (restoreFocus) {
+        const focused = await fetch('/api/data-foundation/explore', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(focusRecordRequest(next.queryId, restoreFocus)),
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (controller.signal.aborted) return;
+        if (!focused.ok) throw Error('Focused record unavailable');
+        restoredRecord = checkedFocusedRecord(
+          ExplorationResultSchema.parse(await focused.json()),
+          restoreFocus,
+        );
+        if (controller.signal.aborted) return;
+      }
       setResult(next);
       setPage(targetPage);
       if (reset) {
@@ -341,6 +433,16 @@ export function DataExplorer({
           updated[targetPage + 1] = next.nextCursor;
           return updated;
         });
+      if (restoredRecord)
+        dispatch({
+          type: 'record',
+          queryId: next.queryId,
+          record: restoredRecord,
+          resource:
+            next.resources.find(
+              (r) => r.versionId === restoredRecord.versionId,
+            ) ?? null,
+        });
       if (restoreView) setView(restoreView);
       const method =
         historyAction ??
@@ -348,10 +450,10 @@ export function DataExplorer({
       window.history[method](
         window.history.state,
         '',
-        explorationHref(
-          locale,
+        queryHref(
           next.queryId,
           restoreView ?? (reset ? 'resources' : view),
+          !reset || !!restoreFocus,
         ),
       );
     } catch {
@@ -371,23 +473,41 @@ export function DataExplorer({
     setCursors([undefined]);
     setPage(0);
     setView(nextView);
-    if (queryId)
-      void query({ queryId, view: 'resources', first: 25 }, 0, true, nextView);
-    else {
+    if (queryId) {
+      try {
+        const values = new URLSearchParams(window.location.search).getAll(
+          'recordFocus',
+        );
+        const focus = readRecordFocus(values.length > 1 ? values : values[0]);
+        void query(
+          { queryId, view: 'resources', first: 25 },
+          0,
+          true,
+          nextView,
+          undefined,
+          focus ?? undefined,
+        );
+      } catch {
+        setBusy(false);
+        setFailure('expired');
+      }
+    } else {
       setBusy(false);
       setFailure('expired');
     }
   };
   useEffect(() => {
+    setReturnGraph(relationReturnHref(window.location.search, locale));
     if (initialResult && !initialSaved)
       window.history.replaceState(
         window.history.state,
         '',
-        explorationHref(locale, initialResult.queryId, initialView),
+        queryHref(initialResult.queryId, initialView),
       );
     const back = () => {
       if (window.location.pathname !== `/${locale}/data-foundation/explore`)
         return;
+      setReturnGraph(relationReturnHref(window.location.search, locale));
       const parameters = new URLSearchParams(window.location.search);
       if (parameters.has('saved')) {
         window.location.reload();
@@ -407,7 +527,7 @@ export function DataExplorer({
       window.history.replaceState(
         window.history.state,
         '',
-        explorationHref(locale, result.queryId, nextView),
+        queryHref(result.queryId, nextView),
       );
   }
   function submit(event: FormEvent) {
@@ -507,7 +627,16 @@ export function DataExplorer({
       >
         <header className={styles.heading}>
           <div>
-            <h1>{copy.title}</h1>
+            {returnGraph ? (
+              <Link href={returnGraph}>
+                {getDictionary(locale).knowledgeRelations.returnGraph}
+              </Link>
+            ) : null}
+            <h1>
+              {result?.spec.businessQuery && initialSaved
+                ? initialSaved.savedView.title
+                : copy.title}
+            </h1>
             <p>{copy.description}</p>
           </div>
           <span className={styles.scope}>{copy.scope}</span>
@@ -893,6 +1022,26 @@ export function DataExplorer({
                   }}
                 />
               </>
+            ) : result && view === 'graph' && result.spec.businessQuery ? (
+              <DataExplorerBusiness
+                key={result.queryId}
+                queryId={result.queryId}
+                scope={result.spec.businessQuery}
+                locale={locale}
+                onInvalidated={invalidate}
+                onApply={(businessQuery) => {
+                  void query(
+                    {
+                      spec: { ...result.spec, businessQuery },
+                      view: 'resources',
+                      first: 25,
+                    },
+                    0,
+                    true,
+                    'graph',
+                  );
+                }}
+              />
             ) : result && view === 'graph' ? (
               <DataExplorerGraph
                 key={result.queryId}
@@ -911,26 +1060,55 @@ export function DataExplorer({
                 onInvalidated={invalidate}
               />
             ) : result && (view === 'records' || view === 'map') ? (
-              <DataExplorerAnalysis
-                key={`${result.queryId}:${view}:${view === 'records' ? focusedVersion : ''}`}
-                locale={locale}
-                queryId={result.queryId}
-                view={view}
-                versionId={
-                  selectedRecord?.versionId ??
-                  selectedNode?.versionId ??
-                  selected?.versionId ??
-                  result.spec.versions?.[0]?.versionId ??
-                  null
-                }
-                selectedRecord={selectedRecord}
-                onSelect={selectRecord}
-                onData={onAnalysisData}
-                onConfigure={configureRecords}
-                onBounds={configureBounds}
-                configuring={busy}
-                onInvalidated={invalidate}
-              />
+              <>
+                {view === 'records' && result.spec.businessQuery ? (
+                  <DataExplorerRecordSources
+                    key={result.queryId}
+                    locale={locale}
+                    queryId={result.queryId}
+                    status={result.spec.businessQuery.status}
+                    versionId={focusedVersion}
+                    onInvalidated={invalidate}
+                  />
+                ) : null}
+                <DataExplorerAnalysis
+                  key={`${result.queryId}:${view}:${view === 'records' ? focusedVersion : ''}`}
+                  locale={locale}
+                  queryId={result.queryId}
+                  view={view}
+                  versionId={
+                    selectedRecord?.versionId ??
+                    selectedNode?.versionId ??
+                    selected?.versionId ??
+                    result.spec.versions?.[0]?.versionId ??
+                    null
+                  }
+                  selectedRecord={selectedRecord}
+                  onSelect={selectRecord}
+                  onClearRecordFocus={() => {
+                    dispatch({
+                      type: 'resource',
+                      queryId: result.queryId,
+                      resource:
+                        selected ??
+                        result.resources.find(
+                          (r) => r.versionId === selectedRecord?.versionId,
+                        ) ??
+                        null,
+                    });
+                    window.history.pushState(
+                      window.history.state,
+                      '',
+                      queryHref(result.queryId, 'records', false),
+                    );
+                  }}
+                  onData={onAnalysisData}
+                  onConfigure={configureRecords}
+                  onBounds={configureBounds}
+                  configuring={busy}
+                  onInvalidated={invalidate}
+                />
+              </>
             ) : null}
           </section>
           <DataExplorerInspector
@@ -953,6 +1131,13 @@ export function DataExplorer({
                     ×
                   </button>
                 </div>
+                <DataSpatialSource
+                  locale={locale}
+                  dataItemId={selectedRecord.dataItemId}
+                  versionId={selectedRecord.versionId}
+                  assetId={selectedRecord.assetId}
+                  geometryAvailable={selectedRecord.featureId !== null}
+                />
                 <h3>
                   {selectedRecord.sourceId ??
                     `${copy.records} ${selectedRecord.index}`}
@@ -993,10 +1178,32 @@ export function DataExplorer({
                     </code>
                   </dd>
                 </dl>
+                <DataRecordRelations
+                  locale={locale}
+                  record={{
+                    dataItemId: selectedRecord.dataItemId,
+                    versionId: selectedRecord.versionId,
+                    recordId: selectedRecord.recordId,
+                  }}
+                  returnGraph={returnGraph}
+                  business={
+                    result?.spec.businessQuery
+                      ? {
+                          queryId: result.queryId,
+                          status: result.spec.businessQuery.status,
+                        }
+                      : undefined
+                  }
+                />
                 <Link
                   href={`/${locale}/data-foundation/catalog/${selectedRecord.dataItemId}?version=${selectedRecord.versionId}`}
                 >
                   {copy.openData}
+                </Link>
+                <Link
+                  href={`/${locale}/data-foundation/map?dataItem=${selectedRecord.dataItemId}&version=${selectedRecord.versionId}`}
+                >
+                  {getDictionary(locale).dataFoundation.itemPage.openOnMap}
                 </Link>
               </>
             ) : selectedNode !== null ? (
@@ -1049,6 +1256,12 @@ export function DataExplorer({
                     ×
                   </button>
                 </div>
+                <DataSpatialSource
+                  locale={locale}
+                  dataItemId={selected.dataItemId}
+                  versionId={selected.versionId}
+                  geometryAvailable={(selected.featureCount ?? 0) > 0}
+                />
                 <dl>
                   <dt>{copy.provider}</dt>
                   <dd>{selected.provider}</dd>
@@ -1079,6 +1292,11 @@ export function DataExplorer({
                   href={`/${locale}/data-foundation/catalog/${selected.dataItemId}?version=${selected.versionId}`}
                 >
                   {copy.openData}
+                </Link>
+                <Link
+                  href={`/${locale}/data-foundation/map?dataItem=${selected.dataItemId}&version=${selected.versionId}`}
+                >
+                  {getDictionary(locale).dataFoundation.itemPage.openOnMap}
                 </Link>
                 <details>
                   <summary>{copy.limitations}</summary>

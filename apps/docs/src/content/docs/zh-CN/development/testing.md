@@ -281,3 +281,9 @@ WORKBUDDY_LIVE=1 pnpm cookbook:workbuddy
 - 多提交分支对目标 base 运行 `docpact lint --root . --merge-base <base-ref> --mode enforce --fail-on-uncovered-change --fail-on-stale-docs`，覆盖已经提交的 Red/Green 切片。
 - 所需聚焦门禁、集成 smoke 和最终 `pnpm verify` 均通过。
 - Git diff 只包含预期范围，`git diff --check` 通过；Red 是可恢复检查点，最终提交处于 Green 且目的单一。
+
+Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色仍需在共享 schema 上配置权限，即使业务数据分属不同租户，并发 fixture 也可能在系统目录发生冲突。全部测试和回滚检查仍保留。
+
+### 显式来源案例浏览器测试
+
+三个固定版本的业务关系/记录导航回归使用已接纳的本机来源数据，包括 TCI 波段和独立核对的观测关系数。运行 `pnpm --filter @wiser/web test:e2e:data-case` 时，提供 `WISER_WEB_LIVE_BASE_URL`、既有 live 凭据、`WISER_WEB_LIVE_RELATION_URL`、`WISER_WEB_LIVE_RECORD_URL` 和 `WISER_WEB_LIVE_OBSERVATION_COUNT`。关系 URL 必须指向固定目录版本与关系视图，记录 URL 必须携带固定记录焦点；缺少或无效的案例输入会明确失败。`e2e-live/*.case.ts` 保留全部断言，由 `playwright.case.config.ts` 收集，不作为可移植的 CI fixture。`test:e2e:data-live` 继续对 CI smoke 环境收集既有全部 `*.spec.ts` 套件。测试发现回归只使用合成输入调用 Playwright `--list`，不能算作真实案例浏览器运行。

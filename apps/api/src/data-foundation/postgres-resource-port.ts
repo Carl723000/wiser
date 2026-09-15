@@ -1,3 +1,4 @@
+import { relationFragmentVisibleSql } from '@wiser/data-infra';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
@@ -66,6 +67,7 @@ where fragment.tenant_id = $1::uuid and fragment.project_id = $2::uuid
     fragment.security_level, fragment.policy_version)
   and security.authorized_row(version.tenant_id, version.project_id,
     version.security_level, version.policy_version)
+  and ${relationFragmentVisibleSql('fragment')}
   and octet_length(fragment.locator::text) <= 131072
   and octet_length(coalesce(fragment.excerpt, '')) <= 131072
 limit 1

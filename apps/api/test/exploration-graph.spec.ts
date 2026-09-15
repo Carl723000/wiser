@@ -25,9 +25,15 @@ function client() {
   const query = vi
     .fn<QueryAdapterPgClient['query']>()
     .mockImplementation((sql, parameters) => {
-      if (sql.includes('join catalog.data_item_version'))
+      if (
+        sql.includes('join catalog.data_item_version') &&
+        !sql.includes('from knowledge.evidence_fragment')
+      )
         return Promise.resolve({ rows: [resource] });
-      if (sql.includes('from catalog.asset'))
+      if (
+        sql.includes('from catalog.asset') &&
+        !sql.includes('from knowledge.evidence_fragment')
+      )
         return Promise.resolve({
           rows:
             parameters?.[3] === 1

@@ -14,8 +14,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: 2e98d90315eae4e86b3fb20219d5fb2a94f650f4
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Design direction
@@ -94,7 +94,9 @@ Shared components include AppShell, SystemSwitcher, ProjectSwitcher, PageHeader,
 - Both share the shell, tokens, and components without erasing domain vocabulary: one visual state may represent different domain objects.
 - Maps, traces, and lineage graphs may use specialized canvases, but their themes, focus, panels, legends, and state semantics still come from the shared system.
 
-The Data map implements this contract through accessible controls rather than canvas color alone. DataItem version links use `aria-current`; the map form pins bbox, immutable Version, and EPSG:4326/4490 source CRS. PostGIS authority, STAC extent, vector MVT, and raster layers each have a text-labeled checkbox, with unavailable layers disabled. Controls continuously show selectedVersion and the AMap display alignment; layer colors read current theme tokens, so light/dark changes never alter authority hierarchy. Browser tiles use same-origin Web paths, keeping server identity and internal GIS origins out of the UI.
+The Data map implements this contract through accessible controls rather than canvas color alone. DataItem version links use `aria-current`; the map form pins bbox, immutable Version, and EPSG:4326/4490 source CRS. PostGIS authority, STAC extent, vector MVT, and raster layers each have a text-labeled checkbox, with unavailable layers disabled. Controls continuously show selectedVersion and display-coordinate conversion with position pending independent verification; layer colors read current theme tokens, so light/dark changes never alter authority hierarchy. Browser tiles use same-origin Web paths, keeping server identity and internal GIS origins out of the UI.
+
+For raster-only specialist maps, the requested area controls the initial viewport when no verified feature or STAC extent is present. Existing unavailable-layer indicators remain unchanged; a camera location is not presented as a newly verified spatial feature.
 
 ## Acceptance
 
@@ -141,3 +143,39 @@ Data discovery and review pages use a compact shared heading and project-scope l
 Knowledge graph canvases default to a ForceAtlas2 relationship layout with deterministic initial positions and 160 bounded iterations, computed in the existing cancellable worker. A keyboard-operable layout switch offers Dagre source hierarchy; only hierarchy changes direction on narrow screens. Both layouts retain bounded identities, selection, path highlighting and text alternatives. Independent resource neighborhoods are packed separately across both axes. The initial overview pages eight resources at a time; focused neighbor pages retain their own bounds. Relationship labels and semantic node colors supplement the node-kind text.
 
 A resource opens its content workspace before collapsed governance details. A version-scoped file list, source-file download and local content tabs share the resource identity. Tables preserve scalar source values and provide readable known-field labels; document and structured views expand nested content lazily. The file preview is inert, and unsupported formats retain an explicit download action. Resource names in exploration link directly to content while a separate selection control retains query-wide analysis.
+
+Available raster pixels are visible on entry, separately labeled from asset extent outlines. A keyboard-accessible opacity slider updates the existing layer without rebuilding its source or resetting the camera. Transparent areas must not be described as zero values; source units and ranges remain explicit source-reading requirements.
+
+Business relations accept up to sixty-three additional version-specific platform source links. Pending graph preview requires explicit opt-in and retains its pending notice. Nodes preserve source identities or explicit referenced identities. Each relation exposes its source, evidence, record nature, time/location roles and applicability. Counts and continuation are bounded. Source spatial links do not imply available or verified geometry.
+
+Business-relation deep links open the relation disclosure and restore its source scope, review status and selected entity. Accumulated graph counts distinguish loaded rows from the authorized total and expose a bounded continuation limit; the canvas fit control changes only the viewport. Pending preview remains visibly pending after restoration.
+
+Source record and spatial links from an applied business graph carry a validated return context containing only version IDs, review state, focus and page bound. Exploration keeps this context while replacing query URLs and changing tabs, and offers a return to the previous business graph. It is a navigation origin, not a claim that every subsequent query has the same scope. Return links are generated only for internal catalog routes; they grant no access and reauthorize on reopening. Malformed return context is discarded. Sources outside the loaded relation scope retain ordinary source links. This does not establish verified geometry or cross-source spatial equivalence.
+
+Business relations offer optional type and time filters over loaded, authorized rows. Either endpoint can match the selected kind; time-role selection is exact. Date comparisons overlap explicit source periods, preserving year/month precision as intervals. Missing, incomplete, reversed or unrecognized periods remain unknown; a point observation is used only with an explicit observation-time role. The unknown-period option applies to date filtering after type/role selection. The graph and evidence list use the same subset and show matched, loaded and total counts separately. Pagination retains nonmatching rows so clearing filters restores them. Strict URL filters survive refresh, history and source-exploration return; they neither query new data nor claim source maps/records use the same temporal conditions. Node labels include localized types without merging source identities.
+
+Exact-record exploration links carry a bounded `recordFocus` containing only the DataItem, immutable Version and record IDs. Opening or restoring history reauthorizes the query and fetches that exact record through the existing HTTP exploration API; all three returned identities must match. Missing, malformed, denied or mismatched records fail without substituting the first row or a broader resource. Map/table selection and tab changes retain this focus and the validated business-graph return context. Applying new query conditions or selecting another resource clears stale focus. A selected record does not establish coordinate accuracy, scientific identity, or a graph-to-feature mapping; those require source-backed bindings. Saved-view selection remains governed by its existing contract and cannot be mixed with a separate record focus.
+
+An observation node may declare `urn:wiser:record:<recordId>` as its external ID, scoped to its own source version or explicit referenced source. The Web offers exact record and spatial-content links only for a valid UUID binding on an OBSERVATION node; it never infers a record from a label or assigns geometry to a document. These links retain the applied graph return context and reauthorize/read all record identities on opening. The URI is a navigation declaration, not server attestation of scientific identity or professional approval; evidence and pending status remain visible. Ordinary external IDs are unchanged.
+
+### Exact relation history navigation
+
+Viewing a preceding relation stores its assertion ID in the source-bound URL. Refresh and browser history reauthorize and load that exact assertion, validating its source version and review status. Invalid, unavailable or changed targets fail without substituting another row. History selection clears graph focus and date filters, retains the authorized case scope and does not review or supersede any assertion.
+
+Without a saved page view, an exact-record entry requests the selected record directly so off-page records are immediately visible. Mismatched response identities fail instead of substituting page one. “Browse records in this file” resumes file pagination under the same query, clears exact focus from the URL and retains the business-graph return context. Existing saved views preserve their page and cursor history.
+
+Record inspection offers an on-demand reverse lookup of explicit record bindings through authorized, paged relation lists. It retains a valid case source scope and relationship filters, defaults to approved records without a case, and requires an explicit pending selection otherwise. Partial, empty and unavailable results are distinct; denial clears retained bindings. Opening a match focuses its source-bound business node, while the previous graph return action remains independent. Selecting a different record aborts and clears the previous lookup; matching never uses labels or invented geometry.
+
+Business relation links optionally persist `revisionMode: "all" | "current"`; omitted means all history. Current display collapses only explicit same-DataItem, same-triple replacements in the same approved or pending review queue, after the full unfocused scope is loaded. It never chooses by timestamps, resolves competing branches, or promotes pending changes over approved knowledge. Incomplete pages, focused objects and exact history retain all loaded rows and disclose that boundary. Cyclic or invalid replacement links do not hide evidence. Type/time filters run after revision selection, and exact predecessor links still reopen immutable history. This is presentation over authorized API rows, not a new approval or authority state.
+
+Business exploration opens a multi-source problem/evidence graph when the saved query contains business conditions. The overview explicitly collapses observation detail and shows visible/scoped counts; selecting an object expands its evidence. Bound-record and map links preserve the query. Authority status stays visible and source lineage remains a separate view for ordinary queries. Both locales use the shared graph canvas and design tokens.
+
+Graph labels reserve conservative screen-space boxes from current element positions after fitting, zooming and dragging. Hidden labels render no text, while edges retain a readable screen width. Overlapping labels yield to the selected object and overview labels; zooming reveals more labels. This changes neither nodes, edges, scope nor counts, and the keyboard object list and evidence remain available.
+
+Business graph object lists distinguish identical labels using source-document captions from the already authorized relation set. The selected object links to its own exact source version, including explicit cross-source references. Missing titles retain a numbered source label; unresolved same-source duplicates retain separate object numbers. These captions do not merge identities, add relationships or widen the query.
+
+Business exploration offers an optional path reader over the complete authorized relation set. Users select two source-qualified objects and inspect one shortest connection of at most eight edges, with original directed statements and evidence. Traversal may follow either end of a relation for reading only; it does not infer causation, approval or new edges. This local diagram inspection does not change the shared records/map query; changing endpoints clears the displayed path.
+
+Evidence links in relation details, query results, and connecting paths use the evidence source version when present, retaining the owning relation context. A cross-source reference changes where the source link goes; it must not relabel the external file as belonging to the current document.
+
+The exploration position note occupies normal flow below the map canvas. It does not overlay the layer legend or failure recovery controls. Bilingual narrow/wide layout checks cover expanded legends and retry states separately from map correctness.

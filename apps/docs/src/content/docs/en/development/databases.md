@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-09
-lastReviewedCommit: bac8703efbf93c408d68b6f7a8ca8305d9565c1b
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -182,3 +182,17 @@ Migration `0021_amap_display.sql` keeps WGS84 analysis records append-only and b
 `0022_observation_reconciliation.sql` adds immutable candidate/review evidence with forced owner/scope RLS, one-way optimistic review, and narrow column grants. `pnpm test:postgres:data-api` includes `data-reconciliation.integration.spec.ts`; run it only against a disposable migrated database. It verifies source reauthorization, idempotency, pagination, review conflicts, and unchanged original records using a role without BYPASSRLS.
 
 After its common table grants, runtime-role provisioning explicitly revokes whole-table updates on reconciliation evidence and restores updates only to `status`, `row_version`, `reviewed_at` and `review_note`. Repeated provisioning must preserve this boundary as well as forced RLS and the immutable-evidence trigger.
+
+Migration `0023_exploration_point_guard.sql` adds a materialized point-only stage before tile clustering. The rolled-back exploration integration suite combines 100,000 points with a line and polygon, changes the type-check planner cost within a savepoint, and decodes both authority and Amap tiles. It verifies that permitted predicate reordering cannot invoke X/Y access on non-point geometry, while preserving record identities, point totals and existing authorization boundaries.
+
+## Intake assessment evidence
+
+Migration `0024_intake_assessment.sql` appends forced-RLS, immutable `service.intake_assessment`. Its insert guard binds item/version/asset/hash and optional completed analysis, and prevents lower security than the source. Runtime provisioning revokes updates/deletes after common grants. No existing rows or publication states are migrated. The disposable PostgreSQL test `apps/api/test/data-assessment.integration.spec.ts` verifies deterministic evidence, stale hashes, idempotent replay, pagination, immutability and source withdrawal. It is included in `pnpm test:postgres:data-api`.
+
+Migrations `0025_knowledge_relations.sql` and `0026_business_projection_cursor.sql` add forced-RLS source bindings and an internal resumable projection cursor. Existing assertion confidence becomes nullable for unknown values; historical values are retained. Scoped foreign keys and source-binding guards enforce RAW file/version/hash matches, while relation evidence, review history and assertion content remain immutable. Review changes require a matching next-version review record. The PostgreSQL relation integration fixture exercises duplicate commands, changed mappings, human review, stale review rejection, foreign projects, immutable evidence and source withdrawal. Set `DATA_TEST_NEO4J_URL` (and optional `DATA_TEST_NEO4J_PASSWORD`) only to an isolated test target to additionally exercise projection deletion, interrupted retries, rebuild and withdrawal removal.
+
+`0027_cross_source_evidence.sql` extends the relation binding guard for optional parsed-record evidence from another source in the same tenant/project. Apply through the checksum migration runner; existing bindings and their history are not rewritten. The PostgreSQL integration fixture can test this migration in a rolled-back transaction with `WISER_TEST_PENDING_MIGRATION=1`. This flag is test-only and does not migrate the running application.
+
+`0028_relation_integrity.sql` follows the unchanged 0027 checksum. Its private `security.relation_entity_definition` has RLS enabled and no runtime policy or grants; only its owning SECURITY DEFINER trigger accesses it, with a fixed `pg_catalog` search path and a check of the incoming row's scope. Runtime provisioning explicitly revokes registry access after common grants. The migration rejects conflicting existing identities before backfill. The integration test applies pending 0028 within a rollback transaction, tests hidden high-security definitions, alternating-ceiling reviews up to 100, rejection of review 101, and denied registry access. Do not renumber already applied migration files.
+
+See PostgreSQL's [RLS integrity boundary](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) and [safe SECURITY DEFINER functions](https://www.postgresql.org/docs/current/sql-createfunction.html).
