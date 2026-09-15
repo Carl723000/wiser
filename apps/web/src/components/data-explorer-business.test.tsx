@@ -308,6 +308,12 @@ it('treats an unknown graph mode as overview without widening the business scope
 });
 
 it('limits reading to six real relations while keeping all objects searchable and the page in the URL', async () => {
+  // The parent tab updates native history before Next's search snapshot changes.
+  window.history.replaceState(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?query=query&view=graph',
+  );
   const history = vi.spyOn(window.history, 'replaceState');
   const items = Array.from({ length: 14 }, (_, i) => ({
     ...row,
@@ -341,7 +347,7 @@ it('limits reading to six real relations while keeping all objects searchable an
   expect(history).toHaveBeenLastCalledWith(
     null,
     '',
-    '/zh-CN/data-foundation/explore?saved=case&businessPage=2',
+    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPage=2',
   );
   nav.search = new URLSearchParams('saved=case&businessPage=3');
   rendered.rerender(<DataExplorerBusiness {...props} />);
@@ -350,7 +356,7 @@ it('limits reading to six real relations while keeping all objects searchable an
   expect(history).toHaveBeenLastCalledWith(
     null,
     '',
-    '/zh-CN/data-foundation/explore?saved=case&businessPresentation=network',
+    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPresentation=network',
   );
   history.mockRestore();
 });
