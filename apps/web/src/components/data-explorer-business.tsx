@@ -10,6 +10,8 @@ import {
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { businessGraphRows, businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
+import { readBusinessReading, readingPage } from '@/lib/business-reading';
+import { withBusinessFocus } from '@/lib/exploration-business-focus';
 import { businessObjectSources } from '@/lib/business-object-sources';
 import { withRecordFocus } from '@/lib/exploration-record-focus';
 import { explorationHref } from '@/lib/exploration-navigation';
@@ -49,7 +51,8 @@ export function DataExplorerBusiness({
     [failed, setFailed] = useState(false),
     [loaded, setLoaded] = useState(0);
   const mode = search.get('businessMode') === 'all' ? 'all' : 'overview';
-  const [listPage, setListPage] = useState(0);
+  const reading = readBusinessReading(search);
+  const presentation = reading.presentation;
   const selected = search.get('businessEntity');
   const [draft, setDraft] = useState(scope.filters);
   const viewState = useExplorationViewState();
@@ -114,6 +117,20 @@ export function DataExplorerBusiness({
     () => businessGraphRows(rows, mode, selected, kind),
     [rows, mode, selected, kind],
   );
+  const readingRows = useMemo(() => {
+    const groups = new Map<string, RelationAssertion[]>();
+    for (const row of visible) {
+      const key = relationNodeIdentity(row, row.candidate.subject);
+      const group = groups.get(key) ?? [];
+      group.push(row);
+      groups.set(key, group);
+    }
+    return [...groups.values()].flat();
+  }, [visible]);
+  const page = useMemo(
+    () => readingPage(readingRows, reading.page),
+    [readingRows, reading.page],
+  );
   const sources = useMemo(() => businessObjectSources(rows), [rows]);
   const selectedSource = selected ? sources.get(selected) : undefined;
   const graph = useMemo(() => {
@@ -159,6 +176,56 @@ export function DataExplorerBusiness({
       })),
     };
   }, [visible, copy]);
+  const pageGraph = useMemo(() => {
+    const ids = new Set(page.rows.map((r) => r.assertionId));
+    const edges = graph.edges.filter((e) => ids.has(e.edgeId));
+    const endpoints = new Set(
+      edges.flatMap((e) => [e.fromEntityId, e.toEntityId]),
+    );
+    return {
+      nodes: graph.nodes.filter((n) => endpoints.has(n.entityId)),
+      edges,
+    };
+  }, [graph, page.rows]);
+  const navigateReading = (
+    nextPage: number,
+    nextPresentation = presentation,
+  ) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('businessPage');
+    params.delete('businessPresentation');
+    if (nextPresentation === 'network')
+      params.set('businessPresentation', 'network');
+    if (nextPage > 1) params.set('businessPage', String(nextPage));
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
+  };
+  const recordHref = (view: 'records' | 'map') =>
+    withBusinessFocus(
+      explorationHref(locale, queryId, view),
+      search.toString(),
+      { viewId: search.get('saved') ?? '', queryId },
+    );
+  const pagination = (
+    <div className={businessStyles.readingPagination}>
+      <button
+        disabled={page.page === 1}
+        onClick={() => navigateReading(page.page - 1)}
+      >
+        {copy.businessPreviousGroup}
+      </button>
+      <span>
+        {copy.businessGroupCount
+          .replace('{page}', String(page.page))
+          .replace('{count}', String(page.count))}
+      </span>
+      <button
+        disabled={page.page === page.count}
+        onClick={() => navigateReading(page.page + 1)}
+      >
+        {copy.businessNextGroup}
+      </button>
+    </div>
+  );
   const kinds = useMemo(
     () =>
       [
@@ -176,8 +243,8 @@ export function DataExplorerBusiness({
     nextKind: Kind | null = kind,
     nextMode: 'overview' | 'all' = mode,
   ) => {
-    setListPage(0);
     const params = new URLSearchParams(search.toString());
+    params.delete('businessPage');
     if (id) params.set('businessEntity', id);
     else params.delete('businessEntity');
     if (nextKind) params.set('businessKind', nextKind);
@@ -191,13 +258,17 @@ export function DataExplorerBusiness({
       className={`${styles.frame} ${styles.body} ${businessStyles.compact}`}
       aria-label={copy.businessTitle}
     >
-      <h2>{copy.businessTitle}</h2>
-      <p>{copy.businessHint}</p>
-      <p>
-        {copy.statuses[scope.status]} · {copy.pageCount}
-        {loaded}
-        {busy ? ' · ' + copy.businessLoading : ''}
-      </p>
+      <header className={businessStyles.heading}>
+        <div>
+          <h2>{copy.businessTitle}</h2>
+          <p>{copy.businessHint}</p>
+        </div>
+        <p className={businessStyles.authority}>
+          {copy.statuses[scope.status]} · {copy.pageCount}
+          {loaded}
+          {busy ? ' · ' + copy.businessLoading : ''}
+        </p>
+      </header>
       {scope.status === 'PENDING_REVIEW' ? (
         <p>{copy.recordRelationPending}</p>
       ) : null}
@@ -336,9 +407,34 @@ export function DataExplorerBusiness({
               </Link>
             </section>
           ) : null}
+          <div className={businessStyles.readingToolbar}>
+            <div role="group" aria-label={copy.businessPresentation}>
+              <button
+                aria-pressed={presentation === 'reading'}
+                onClick={() => navigateReading(1, 'reading')}
+              >
+                {copy.businessReading}
+              </button>
+              <button
+                aria-pressed={presentation === 'network'}
+                onClick={() => navigateReading(1, 'network')}
+              >
+                {copy.businessNetwork}
+              </button>
+            </div>
+            {pagination}
+          </div>
+          <p className={businessStyles.readingHint}>
+            {presentation === 'reading'
+              ? copy.businessReadingHint
+                  .replace('{count}', String(page.rows.length))
+                  .replace('{total}', String(visible.length))
+              : copy.businessNetworkHint}
+          </p>
           {visible.length ? (
             <KnowledgeGraphCanvas
-              result={graph}
+              result={presentation === 'reading' ? pageGraph : graph}
+              reading={presentation === 'reading'}
               locale={locale}
               selectedId={selected}
               onSelect={select}
@@ -375,7 +471,7 @@ export function DataExplorerBusiness({
           </details>
           <h3>{copy.businessEvidence}</h3>
           <BusinessEvidencePathPanel rows={rows} locale={locale} />
-          {visible.slice(listPage * 20, listPage * 20 + 20).map((row) => (
+          {page.rows.map((row) => (
             <article className={businessStyles.evidence} key={row.assertionId}>
               <h4>
                 {row.candidate.subject.label} →{' '}
@@ -413,20 +509,12 @@ export function DataExplorerBusiness({
                   return focus ? (
                     <p key={i}>
                       <Link
-                        href={withRecordFocus(
-                          explorationHref(locale, queryId, 'records'),
-                          focus,
-                        )}
+                        href={withRecordFocus(recordHref('records'), focus)}
                       >
                         {copy.boundRecord}
                       </Link>
                       {' · '}
-                      <Link
-                        href={withRecordFocus(
-                          explorationHref(locale, queryId, 'map'),
-                          focus,
-                        )}
-                      >
+                      <Link href={withRecordFocus(recordHref('map'), focus)}>
                         {copy.boundRecordMap}
                       </Link>
                     </p>
@@ -453,23 +541,7 @@ export function DataExplorerBusiness({
               </details>
             </article>
           ))}
-          <div className={styles.actions}>
-            <button
-              disabled={!listPage}
-              onClick={() => setListPage((v) => v - 1)}
-            >
-              {getDictionary(locale).dataFoundation.explorer.previous}
-            </button>
-            <span>
-              {listPage + 1} / {Math.max(1, Math.ceil(visible.length / 20))}
-            </span>
-            <button
-              disabled={(listPage + 1) * 20 >= visible.length}
-              onClick={() => setListPage((v) => v + 1)}
-            >
-              {getDictionary(locale).dataFoundation.explorer.next}
-            </button>
-          </div>
+          {pagination}
         </>
       ) : null}
     </section>

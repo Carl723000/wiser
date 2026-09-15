@@ -39,9 +39,9 @@ async function layoutOne(input: GraphLayoutInput): Promise<GraphPosition[]> {
         })
       : new DagreLayout({
           rankdir: input.direction ?? 'LR',
-          nodesep: input.direction === 'TB' ? 180 : 40,
-          ranksep: input.direction === 'TB' ? 80 : 120,
-          nodeSize: 24,
+          nodesep: input.reading ? 24 : input.direction === 'TB' ? 180 : 40,
+          ranksep: input.reading ? 100 : input.direction === 'TB' ? 80 : 120,
+          nodeSize: input.reading ? [196, 68] : 24,
           enableWorker: false,
         });
   try {

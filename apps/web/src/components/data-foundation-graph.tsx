@@ -33,8 +33,10 @@ export function KnowledgeGraphCanvas({
   onSelect,
   locale,
   path,
+  reading = false,
 }: {
   readonly result: CanvasGraphData;
+  readonly reading?: boolean;
   readonly path?:
     | {
         readonly nodeIds: readonly string[];
@@ -64,6 +66,12 @@ export function KnowledgeGraphCanvas({
   const selection = useRef(selectedId);
   selection.current = selectedId;
   const refreshLabels = useRef<(() => void) | null>(null);
+  const [showRelationLabels, setShowRelationLabels] = useState(false);
+  const relationLabels = useRef(false);
+  relationLabels.current = showRelationLabels;
+  useEffect(() => {
+    refreshLabels.current?.();
+  }, [showRelationLabels]);
   const [state, setState] = useState<GraphState>('loading');
   const [mode, setMode] = useState<'network' | 'hierarchy'>('network');
   const [direction, setDirection] = useState<'LR' | 'TB'>('LR');
@@ -123,7 +131,8 @@ export function KnowledgeGraphCanvas({
           await layoutGraph(
             {
               direction,
-              mode,
+              mode: reading ? 'hierarchy' : mode,
+              reading,
               nodes: result.nodes.map((node) => ({ id: node.entityId })),
               edges: result.edges.map((edge) => ({
                 id: edge.edgeId,
@@ -136,6 +145,19 @@ export function KnowledgeGraphCanvas({
         ).map((node) => [node.id, node]),
       );
       if (disposed) return;
+      const degree = new Map<string, number>();
+      for (const edge of result.edges)
+        for (const id of [edge.fromEntityId, edge.toEntityId])
+          degree.set(id, (degree.get(id) ?? 0) + 1);
+      const isolatedEdges = new Set(
+        result.edges
+          .filter(
+            (edge) =>
+              degree.get(edge.fromEntityId) === 1 &&
+              degree.get(edge.toEntityId) === 1,
+          )
+          .map((edge) => edge.edgeId),
+      );
       let palette = colors();
       const columns = Math.max(1, Math.ceil(Math.sqrt(result.nodes.length)));
       instance = new GraphConstructor({
@@ -144,14 +166,16 @@ export function KnowledgeGraphCanvas({
         height: container.clientHeight,
         animation: false,
         autoFit: 'view',
-        zoomRange: [0.02, 2],
-        padding: [direction === 'TB' ? 120 : 80, 40, 40, 40],
+        zoomRange: [0.02, reading ? 1.4 : 2],
+        padding: reading
+          ? [36, 32, 36, 32]
+          : [direction === 'TB' ? 120 : 80, 40, 40, 40],
         data: {
           nodes: result.nodes.map((node, index) => ({
             id: node.entityId,
             data: { label: node.label, kind: node.kind },
             style: {
-              fill: fillFor(node.kind, palette),
+              fill: reading ? palette.surface : fillFor(node.kind, palette),
               x: positions?.get(node.entityId)?.x ?? (index % columns) * 180,
               y:
                 positions?.get(node.entityId)?.y ??
@@ -166,20 +190,30 @@ export function KnowledgeGraphCanvas({
           })),
         },
         node: {
+          type: reading ? 'rect' : 'circle',
           style: {
             size: (node) =>
-              typeof node.style?.size === 'number' ? node.style.size : 24,
-            fill: (node) => fillFor(node.data?.['kind'], palette),
-            stroke: () => palette.stroke,
+              reading
+                ? [196, 68]
+                : typeof node.style?.size === 'number'
+                  ? node.style.size
+                  : 24,
+            fill: (node) =>
+              reading ? palette.surface : fillFor(node.data?.['kind'], palette),
+            stroke: (node) =>
+              reading ? fillFor(node.data?.['kind'], palette) : palette.stroke,
+            radius: 10,
+            labelPlacement: reading ? 'center' : 'bottom',
             lineWidth: 2,
             labelText: (node) => {
               if (node.style?.labelVisibility === 'hidden') return '';
               const label = node.data?.['label'];
               if (typeof label !== 'string') return '';
-              const limit = 36;
-              return label.length > limit
-                ? `${label.slice(0, limit - 1)}…`
-                : label;
+              const text = reading ? label.replace(' · ', '\n') : label;
+              const limit = reading ? 70 : 36;
+              return text.length > limit
+                ? `${text.slice(0, limit - 1)}…`
+                : text;
             },
             labelFill: () => palette.labelFill,
             labelFontSize: (node) =>
@@ -195,7 +229,7 @@ export function KnowledgeGraphCanvas({
                 ? node.style.labelMaxWidth
                 : 170,
             labelWordWrap: true,
-            labelMaxLines: result.nodes.length <= 14 ? 3 : 2,
+            labelMaxLines: reading || result.nodes.length <= 14 ? 3 : 2,
           },
           state: {
             selected: { stroke: () => palette.selected, lineWidth: 5 },
@@ -203,6 +237,11 @@ export function KnowledgeGraphCanvas({
           },
         },
         edge: {
+          type: reading
+            ? direction === 'TB'
+              ? 'cubic-vertical'
+              : 'cubic-horizontal'
+            : 'line',
           state: { path: { stroke: () => palette.selected, lineWidth: 4 } },
           style: {
             stroke: () => palette.edge,
@@ -211,6 +250,9 @@ export function KnowledgeGraphCanvas({
                 ? edge.style.lineWidth
                 : 1.5,
             endArrow: true,
+            labelAutoRotate: !reading,
+            labelPadding: [3, 6],
+            labelBackgroundRadius: 4,
             labelText: (edge) =>
               edge.style?.labelVisibility !== 'hidden' &&
               typeof edge.data?.['label'] === 'string'
@@ -263,24 +305,40 @@ export function KnowledgeGraphCanvas({
           active.updateNodeData(
             result.nodes.map((node) => ({
               id: node.entityId,
-              style: {
-                size: Math.min(64, 14 / zoom),
-                labelFontSize: 12 / zoom,
-                labelLineHeight: 16 / zoom,
-                labelMaxWidth: 140 / zoom,
-                labelVisibility: visible.has(node.entityId)
-                  ? 'visible'
-                  : 'hidden',
-              },
+              style: reading
+                ? {
+                    size: [196, 68],
+                    labelFontSize: 13,
+                    labelLineHeight: 18,
+                    labelMaxWidth: 174,
+                    labelVisibility: 'visible',
+                  }
+                : {
+                    size: Math.min(64, 14 / zoom),
+                    labelFontSize: 12 / zoom,
+                    labelLineHeight: 16 / zoom,
+                    labelMaxWidth: 140 / zoom,
+                    labelVisibility: visible.has(node.entityId)
+                      ? 'visible'
+                      : 'hidden',
+                  },
             })),
           );
           active.updateEdgeData(
             result.edges.map((edge) => ({
               id: edge.edgeId,
               style: {
-                lineWidth: 1.2 / zoom,
-                labelVisibility: detailed ? 'visible' : 'hidden',
-                labelFontSize: 10 / zoom,
+                lineWidth: reading ? 1.2 : 1.2 / zoom,
+                labelVisibility: (
+                  reading
+                    ? relationLabels.current ||
+                      Boolean(selection.current) ||
+                      isolatedEdges.has(edge.edgeId)
+                    : detailed
+                )
+                  ? 'visible'
+                  : 'hidden',
+                labelFontSize: reading ? 11 : 10 / zoom,
               },
             })),
           );
@@ -329,8 +387,10 @@ export function KnowledgeGraphCanvas({
               result.nodes.map((node) => ({
                 id: node.entityId,
                 style: {
-                  fill: fillFor(node.kind, palette),
-                  stroke: palette.stroke,
+                  fill: reading ? palette.surface : fillFor(node.kind, palette),
+                  stroke: reading
+                    ? fillFor(node.kind, palette)
+                    : palette.stroke,
                   labelFill: palette.labelFill,
                 },
               })),
@@ -371,7 +431,7 @@ export function KnowledgeGraphCanvas({
       if (highlights.current?.instance === instance) highlights.current = null;
       void pending.current.finally(() => instance?.destroy()).catch(() => {});
     };
-  }, [result, mode, direction]);
+  }, [result, mode, direction, reading]);
 
   useEffect(() => {
     const active = graph.current;
@@ -432,31 +492,46 @@ export function KnowledgeGraphCanvas({
   }
   return (
     <div
-      className={styles.canvasFrame}
+      className={`${styles.canvasFrame} ${reading ? styles.readingFrame : ''}`}
+      data-reading={reading}
+      data-node-count={result.nodes.length}
+      data-edge-count={result.edges.length}
       data-testid="knowledge-graph"
       data-state={state}
       data-layout-direction={direction}
-      data-layout-mode={mode}
+      data-layout-mode={reading ? 'hierarchy' : mode}
     >
       <div
         className={styles.canvasControls}
         role="toolbar"
         aria-label={copy.controls}
       >
-        <button
-          type="button"
-          aria-pressed={mode === 'network'}
-          onClick={() => setMode('network')}
-        >
-          {copy.networkLayout}
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === 'hierarchy'}
-          onClick={() => setMode('hierarchy')}
-        >
-          {copy.hierarchyLayout}
-        </button>
+        {reading ? (
+          <button
+            aria-pressed={showRelationLabels}
+            onClick={() => setShowRelationLabels((value) => !value)}
+          >
+            {copy.relationLabels}
+          </button>
+        ) : null}
+        {!reading ? (
+          <>
+            <button
+              type="button"
+              aria-pressed={mode === 'network'}
+              onClick={() => setMode('network')}
+            >
+              {copy.networkLayout}
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === 'hierarchy'}
+              onClick={() => setMode('hierarchy')}
+            >
+              {copy.hierarchyLayout}
+            </button>
+          </>
+        ) : null}
         <button
           disabled={state !== 'ready'}
           aria-label={copy.zoomIn}

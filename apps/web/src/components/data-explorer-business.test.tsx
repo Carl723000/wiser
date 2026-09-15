@@ -306,3 +306,57 @@ it('treats an unknown graph mode as overview without widening the business scope
       .getAttribute('aria-pressed'),
   ).toBe('false');
 });
+
+it('limits reading to six real relations while keeping all objects searchable and the page in the URL', async () => {
+  // The parent tab updates native history before Next's search snapshot changes.
+  window.history.replaceState(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?query=query&view=graph',
+  );
+  const history = vi.spyOn(window.history, 'replaceState');
+  const items = Array.from({ length: 14 }, (_, i) => ({
+    ...row,
+    assertionId: `${(i + 1).toString(16).padStart(8, '0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    candidate: {
+      ...row.candidate,
+      subject: {
+        ...row.candidate.subject,
+        key: `policy-${i}`,
+        label: `政策 ${i}`,
+      },
+    },
+  }));
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(Response.json({ items, totalCount: items.length })),
+  );
+  const rendered = render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '分组阅读' });
+  expect(screen.getAllByRole('article')).toHaveLength(6);
+  expect(
+    within(screen.getByRole('list', { name: 'test graph' })).getAllByRole(
+      'listitem',
+    ),
+  ).toHaveLength(7);
+  const search = screen.getByText('按对象查找 (15)').closest('details')!;
+  expect(within(search).getAllByRole('button')).toHaveLength(15);
+  fireEvent.click(screen.getAllByRole('button', { name: '下一组' })[0]);
+  expect(history).toHaveBeenLastCalledWith(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPage=2',
+  );
+  nav.search = new URLSearchParams('saved=case&businessPage=3');
+  rendered.rerender(<DataExplorerBusiness {...props} />);
+  expect(screen.getAllByRole('article')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: '全景网络' }));
+  expect(history).toHaveBeenLastCalledWith(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPresentation=network',
+  );
+  history.mockRestore();
+});

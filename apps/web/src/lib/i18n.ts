@@ -89,6 +89,16 @@ const zhCN = {
   knowledgeRelations: {
     businessMapScope:
       '地图只显示当前问题中有位置证据的记录；移动地图不会改变问题和资料范围。',
+    businessPresentation: '图谱阅读方式',
+    businessReading: '分组阅读',
+    businessNetwork: '全景网络',
+    businessPreviousGroup: '上一组',
+    businessNextGroup: '下一组',
+    businessGroupCount: '第 {page} / {count} 组',
+    businessReadingHint:
+      '本组 {count} 条关系，共 {total} 条。逐组查看原文依据，或按对象聚焦。',
+    businessNetworkHint:
+      '显示当前范围的完整关系网络；选择对象可聚焦其直接联系。',
     businessTitle: '问题与证据关系图',
     businessHint:
       '从政策、事件、研究与数据之间的联系理解问题。点击对象展开相关证据；资料关联不等于因果结论。',
@@ -1473,6 +1483,7 @@ const zhCN = {
       prompt: '输入关键词开始检索。',
     },
     graphPage: {
+      relationLabels: '关系名称',
       networkLayout: '关系网络',
       hierarchyLayout: '来源层级',
       controls: '图谱视角',
@@ -2133,6 +2144,16 @@ const en: typeof zhCN = {
   knowledgeRelations: {
     businessMapScope:
       'The map shows located records in this question. Moving the map does not change its question or source scope.',
+    businessPresentation: 'Graph reading mode',
+    businessReading: 'Guided reading',
+    businessNetwork: 'Full network',
+    businessPreviousGroup: 'Previous group',
+    businessNextGroup: 'Next group',
+    businessGroupCount: 'Group {page} / {count}',
+    businessReadingHint:
+      '{count} relations in this group, {total} in scope. Read the evidence by group, or focus on an object.',
+    businessNetworkHint:
+      'The complete network in the current scope. Select an object to focus on its direct connections.',
     businessTitle: 'Problem and evidence graph',
     businessHint:
       'Explore connections among policy, events, research and data. Select an object for evidence. A source association does not establish causality.',
@@ -3593,6 +3614,7 @@ const en: typeof zhCN = {
       prompt: 'Enter keywords to start searching.',
     },
     graphPage: {
+      relationLabels: 'Relation labels',
       networkLayout: 'Relationship network',
       hierarchyLayout: 'Source hierarchy',
       controls: 'Graph viewport',

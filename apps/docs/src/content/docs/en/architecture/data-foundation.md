@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedCommit: 08531a4fd150c8a20dd3f9c722b5e36195177a8a
 ---
 
 ## Authority boundary
@@ -374,3 +374,5 @@ Spatial source descriptions use the latest authorized assessment for each origin
 Raster display settings select one band, a finite increasing range, optional explicit missing-value code and a user-entered unit label. TiTiler applies the range, viridis palette, nearest-neighbor sampling and transparent mask only to rendered pixels; original values, files and source declarations do not change. Unknown units stay unknown. Reloading replaces only the raster source after detaching the previous source, preserving camera, opacity, layer order and other layers. Failed tiles remain visibly failed until an explicit reload.
 
 AMap requests flat 3D mode for continuous fractional zoom. If the SDK reports no WebGL support, both map surfaces switch to integer zoom and explain use of the zoom buttons; wheel and pinch zoom are disabled in that fallback. Fitted extents round down to retain coverage. Camera agreement is display validation, not independent positional or scientific acceptance.
+
+Business graph reading consumes the complete, authorized relation result already loaded by the Web. Six-relation display groups retain exact assertion IDs and endpoint identities; record/map navigation forwards only validated presentation state. General provenance graphs retain their existing network layout. The optional readable hierarchy uses the same cancellable layout worker and existing G6/Dagre dependencies, with no API, migration, projection or knowledge-approval changes.
