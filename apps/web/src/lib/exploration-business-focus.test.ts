@@ -47,3 +47,25 @@ it('retains display focus when an opened saved view becomes its authorized query
     }),
   ).toBe(href);
 });
+
+it('keeps valid reading pages and presentation only inside the same query', () => {
+  const href = '/zh-CN/data-foundation/explore?query=next&view=map';
+  expect(
+    withBusinessFocus(
+      href,
+      '?query=next&businessPage=3&businessPresentation=network',
+    ),
+  ).toBe(href + '&businessPresentation=network&businessPage=3');
+  expect(
+    withBusinessFocus(
+      href,
+      '?query=old&businessPage=3&businessPresentation=network',
+    ),
+  ).toBe(href);
+  expect(
+    withBusinessFocus(
+      href,
+      '?query=next&businessPage=-1&businessPresentation=invalid',
+    ),
+  ).toBe(href);
+});

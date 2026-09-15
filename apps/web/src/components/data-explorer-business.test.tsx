@@ -306,3 +306,51 @@ it('treats an unknown graph mode as overview without widening the business scope
       .getAttribute('aria-pressed'),
   ).toBe('false');
 });
+
+it('limits reading to six real relations while keeping all objects searchable and the page in the URL', async () => {
+  const items = Array.from({ length: 14 }, (_, i) => ({
+    ...row,
+    assertionId: `${(i + 1).toString(16).padStart(8, '0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    candidate: {
+      ...row.candidate,
+      subject: {
+        ...row.candidate.subject,
+        key: `policy-${i}`,
+        label: `政策 ${i}`,
+      },
+    },
+  }));
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(Response.json({ items, totalCount: items.length })),
+  );
+  const rendered = render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '分组阅读', exact: true });
+  expect(screen.getAllByRole('article')).toHaveLength(6);
+  expect(
+    within(screen.getByRole('list', { name: 'test graph' })).getAllByRole(
+      'listitem',
+    ),
+  ).toHaveLength(7);
+  const search = screen.getByText('按对象查找 (15)').closest('details')!;
+  expect(within(search).getAllByRole('button')).toHaveLength(15);
+  fireEvent.click(
+    screen.getAllByRole('button', { name: '下一组', exact: true })[0],
+  );
+  expect(nav.replace).toHaveBeenLastCalledWith(
+    '/zh-CN/data-foundation/explore?saved=case&businessPage=2',
+    { scroll: false },
+  );
+  nav.search = new URLSearchParams('saved=case&businessPage=3');
+  rendered.rerender(<DataExplorerBusiness {...props} />);
+  expect(screen.getAllByRole('article')).toHaveLength(2);
+  fireEvent.click(
+    screen.getByRole('button', { name: '全景网络', exact: true }),
+  );
+  expect(nav.replace).toHaveBeenLastCalledWith(
+    '/zh-CN/data-foundation/explore?saved=case&businessPresentation=network',
+    { scroll: false },
+  );
+});

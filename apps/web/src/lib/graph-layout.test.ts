@@ -156,3 +156,30 @@ it('keeps unrelated resource neighborhoods separate in a network overview', asyn
       ).toBe(true);
     }
 });
+
+it('reserves readable card footprints for layered evidence with a shared endpoint', async () => {
+  const input = {
+    mode: 'hierarchy' as const,
+    direction: 'LR' as const,
+    reading: true,
+    nodes: [
+      { id: 'source' },
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `metric-${i}` })),
+    ],
+    edges: Array.from({ length: 6 }, (_, i) => ({
+      id: `edge-${i}`,
+      source: 'source',
+      target: `metric-${i}`,
+    })),
+  };
+  const positions = await computeGraphLayout(input);
+  const source = positions.find((p) => p.id === 'source')!;
+  const metrics = positions
+    .filter((p) => p.id !== 'source')
+    .sort((a, b) => a.y - b.y);
+  expect(
+    Math.min(...metrics.map((p) => p.x - source.x)),
+  ).toBeGreaterThanOrEqual(280);
+  for (let i = 1; i < metrics.length; i++)
+    expect(metrics[i].y - metrics[i - 1].y).toBeGreaterThanOrEqual(88);
+});
