@@ -147,3 +147,39 @@
 .readingFrame .canvas {
   height: clamp(440px, 62vh, 680px);
 }
+
+.canvasControls label {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  white-space: nowrap;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.canvasControls select {
+  min-height: 40px;
+  max-width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface);
+  font: inherit;
+}
+.layoutHint {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  border-bottom: 1px solid var(--border);
+}
+@media (max-width: 560px) {
+  .canvasControls label {
+    flex: 1 1 44%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

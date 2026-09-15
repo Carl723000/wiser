@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-15
-lastReviewedCommit: 666a31c3bd9a01a4395ce1066ced7a7962c44151
+lastReviewedCommit: b959e86221e2aaebae9deb4f4d0f41ee5e1a2641
 ---
 
 ## What this guide governs
@@ -205,7 +205,7 @@ Record inspection offers an on-demand reverse lookup of explicit record bindings
 
 Business relation links optionally persist `revisionMode: "all" | "current"`; omitted means all history. Current display collapses only explicit same-DataItem, same-triple replacements in the same approved or pending review queue, after the full unfocused scope is loaded. It never chooses by timestamps, resolves competing branches, or promotes pending changes over approved knowledge. Incomplete pages, focused objects and exact history retain all loaded rows and disclose that boundary. Cyclic or invalid replacement links do not hide evidence. Type/time filters run after revision selection, and exact predecessor links still reopen immutable history. This is presentation over authorized API rows, not a new approval or authority state.
 
-Business exploration opens a multi-source problem/evidence graph when the saved query contains business conditions. The overview explicitly collapses observation detail and shows visible/scoped counts; selecting an object expands its evidence. Bound-record and map links preserve the query. Authority status stays visible and source lineage remains a separate view for ordinary queries. Both locales use the shared graph canvas and design tokens.
+Business exploration opens a multi-source problem/evidence graph when the saved query contains business conditions. The default network includes all authorized observation detail and shows complete/scoped counts; selecting an object opens its evidence while retaining the full network. Bound-record and map links preserve the query. Authority status stays visible and source lineage remains a separate view for ordinary queries. Both locales use the shared graph canvas and design tokens.
 
 Business problem graphs offer a two-hop neighborhood around an object category using existing edges only. This is diagram focus, not a change to the shared records/map business scope. Category and node focus persist in the query URL and restore on refresh/history navigation. Original evidence excerpts are collapsed individually; time controls disclose applied dates and expand on demand. Documents and claims reuse semantic colors alongside text types, with multiline labels in small graphs and traceable evidence details.
 
@@ -223,14 +223,16 @@ Graph initialization fits once after the first screen-space label draw, so endpo
 
 Theme changes refresh the graph’s resolved node, edge, label and label-background colors. They preserve layout, selected objects, path highlights and viewport; a redraw must not retain the initial theme’s default label color.
 
-When a scoped business query contains only observations or source relationships, its default overview shows those authorized rows instead of an empty diagram. Mixed business results still collapse observation detail. Explicit object/category filters remain exact, including empty matches; this display fallback never expands the query or changes record/map scope.
+In optional grouped reading, a scoped query containing only observations or source relationships shows those authorized rows instead of an empty diagram. Mixed business results still collapse observation detail. Explicit object/category filters remain exact, including empty matches; this display fallback never expands the query or changes record/map scope.
 
 Business-query record views include a source selector and searchable directory built only from explicit record bindings in the complete authorized relation result. Links retain the same query and exact DataItem/Version/record identity. Pagination must complete before showing entries; denied, inconsistent or truncated responses clear the directory. Unbound documents remain reachable through the business graph. The directory counts bound records, not independent observations, and does not expand time/review/source conditions. The file table remains a single-source view.
 
-Business graph overview/all-observations mode is stored in the page URL. Reopening a saved view or remounting its query restores the selected mode; returning to overview clears the override. This is a display preference only and does not expand source, time, review or record scope. Unknown mode values fall back to overview.
+Within optional grouped reading, overview/all-observations mode is stored in the page URL. Reopening a saved view or remounting its query restores the selected mode; returning to overview clears the override. This is a display preference only and does not expand source, time, review or record scope. Unknown mode values fall back to overview.
 
 When switching exploration tabs, the expanded-observation mode and valid object/category focus remain attached to the same query. A saved-view URL may transfer this display state only to the query returned by that successfully opened view. Ambiguous, unrelated or invalid identifiers never carry state into another query; this display state grants no access and does not filter records.
 
 Evidence links in relation details, query results, and connecting paths use the evidence source version when present, retaining the owning relation context. A cross-source reference changes where the source link goes; it must not relabel the external file as belonging to the current document.
 
 Guided reading is a presentation choice. It groups existing assertions by their source-scoped subject before paging, never merges identities or generates links. Group number and full-network mode are bounded URL state, restored on refresh and retained across exact-record/map links only within the same authorized query or the saved view that opened it. Changing object/category resets the group. Group and presentation changes use the documented native History integration to update the client immediately without repeating the full relation fetch; Next.js retains its internal history state. Out-of-range group numbers clamp to the available groups. Original evidence, query filters, immutable versions, pending status and data counts are unchanged.
+
+Business problem graphs default to the complete authorized network, including observation detail. Object/category selection scopes the evidence list and highlights the selected object without removing network nodes or edges. Optional grouped reading shows six exact assertions at a time. ForceAtlas2, Dagre hierarchy and circular layouts can organize nodes by connected neighborhood, node category or the object’s own source/version. Cross-group edges remain drawn. Node spacing changes repulsion/node footprints, rank gaps or circle radius; group spacing changes packing gaps. Spacing changes preserve zoom, while Fit graph explicitly fits the whole network. Bounded layout and grouping parameters persist in the URL and across same-query record/map navigation; they do not imply evidence strength, spatial distance, merged identities or approved knowledge. Layout controls occupy normal flow above the canvas and use the existing cancellable worker without refetching relations.

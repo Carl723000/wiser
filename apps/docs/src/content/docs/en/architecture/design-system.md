@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-15
-lastReviewedCommit: 666a31c3bd9a01a4395ce1066ced7a7962c44151
+lastReviewedCommit: b959e86221e2aaebae9deb4f4d0f41ee5e1a2641
 ---
 
 ## Design direction
@@ -168,7 +168,7 @@ Record inspection offers an on-demand reverse lookup of explicit record bindings
 
 Business relation links optionally persist `revisionMode: "all" | "current"`; omitted means all history. Current display collapses only explicit same-DataItem, same-triple replacements in the same approved or pending review queue, after the full unfocused scope is loaded. It never chooses by timestamps, resolves competing branches, or promotes pending changes over approved knowledge. Incomplete pages, focused objects and exact history retain all loaded rows and disclose that boundary. Cyclic or invalid replacement links do not hide evidence. Type/time filters run after revision selection, and exact predecessor links still reopen immutable history. This is presentation over authorized API rows, not a new approval or authority state.
 
-Business exploration opens a multi-source problem/evidence graph when the saved query contains business conditions. The overview explicitly collapses observation detail and shows visible/scoped counts; selecting an object expands its evidence. Bound-record and map links preserve the query. Authority status stays visible and source lineage remains a separate view for ordinary queries. Both locales use the shared graph canvas and design tokens.
+Business exploration opens a multi-source problem/evidence graph when the saved query contains business conditions. The default network includes all authorized observation detail and shows complete/scoped counts; selecting an object opens its evidence while retaining the full network. Bound-record and map links preserve the query. Authority status stays visible and source lineage remains a separate view for ordinary queries. Both locales use the shared graph canvas and design tokens.
 
 Graph labels reserve conservative screen-space boxes from current element positions after fitting, zooming and dragging. Hidden labels render no text, while edges retain a readable screen width. Overlapping labels yield to the selected object and overview labels; zooming reveals more labels. This changes neither nodes, edges, scope nor counts, and the keyboard object list and evidence remain available.
 
@@ -182,4 +182,6 @@ The exploration position note occupies normal flow below the map canvas. It does
 
 Nested source fields choose label/value columns from the available cell width. Narrow cells stack the label above its value even on desktop, so opening table evidence does not reduce short source numbers to one character per line. Values and evidence selection remain unchanged; the surrounding table owns scrolling.
 
-Business question graphs default to guided reading of six exact relations per group. Rounded, text-bearing nodes use a layered layout with space reserved for their full card footprint; labels stay horizontal. Repeated labels at shared endpoints are available through an explicit control or object selection. Isolated pairs retain their relationship label. The full network remains available, and all authorized objects remain in the keyboard-accessible lookup. Reading controls occupy their own toolbar instead of covering the canvas. The graph and evidence list show the same group, while the current-scope and query counts stay separate.
+Optional guided reading shows six exact business relations per group. Rounded, text-bearing nodes use a layered layout with space reserved for their full card footprint; labels stay horizontal. Repeated labels at shared endpoints are available through an explicit control or object selection. Isolated pairs retain their relationship label. The full network remains available, and all authorized objects remain in the keyboard-accessible lookup. Reading controls occupy their own toolbar instead of covering the canvas. The graph and evidence list show the same group, while the current-scope and query counts stay separate.
+
+Business problem graphs default to the complete authorized network, including observation detail. Object/category selection scopes the evidence list and highlights the selected object without removing network nodes or edges. Optional grouped reading shows six exact assertions at a time. ForceAtlas2, Dagre hierarchy and circular layouts can organize nodes by connected neighborhood, node category or the object’s own source/version. Cross-group edges remain drawn. Node spacing changes repulsion/node footprints, rank gaps or circle radius; group spacing changes packing gaps. Spacing changes preserve zoom, while Fit graph explicitly fits the whole network. Bounded layout and grouping parameters persist in the URL and across same-query record/map navigation; they do not imply evidence strength, spatial distance, merged identities or approved knowledge. Layout controls occupy normal flow above the canvas and use the existing cancellable worker without refetching relations.

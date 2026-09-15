@@ -1,8 +1,15 @@
 export interface GraphLayoutInput {
   readonly reading?: boolean;
-  readonly mode?: 'network' | 'hierarchy';
+  readonly mode?: 'network' | 'hierarchy' | 'circular';
+  readonly grouping?: 'topology' | 'kind' | 'source';
+  readonly nodeSpacing?: number;
+  readonly groupSpacing?: number;
   readonly direction?: 'LR' | 'TB';
-  readonly nodes: readonly { readonly id: string }[];
+  readonly nodes: readonly {
+    readonly id: string;
+    readonly kind?: string;
+    readonly source?: string;
+  }[];
   readonly edges: readonly {
     readonly id: string;
     readonly source: string;

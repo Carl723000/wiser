@@ -134,7 +134,7 @@ it('preserves the saved query while selecting a category and restores selection 
   ).toBe('false');
   expect(
     screen
-      .getByRole('button', { name: '多类对象总览' })
+      .getByRole('button', { name: '全景网络' })
       .getAttribute('aria-pressed'),
   ).toBe('true');
 });
@@ -257,6 +257,7 @@ it('keeps same-source duplicates distinct and labels missing document titles wit
 });
 
 it('keeps expanded observations after a saved view remount and restores overview explicitly', async () => {
+  nav.search = new URLSearchParams('saved=case&businessPresentation=reading');
   vi.stubGlobal(
     'fetch',
     vi
@@ -270,11 +271,13 @@ it('keeps expanded observations after a saved view remount and restores overview
     await screen.findByRole('button', { name: '展开全部观测关系' }),
   );
   expect(nav.replace).toHaveBeenLastCalledWith(
-    '/zh-CN/data-foundation/explore?saved=case&businessMode=all',
+    '/zh-CN/data-foundation/explore?saved=case&businessPresentation=reading&businessMode=all',
     { scroll: false },
   );
   first.unmount();
-  nav.search = new URLSearchParams('saved=case&businessMode=all');
+  nav.search = new URLSearchParams(
+    'saved=case&businessPresentation=reading&businessMode=all',
+  );
   render(<DataExplorerBusiness {...props} queryId="reopened-query" />);
   expect(
     (
@@ -283,13 +286,15 @@ it('keeps expanded observations after a saved view remount and restores overview
   ).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: '多类对象总览' }));
   expect(nav.replace).toHaveBeenLastCalledWith(
-    '/zh-CN/data-foundation/explore?saved=case',
+    '/zh-CN/data-foundation/explore?saved=case&businessPresentation=reading',
     { scroll: false },
   );
 });
 
 it('treats an unknown graph mode as overview without widening the business scope', async () => {
-  nav.search = new URLSearchParams('saved=case&businessMode=unexpected');
+  nav.search = new URLSearchParams(
+    'saved=case&businessPresentation=reading&businessMode=unexpected',
+  );
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
@@ -308,11 +313,12 @@ it('treats an unknown graph mode as overview without widening the business scope
 });
 
 it('limits reading to six real relations while keeping all objects searchable and the page in the URL', async () => {
+  nav.search = new URLSearchParams('saved=case&businessPresentation=reading');
   // The parent tab updates native history before Next's search snapshot changes.
   window.history.replaceState(
     null,
     '',
-    '/zh-CN/data-foundation/explore?query=query&view=graph',
+    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPresentation=reading',
   );
   const history = vi.spyOn(window.history, 'replaceState');
   const items = Array.from({ length: 14 }, (_, i) => ({
@@ -347,16 +353,18 @@ it('limits reading to six real relations while keeping all objects searchable an
   expect(history).toHaveBeenLastCalledWith(
     null,
     '',
-    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPage=2',
+    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPresentation=reading&businessPage=2',
   );
-  nav.search = new URLSearchParams('saved=case&businessPage=3');
+  nav.search = new URLSearchParams(
+    'saved=case&businessPresentation=reading&businessPage=3',
+  );
   rendered.rerender(<DataExplorerBusiness {...props} />);
   expect(screen.getAllByRole('article')).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: '全景网络' }));
   expect(history).toHaveBeenLastCalledWith(
     null,
     '',
-    '/zh-CN/data-foundation/explore?query=query&view=graph&businessPresentation=network',
+    '/zh-CN/data-foundation/explore?query=query&view=graph',
   );
   history.mockRestore();
 });

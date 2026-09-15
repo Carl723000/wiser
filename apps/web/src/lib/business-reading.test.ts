@@ -25,7 +25,7 @@ it('accepts only unambiguous bounded reading state', () => {
         'businessPresentation=network&businessPresentation=network',
       ),
     ).presentation,
-  ).toBe('reading');
+  ).toBe('network');
 });
 
 it('opens the complete network by default and retains explicitly requested reading', () => {

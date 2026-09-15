@@ -388,6 +388,7 @@ it('recomputes spacing at the current zoom so fitting cannot cancel density chan
         { id: 'b', x: 100, y: 0 },
       ],
     });
+    await Promise.resolve();
   });
   await waitFor(() =>
     expect(
@@ -408,6 +409,7 @@ it('recomputes spacing at the current zoom so fitting cannot cancel density chan
         { id: 'b', x: 200, y: 0 },
       ],
     });
+    await Promise.resolve();
   });
   await waitFor(() => expect(engine.zoomTo).toHaveBeenCalledWith(0.4, false));
   expect(engine.fitCenter).toHaveBeenCalled();
