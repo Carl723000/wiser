@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-15
-lastReviewedCommit: fb6d004f4cf8adb32fe2d8d07263a2b71283ac52
+lastReviewedCommit: b7fcdf6b008bd2bb1f345435246c9d77c0f9de0b
 ---
 
 ## What this guide governs
@@ -232,3 +232,5 @@ Business graph overview/all-observations mode is stored in the page URL. Reopeni
 When switching exploration tabs, the expanded-observation mode and valid object/category focus remain attached to the same query. A saved-view URL may transfer this display state only to the query returned by that successfully opened view. Ambiguous, unrelated or invalid identifiers never carry state into another query; this display state grants no access and does not filter records.
 
 Evidence links in relation details, query results, and connecting paths use the evidence source version when present, retaining the owning relation context. A cross-source reference changes where the source link goes; it must not relabel the external file as belonging to the current document.
+
+Guided reading is a presentation choice. It groups existing assertions by their source-scoped subject before paging, never merges identities or generates links. Group number and full-network mode are bounded URL state, restored on refresh and retained across exact-record/map links only within the same authorized query or the saved view that opened it. Changing object/category resets the group. Group and presentation changes use the documented native History integration to update the client immediately without repeating the full relation fetch; Next.js retains its internal history state. Out-of-range group numbers clamp to the available groups. Original evidence, query filters, immutable versions, pending status and data counts are unchanged.

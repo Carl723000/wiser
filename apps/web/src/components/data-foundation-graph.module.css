@@ -128,3 +128,22 @@
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+.readingFrame {
+  background: var(--surface);
+  border-radius: 16px;
+}
+.readingFrame .canvasControls {
+  position: relative;
+  inset: auto;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.readingFrame .canvasControls button {
+  border-color: var(--border);
+  border-radius: 8px;
+}
+.readingFrame .canvas {
+  height: clamp(440px, 62vh, 680px);
+}

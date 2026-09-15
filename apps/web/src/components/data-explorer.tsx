@@ -878,7 +878,9 @@ function DataExplorerSession({
             {copy[failure]}
           </div>
         )}
-        <div className={styles.workspace}>
+        <div
+          className={`${styles.workspace} ${view === 'graph' && result?.spec.businessQuery && !selected && !selectedRecord && !selectedNode ? styles.businessGraphWorkspace : ''}`}
+        >
           <section
             className={styles.results}
             data-testid="explorer-results"

@@ -1,3 +1,4 @@
+import { readBusinessReading } from './business-reading';
 import { RelationEntitySchema } from '@wiser/data-contracts';
 import { parseRelationNodeIdentity } from './relation-graph';
 /** Retain diagram focus only within the same authorized query; it is not a data filter. */
@@ -18,6 +19,11 @@ export function withBusinessFocus(
     openedSaved?.viewId === saved[0] &&
     openedSaved.queryId === target;
   if (!sameQuery && !sameSaved) return href;
+  const reading = readBusinessReading(source);
+  if (reading.presentation === 'network')
+    url.searchParams.set('businessPresentation', 'network');
+  if (reading.page > 1)
+    url.searchParams.set('businessPage', String(reading.page));
   const modes = source.getAll('businessMode');
   if (modes.length === 1 && modes[0] === 'all')
     url.searchParams.set('businessMode', 'all');

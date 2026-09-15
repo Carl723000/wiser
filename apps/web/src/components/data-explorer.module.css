@@ -952,3 +952,11 @@
   color: var(--text-muted);
   font-size: 0.875rem;
 }
+
+.businessGraphWorkspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.businessGraphWorkspace > .inspector {
+  display: none;
+}

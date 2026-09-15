@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-15
-lastReviewedCommit: fb6d004f4cf8adb32fe2d8d07263a2b71283ac52
+lastReviewedCommit: b7fcdf6b008bd2bb1f345435246c9d77c0f9de0b
 ---
 
 ## Design direction
@@ -181,3 +181,5 @@ Evidence links in relation details, query results, and connecting paths use the 
 The exploration position note occupies normal flow below the map canvas. It does not overlay the layer legend or failure recovery controls. Bilingual narrow/wide layout checks cover expanded legends and retry states separately from map correctness.
 
 Nested source fields choose label/value columns from the available cell width. Narrow cells stack the label above its value even on desktop, so opening table evidence does not reduce short source numbers to one character per line. Values and evidence selection remain unchanged; the surrounding table owns scrolling.
+
+Business question graphs default to guided reading of six exact relations per group. Rounded, text-bearing nodes use a layered layout with space reserved for their full card footprint; labels stay horizontal. Repeated labels at shared endpoints are available through an explicit control or object selection. Isolated pairs retain their relationship label. The full network remains available, and all authorized objects remain in the keyboard-accessible lookup. Reading controls occupy their own toolbar instead of covering the canvas. The graph and evidence list show the same group, while the current-scope and query counts stay separate.
