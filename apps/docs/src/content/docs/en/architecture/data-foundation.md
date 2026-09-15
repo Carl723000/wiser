@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-15
-lastReviewedCommit: 08531a4fd150c8a20dd3f9c722b5e36195177a8a
+lastReviewedCommit: b959e86221e2aaebae9deb4f4d0f41ee5e1a2641
 ---
 
 ## Authority boundary
@@ -376,3 +376,5 @@ Raster display settings select one band, a finite increasing range, optional exp
 AMap requests flat 3D mode for continuous fractional zoom. If the SDK reports no WebGL support, both map surfaces switch to integer zoom and explain use of the zoom buttons; wheel and pinch zoom are disabled in that fallback. Fitted extents round down to retain coverage. Camera agreement is display validation, not independent positional or scientific acceptance.
 
 Business graph reading consumes the complete, authorized relation result already loaded by the Web. Six-relation display groups retain exact assertion IDs and endpoint identities; record/map navigation forwards only validated presentation state. General provenance graphs retain their existing network layout. The optional readable hierarchy uses the same cancellable layout worker and existing G6/Dagre dependencies, with no API, migration, projection or knowledge-approval changes.
+
+Business problem graphs default to the complete authorized network, including observation detail. Object/category selection scopes the evidence list and highlights the selected object without removing network nodes or edges. Optional grouped reading shows six exact assertions at a time. ForceAtlas2, Dagre hierarchy and circular layouts can organize nodes by connected neighborhood, node category or the object’s own source/version. Cross-group edges remain drawn. Node spacing changes repulsion/node footprints, rank gaps or circle radius; group spacing changes packing gaps. Spacing changes preserve zoom, while Fit graph explicitly fits the whole network. Bounded layout and grouping parameters persist in the URL and across same-query record/map navigation; they do not imply evidence strength, spatial distance, merged identities or approved knowledge. Layout controls occupy normal flow above the canvas and use the existing cancellable worker without refetching relations.

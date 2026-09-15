@@ -10,6 +10,11 @@ import {
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { businessGraphRows, businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
+import {
+  readGraphLayoutSettings,
+  writeGraphLayoutSettings,
+  type GraphLayoutSettings,
+} from '@/lib/graph-layout-settings';
 import { readBusinessReading, readingPage } from '@/lib/business-reading';
 import { withBusinessFocus } from '@/lib/exploration-business-focus';
 import { businessObjectSources } from '@/lib/business-object-sources';
@@ -53,6 +58,7 @@ export function DataExplorerBusiness({
   const mode = search.get('businessMode') === 'all' ? 'all' : 'overview';
   const reading = readBusinessReading(search);
   const presentation = reading.presentation;
+  const layoutSettings = readGraphLayoutSettings(search);
   const selected = search.get('businessEntity');
   const [draft, setDraft] = useState(scope.filters);
   const viewState = useExplorationViewState();
@@ -114,8 +120,14 @@ export function DataExplorerBusiness({
     return () => controller.abort();
   }, [queryId, scope.status, onInvalidated, viewState]);
   const visible = useMemo(
-    () => businessGraphRows(rows, mode, selected, kind),
-    [rows, mode, selected, kind],
+    () =>
+      businessGraphRows(
+        rows,
+        presentation === 'network' ? 'all' : mode,
+        selected,
+        kind,
+      ),
+    [rows, mode, selected, kind, presentation],
   );
   const readingRows = useMemo(() => {
     const groups = new Map<string, RelationAssertion[]>();
@@ -133,15 +145,16 @@ export function DataExplorerBusiness({
   );
   const sources = useMemo(() => businessObjectSources(rows), [rows]);
   const selectedSource = selected ? sources.get(selected) : undefined;
+  const graphRows = presentation === 'network' ? rows : visible;
   const graph = useMemo(() => {
     const degree = new Map<string, number>();
-    for (const r of visible)
+    for (const r of graphRows)
       for (const e of [r.candidate.subject, r.candidate.object]) {
         const id = relationNodeIdentity(r, e);
         degree.set(id, (degree.get(id) ?? 0) + 1);
       }
     const representatives = new Map<string, string>();
-    for (const r of visible)
+    for (const r of graphRows)
       for (const e of [r.candidate.subject, r.candidate.object]) {
         const id = relationNodeIdentity(r, e),
           prior = representatives.get(e.kind);
@@ -152,7 +165,7 @@ export function DataExplorerBusiness({
     return {
       nodes: [
         ...new Map(
-          visible.flatMap((r) =>
+          graphRows.flatMap((r) =>
             [r.candidate.subject, r.candidate.object].map((e) => {
               const id = relationNodeIdentity(r, e);
               return [
@@ -161,6 +174,9 @@ export function DataExplorerBusiness({
                   entityId: id,
                   label: copy.kinds[e.kind] + ' · ' + e.label,
                   kind: e.kind,
+                  source: sources.get(id)
+                    ? `${sources.get(id)!.dataItemId}:${sources.get(id)!.versionId}`
+                    : undefined,
                   overviewLabel: anchors.has(id),
                 },
               ] as const;
@@ -168,14 +184,14 @@ export function DataExplorerBusiness({
           ),
         ).values(),
       ],
-      edges: visible.map((r) => ({
+      edges: graphRows.map((r) => ({
         edgeId: r.assertionId,
         fromEntityId: relationNodeIdentity(r, r.candidate.subject),
         toEntityId: relationNodeIdentity(r, r.candidate.object),
         label: copy.predicates[r.candidate.predicate],
       })),
     };
-  }, [visible, copy]);
+  }, [graphRows, copy, sources]);
   const pageGraph = useMemo(() => {
     const ids = new Set(page.rows.map((r) => r.assertionId));
     const edges = graph.edges.filter((e) => ids.has(e.edgeId));
@@ -194,9 +210,14 @@ export function DataExplorerBusiness({
     const params = new URLSearchParams(window.location.search);
     params.delete('businessPage');
     params.delete('businessPresentation');
-    if (nextPresentation === 'network')
-      params.set('businessPresentation', 'network');
+    if (nextPresentation === 'reading')
+      params.set('businessPresentation', 'reading');
     if (nextPage > 1) params.set('businessPage', String(nextPage));
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
+  };
+  const changeLayout = (settings: GraphLayoutSettings) => {
+    const params = new URLSearchParams(window.location.search);
+    writeGraphLayoutSettings(params, settings);
     window.history.replaceState(null, '', pathname + '?' + params.toString());
   };
   const recordHref = (view: 'records' | 'map') =>
@@ -349,22 +370,26 @@ export function DataExplorerBusiness({
       {!busy && !failed ? (
         <>
           <div className={styles.actions}>
-            <button
-              onClick={() => {
-                select(null, null, 'overview');
-              }}
-              aria-pressed={mode === 'overview' && !selected && !kind}
-            >
-              {copy.businessOverview}
-            </button>
-            <button
-              onClick={() => {
-                select(null, null, 'all');
-              }}
-              aria-pressed={mode === 'all' && !selected && !kind}
-            >
-              {copy.businessAll}
-            </button>
+            {presentation === 'reading' ? (
+              <>
+                <button
+                  onClick={() => {
+                    select(null, null, 'overview');
+                  }}
+                  aria-pressed={mode === 'overview' && !selected && !kind}
+                >
+                  {copy.businessOverview}
+                </button>
+                <button
+                  onClick={() => {
+                    select(null, null, 'all');
+                  }}
+                  aria-pressed={mode === 'all' && !selected && !kind}
+                >
+                  {copy.businessAll}
+                </button>
+              </>
+            ) : null}
             {selected ? (
               <button onClick={() => select(null)}>
                 {copy.businessClearFocus}
@@ -385,10 +410,15 @@ export function DataExplorerBusiness({
               </button>
             ))}
           </div>
-          {kind ? <p>{copy.businessCategoryHint}</p> : null}
+          {kind && presentation === 'reading' ? (
+            <p>{copy.businessCategoryHint}</p>
+          ) : null}
           <p>
             {copy.businessVisible}
-            {visible.length} / {rows.length} · {copy.businessOverviewHint}
+            {graphRows.length} / {rows.length} ·{' '}
+            {presentation === 'network'
+              ? copy.businessGlobalHint
+              : copy.businessOverviewHint}
           </p>
           {selectedSource ? (
             <section
@@ -422,7 +452,7 @@ export function DataExplorerBusiness({
                 {copy.businessNetwork}
               </button>
             </div>
-            {pagination}
+            {presentation === 'reading' ? pagination : null}
           </div>
           <p className={businessStyles.readingHint}>
             {presentation === 'reading'
@@ -431,10 +461,12 @@ export function DataExplorerBusiness({
                   .replace('{total}', String(visible.length))
               : copy.businessNetworkHint}
           </p>
-          {visible.length ? (
+          {graphRows.length ? (
             <KnowledgeGraphCanvas
               result={presentation === 'reading' ? pageGraph : graph}
               reading={presentation === 'reading'}
+              layoutSettings={layoutSettings}
+              onLayoutSettingsChange={changeLayout}
               locale={locale}
               selectedId={selected}
               onSelect={select}

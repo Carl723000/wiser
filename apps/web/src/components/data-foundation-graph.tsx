@@ -7,6 +7,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GraphResultDto } from '@/lib/data-foundation';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { visibleGraphLabels } from '@/lib/graph-label-visibility';
+import {
+  defaultGraphLayoutSettings,
+  type GraphLayoutSettings,
+} from '@/lib/graph-layout-settings';
 import { layoutGraph } from '@/lib/graph-layout';
 import styles from './data-foundation-graph.module.css';
 
@@ -15,6 +19,7 @@ export interface CanvasGraphData {
     entityId: string;
     label: string;
     kind?: string;
+    source?: string;
     overviewLabel?: boolean;
   }[];
   readonly edges: readonly {
@@ -34,9 +39,13 @@ export function KnowledgeGraphCanvas({
   locale,
   path,
   reading = false,
+  layoutSettings,
+  onLayoutSettingsChange,
 }: {
   readonly result: CanvasGraphData;
   readonly reading?: boolean;
+  readonly layoutSettings?: GraphLayoutSettings;
+  readonly onLayoutSettingsChange?: (settings: GraphLayoutSettings) => void;
   readonly path?:
     | {
         readonly nodeIds: readonly string[];
@@ -75,6 +84,22 @@ export function KnowledgeGraphCanvas({
   const [state, setState] = useState<GraphState>('loading');
   const [mode, setMode] = useState<'network' | 'hierarchy'>('network');
   const [direction, setDirection] = useState<'LR' | 'TB'>('LR');
+  const settings = layoutSettings ?? defaultGraphLayoutSettings;
+  const effectiveMode = reading
+    ? 'hierarchy'
+    : (layoutSettings?.layout ?? mode);
+  const grouping = reading ? 'topology' : settings.grouping;
+  const nodeSpacing = reading ? undefined : layoutSettings?.nodeSpacing;
+  const groupSpacing = reading ? undefined : layoutSettings?.groupSpacing;
+  const previousView = useRef<{
+    result: CanvasGraphData;
+    mode: string;
+    grouping: string;
+    direction: string;
+    nodeSpacing: number | undefined;
+    groupSpacing: number | undefined;
+    zoom: number;
+  } | null>(null);
   useEffect(() => {
     const container = target.current;
     if (!container) return;
@@ -91,6 +116,16 @@ export function KnowledgeGraphCanvas({
     const container = target.current;
     if (container === null) return;
     let disposed = false;
+    const prior = previousView.current;
+    const retainedZoom =
+      prior &&
+      prior.result === result &&
+      prior.mode === effectiveMode &&
+      prior.grouping === grouping &&
+      prior.direction === direction &&
+      (prior.nodeSpacing !== nodeSpacing || prior.groupSpacing !== groupSpacing)
+        ? prior.zoom
+        : null;
     const layoutController = new AbortController();
     let instance: Graph | null = null;
     let resize: ResizeObserver | null = null;
@@ -131,9 +166,16 @@ export function KnowledgeGraphCanvas({
           await layoutGraph(
             {
               direction,
-              mode: reading ? 'hierarchy' : mode,
+              mode: effectiveMode,
               reading,
-              nodes: result.nodes.map((node) => ({ id: node.entityId })),
+              grouping: layoutSettings ? grouping : undefined,
+              nodeSpacing,
+              groupSpacing,
+              nodes: result.nodes.map((node) => ({
+                id: node.entityId,
+                kind: node.kind,
+                source: node.source,
+              })),
               edges: result.edges.map((edge) => ({
                 id: edge.edgeId,
                 source: edge.fromEntityId,
@@ -165,7 +207,7 @@ export function KnowledgeGraphCanvas({
         width: container.clientWidth,
         height: container.clientHeight,
         animation: false,
-        autoFit: 'view',
+        ...(retainedZoom === null ? { autoFit: 'view' as const } : {}),
         zoomRange: [0.02, reading ? 1.4 : 2],
         padding: reading
           ? [36, 32, 36, 32]
@@ -281,11 +323,14 @@ export function KnowledgeGraphCanvas({
       }
       graph.current = active;
       let initialLabelFitPending = true;
+      let renderedWidth = container.clientWidth,
+        renderedHeight = container.clientHeight;
       const readableLabels = () => {
         cancelAnimationFrame(labelFrame);
         labelFrame = requestAnimationFrame(() => {
           if (disposed) return;
           const zoom = Math.max(0.02, active.getZoom());
+          container.parentElement?.setAttribute('data-zoom', String(zoom));
           const detailed = zoom >= 0.65;
           const visible = visibleGraphLabels(
             result.nodes.map((node) => {
@@ -348,7 +393,10 @@ export function KnowledgeGraphCanvas({
               if (disposed || !initialLabelFitPending) return;
               // Auto-fit preceded screen-space label sizing; include those labels once.
               initialLabelFitPending = false;
-              await active.fitView(undefined, false);
+              if (retainedZoom !== null) {
+                await active.zoomTo(retainedZoom, false);
+                await active.fitCenter(false);
+              } else await active.fitView(undefined, false);
             })
             .catch(() => {
               if (!disposed) setState('unavailable');
@@ -363,13 +411,17 @@ export function KnowledgeGraphCanvas({
         if (
           disposed ||
           container.clientWidth === 0 ||
-          container.clientHeight === 0
+          container.clientHeight === 0 ||
+          (container.clientWidth === renderedWidth &&
+            container.clientHeight === renderedHeight)
         )
           return;
         pending.current = pending.current
           .then(async () => {
             if (disposed) return;
-            active.resize(container.clientWidth, container.clientHeight);
+            renderedWidth = container.clientWidth;
+            renderedHeight = container.clientHeight;
+            active.resize(renderedWidth, renderedHeight);
             await active.fitView(undefined, false);
           })
           .catch(() => {
@@ -420,6 +472,16 @@ export function KnowledgeGraphCanvas({
       });
     });
     return () => {
+      if (instance && graph.current === instance)
+        previousView.current = {
+          result,
+          mode: effectiveMode,
+          grouping,
+          direction,
+          nodeSpacing,
+          groupSpacing,
+          zoom: instance.getZoom(),
+        };
       disposed = true;
       layoutController.abort();
       cancelAnimationFrame(frame);
@@ -431,7 +493,15 @@ export function KnowledgeGraphCanvas({
       if (highlights.current?.instance === instance) highlights.current = null;
       void pending.current.finally(() => instance?.destroy()).catch(() => {});
     };
-  }, [result, mode, direction, reading]);
+  }, [
+    result,
+    effectiveMode,
+    direction,
+    reading,
+    grouping,
+    nodeSpacing,
+    groupSpacing,
+  ]);
 
   useEffect(() => {
     const active = graph.current;
@@ -492,14 +562,17 @@ export function KnowledgeGraphCanvas({
   }
   return (
     <div
-      className={`${styles.canvasFrame} ${reading ? styles.readingFrame : ''}`}
+      className={`${styles.canvasFrame} ${reading || layoutSettings ? styles.readingFrame : ''}`}
       data-reading={reading}
       data-node-count={result.nodes.length}
       data-edge-count={result.edges.length}
       data-testid="knowledge-graph"
       data-state={state}
       data-layout-direction={direction}
-      data-layout-mode={reading ? 'hierarchy' : mode}
+      data-layout-mode={effectiveMode}
+      data-layout-grouping={grouping}
+      data-node-spacing={nodeSpacing}
+      data-group-spacing={groupSpacing}
     >
       <div
         className={styles.canvasControls}
@@ -514,7 +587,7 @@ export function KnowledgeGraphCanvas({
             {copy.relationLabels}
           </button>
         ) : null}
-        {!reading ? (
+        {!reading && !layoutSettings ? (
           <>
             <button
               type="button"
@@ -530,6 +603,82 @@ export function KnowledgeGraphCanvas({
             >
               {copy.hierarchyLayout}
             </button>
+          </>
+        ) : null}
+        {!reading && layoutSettings && onLayoutSettingsChange ? (
+          <>
+            <label>
+              {copy.layoutLabel}
+              <select
+                aria-label={copy.layoutLabel}
+                value={settings.layout}
+                onChange={(e) =>
+                  onLayoutSettingsChange({
+                    ...settings,
+                    layout: e.target.value as GraphLayoutSettings['layout'],
+                  })
+                }
+              >
+                <option value="network">{copy.forceLayout}</option>
+                <option value="hierarchy">{copy.hierarchyLayout}</option>
+                <option value="circular">{copy.circularLayout}</option>
+              </select>
+            </label>
+            <label>
+              {copy.groupingLabel}
+              <select
+                aria-label={copy.groupingLabel}
+                value={settings.grouping}
+                onChange={(e) =>
+                  onLayoutSettingsChange({
+                    ...settings,
+                    grouping: e.target.value as GraphLayoutSettings['grouping'],
+                  })
+                }
+              >
+                <option value="topology">{copy.groupTopology}</option>
+                <option value="kind">{copy.groupKind}</option>
+                <option value="source">{copy.groupSource}</option>
+              </select>
+            </label>
+            <label>
+              {copy.nodeSpacing}
+              <select
+                aria-label={copy.nodeSpacing}
+                value={settings.nodeSpacing}
+                onChange={(e) =>
+                  onLayoutSettingsChange({
+                    ...settings,
+                    nodeSpacing: Number(e.target.value),
+                  })
+                }
+              >
+                {[20, 40, 60, 80, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {copy.groupSpacing}
+              <select
+                aria-label={copy.groupSpacing}
+                value={settings.groupSpacing}
+                onChange={(e) =>
+                  onLayoutSettingsChange({
+                    ...settings,
+                    groupSpacing: Number(e.target.value),
+                  })
+                }
+              >
+                {[0, 100, 200, 300, 400].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
           </>
         ) : null}
         <button
@@ -559,6 +708,9 @@ export function KnowledgeGraphCanvas({
           {copy.focusSelection}
         </button>
       </div>
+      {!reading && layoutSettings ? (
+        <p className={styles.layoutHint}>{copy.layoutHint}</p>
+      ) : null}
       <div
         ref={target}
         className={styles.canvas}

@@ -183,3 +183,54 @@ it('reserves readable card footprints for layered evidence with a shared endpoin
   for (let i = 1; i < metrics.length; i++)
     expect(metrics[i].y - metrics[i - 1].y).toBeGreaterThanOrEqual(88);
 });
+
+it('provides distinct finite layouts, preserves every identity and separates explicit groups', async () => {
+  const input = {
+    nodes: Array.from({ length: 12 }, (_, i) => ({
+      id: String(i),
+      kind: i < 6 ? 'DOCUMENT' : 'OBSERVATION',
+      source: i % 2 ? 'source-a' : 'source-b',
+    })),
+    edges: Array.from({ length: 11 }, (_, i) => ({
+      id: `e${i}`,
+      source: String(i),
+      target: String(i + 1),
+    })),
+  };
+  const original = JSON.stringify(input);
+  const results = [];
+  for (const mode of ['network', 'hierarchy', 'circular'] as const) {
+    const options = {
+      ...input,
+      mode,
+      grouping: 'kind' as const,
+      nodeSpacing: 40,
+      groupSpacing: 200,
+    };
+    const positions = await computeGraphLayout(options);
+    expect(validGraphPositions(positions, input)).toBe(true);
+    expect(await computeGraphLayout(options)).toEqual(positions);
+    results.push(positions);
+  }
+  expect(results[0]).not.toEqual(results[1]);
+  expect(results[1]).not.toEqual(results[2]);
+  const gaps = [];
+  for (const groupSpacing of [0, 400]) {
+    const positions = await computeGraphLayout({
+      ...input,
+      mode: 'circular',
+      grouping: 'kind',
+      groupSpacing,
+      nodeSpacing: 40,
+    });
+    const a = positions.filter((p) => Number(p.id) < 6),
+      b = positions.filter((p) => Number(p.id) >= 6);
+    gaps.push(
+      Math.min(
+        ...a.flatMap((p) => b.map((q) => Math.hypot(p.x - q.x, p.y - q.y))),
+      ),
+    );
+  }
+  expect(gaps[1]).toBeGreaterThan(gaps[0] + 250);
+  expect(JSON.stringify(input)).toBe(original);
+});

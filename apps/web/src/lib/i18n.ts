@@ -97,8 +97,10 @@ const zhCN = {
     businessGroupCount: '第 {page} / {count} 组',
     businessReadingHint:
       '本组 {count} 条关系，共 {total} 条。逐组查看原文依据，或按对象聚焦。',
+    businessGlobalHint:
+      '全景保留当前查询的全部关系；点选对象或类别查看相关证据。',
     businessNetworkHint:
-      '显示当前范围的完整关系网络；选择对象可聚焦其直接联系。',
+      '显示当前查询的全部关系；选择对象可查看对应证据，完整网络保持可见。',
     businessTitle: '问题与证据关系图',
     businessHint:
       '从政策、事件、研究与数据之间的联系理解问题。点击对象展开相关证据；资料关联不等于因果结论。',
@@ -1483,6 +1485,17 @@ const zhCN = {
       prompt: '输入关键词开始检索。',
     },
     graphPage: {
+      layoutLabel: '布局',
+      forceLayout: '力导向 · ForceAtlas2',
+      circularLayout: '环形',
+      groupingLabel: '组织方式',
+      groupTopology: '按关系连接',
+      groupKind: '按节点类别',
+      groupSource: '按来源资料',
+      nodeSpacing: '节点间距',
+      groupSpacing: '组间距离',
+      layoutHint:
+        '间距越大，网络越疏；调节间距保留缩放，可用“显示全图”重新适配。归组只安排位置，跨组连线仍保留，距离不代表证据强弱。',
       relationLabels: '关系名称',
       networkLayout: '关系网络',
       hierarchyLayout: '来源层级',
@@ -2152,8 +2165,10 @@ const en: typeof zhCN = {
     businessGroupCount: 'Group {page} / {count}',
     businessReadingHint:
       '{count} relations in this group, {total} in scope. Read the evidence by group, or focus on an object.',
+    businessGlobalHint:
+      'The network retains all relations in this query; select an object or category to inspect its evidence.',
     businessNetworkHint:
-      'The complete network in the current scope. Select an object to focus on its direct connections.',
+      'All relations in this query remain visible. Select an object to inspect its evidence.',
     businessTitle: 'Problem and evidence graph',
     businessHint:
       'Explore connections among policy, events, research and data. Select an object for evidence. A source association does not establish causality.',
@@ -3614,6 +3629,17 @@ const en: typeof zhCN = {
       prompt: 'Enter keywords to start searching.',
     },
     graphPage: {
+      layoutLabel: 'Layout',
+      forceLayout: 'Force-directed · ForceAtlas2',
+      circularLayout: 'Circular',
+      groupingLabel: 'Group by',
+      groupTopology: 'Connectivity',
+      groupKind: 'Node category',
+      groupSource: 'Source document',
+      nodeSpacing: 'Node spacing',
+      groupSpacing: 'Group spacing',
+      layoutHint:
+        'Larger spacing spreads the network. Spacing changes keep the zoom; use Fit graph to refit. Grouping changes positions while retaining cross-group edges; distance does not measure evidence strength.',
       relationLabels: 'Relation labels',
       networkLayout: 'Relationship network',
       hierarchyLayout: 'Source hierarchy',

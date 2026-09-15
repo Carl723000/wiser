@@ -69,3 +69,19 @@ it('keeps valid reading pages and presentation only inside the same query', () =
     ),
   ).toBe(href);
 });
+
+it('retains bounded global layout controls only across the same authorized query', () => {
+  const href = '/zh-CN/data-foundation/explore?query=next&view=map';
+  const controls =
+    '&businessLayout=circular&businessGrouping=source&businessNodeSpacing=80&businessGroupSpacing=400';
+  expect(withBusinessFocus(href, 'query=next' + controls)).toBe(
+    href + controls,
+  );
+  expect(withBusinessFocus(href, 'query=old' + controls)).toBe(href);
+  expect(
+    withBusinessFocus(
+      href,
+      'query=next&businessLayout=invalid&businessNodeSpacing=900&businessGrouping=kind&businessGrouping=source',
+    ),
+  ).toBe(href);
+});

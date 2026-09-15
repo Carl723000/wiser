@@ -1,3 +1,7 @@
+import {
+  readGraphLayoutSettings,
+  writeGraphLayoutSettings,
+} from './graph-layout-settings';
 import { readBusinessReading } from './business-reading';
 import { RelationEntitySchema } from '@wiser/data-contracts';
 import { parseRelationNodeIdentity } from './relation-graph';
@@ -20,8 +24,13 @@ export function withBusinessFocus(
     openedSaved.queryId === target;
   if (!sameQuery && !sameSaved) return href;
   const reading = readBusinessReading(source);
-  if (reading.presentation === 'network')
-    url.searchParams.set('businessPresentation', 'network');
+  const presentations = source.getAll('businessPresentation');
+  if (
+    presentations.length === 1 &&
+    ['reading', 'network'].includes(presentations[0])
+  )
+    url.searchParams.set('businessPresentation', reading.presentation);
+  writeGraphLayoutSettings(url.searchParams, readGraphLayoutSettings(source));
   if (reading.page > 1)
     url.searchParams.set('businessPage', String(reading.page));
   const modes = source.getAll('businessMode');

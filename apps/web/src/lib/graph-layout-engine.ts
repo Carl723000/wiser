@@ -1,4 +1,4 @@
-import { DagreLayout, ForceAtlas2Layout } from '@antv/layout';
+import { CircularLayout, DagreLayout, ForceAtlas2Layout } from '@antv/layout';
 import {
   validGraphPositions,
   type GraphLayoutInput,
@@ -17,33 +17,57 @@ export async function computeGraphLayout(
   )
     throw new Error('Invalid bounded graph');
   if (input.nodes.length === 0) return [];
-  if (input.mode === 'network') return networkLayout(input);
+  if (
+    !input.reading &&
+    (input.mode === 'network' ||
+      input.mode === 'circular' ||
+      input.grouping !== undefined)
+  )
+    return networkLayout(input);
   return layoutOne(input);
 }
 
 async function layoutOne(input: GraphLayoutInput): Promise<GraphPosition[]> {
   if (input.nodes.length === 1) return [{ id: input.nodes[0].id, x: 0, y: 0 }];
+  const spacing = input.nodeSpacing ?? 40;
   const layout =
-    input.mode === 'network'
-      ? new ForceAtlas2Layout({
-          width: 1200,
-          height: 800,
-          maxIteration: 160,
-          preventOverlap: true,
-          nodeSize: 70,
-          kr: 30,
-          kg: 2,
-          barnesHut: true,
-          prune: false,
+    input.mode === 'circular'
+      ? new CircularLayout({
+          radius: Math.max(
+            60,
+            (input.nodes.length * (24 + spacing)) / (2 * Math.PI),
+          ),
+          ordering: 'degree',
           enableWorker: false,
         })
-      : new DagreLayout({
-          rankdir: input.direction ?? 'LR',
-          nodesep: input.reading ? 24 : input.direction === 'TB' ? 180 : 40,
-          ranksep: input.reading ? 100 : input.direction === 'TB' ? 80 : 120,
-          nodeSize: input.reading ? [196, 68] : 24,
-          enableWorker: false,
-        });
+      : input.mode === 'network'
+        ? new ForceAtlas2Layout({
+            width: 1200,
+            height: 800,
+            maxIteration: 160,
+            preventOverlap: true,
+            nodeSize: 30 + spacing,
+            kr: 30 * (spacing / 40) ** 2,
+            kg: 2,
+            barnesHut: true,
+            prune: false,
+            enableWorker: false,
+          })
+        : new DagreLayout({
+            rankdir: input.direction ?? 'LR',
+            nodesep: input.reading
+              ? 24
+              : (input.nodeSpacing ?? (input.direction === 'TB' ? 180 : 40)),
+            ranksep: input.reading
+              ? 100
+              : input.nodeSpacing === undefined
+                ? input.direction === 'TB'
+                  ? 80
+                  : 120
+                : spacing * 2 + 40,
+            nodeSize: input.reading ? [196, 68] : 24,
+            enableWorker: false,
+          });
   try {
     const columns = Math.ceil(Math.sqrt(input.nodes.length));
     await layout.execute({
@@ -79,6 +103,21 @@ async function networkLayout(
   }
   const groups: string[][] = [];
   const groupOf = new Map<string, number>();
+  const grouping = input.grouping;
+  if (grouping && grouping !== 'topology') {
+    const indexes = new Map<string, number>();
+    for (const node of input.nodes) {
+      const key = node[grouping] ?? '';
+      let index = indexes.get(key);
+      if (index === undefined) {
+        index = groups.length;
+        indexes.set(key, index);
+        groups.push([]);
+      }
+      groups[index].push(node.id);
+      groupOf.set(node.id, index);
+    }
+  }
   for (const node of input.nodes) {
     if (groupOf.has(node.id)) continue;
     const group = [node.id];
@@ -96,23 +135,30 @@ async function networkLayout(
     () => [] as GraphLayoutInput['edges'][number][],
   );
   for (const edge of input.edges)
-    edgeGroups[groupOf.get(edge.source)!].push(edge);
+    if (groupOf.get(edge.source) === groupOf.get(edge.target))
+      edgeGroups[groupOf.get(edge.source)!].push(edge);
+  // Cross-group edges remain in the rendered graph; grouping only constrains positions.
+  const gap = input.groupSpacing ?? 200;
   const boxes = [];
   for (let i = 0; i < groups.length; i++) {
     const positions = await layoutOne({
-      mode: 'network',
+      ...input,
       nodes: groups[i].map((id) => ({ id })),
       edges: edgeGroups[i],
     });
     const left = Math.min(...positions.map((p) => p.x)),
       top = Math.min(...positions.map((p) => p.y));
     const width = Math.max(
-      260,
-      Math.max(...positions.map((p) => p.x)) - left + 220,
+      input.groupSpacing === undefined ? 260 : 40 + gap,
+      Math.max(...positions.map((p) => p.x)) -
+        left +
+        (input.groupSpacing === undefined ? 220 : gap + 20),
     );
     const height = Math.max(
-      180,
-      Math.max(...positions.map((p) => p.y)) - top + 140,
+      input.groupSpacing === undefined ? 180 : 60 + gap,
+      Math.max(...positions.map((p) => p.y)) -
+        top +
+        (input.groupSpacing === undefined ? 140 : gap + 20),
     );
     boxes.push({ positions, left, top, width, height });
   }

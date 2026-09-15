@@ -9,9 +9,9 @@ export function readBusinessReading(search: Pick<URLSearchParams, 'getAll'>) {
   return {
     page,
     presentation:
-      modes.length === 1 && modes[0] === 'network'
-        ? ('network' as const)
-        : ('reading' as const),
+      modes.length === 1 && modes[0] === 'reading'
+        ? ('reading' as const)
+        : ('network' as const),
   };
 }
 export function readingPage<T>(rows: readonly T[], requested: number) {
