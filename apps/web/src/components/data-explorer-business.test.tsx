@@ -6,7 +6,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
   BusinessQuerySchema,
   type RelationAssertion,
@@ -35,6 +35,34 @@ vi.mock('./data-foundation-graph', () => ({
     </ul>
   ),
 }));
+vi.mock('./business-scene-canvas', () => ({
+  BusinessSceneCanvas: ({
+    scene,
+  }: {
+    scene: { nodes: { id: string; label: string }[] };
+  }) => (
+    <ul aria-label="test graph">
+      {scene.nodes.map((n) => (
+        <li key={n.id}>{n.label}</li>
+      ))}
+    </ul>
+  ),
+}));
+const originalHistory = window.history.replaceState.bind(window.history);
+beforeEach(() => {
+  originalHistory.call(
+    window.history,
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?saved=case',
+  );
+  vi.spyOn(window.history, 'replaceState').mockImplementation(
+    (data, unused, url) => {
+      originalHistory.call(window.history, data, unused, url);
+      nav.replace(String(url), { scroll: false });
+    },
+  );
+});
 const row = {
   assertionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   dataItemId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -105,6 +133,7 @@ const props = {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   nav.search = new URLSearchParams('saved=case');
   nav.replace.mockReset();
 });

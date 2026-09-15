@@ -85,3 +85,19 @@ it('retains bounded global layout controls only across the same authorized query
     ),
   ).toBe(href);
 });
+it('retains scene, camera and exact edge selection only inside the same reauthorized query', () => {
+  const href = '/zh-CN/data-foundation/explore?query=next&view=map';
+  const fields =
+    '&businessView=trace&businessForm=layers&businessYaw=30&businessZoom=2&businessMapLon=115.8&businessEdge=10000000-0000-4000-8000-000000000001';
+  const url = new URL(
+    withBusinessFocus(href, 'query=next' + fields),
+    'http://local',
+  );
+  expect(url.searchParams.get('businessEdge')).toBe(
+    '10000000-0000-4000-8000-000000000001',
+  );
+  expect(url.searchParams.get('businessForm')).toBe('layers');
+  expect(url.searchParams.get('businessMapLon')).toBe('115.8');
+  expect(withBusinessFocus(href, 'query=other' + fields)).toBe(href);
+  expect(withBusinessFocus(href, 'query=next&businessEdge=broken')).toBe(href);
+});

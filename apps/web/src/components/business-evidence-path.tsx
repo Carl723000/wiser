@@ -12,9 +12,11 @@ import styles from './data-explorer-business.module.css';
 export function BusinessEvidencePathPanel({
   rows,
   locale,
+  expanded = false,
 }: {
   rows: readonly RelationAssertion[];
   locale: Locale;
+  expanded?: boolean;
 }) {
   const copy = getDictionary(locale).knowledgeRelations;
   const [from, setFrom] = useState(''),
@@ -73,7 +75,7 @@ export function BusinessEvidencePathPanel({
     [path, nodes, copy],
   );
   return (
-    <details>
+    <details open={expanded || undefined}>
       <summary>{copy.businessPathTitle}</summary>
       <p>{copy.businessPathHint}</p>
       <p>{copy.businessPathTemporary}</p>
