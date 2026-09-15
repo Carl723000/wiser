@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-10
-lastReviewedCommit: bac8703efbf93c408d68b6f7a8ca8305d9565c1b
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f77f0444866e8330b8e70f6be5a58a45ed6a1ae9
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -190,3 +190,5 @@ Migration `0023_exploration_point_guard.sql` adds a materialized point-only stag
 Migration `0024_intake_assessment.sql` appends forced-RLS, immutable `service.intake_assessment`. Its insert guard binds item/version/asset/hash and optional completed analysis, and prevents lower security than the source. Runtime provisioning revokes updates/deletes after common grants. No existing rows or publication states are migrated. The disposable PostgreSQL test `apps/api/test/data-assessment.integration.spec.ts` verifies deterministic evidence, stale hashes, idempotent replay, pagination, immutability and source withdrawal. It is included in `pnpm test:postgres:data-api`.
 
 Migrations `0025_knowledge_relations.sql` and `0026_business_projection_cursor.sql` add forced-RLS source bindings and an internal resumable projection cursor. Existing assertion confidence becomes nullable for unknown values; historical values are retained. Scoped foreign keys and source-binding guards enforce RAW file/version/hash matches, while relation evidence, review history and assertion content remain immutable. Review changes require a matching next-version review record. The PostgreSQL relation integration fixture exercises duplicate commands, changed mappings, human review, stale review rejection, foreign projects, immutable evidence and source withdrawal. Set `DATA_TEST_NEO4J_URL` (and optional `DATA_TEST_NEO4J_PASSWORD`) only to an isolated test target to additionally exercise projection deletion, interrupted retries, rebuild and withdrawal removal.
+
+The private source-entity definition registry in migration 0028 prevents conflicting identities across RLS visibility boundaries. The runtime role cannot read it, including after role provisioning. Review admission uses authoritative row version rather than visible history, and both projection endpoints retain kind and external ID. Existing conflicting definitions stop migration for explicit remediation. This branch carries unchanged migration 0027 from the cross-source PR to preserve the numbered migration sequence; it does not introduce that PR’s application features.

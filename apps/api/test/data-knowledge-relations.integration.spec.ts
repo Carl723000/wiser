@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   BusinessProjectionConsumer,
   Neo4jBusinessProjection,
@@ -87,6 +88,22 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
     const command = () => ({ ...context, idempotencyKey: randomUUID() });
     try {
       await client.query('begin');
+      if (
+        !(
+          await client.query<{ name: string | null }>(
+            "select to_regclass('security.relation_entity_definition') name",
+          )
+        ).rows[0]?.['name']
+      )
+        await client.query(
+          readFileSync(
+            new URL(
+              '../../../infrastructure/data-foundation/postgres/migrations/0028_relation_integrity.sql',
+              import.meta.url,
+            ),
+            'utf8',
+          ),
+        );
       await client.query(`create role ${role} nologin nosuperuser nobypassrls`);
       await client.query(
         `grant usage on schema catalog,service,knowledge,security,event to ${role}`,
@@ -128,7 +145,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         key,
         label: key,
         kind,
-        externalId: null,
+        externalId: `test:${key}`,
       });
       const relation = (
         subject: string,
@@ -169,6 +186,29 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           relation('point:1', 'HAS_REPORTED_INDICATOR', 'measurement:2'),
         ],
       };
+      // Hidden bindings must still constrain the meaning of a source-local key.
+      const high = {
+        ...command(),
+        effectiveMaxSecurityLevel: 'L2_RESTRICTED' as const,
+        authorization: {
+          ...context.authorization,
+          maxSecurityLevel: 'L2_RESTRICTED' as const,
+        },
+      };
+      const highCandidate = relation(
+        'hidden:entity',
+        'HAS_REPORTED_INDICATOR',
+        'hidden:measurement',
+      );
+      await call('import', { ...input, candidates: [highCandidate] }, high);
+      const conflicting = {
+        ...highCandidate,
+        subject: { ...highCandidate.subject, label: 'Different definition' },
+        object: { ...highCandidate.object, key: 'different:measurement' },
+      };
+      await expect(
+        call('import', { ...input, candidates: [conflicting] }, command()),
+      ).rejects.toThrow();
       const ctx = command();
       const imported = ImportRelationsOutputSchema.parse(
         await call('import', input, ctx),
@@ -305,6 +345,20 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
             )
           ).values,
         ).toEqual([[1]]);
+        expect(
+          (
+            await projected(
+              'MATCH (s)-[r:WISER_BUSINESS_RELATION]->(o) WHERE r.tenantId=$tenant AND r.projectId=$project RETURN s.kind,s.externalId,o.kind,o.externalId',
+            )
+          ).values,
+        ).toEqual([
+          [
+            'MONITORING_POINT',
+            'test:enterprise:1',
+            'MONITORING_POINT',
+            'test:point:1',
+          ],
+        ]);
         await projected(
           'MATCH (n:WiserBusinessEntity) WHERE n.tenantId=$tenant AND n.projectId=$project DETACH DELETE n',
         );
@@ -488,6 +542,61 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           command(),
         ),
       ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+      // Alternating ceilings hide half the immutable history from the lower caller.
+      const limitImport = ImportRelationsOutputSchema.parse(
+        await call(
+          'import',
+          {
+            ...input,
+            mappingVersion: 'limit.v1',
+            candidates: [
+              relation(
+                'limit:subject',
+                'HAS_REPORTED_INDICATOR',
+                'limit:object',
+              ),
+            ],
+          },
+          command(),
+        ),
+      );
+      const reviewTarget = limitImport.items[0]!.assertionId;
+      for (let n = 1; n <= 100; n++) {
+        await call(
+          'review',
+          {
+            assertionId: reviewTarget,
+            expectedVersion: n,
+            decision: 'REJECTED',
+            rationale: 'Synthetic alternating-ceiling history',
+          },
+          n % 2 ? { ...high, idempotencyKey: randomUUID() } : command(),
+        );
+      }
+      await expect(
+        call(
+          'review',
+          {
+            assertionId: reviewTarget,
+            expectedVersion: 101,
+            decision: 'REJECTED',
+            rationale: 'Must reject review 101',
+          },
+          command(),
+        ),
+      ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+      const history = RelationOutputSchema.parse(
+        await call('get', { assertionId: reviewTarget }, high),
+      );
+      expect(history.assertion.reviews).toHaveLength(100);
+      expect(history.assertion.version).toBe(101);
+      await client.query('reset role');
+      await client.query(`set local role ${role}`);
+      await client.query('savepoint registry_acl');
+      await expect(
+        client.query('select * from security.relation_entity_definition'),
+      ).rejects.toMatchObject({ code: '42501' });
+      await client.query('rollback to savepoint registry_acl');
       await client.query('reset role');
       await client.query(
         `update catalog.data_item set publication_status='WITHDRAWN' where data_item_id=$1`,

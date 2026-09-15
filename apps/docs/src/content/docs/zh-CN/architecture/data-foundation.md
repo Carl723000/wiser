@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-11
-lastReviewedCommit: 604bcc02ca89913e99e38bcfb3acef799088bcca
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f77f0444866e8330b8e70f6be5a58a45ed6a1ae9
 ---
 
 ## 权威边界
@@ -328,3 +328,5 @@ GIS 适配器在权威授权后，仅将与请求坐标完全一致的 TiTiler P
 业务关系流程复用 `knowledge.assertion`、`knowledge.evidence_fragment` 和 `knowledge.review_record`；迁移 `0025` 增加不可变的 `knowledge.assertion_binding`。未知置信度保留 null，不编造分数。候选整理保留同名异物、多处及矛盾证据、未知单位、报告原值、时间与限制。证据及断言正文不能覆盖；更正通过 `supersedesId` 保留前序关系，以明确的映射和版本范围避免静默身份合并。默认关系查询及图只包含已通过断言，每次读取均重新授权来源；待审核、需修正、已否决队列独立计数。
 
 Data Worker 按至多 100 条的批次把权威关系同步到独立的 Neo4j `WiserBusinessEntity` / `WISER_BUSINESS_RELATION` 标签，保留断言标识及原件证据，不改变已有发布目标和来源溯源图。迁移 `0026` 保存各目标的权威读取位点，项目/目标 advisory lock 串行化写入，失败不推进位点。每轮完成后重新扫描，以接收审核、更正及来源撤回。API 读取 PostgreSQL 权威状态，因此撤回后立即拒绝读取；投影在后续扫描中移除。重建 CLI 先完成保留的进度，再做一次完整扫描；删除投影后仍可恢复相同身份和审核依据。回退时停用新增入口与消费者并保留权威证据，不回填旧资料或替换原始几何。
+
+迁移0028通过内部来源实体定义表防止权限隐藏造成身份冲突，运行角色在重新配置后也不能读取此表。审核以权威行版本判断次数，不使用可见历史长度；图投影保留两端类型和外部ID。已有定义冲突时停止迁移，待明确处理。本分支携带跨来源PR中未改动的0027以保留迁移顺序，不引入该PR的应用功能。

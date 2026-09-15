@@ -180,6 +180,10 @@ do $$ begin
     grant select, insert, delete on service.exploration_snapshot to wiser_data_runtime;
     revoke update on service.exploration_snapshot from wiser_data_runtime;
   end if;
+  if to_regclass('security.relation_entity_definition') is not null then
+    revoke all on security.relation_entity_definition from wiser_data_runtime;
+    revoke execute on function security.guard_relation_entity_definition() from wiser_data_runtime;
+  end if;
 end $$;
 
 revoke all on service.analysis_amap_geometry from wiser_data_runtime;

@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-11
-lastReviewedCommit: 604bcc02ca89913e99e38bcfb3acef799088bcca
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f77f0444866e8330b8e70f6be5a58a45ed6a1ae9
 ---
 
 ## Authority boundary
@@ -328,3 +328,5 @@ The catalogue availability overview (`data.assessment.overview`) counts only cur
 The source-bound business workflow reuses `knowledge.assertion`, `knowledge.evidence_fragment` and `knowledge.review_record`; migration `0025` adds an immutable `knowledge.assertion_binding`. Unknown confidence is null instead of an invented score. Candidate grouping preserves same-name distinct keys, multiple and contradictory evidence, unknown units, reported values, time and limitations. Evidence and reviewed assertion content cannot be overwritten. A correction preserves its predecessor through `supersedesId`; explicit mapping/version scopes prevent silent identity reconciliation. The default relation API and graph include approved assertions only, with current source authorization on every read. Pending, correction-required and rejected queues have separate counts.
 
 The Data Worker reconciles the scoped authority into distinct `WiserBusinessEntity` / `WISER_BUSINESS_RELATION` Neo4j labels in batches of at most 100, retaining assertion IDs and original evidence. This does not alter legacy publication targets or provenance graphs. Migration `0026` stores the per-target authority cursor. A project/target advisory lock serializes writes; failures retain the cursor. Each completed sweep starts again to observe approvals, corrections and source withdrawals. API reads use PostgreSQL authority and therefore reject withdrawn sources immediately, while projection removal follows the next sweep. The Worker rebuild CLI finishes a retained sweep and one full sweep, allowing a deleted projection to be restored without changing source identities or reviews. Rollback disables the new entrypoints/consumer and retains authority evidence; no historical source backfill or source geometry replacement occurs.
+
+The private source-entity definition registry in migration 0028 prevents conflicting identities across RLS visibility boundaries. The runtime role cannot read it, including after role provisioning. Review admission uses authoritative row version rather than visible history, and both projection endpoints retain kind and external ID. Existing conflicting definitions stop migration for explicit remediation. This branch carries unchanged migration 0027 from the cross-source PR to preserve the numbered migration sequence; it does not introduce that PR’s application features.

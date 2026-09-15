@@ -265,3 +265,25 @@ it('rejects automatic review, conflicting identities and oversized evidence befo
   ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   expect(f.pool.connect).not.toHaveBeenCalled();
 });
+
+it('refuses review 101 when RLS hides previous review records', async () => {
+  const f = fixture();
+  const result = (await f.call('import', f.input)) as {
+    items: { assertionId: string }[];
+  };
+  const id = result.items[0]!.assertionId;
+  f.rows.get(id)!['row_version'] = 101;
+  f.rows.get(id)!['reviews'] = [];
+  await expect(
+    f.call(
+      'review',
+      {
+        assertionId: id,
+        expectedVersion: 101,
+        decision: 'APPROVED',
+        rationale: 'Check hidden review history',
+      },
+      { ...f.context, idempotencyKey: randomUUID() },
+    ),
+  ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+});
