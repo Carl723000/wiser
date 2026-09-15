@@ -226,7 +226,7 @@ it('distinguishes names by their own document and follows the referenced source 
       .getByRole('link', { name: '永定河生态研究' })
       .getAttribute('href'),
   ).toBe(
-    `/zh-CN/data-foundation/catalog/${research.dataItemId}?versionId=${research.versionId}`,
+    `/zh-CN/data-foundation/catalog/${research.dataItemId}?version=${research.versionId}`,
   );
   expect(fetch).toHaveBeenCalledTimes(1);
 });

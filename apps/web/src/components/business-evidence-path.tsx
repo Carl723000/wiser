@@ -182,7 +182,7 @@ export function BusinessEvidencePathPanel({
                     {options.find((o) => o.id === id)!.label}
                   </button>
                   <Link
-                    href={`/${locale}/data-foundation/catalog/${source.dataItemId}?versionId=${source.versionId}`}
+                    href={`/${locale}/data-foundation/catalog/${source.dataItemId}?version=${source.versionId}`}
                   >
                     {copy.source}
                   </Link>
@@ -201,7 +201,7 @@ export function BusinessEvidencePathPanel({
                 {!forward ? <p>{copy.businessPathReverse}</p> : null}
                 <p>{row.candidate.qualifiers?.context?.applicability}</p>
                 <Link
-                  href={`/${locale}/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`}
+                  href={`/${locale}/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}`}
                 >
                   {copy.source}
                 </Link>

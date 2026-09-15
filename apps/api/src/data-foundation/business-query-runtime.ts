@@ -60,7 +60,7 @@ export async function bindBusinessRecords(
   refs: readonly AnalysisVersionRef[],
   scope: BusinessQuery,
   rows: readonly RelationAssertion[],
-  allRows: readonly RelationAssertion[] = rows,
+  _allRows: readonly RelationAssertion[] = rows,
 ) {
   const requests = new Map<
     string,
@@ -144,29 +144,56 @@ export async function bindBusinessRecords(
     if (
       (scope.filters.from || scope.filters.to) &&
       containsTable &&
-      !selected.length &&
-      (scope.tableSelections?.some((s) => s.recordId === request.recordId) ||
-        new Set(
-          allRows
-            .filter((r) =>
-              [r.candidate.subject, r.candidate.object].some(
-                (e) =>
-                  e.externalId === 'urn:wiser:record:' + request.recordId &&
-                  (e.reference ?? r).versionId === request.versionId,
-              ),
-            )
-            .map((r) => {
-              const q = r.candidate.qualifiers,
-                c = q.context;
-              return c?.validFrom || c?.validTo
-                ? JSON.stringify([c.validFrom, c.validTo])
-                : q.observedAt;
-            })
-            .filter(Boolean),
-        ).size > 1)
+      !selected.length
     )
       throw invalid();
     if (selected.length) {
+      // Column authority comes from the pinned assertion's source-cell evidence,
+      // never from a caller-supplied month/column correspondence.
+      for (const selection of selected) {
+        const assertion = rows.find(
+          (r) => r.assertionId === selection.assertionId,
+        );
+        const values = z
+          .record(z.string(), z.unknown())
+          .parse(row['record_values']);
+        const table = z
+          .object({
+            kind: z.literal('html_table_row'),
+            tableIndex: z.number().int(),
+            rowIndex: z.number().int(),
+          })
+          .safeParse(values[selection.field]);
+        if (
+          !assertion ||
+          !table.success ||
+          selection.keepFields.some((f) => f !== selection.field)
+        )
+          throw invalid();
+        const allowed = new Set<number>();
+        for (const evidence of assertion.candidate.evidence) {
+          if (
+            evidence.assetId !== pin.assetId ||
+            evidence.polarity !== 'SUPPORTS' ||
+            (evidence.source &&
+              (evidence.source.versionId !== pin.versionId ||
+                evidence.source.analysisId !== pin.analysisId ||
+                evidence.source.recordId !== pin.recordId))
+          )
+            continue;
+          const location = /^table:(\d+)\/row:(\d+)\/column:(\d+)$/.exec(
+            evidence.locator,
+          );
+          if (
+            location &&
+            Number(location[1]) === table.data.tableIndex &&
+            Number(location[2]) === table.data.rowIndex
+          )
+            allowed.add(Number(location[3]));
+        }
+        if (!allowed.size || selection.columns.some((c) => !allowed.has(c)))
+          throw invalid();
+      }
       const first = selected[0]!;
       if (
         selected.some(
@@ -225,7 +252,13 @@ export function projectBusinessRecord(value: unknown, pin: BusinessRecordPin) {
       ),
     ),
     [selection.field]: {
-      ...table.data,
+      kind: 'html_table_row',
+      ...(table.data['tableIndex'] === undefined
+        ? {}
+        : { tableIndex: table.data['tableIndex'] }),
+      ...(table.data['rowIndex'] === undefined
+        ? {}
+        : { rowIndex: table.data['rowIndex'] }),
       cells: table.data.cells.filter((cell) =>
         selection.columns.includes(cell.column),
       ),

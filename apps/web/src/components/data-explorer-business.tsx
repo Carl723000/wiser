@@ -329,7 +329,7 @@ export function DataExplorerBusiness({
                 {graph.nodes.find((n) => n.entityId === selected)?.label}
               </strong>
               <Link
-                href={`/${locale}/data-foundation/catalog/${selectedSource.dataItemId}?versionId=${selectedSource.versionId}`}
+                href={`/${locale}/data-foundation/catalog/${selectedSource.dataItemId}?version=${selectedSource.versionId}`}
               >
                 {selectedSource.title ||
                   `${copy.businessObjectSource}${selectedSource.sourceNumber}`}
@@ -403,7 +403,7 @@ export function DataExplorerBusiness({
                   <p key={v}>{v}</p>
                 ))}
               <Link
-                href={`/${locale}/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`}
+                href={`/${locale}/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}`}
               >
                 {copy.source}
               </Link>

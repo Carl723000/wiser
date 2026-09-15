@@ -1,3 +1,4 @@
+import { readCatalogVersion } from './catalog-route';
 import {
   MAX_RELATION_RELATED_SOURCES,
   RelationEntityReferenceSchema,
@@ -53,7 +54,7 @@ export function parseRelationSourceLinks(
           throw Error('Expected a platform source link');
         const r = RelationEntityReferenceSchema.parse({
           dataItemId: match[1],
-          versionId: url.searchParams.get('versionId'),
+          versionId: readCatalogVersion(url.searchParams),
           mappingVersion: 'parse',
           entityKey: 'parse',
         });

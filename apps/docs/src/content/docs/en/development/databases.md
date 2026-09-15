@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-10
-lastReviewedCommit: bac8703efbf93c408d68b6f7a8ca8305d9565c1b
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -192,3 +192,7 @@ Migration `0024_intake_assessment.sql` appends forced-RLS, immutable `service.in
 Migrations `0025_knowledge_relations.sql` and `0026_business_projection_cursor.sql` add forced-RLS source bindings and an internal resumable projection cursor. Existing assertion confidence becomes nullable for unknown values; historical values are retained. Scoped foreign keys and source-binding guards enforce RAW file/version/hash matches, while relation evidence, review history and assertion content remain immutable. Review changes require a matching next-version review record. The PostgreSQL relation integration fixture exercises duplicate commands, changed mappings, human review, stale review rejection, foreign projects, immutable evidence and source withdrawal. Set `DATA_TEST_NEO4J_URL` (and optional `DATA_TEST_NEO4J_PASSWORD`) only to an isolated test target to additionally exercise projection deletion, interrupted retries, rebuild and withdrawal removal.
 
 `0027_cross_source_evidence.sql` extends the relation binding guard for optional parsed-record evidence from another source in the same tenant/project. Apply through the checksum migration runner; existing bindings and their history are not rewritten. The PostgreSQL integration fixture can test this migration in a rolled-back transaction with `WISER_TEST_PENDING_MIGRATION=1`. This flag is test-only and does not migrate the running application.
+
+`0028_relation_integrity.sql` follows the unchanged 0027 checksum. Its private `security.relation_entity_definition` has RLS enabled and no runtime policy or grants; only its owning SECURITY DEFINER trigger accesses it, with a fixed `pg_catalog` search path and a check of the incoming row's scope. Runtime provisioning explicitly revokes registry access after common grants. The migration rejects conflicting existing identities before backfill. The integration test applies pending 0028 within a rollback transaction, tests hidden high-security definitions, alternating-ceiling reviews up to 100, rejection of review 101, and denied registry access. Do not renumber already applied migration files.
+
+See PostgreSQL's [RLS integrity boundary](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) and [safe SECURITY DEFINER functions](https://www.postgresql.org/docs/current/sql-createfunction.html).

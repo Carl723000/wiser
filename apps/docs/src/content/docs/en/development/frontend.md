@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-14
-lastReviewedCommit: f729c81d665c4e485a8fb0c8dae663f90824b3e0
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Two frontend applications
@@ -218,3 +218,5 @@ Business record inspection retains the persisted query and its review state, sea
 Business object captions are derived from already loaded, authorized relation rows. Source links follow each object’s canonical reference, not the row that mentions it; diagram labels remain concise. Missing titles and same-source duplicates retain neutral numbered identifiers.
 
 Business exploration offers an optional path reader over the complete authorized relation set. Users select two source-qualified objects and inspect one shortest connection of at most eight edges, with original directed statements and evidence. Traversal may follow either end of a relation for reading only; it does not infer causation, approval or new edges. This local diagram inspection does not change the shared records/map query; changing endpoints clears the displayed path.
+
+Catalog navigation shares `catalog-route.ts`: new links use `version`, while `versionId` remains an unambiguous legacy alias. Duplicate, malformed or conflicting pins fail instead of falling back to latest. Saved relation views canonicalize the pin and preserve it across source/return navigation and refresh.

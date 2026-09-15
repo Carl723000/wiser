@@ -109,7 +109,7 @@ describe('Data Foundation management routes', () => {
       'utf8',
     );
     expect(source).toContain('searchParams');
-    expect(source).toContain('search.version');
+    expect(source).toContain('readCatalogVersion(search)');
     expect(source).toContain('dal.dataItem(dataItemId, versionId)');
     expect(source).toContain('detail.selectedVersion');
     expect(source).toContain('selectedVersionId');

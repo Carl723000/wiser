@@ -60,7 +60,7 @@ it('rejects missing and merged original cells instead of guessing a monthly valu
     ),
   ).toThrow();
 });
-it('requires column bindings for multi-period rows but accepts a row declared for one period', async () => {
+it('requires source-cell bindings for dated tables even when only one declared period is visible', async () => {
   const scope: BusinessQuery = {
     schemaVersion: 1,
     status: 'PENDING_REVIEW',
@@ -179,5 +179,5 @@ it('requires column bindings for multi-period rows but accepts a row declared fo
       [relation],
       [relation],
     ),
-  ).resolves.toHaveLength(1);
+  ).rejects.toThrow();
 });

@@ -1,3 +1,4 @@
+import { readCatalogVersion } from '@/lib/catalog-route';
 import { dataResourceName } from '@/lib/data-foundation-presentation';
 import type { ExplorationResult } from '@wiser/data-contracts';
 import { DataResourceContent } from '@/components/data-resource-content';
@@ -33,7 +34,10 @@ import { getDictionary, isLocale } from '@/lib/i18n';
 
 interface DataItemPageProps {
   readonly params: Promise<{ locale: string; dataItemId: string }>;
-  readonly searchParams: Promise<{ version?: string | string[] }>;
+  readonly searchParams: Promise<{
+    version?: string | string[];
+    versionId?: string | string[];
+  }>;
 }
 
 export async function generateMetadata({ params }: DataItemPageProps) {
@@ -56,10 +60,7 @@ export default async function DataItemPage({
   if (!isLocale(locale)) notFound();
   const copy = getDictionary(locale).dataFoundation;
   const dataItemId = parseDataRouteUuid(rawDataItemId);
-  const versionId =
-    search.version === undefined
-      ? undefined
-      : (parseDataRouteUuid(search.version) ?? null);
+  const versionId = readCatalogVersion(search);
   const route = `/${locale}/data-foundation/catalog/${rawDataItemId}`;
   let detail: DataItemDetailDto | undefined;
   let versions: DataItemVersionPageDto | undefined;

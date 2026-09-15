@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-10
-lastReviewedCommit: bac8703efbf93c408d68b6f7a8ca8305d9565c1b
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -192,3 +192,7 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 迁移 `0025_knowledge_relations.sql`、`0026_business_projection_cursor.sql` 增加强制 RLS 的来源绑定和内部可续跑投影位点。断言置信度允许 null 表达未知，历史数值保留。所属范围外键和来源约束核对 RAW 原件、版本与哈希，关系证据、审核历史及断言正文保持不可变；状态改变必须匹配下一版本的审核记录。关系数据库实测覆盖重复命令、映射变更、人工审核、过期审核拒绝、跨项目、证据不可变及来源撤回。仅对隔离测试目标配置 `DATA_TEST_NEO4J_URL`（可选 `DATA_TEST_NEO4J_PASSWORD`），即可追加投影删除、中断重试、重建与撤回移除验证。
 
 `0027_cross_source_evidence.sql` 兼容扩展关系绑定约束，允许引用同租户、同项目另一份资料的固定解析记录。通过校验和迁移程序应用，不重写既有关系及历史。PostgreSQL集成测试可用 `WISER_TEST_PENDING_MIGRATION=1` 在最终回滚的事务内先验证新迁移；该开关仅供测试，不会升级正在运行的平台。
+
+`0028_relation_integrity.sql` 追加在校验和不变的0027之后。内部 `security.relation_entity_definition` 开启RLS，不授予运行角色策略或权限；仅其所有者的SECURITY DEFINER触发器可访问，固定 `pg_catalog` 搜索路径并检查新行范围。运行角色配置在通用授权后再次撤销该表访问。迁移先检查历史身份冲突，再回填。集成测试在回滚事务中验证待应用0028，覆盖隐藏的高安全级别定义、高低权限交替审核100次、第101次拒绝及定义表不可读。不得改名或重新编号已应用迁移。
+
+机制依据：[PostgreSQL RLS完整性边界](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)及[安全的SECURITY DEFINER函数](https://www.postgresql.org/docs/current/sql-createfunction.html)。

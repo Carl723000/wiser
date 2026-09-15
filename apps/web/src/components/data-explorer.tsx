@@ -1188,7 +1188,7 @@ function DataExplorerSession({
                   }
                 />
                 <Link
-                  href={`/${locale}/data-foundation/catalog/${selectedRecord.dataItemId}?versionId=${selectedRecord.versionId}`}
+                  href={`/${locale}/data-foundation/catalog/${selectedRecord.dataItemId}?version=${selectedRecord.versionId}`}
                 >
                   {copy.openData}
                 </Link>

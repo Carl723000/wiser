@@ -10,8 +10,8 @@ OPTIONAL MATCH ()-[prior:WISER_BUSINESS_RELATION {projectionId: row.id}]->()
 FOREACH (old IN CASE WHEN prior IS NULL THEN [] ELSE [prior] END | DELETE old)
 WITH DISTINCT row
 FOREACH (ignored IN CASE WHEN row.active THEN [1] ELSE [] END |
- MERGE (s:WiserBusinessEntity {projectionId:row.subjectId}) SET s.name=row.subjectName,s.entityKey=row.subjectKey,s.tenantId=row.tenantId,s.projectId=row.projectId,s.versionId=row.subjectVersionId,s.mappingVersion=row.subjectMappingVersion
- MERGE (o:WiserBusinessEntity {projectionId:row.objectId}) SET o.name=row.objectName,o.entityKey=row.objectKey,o.externalId=row.externalId,o.tenantId=row.tenantId,o.projectId=row.projectId,o.versionId=row.objectVersionId,o.mappingVersion=row.objectMappingVersion
+ MERGE (s:WiserBusinessEntity {projectionId:row.subjectId}) SET s.name=row.subjectName,s.kind=row.subjectKind,s.externalId=row.subjectExternalId,s.entityKey=row.subjectKey,s.tenantId=row.tenantId,s.projectId=row.projectId,s.versionId=row.subjectVersionId,s.mappingVersion=row.subjectMappingVersion
+ MERGE (o:WiserBusinessEntity {projectionId:row.objectId}) SET o.name=row.objectName,o.kind=row.objectKind,o.entityKey=row.objectKey,o.externalId=row.objectExternalId,o.tenantId=row.tenantId,o.projectId=row.projectId,o.versionId=row.objectVersionId,o.mappingVersion=row.objectMappingVersion
  MERGE (s)-[r:WISER_BUSINESS_RELATION {projectionId:row.id}]->(o) SET r += row.properties
 )
 RETURN count(row) AS processed`;
@@ -98,7 +98,10 @@ export class Neo4jBusinessProjection {
         subjectKey: subject.key,
         objectName: c.object.label,
         objectKey: object.key,
-        externalId: c.object.externalId,
+        subjectKind: c.subject.kind,
+        subjectExternalId: c.subject.externalId,
+        objectKind: c.object.kind,
+        objectExternalId: c.object.externalId,
         tenantId: row.tenantId,
         projectId: row.projectId,
         versionId: row.versionId,

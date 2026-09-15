@@ -1,3 +1,4 @@
+import { catalogHref, readCatalogVersion } from './catalog-route';
 import {
   MAX_RELATION_RELATED_SOURCES,
   RelationEntityReferenceSchema,
@@ -148,23 +149,22 @@ export function relationViewHref(
     !new RegExp(
       '^/(zh-CN|en)/data-foundation/catalog/' + view.dataItemId + '$',
     ).test(url.pathname) ||
-    url.searchParams.get('versionId') !== view.versionId
+    readCatalogVersion(url.searchParams) !== view.versionId
   )
     throw Error('Source route mismatch');
+  url.searchParams.delete('versionId');
+  url.searchParams.set('version', view.versionId);
   url.searchParams.set('relations', encoded);
   url.hash = 'business-relations';
   return url.pathname + url.search + url.hash;
 }
 export function relationSourceLinks(
   sources: readonly Source[],
-  locale: string,
+  locale: Locale,
   origin: string,
 ) {
   return sources
-    .map(
-      (s) =>
-        `${origin}/${locale}/data-foundation/catalog/${s.dataItemId}?versionId=${s.versionId}`,
-    )
+    .map((s) => `${origin}${catalogHref(locale, s.dataItemId, s.versionId)}`)
     .join('\n');
 }
 
@@ -193,7 +193,7 @@ export function relationReturnHref(
   const view = readReturnView(search);
   return view
     ? relationViewHref(
-        `http://local/${locale}/data-foundation/catalog/${view.dataItemId}?versionId=${view.versionId}`,
+        `http://local${catalogHref(locale, view.dataItemId, view.versionId)}`,
         view,
       )
     : null;

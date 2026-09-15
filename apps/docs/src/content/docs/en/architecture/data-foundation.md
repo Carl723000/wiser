@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-14
-lastReviewedCommit: f3ae08a0769c9f88830f9faa3ce46ac602fce772
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Authority boundary
@@ -358,3 +358,9 @@ Exploration 1.12 adds optional `businessQuery` to an explicit version manifest. 
 Cross-source relation evidence optionally pins `source.dataItemId`, `versionId`, `analysisId`, and `recordId`, alongside the original asset hash. The locator is `record:<recordId>`; a non-null excerpt must occur in that parsed record. Import/get/review 1.2 and list 1.5 keep prior schemas archived. Every read and retry reauthorizes the owner and all evidence sources; withdrawn, inaccessible, or mismatched evidence cannot contribute to a relation or its evidence/search readback. Dates remain source-supported candidates, not professional approval.
 
 Evidence reads first materialize the exact asset/version/hash under RLS, then validate its owner and optional external record. This prevents repeated catalog scans while retaining every publication, acceptance, security and record check; no visibility result is cached across requests.
+
+### Relation integrity and table-cell scope
+
+Migration `0028_relation_integrity.sql` reserves each source-version/mapping/entity key in a private definition registry. A scoped trigger owned by the migration role checks identical label, kind and external ID even when earlier bindings are hidden by RLS. Runtime roles cannot read or change this registry; business queries retain their original RLS. Conflicting pre-existing definitions stop migration for explicit remediation. Review admission uses the locked authoritative row version, with a database guard, so hidden history cannot admit review 101. Projection writes preserve kind and external ID on both endpoints.
+
+Dated HTML table queries require explicit source-cell evidence in the selected pinned assertion (`table:N/row:N/column:N`). The server checks source asset, optional evidence source/record, table and row coordinates, then accepts only evidenced columns. Only the selected structured table field can be retained; whole-row text and arbitrary metadata cannot leak other months into a filtered result. Missing or stale mappings fail validation instead of guessing. Old saved queries without these bindings must be corrected through governed assertions and recreated; stored originals and old evidence are unchanged. This check enforces the recorded mapping, not professional truth of a declared month.

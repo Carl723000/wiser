@@ -209,7 +209,7 @@ function RecordRelations({ locale, record, returnGraph, business }: Props) {
       const href = business
         ? `/${locale}/data-foundation/explore?${new URLSearchParams({ query: business.queryId, view: 'graph', businessEntity: identity })}`
         : relationViewHref(
-            `http://local/${locale}/data-foundation/catalog/${scope.dataItemId}?versionId=${scope.versionId}`,
+            `http://local/${locale}/data-foundation/catalog/${scope.dataItemId}?version=${scope.versionId}`,
             {
               ...view,
               status,

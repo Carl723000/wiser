@@ -15,8 +15,8 @@ checkPaths:
   - apps/web/**
   - apps/telemetry-ingress/**
   - infrastructure/observability/**
-lastReviewedAt: 2026-09-08
-lastReviewedCommit: c10419beae2101c3d753cc0524bcb7fcacb53021
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## A Run is a team exercise

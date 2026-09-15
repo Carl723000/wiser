@@ -14,8 +14,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
-lastReviewedAt: 2026-09-14
-lastReviewedCommit: 57b2fbb9fccd2a90c39927eb64b18520c15f5bec
+lastReviewedAt: 2026-09-15
+lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
 ---
 
 ## Design direction
@@ -177,3 +177,5 @@ Business graph object lists distinguish identical labels using source-document c
 Business exploration offers an optional path reader over the complete authorized relation set. Users select two source-qualified objects and inspect one shortest connection of at most eight edges, with original directed statements and evidence. Traversal may follow either end of a relation for reading only; it does not infer causation, approval or new edges. This local diagram inspection does not change the shared records/map query; changing endpoints clears the displayed path.
 
 Evidence links in relation details, query results, and connecting paths use the evidence source version when present, retaining the owning relation context. A cross-source reference changes where the source link goes; it must not relabel the external file as belonging to the current document.
+
+The exploration position note occupies normal flow below the map canvas. It does not overlay the layer legend or failure recovery controls. Bilingual narrow/wide layout checks cover expanded legends and retry states separately from map correctness.

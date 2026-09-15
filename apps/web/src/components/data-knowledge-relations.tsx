@@ -720,7 +720,7 @@ export function DataKnowledgeRelations({
                 <p>{copy.statuses[row.status]}</p>
                 <p>
                   <Link
-                    href={`/${locale}/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`}
+                    href={`/${locale}/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}`}
                   >
                     {copy.source}
                   </Link>
@@ -768,7 +768,7 @@ export function DataKnowledgeRelations({
                       {e.label}
                       {' · '}
                       <Link
-                        href={`/${locale}/data-foundation/catalog/${e.reference!.dataItemId}?versionId=${e.reference!.versionId}`}
+                        href={`/${locale}/data-foundation/catalog/${e.reference!.dataItemId}?version=${e.reference!.versionId}`}
                       >
                         {copy.source}
                       </Link>

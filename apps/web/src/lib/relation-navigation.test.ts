@@ -35,7 +35,7 @@ describe('relation view links', () => {
     );
     const url = new URL(href, 'http://localhost');
     expect(url.hash).toBe('#business-relations');
-    expect(url.searchParams.get('versionId')).toBe(base.versionId);
+    expect(url.searchParams.get('version')).toBe(base.versionId);
     expect(readRelationView(url.search, base)).toEqual(state);
     expect(readRelationView('', base)).toBeNull();
   });

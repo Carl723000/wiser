@@ -84,7 +84,7 @@ it('separates candidate counts from the approved graph and preserves review retr
   window.history.replaceState(
     null,
     '',
-    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}`,
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}`,
   );
   render(
     <DataKnowledgeRelations
@@ -344,7 +344,7 @@ it('filters the loaded graph and evidence together and restores conditions witho
     entity: null,
     pages: 1,
   };
-  const route = `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=`;
+  const route = `/zh-CN/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}&relations=`;
   window.history.replaceState(
     null,
     '',
@@ -423,7 +423,7 @@ it('keeps nonmatching loaded rows when continuing a filtered page so clearing fi
   window.history.replaceState(
     null,
     '',
-    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=` +
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}&relations=` +
       encodeURIComponent(JSON.stringify(view)),
   );
   const next = {
@@ -491,7 +491,7 @@ it('links an explicit observation record to its version and retains the applied 
   window.history.replaceState(
     null,
     '',
-    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=` +
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}&relations=` +
       encodeURIComponent(JSON.stringify(view)),
   );
   vi.stubGlobal(
@@ -550,7 +550,7 @@ it('persists an exact preceding assertion and reauthorizes it on history restora
   window.history.replaceState(
     null,
     '',
-    `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=${encodeURIComponent(JSON.stringify(view))}`,
+    `/zh-CN/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}&relations=${encodeURIComponent(JSON.stringify(view))}`,
   );
   const { container } = render(
     <DataKnowledgeRelations
@@ -610,7 +610,7 @@ it.each(['denied', 'foreign-version', 'wrong-id', 'changed-status'])(
     window.history.replaceState(
       null,
       '',
-      `/zh-CN/data-foundation/catalog/${row.dataItemId}?versionId=${row.versionId}&relations=${encodeURIComponent(JSON.stringify(view))}`,
+      `/zh-CN/data-foundation/catalog/${row.dataItemId}?version=${row.versionId}&relations=${encodeURIComponent(JSON.stringify(view))}`,
     );
     const { container } = render(
       <DataKnowledgeRelations

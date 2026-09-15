@@ -499,7 +499,7 @@ export function createKnowledgeRelationExecutors(
             const previous = await load(c, input.assertionId);
             if (
               previous.version !== input.expectedVersion ||
-              previous.reviews.length >= 100
+              previous.version >= 101
             )
               throw fail('STATE_CONFLICT');
             await c.query(
