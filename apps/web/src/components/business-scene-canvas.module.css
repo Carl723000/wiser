@@ -1,0 +1,202 @@
+.frame {
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+  padding: 0.7rem;
+}
+.toolbar [role='group'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.frame label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.frame button,
+.frame select,
+.frame input {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  min-height: 42px;
+  max-width: 100%;
+}
+.frame button {
+  cursor: pointer;
+}
+.frame button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.frame button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.frame :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.settings,
+.legend {
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--border);
+}
+.hint {
+  margin: 0;
+  padding: 0.7rem 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  border-top: 1px solid var(--border);
+}
+.plot {
+  min-width: 0;
+  position: relative;
+  background: var(--canvas);
+}
+.plot svg {
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
+.plane {
+  fill: var(--accent-soft);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.hit {
+  cursor: pointer;
+}
+.nodeLabel,
+.edgeLabel,
+.groupLabel {
+  fill: var(--text-primary);
+  font-size: 13px;
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.groupLabel {
+  font-weight: 650;
+  font-size: 14px;
+  stroke: var(--surface);
+}
+.edgeLabel {
+  fill: var(--warning-bright);
+  font-size: 12px;
+}
+.caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.65rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+.inspector {
+  border-left: 1px solid var(--border);
+  padding: 1rem;
+  max-height: 740px;
+  overflow: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.inspector p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.inspector .toolbar {
+  padding: 0 0 0.75rem;
+}
+.list {
+  padding: 0;
+  list-style: none;
+  max-height: 300px;
+  overflow: auto;
+}
+.list li {
+  margin: 0.3rem 0;
+}
+.list button {
+  text-align: start;
+  width: 100%;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.legend > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.7rem;
+}
+.legend button {
+  text-align: start;
+  display: grid;
+  gap: 0.35rem;
+}
+.legend small {
+  color: var(--text-secondary);
+}
+@media (max-width: 1000px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inspector {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: 440px;
+  }
+}
+.spatial {
+  min-width: 0;
+}
+.spatialCanvas {
+  position: relative;
+  height: 650px;
+  overflow: hidden;
+}
+.spatialOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.spatialGroupLabel {
+  fill: var(--text-primary);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+.list small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--text-secondary);
+}
+.plane {
+  pointer-events: none;
+}

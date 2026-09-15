@@ -1,3 +1,4 @@
+import { readSceneView, writeSceneView } from './business-scene-view';
 import {
   readGraphLayoutSettings,
   writeGraphLayoutSettings,
@@ -23,6 +24,15 @@ export function withBusinessFocus(
     openedSaved?.viewId === saved[0] &&
     openedSaved.queryId === target;
   if (!sameQuery && !sameSaved) return href;
+  writeSceneView(url.searchParams, readSceneView(source));
+  const edge = source.getAll('businessEdge');
+  if (
+    edge.length === 1 &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      edge[0],
+    )
+  )
+    url.searchParams.set('businessEdge', edge[0]);
   const reading = readBusinessReading(source);
   const presentations = source.getAll('businessPresentation');
   if (

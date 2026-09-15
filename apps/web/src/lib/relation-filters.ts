@@ -61,7 +61,9 @@ export function parseRelationFilters(value: unknown): RelationFilters {
 }
 // Source precision is retained: a year or month represents a possible interval,
 // never an invented sampling date. Unrecognized or partial periods stay unknown.
-function sourceTime(value: string | null): readonly [number, number] | null {
+export function sourceTime(
+  value: string | null,
+): readonly [number, number] | null {
   if (!value) return null;
   if (/^[1-9]\d{3}$/.test(value))
     return [

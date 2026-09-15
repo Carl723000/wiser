@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
   RelationListOutputSchema,
@@ -24,6 +24,14 @@ import {
   invalidatesExploration,
   type InvalidateExploration,
 } from '@/lib/exploration-request';
+import { businessScene } from '@/lib/business-scene';
+import {
+  readSceneView,
+  writeSceneView,
+  type SceneView,
+} from '@/lib/business-scene-view';
+import { BusinessSceneCanvas } from './business-scene-canvas';
+import { BusinessSceneEvidence } from './business-scene-evidence';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import { BusinessEvidencePathPanel } from './business-evidence-path';
 import { useExplorationViewState } from './exploration-view-context';
@@ -45,7 +53,6 @@ export function DataExplorerBusiness({
 }) {
   const copy = getDictionary(locale).knowledgeRelations;
   const search = useSearchParams(),
-    router = useRouter(),
     pathname = usePathname();
   type Kind = RelationAssertion['candidate']['subject']['kind'];
   const readKind = search.get('businessKind');
@@ -60,6 +67,24 @@ export function DataExplorerBusiness({
   const presentation = reading.presentation;
   const layoutSettings = readGraphLayoutSettings(search);
   const selected = search.get('businessEntity');
+  const selectedEdge = search.get('businessEdge');
+  const scene = useMemo(() => businessScene(rows), [rows]);
+  const sceneSettings = readSceneView(search);
+  const changeScene = (value: SceneView) => {
+    const params = new URLSearchParams(window.location.search);
+    writeSceneView(params, value);
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
+  };
+  const selectEdge = (id: string | null) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('businessEdge');
+    params.delete('businessKind');
+    params.delete('businessEntity');
+    params.delete('businessPage');
+    if (id) params.set('businessEdge', id);
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
+  };
+  const edgeRow = rows.find((r) => r.assertionId === selectedEdge);
   const [draft, setDraft] = useState(scope.filters);
   const viewState = useExplorationViewState();
   useEffect(() => {
@@ -121,13 +146,15 @@ export function DataExplorerBusiness({
   }, [queryId, scope.status, onInvalidated, viewState]);
   const visible = useMemo(
     () =>
-      businessGraphRows(
-        rows,
-        presentation === 'network' ? 'all' : mode,
-        selected,
-        kind,
-      ),
-    [rows, mode, selected, kind, presentation],
+      edgeRow
+        ? [edgeRow]
+        : businessGraphRows(
+            rows,
+            presentation === 'network' ? 'all' : mode,
+            selected,
+            kind,
+          ),
+    [rows, mode, selected, kind, presentation, edgeRow],
   );
   const readingRows = useMemo(() => {
     const groups = new Map<string, RelationAssertion[]>();
@@ -266,13 +293,14 @@ export function DataExplorerBusiness({
   ) => {
     const params = new URLSearchParams(search.toString());
     params.delete('businessPage');
+    params.delete('businessEdge');
     if (id) params.set('businessEntity', id);
     else params.delete('businessEntity');
     if (nextKind) params.set('businessKind', nextKind);
     else params.delete('businessKind');
     if (nextMode === 'all') params.set('businessMode', 'all');
     else params.delete('businessMode');
-    router.replace(pathname + '?' + params.toString(), { scroll: false });
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
   };
   return (
     <section
@@ -462,15 +490,40 @@ export function DataExplorerBusiness({
               : copy.businessNetworkHint}
           </p>
           {graphRows.length ? (
-            <KnowledgeGraphCanvas
-              result={presentation === 'reading' ? pageGraph : graph}
-              reading={presentation === 'reading'}
-              layoutSettings={layoutSettings}
-              onLayoutSettingsChange={changeLayout}
-              locale={locale}
-              selectedId={selected}
-              onSelect={select}
-            />
+            presentation === 'network' ? (
+              <BusinessSceneCanvas
+                queryId={queryId}
+                onInvalidated={onInvalidated}
+                scene={scene}
+                settings={sceneSettings}
+                onSettings={changeScene}
+                selectedId={selected}
+                selectedEdge={selectedEdge}
+                selectedKind={kind}
+                onSelect={(id) => select(id, null)}
+                onEdge={selectEdge}
+                locale={locale}
+                evidence={
+                  edgeRow ? (
+                    <BusinessSceneEvidence
+                      row={edgeRow}
+                      locale={locale}
+                      recordHref={recordHref}
+                    />
+                  ) : undefined
+                }
+              />
+            ) : (
+              <KnowledgeGraphCanvas
+                result={pageGraph}
+                reading
+                layoutSettings={layoutSettings}
+                onLayoutSettingsChange={changeLayout}
+                locale={locale}
+                selectedId={selected}
+                onSelect={select}
+              />
+            )
           ) : (
             <p>{copy.filteredEmpty}</p>
           )}
@@ -502,9 +555,19 @@ export function DataExplorerBusiness({
             </ul>
           </details>
           <h3>{copy.businessEvidence}</h3>
-          <BusinessEvidencePathPanel rows={rows} locale={locale} />
+          <BusinessEvidencePathPanel
+            rows={rows}
+            locale={locale}
+            expanded={sceneSettings.view === 'trace'}
+          />
           {page.rows.map((row) => (
             <article className={businessStyles.evidence} key={row.assertionId}>
+              <button
+                aria-pressed={selectedEdge === row.assertionId}
+                onClick={() => selectEdge(row.assertionId)}
+              >
+                {copy.scene.relationSelected}
+              </button>
               <h4>
                 {row.candidate.subject.label} →{' '}
                 {copy.predicates[row.candidate.predicate]} →{' '}
