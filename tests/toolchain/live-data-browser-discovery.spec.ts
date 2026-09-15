@@ -95,6 +95,41 @@ it('discovers the CI browser suite without private case URLs', () => {
       'exploration-record-focus',
     ])
       expect(result.stdout).not.toContain(name);
+
+    const listCases = () =>
+      spawnSync(
+        process.execPath,
+        [
+          cli,
+          'test',
+          '--config',
+          'playwright.case.config.ts',
+          '--list',
+          '--reporter=list',
+        ],
+        {
+          cwd: resolve(root, 'apps/web'),
+          env,
+          encoding: 'utf8',
+          timeout: 20000,
+        },
+      );
+    const missingCase = listCases();
+    expect(missingCase.status).not.toBe(0);
+    expect(missingCase.stdout + missingCase.stderr).toContain('case');
+    const origin = env.WISER_WEB_LIVE_BASE_URL!;
+    env.WISER_WEB_LIVE_RELATION_URL = `${origin}/zh-CN/data-foundation/catalog/${id}?version=${id}&relations=%7B%7D`;
+    env.WISER_WEB_LIVE_RECORD_URL = `${origin}/zh-CN/data-foundation/explore?recordFocus=${encodeURIComponent(JSON.stringify({ dataItemId: id, versionId: id, recordId: id }))}`;
+    env.WISER_WEB_LIVE_OBSERVATION_COUNT = '2';
+    const cases = listCases();
+    expect(cases.status, cases.stdout + cases.stderr).toBe(0);
+    for (const name of [
+      'business-record-navigation.case.ts',
+      'business-relation-navigation.case.ts',
+      'exploration-record-focus.case.ts',
+    ])
+      expect(cases.stdout).toContain(name);
+    expect(cases.stdout).toContain('Total: 4 tests in 3 files');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
