@@ -371,7 +371,7 @@ function normalizeQuery(
       }
       continue;
     }
-    if (key === 'includeTotal') {
+    if (key === 'includeTotal' || key === 'latestPerAsset') {
       if (entry !== 'true' && entry !== 'false') return null;
       normalized[key] = entry === 'true';
       continue;

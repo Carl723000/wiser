@@ -133,3 +133,7 @@ Business-scoped exploration renders the shared problem/evidence graph, with expl
 Business object source captions use the current authorized relation set and preserve canonical referenced source/version identities. They add no metadata request or graph merge.
 
 The optional business path reader follows only loaded, authorized source-qualified identities, preserves original edge directions, and limits each inspected connection to eight edges without changing the shared query.
+
+Spatial-source disclosures on resources, records and version maps read the latest authorized report per original only when expanded. The shared assessment DAL keeps source identities fixed; scale warnings remain visible, while unknown or stale declarations never imply verified position or business suitability.
+
+Version maps provide display-only single-band ranges, missing-value codes, unit labels and legends; retry preserves the map camera and opacity. AMap non-WebGL fallback uses explained integer zoom on both map surfaces. / 版本地图提供仅影响显示的单波段范围、缺测码、单位标签和图例，重试保留视角与透明度；高德回退为非 WebGL 模式时，两个地图页面均提供整数缩放说明。

@@ -265,3 +265,5 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 ### 固定版本的跨来源证据
 
 跨来源关系证据可选填写 `source.dataItemId`、`versionId`、`analysisId` 和 `recordId`，同时保留原文件哈希。定位固定为 `record:<recordId>`；非空摘录须存在于该条解析记录中。导入、详情和审核接口为1.2，列表为1.5，既有契约版本保留。读取与重试均重新校验关系所属资料及全部证据来源；来源撤回、无权访问或定位不匹配的证据不能继续支撑关系或从证据与检索入口泄露。提取的日期仍是有来源的候选，不代表专业审核。
+
+`data_assessment_list` 1.1 通过同一 HTTP 合同接受可选 `assetId`、`latestPerAsset`。可用于显示对应原件的空间说明，不得据此生成位置已核验或业务已批准的结论。

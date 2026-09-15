@@ -24,6 +24,7 @@ import {
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './data-explorer.module.css';
 import { AmapBasemap, type AmapBasemapHandle } from './amap-basemap';
+import { requireIntegerMapZoom } from '@/lib/map-integer-zoom';
 import { authorityCamera, displayCamera } from '@/lib/amap-camera';
 import { toAmap, fromAmap } from '@/lib/amap-coordinates';
 import { useExplorationViewState } from './exploration-view-context';
@@ -51,6 +52,8 @@ export default function DataExplorerMap({
   const map = useRef<MapRef>(null);
   const basemap = useRef<AmapBasemapHandle>(null);
   const [ready, setReady] = useState(false);
+  const integerZoom = useRef(false);
+  const [integerZoomNotice, setIntegerZoomNotice] = useState(false);
   const [renderedCount, setRenderedCount] = useState(0);
   const [failed, setFailed] = useState(false);
   const business = Boolean(result.spec.businessQuery);
@@ -234,7 +237,16 @@ export default function DataExplorerMap({
         data-rendered-feature-count={renderedCount}
         data-selected-record={selected ?? ''}
       >
-        <AmapBasemap ref={basemap} locale={locale} />
+        <AmapBasemap
+          ref={basemap}
+          locale={locale}
+          onIntegerZoom={() => {
+            if (integerZoom.current) return;
+            integerZoom.current = true;
+            setIntegerZoomNotice(true);
+            if (map.current) requireIntegerMapZoom(map.current.getMap());
+          }}
+        />
         {failed || (business && !businessMap) ? null : (
           <Map
             ref={map}
@@ -275,6 +287,8 @@ export default function DataExplorerMap({
               'records-polygons',
             ]}
             onLoad={() => {
+              if (integerZoom.current && map.current)
+                requireIntegerMapZoom(map.current.getMap());
               const instance = map.current?.getMap();
               instance?.touchZoomRotate.disableRotation();
               if (instance)
@@ -520,6 +534,11 @@ export default function DataExplorerMap({
           </span>
         ) : null}
       </p>
+      {integerZoomNotice && !failed ? (
+        <p className={styles.mapPositionNote}>
+          {getDictionary(locale).rasterDisplay.integerZoom}
+        </p>
+      ) : null}
     </>
   );
 }
