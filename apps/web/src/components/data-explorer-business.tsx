@@ -191,7 +191,7 @@ export function DataExplorerBusiness({
     nextPage: number,
     nextPresentation = presentation,
   ) => {
-    const params = new URLSearchParams(search.toString());
+    const params = new URLSearchParams(window.location.search);
     params.delete('businessPage');
     params.delete('businessPresentation');
     if (nextPresentation === 'network')
