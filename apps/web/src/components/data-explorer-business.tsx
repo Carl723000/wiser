@@ -89,6 +89,10 @@ export function DataExplorerBusiness({
   const viewState = useExplorationViewState();
   useEffect(() => {
     const controller = new AbortController();
+    setBusy(true);
+    setFailed(false);
+    setLoaded(0);
+    setRows([]);
     viewState?.report('graph', null);
     void (async () => {
       try {
