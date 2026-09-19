@@ -151,7 +151,9 @@ it('offers a keyboard list and clears focus without changing the result scope', 
   const inspector = screen.getByRole('complementary', {
     name: '所选关系的原文依据',
   });
-  fireEvent.click(within(inspector).getByRole('button', { name: '地点 · x' }));
+  fireEvent.click(
+    within(inspector).getByRole('button', { name: '地点 · x 来源标题未登记' }),
+  );
   expect(props.onSelect).toHaveBeenCalledWith('x');
   fireEvent.click(screen.getByRole('button', { name: '清除聚焦' }));
   expect(props.onSelect).toHaveBeenCalledWith(null);
@@ -211,4 +213,60 @@ it('pans without rewriting node geometry and hit-tests overlapping edges in the 
   expect(screen.getByText(/重叠.*2/)).toBeTruthy();
   expect(graph.querySelectorAll('[data-node-id]')).toHaveLength(4);
   expect(graph.querySelectorAll('[data-edge-id]')).toHaveLength(2);
+});
+
+it('distinguishes type families and review status without changing identities when changing reading presets', () => {
+  vi.stubGlobal('ResizeObserver', Resize);
+  const typedScene: BusinessScene = {
+    nodes: [
+      { ...node('river'), kind: 'RIVER_REACH' },
+      { ...node('station'), kind: 'MONITORING_POINT' },
+      { ...node('paper'), kind: 'DOCUMENT' },
+      { ...node('claim'), kind: 'CLAIM' },
+    ],
+    edges: [
+      {
+        id: 'identity',
+        from: 'river',
+        to: 'station',
+        row: {
+          ...row('river', 'station'),
+          status: 'PENDING_REVIEW',
+          candidate: {
+            ...row('river', 'station').candidate,
+            predicate: 'IDENTITY_MATCH',
+          },
+        },
+      },
+    ],
+  };
+  render(<BusinessSceneCanvas {...props} scene={typedScene} />);
+  const root = screen.getByTestId('business-scene');
+  expect(
+    root.querySelector('[data-node-id="river"]')?.getAttribute('data-family'),
+  ).toBe('water');
+  expect(
+    root.querySelector('[data-node-id="station"]')?.getAttribute('data-family'),
+  ).toBe('site');
+  expect(
+    root.querySelector('[data-node-id="paper"]')?.getAttribute('data-family'),
+  ).toBe('asset');
+  expect(
+    root.querySelector('[data-node-id="claim"]')?.getAttribute('data-family'),
+  ).toBe('claim');
+  const line = root.querySelector(
+    '[data-edge-id="identity"] line[data-relation-line]',
+  )!;
+  expect(line.getAttribute('marker-end')).toBeNull();
+  expect(line.getAttribute('stroke-dasharray')).toBe('5 3');
+  expect(screen.getByText(/虚线.*待审/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '流畅优先' }));
+  expect(props.onSettings).toHaveBeenCalledWith(
+    expect.objectContaining({ style: 'smooth' }),
+  );
+  expect(
+    [...root.querySelectorAll('[data-node-id]')].map((n) =>
+      n.getAttribute('data-node-id'),
+    ),
+  ).toEqual(['river', 'station', 'paper', 'claim']);
 });

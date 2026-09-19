@@ -143,8 +143,24 @@ test('measures the real saved graph and preserves identities through full screen
         nodes.map((n) => n.getAttribute('data-node-id')).sort(),
       ),
   ).toEqual(ids);
+  await page.getByRole('button', { name: '流畅优先', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '流畅优先', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  expect(new URL(page.url()).searchParams.get('businessStyle')).toBe('smooth');
+  expect(await graph.locator('[data-node-id]').count()).toBe(ids.length);
+  await graph.screenshot({ path: testInfo.outputPath('real-graph.png') });
+  await testInfo.attach('real-graph-legend', {
+    path: testInfo.outputPath('real-graph.png'),
+    contentType: 'image/png',
+  });
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole('button', { name: '流畅优先', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true', { timeout: 90000 });
+  expect(await graph.locator('[data-node-id]').count()).toBe(ids.length);
   const report = {
     browser: page.context().browser()?.version(),
     measurement:

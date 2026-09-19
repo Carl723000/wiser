@@ -1,6 +1,7 @@
 import type { BusinessScene } from './business-scene';
 import { sceneNeighborhood } from './business-scene';
 export const defaultSceneView = {
+  style: 'overview' as 'overview' | 'evidence' | 'smooth',
   view: 'overview' as 'overview' | 'compare' | 'object' | 'trace' | 'time',
   form: 'flat' as 'flat' | 'layers' | 'space',
   grouping: 'sources' as 'sources' | 'kinds',
@@ -42,6 +43,11 @@ export function readSceneView(
       : fallback;
   };
   return {
+    style: option(
+      'Style',
+      ['overview', 'evidence', 'smooth'],
+      defaultSceneView.style,
+    ),
     view: option(
       'View',
       ['overview', 'compare', 'object', 'trace', 'time'],
@@ -63,6 +69,7 @@ export function readSceneView(
 }
 export function writeSceneView(params: URLSearchParams, value: SceneView) {
   for (const [key, field] of [
+    ['Style', 'style'],
     ['View', 'view'],
     ['Form', 'form'],
     ['LayerBy', 'grouping'],

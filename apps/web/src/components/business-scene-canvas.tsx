@@ -25,6 +25,12 @@ const BusinessSceneMap = dynamic(
   { ssr: false },
 );
 import styles from './business-scene-canvas.module.css';
+import {
+  nodeFamilies,
+  edgeFamilies,
+  familyColor,
+} from '@/lib/business-scene-style';
+import { BusinessSceneGlyph } from './business-scene-glyph';
 export function BusinessSceneCanvas({
   scene,
   settings,
@@ -228,7 +234,12 @@ export function BusinessSceneCanvas({
     () =>
       visibleGraphLabels(
         scene.nodes
-          .filter((n) => camera.zoom >= 1.4 || focus.nodes.has(n.id))
+          .filter(
+            (n) =>
+              (settings.style !== 'smooth' && camera.zoom >= 1.4) ||
+              n.id === selectedId ||
+              (settings.style !== 'smooth' && focus.nodes.has(n.id)),
+          )
           .map((n) => ({
             id: n.id,
             x: points.get(n.id)![0],
@@ -238,7 +249,15 @@ export function BusinessSceneCanvas({
         1,
         hover?.node ?? selectedId,
       ),
-    [scene.nodes, camera.zoom, focus.nodes, points, hover?.node, selectedId],
+    [
+      scene.nodes,
+      camera.zoom,
+      settings.style,
+      focus.nodes,
+      points,
+      hover?.node,
+      selectedId,
+    ],
   );
   const commit = (next: typeof camera, delay = false) => {
     setCamera(next);
@@ -315,20 +334,17 @@ export function BusinessSceneCanvas({
     [scene.edges, focused, focus.edges, search, locale, dictionary.predicates],
   );
   const selectedNode = scene.nodes.find((n) => n.id === selectedId);
-  const nodeById = useMemo(
-    () => new Map(scene.nodes.map((n) => [n.id, n])),
+  const presentFamilies = useMemo(
+    () => [...new Set(scene.nodes.map((n) => nodeFamilies[n.kind]))],
     [scene.nodes],
   );
-  const nodeColor = useCallback(
-    (id: string) => {
-      const n = nodeById.get(id);
-      return n?.kind === 'DOCUMENT'
-        ? 'var(--success)'
-        : n?.kind === 'CLAIM'
-          ? 'var(--warning-bright)'
-          : 'var(--accent)';
-    },
-    [nodeById],
+  const presentEdges = useMemo(
+    () => [
+      ...new Set(
+        scene.edges.map((e) => edgeFamilies[e.row.candidate.predicate]),
+      ),
+    ],
+    [scene.edges],
   );
   const selectGroup = (id: string) => {
     if (timer.current) clearTimeout(timer.current);
@@ -362,17 +378,37 @@ export function BusinessSceneCanvas({
             <g
               key={e.id}
               data-edge-id={e.id}
+              data-family={edgeFamilies[e.row.candidate.predicate]}
               data-highlighted={active}
               opacity={focused ? (active ? 1 : 0.1) : 0.45}
             >
+              {active ? (
+                <line
+                  x1={a[0]}
+                  y1={a[1]}
+                  x2={b[0]}
+                  y2={b[1]}
+                  stroke="var(--warning-bright)"
+                  strokeWidth={5}
+                  opacity={0.55}
+                />
+              ) : null}
               <line
+                data-relation-line
                 x1={a[0]}
                 y1={a[1]}
                 x2={b[0]}
                 y2={b[1]}
-                stroke={active ? 'var(--warning-bright)' : 'var(--accent)'}
-                strokeWidth={active ? 2.5 : 0.8}
-                markerEnd={`url(#${marker})`}
+                stroke={familyColor(edgeFamilies[e.row.candidate.predicate])}
+                strokeWidth={1.2}
+                strokeDasharray={
+                  e.row.status === 'PENDING_REVIEW' ? '5 3' : undefined
+                }
+                markerEnd={
+                  e.row.candidate.predicate === 'IDENTITY_MATCH'
+                    ? undefined
+                    : `url(#${marker}-${edgeFamilies[e.row.candidate.predicate]})`
+                }
               />
               <line
                 x1={a[0]}
@@ -401,7 +437,10 @@ export function BusinessSceneCanvas({
                   {e.row.candidate.object.label}
                 </title>
               </line>
-              {selectedEdge === e.id || (camera.zoom >= 3 && active) ? (
+              {selectedEdge === e.id ||
+              (active &&
+                (settings.style === 'evidence' ||
+                  (settings.style !== 'smooth' && camera.zoom >= 3))) ? (
                 <text
                   x={(a[0] + b[0]) / 2}
                   y={(a[1] + b[1]) / 2 - 8}
@@ -420,6 +459,7 @@ export function BusinessSceneCanvas({
             <g
               key={n.id}
               data-node-id={n.id}
+              data-family={nodeFamilies[n.kind]}
               data-world-x={layout.positions.get(n.id)![0]}
               data-highlighted={active}
               opacity={focused ? (active ? 1 : 0.22) : 1}
@@ -428,17 +468,21 @@ export function BusinessSceneCanvas({
               onPointerLeave={() => setHover(null)}
               className={styles.hit}
             >
-              <circle
-                cx={p[0]}
-                cy={p[1]}
-                r={n.id === selectedId ? 7 : 4}
-                fill={nodeColor(n.id)}
-                stroke={
-                  n.id === selectedId
-                    ? 'var(--warning-bright)'
-                    : 'var(--surface)'
-                }
-                strokeWidth={n.id === selectedId ? 3 : 0.5}
+              {n.id === selectedId ? (
+                <circle
+                  cx={p[0]}
+                  cy={p[1]}
+                  r={10}
+                  fill="none"
+                  stroke="var(--warning-bright)"
+                  strokeWidth={2}
+                />
+              ) : null}
+              <BusinessSceneGlyph
+                family={nodeFamilies[n.kind]}
+                x={p[0]}
+                y={p[1]}
+                size={n.id === selectedId ? 7 : 5}
               />
               <title>
                 {dictionary.kinds[n.kind]} · {n.label}
@@ -472,7 +516,7 @@ export function BusinessSceneCanvas({
       camera.zoom,
       layout.positions,
       selectedId,
-      nodeColor,
+      settings.style,
       visible,
     ],
   );
@@ -493,7 +537,13 @@ export function BusinessSceneCanvas({
                     selectNode(n.id);
                   }}
                 >
-                  {dictionary.kinds[n.kind]} · {n.label}
+                  {dictionary.kinds[n.kind]} · {n.label}{' '}
+                  <small>
+                    {n.sourceTitle ?? copy.unknownSource}
+                    {n.record
+                      ? ` · ${copy.sourceVersion} ${n.record.versionId.slice(0, 8)}`
+                      : ''}
+                  </small>
                 </button>
               </li>
             ))}
@@ -547,6 +597,48 @@ export function BusinessSceneCanvas({
       data-edge-count={scene.edges.length}
       data-zoom={camera.zoom}
     >
+      <div
+        className={styles.toolbar}
+        role="group"
+        aria-label={copy.readingStyle}
+      >
+        {(['overview', 'evidence', 'smooth'] as const).map((style) => (
+          <button
+            key={style}
+            aria-pressed={settings.style === style}
+            onClick={() => change({ style })}
+          >
+            {copy.styles[style]}
+          </button>
+        ))}
+        <small>{copy.styleScope}</small>
+      </div>
+      <div className={styles.typeLegend} aria-label={copy.typeLegend}>
+        {presentFamilies.map((family) => (
+          <span key={family}>
+            <svg width="22" height="22" aria-hidden="true">
+              <BusinessSceneGlyph family={family} x={11} y={11} size={7} />
+            </svg>
+            {copy.nodeFamilies[family]}
+          </span>
+        ))}
+        {presentEdges.map((family) => (
+          <span key={family}>
+            <svg width="26" height="22" aria-hidden="true">
+              <line
+                x1="1"
+                y1="11"
+                x2="25"
+                y2="11"
+                stroke={familyColor(family)}
+                strokeWidth="2"
+              />
+            </svg>
+            {copy.edgeFamilies[family]}
+          </span>
+        ))}
+        <small>{copy.statusLegend}</small>
+      </div>
       <div className={styles.toolbar}>
         <label>
           {copy.view}
@@ -800,17 +892,20 @@ export function BusinessSceneCanvas({
               onPointerCancel={(e) => pointers.current.delete(e.pointerId)}
             >
               <defs>
-                <marker
-                  id={marker}
-                  viewBox="0 0 8 8"
-                  refX="8"
-                  refY="4"
-                  markerWidth="5"
-                  markerHeight="5"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M0 0 L8 4 L0 8" fill="var(--accent)" />
-                </marker>
+                {presentEdges.map((family) => (
+                  <marker
+                    key={family}
+                    id={`${marker}-${family}`}
+                    viewBox="0 0 8 8"
+                    refX="8"
+                    refY="4"
+                    markerWidth="5"
+                    markerHeight="5"
+                    orient="auto-start-reverse"
+                  >
+                    <path d="M0 0 L8 4 L0 8" fill={familyColor(family)} />
+                  </marker>
+                ))}
               </defs>
               <g
                 data-camera-pan

@@ -22,9 +22,10 @@ const scene: BusinessScene = {
 };
 it('roundtrips bounded presentation and camera controls without touching query pins', () => {
   const params = new URLSearchParams(
-    'saved=private&businessForm=layers&businessView=compare&businessYaw=30&businessZoom=2.5',
+    'saved=private&businessForm=layers&businessView=compare&businessYaw=30&businessZoom=2.5&businessStyle=smooth',
   );
   const settings = readSceneView(params);
+  expect(settings.style).toBe('smooth');
   expect(settings.form).toBe('layers');
   expect(settings.view).toBe('compare');
   expect(settings.yaw).toBe(30);
