@@ -58,6 +58,36 @@ test('searches actual authorized resources and preserves the workspace across ex
     .getByRole('button', { name: '清除条件，浏览全部授权资料' })
     .click();
   await expect(resourceLinks.first()).toBeVisible({ timeout: 30000 });
+  await page.goto('/zh-CN/data-foundation');
+  const topics = page.getByRole('region', { name: '打开已保存专题' });
+  await expect(topics).toBeVisible({ timeout: 30000 });
+  const topic = topics.locator('a[href*="?saved="]').first();
+  await expect(topic).toBeVisible({ timeout: 30000 });
+  const topicHref = await topic.getAttribute('href');
+  const topicName = await topic.innerText();
+  await topics.getByLabel('查找已保存专题').fill(topicName);
+  await expect(topics.locator(`a[href="${topicHref}"]`)).toBeVisible();
+  await topics.getByRole('button', { name: '清除专题筛选' }).click();
+  await expect(topics.getByLabel('查找已保存专题')).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await topics.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole('button', { name: '切换至深色模式' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.screenshot({
+    path: test.info().outputPath('saved-topics-entry.png'),
+    fullPage: true,
+  });
+  await topics.locator(`a[href="${topicHref}"]`).click();
+  await expect(page.getByTestId('data-explorer')).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page).toHaveURL(
+    new RegExp('saved=' + topicHref!.split('saved=')[1]),
+  );
   expect(errors).toEqual([]);
 });
 

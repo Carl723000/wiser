@@ -843,6 +843,19 @@ const zhCN = {
 
       tools: '更多查询方式',
       readinessOverview: '资源就绪概况',
+      topics: {
+        title: '打开已保存专题',
+        find: '查找已保存专题',
+        refresh: '刷新专题',
+        scope:
+          '最多列出100个有权查看的保存视图，不代表完整项目范围。打开专题时会重新核对来源访问权限。',
+        loading: '正在读取已保存专题…',
+        failed: '暂时无法读取专题，请刷新重试；仍可继续查询资料。',
+        empty: '还没有可打开的专题，可进入数据探索保存视图。',
+        explore: '进入数据探索',
+        noMatch: '这些已保存专题中没有匹配名称，可清除文字重新选择。',
+        clear: '清除专题筛选',
+      },
       saved: {
         title: '保存、分享与导出',
         description:
@@ -3150,6 +3163,22 @@ const en: typeof zhCN = {
 
       tools: 'More ways to query',
       readinessOverview: 'Resource readiness overview',
+      topics: {
+        title: 'Open saved topics',
+        find: 'Find saved topics',
+        refresh: 'Refresh topics',
+        scope:
+          'Up to 100 authorized saved views; this list is not the complete project. Opening a topic checks source access again.',
+        loading: 'Loading saved topics…',
+        failed:
+          'Topics are unavailable. Refresh to retry; resource exploration remains available.',
+        empty:
+          'No saved topics are available. Open data exploration to save a view.',
+        explore: 'Open data exploration',
+        noMatch:
+          'No matching name in these saved topics. Clear the text to choose again.',
+        clear: 'Clear topic filter',
+      },
       saved: {
         title: 'Save, share and export',
         description:

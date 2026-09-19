@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-19
-lastReviewedCommit: 75237db5f8d6cd7f4d1c33cd4fc53949b83c3477
+lastReviewedCommit: 419db1eedb3f7c017eb6ba42ad1c0a21f426e470
 ---
 
 ## What this guide governs
@@ -252,3 +252,5 @@ Expanding the workspace keeps its existing graph/map children mounted. Escape ex
 Selecting a relation explains its controlled predicate before displaying context and original evidence. Mention, attribution, citation, candidate identity and candidate receiving-water links must retain their distinct meaning and review state.
 
 Business graph panning retains rendered nodes, edges and keyboard lists and translates the viewport. Zoom, focus and grouping still update the original members. Overlap hit testing compensates for the translated camera; performance must be measured on the same real case and browser rather than improved by dropping members.
+
+The Data homepage lists authorized saved topics with a title filter scoped only to that bounded list (up to 100). It does not claim a complete project panorama or source-content search. Opening reuses saved-view reauthorization; refresh failure, revoked entries and late responses cannot retain a previous topic list. Identical titles include visibility and creation time, and clearing the filter restores input focus. This entry changes neither query contracts nor existing saved configurations.
