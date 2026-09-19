@@ -147,6 +147,9 @@ const zhCN = {
       zoomIn: '放大图谱',
       zoomOut: '缩小图谱',
       locate: '定位所选对象',
+      relatedReference: '查看关联参考范围（{count}）',
+      relatedReferenceHint:
+        '按已有关系查看参考范围，不表示资料自身坐标或历史边界；关系审核状态以原文依据为准。',
       clear: '清除聚焦',
       depth: '追查范围',
       direct: '直接关系',
@@ -2409,6 +2412,9 @@ const en: typeof zhCN = {
       zoomIn: 'Zoom graph in',
       zoomOut: 'Zoom graph out',
       locate: 'Locate selected object',
+      relatedReference: 'View related reference extents ({count})',
+      relatedReferenceHint:
+        'Extents follow existing links; they are not the source’s own coordinates or historical boundaries. Check the cited evidence and review status.',
       clear: 'Clear focus',
       depth: 'Traversal scope',
       direct: 'Direct relations',

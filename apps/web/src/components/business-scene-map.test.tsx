@@ -219,8 +219,9 @@ it.each([
     fireEvent.click(button);
     expect(probe.fit).toHaveBeenCalledWith(
       [
-        [115, 40],
-        [116, 41],
+        // Existing map ingestion converts WGS84 into the Amap display frame.
+        [115.00626998658886, 40.00119093393262],
+        [116.00626990745596, 41.001679553289065],
       ],
       expect.objectContaining({ maxZoom: 11, duration: 0 }),
     );

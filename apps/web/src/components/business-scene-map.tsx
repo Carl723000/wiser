@@ -8,6 +8,7 @@ import { ExplorationResultSchema } from '@wiser/data-contracts';
 import { loadBusinessMap, businessMapBounds } from '@/lib/business-map';
 import {
   spatialSceneAnchors,
+  relatedSpatialReferences,
   spatialSceneCoverage,
   unlocatedSceneLayout,
 } from '@/lib/business-scene-spatial';
@@ -154,6 +155,23 @@ export function BusinessSceneMap({
   const coverage = useMemo(
     () => spatialSceneCoverage(scene, anchors),
     [scene, anchors],
+  );
+  const referenceGeometry = useMemo<FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: [
+        ...new Set(
+          [
+            ...relatedSpatialReferences(scene, anchors, selectedId).values(),
+          ].map((a) => a.feature),
+        ),
+      ],
+    }),
+    [scene, anchors, selectedId],
+  );
+  const referenceBounds = useMemo(
+    () => businessMapBounds(referenceGeometry),
+    [referenceGeometry],
   );
   const bounds = useMemo(
     () => businessMapBounds(anchoredGeometry),
@@ -321,7 +339,35 @@ export function BusinessSceneMap({
         >
           {copy.locate}
         </button>
+        {referenceBounds && (
+          <button
+            onClick={() =>
+              map.current?.fitBounds(
+                [
+                  [referenceBounds[0], referenceBounds[1]],
+                  [referenceBounds[2], referenceBounds[3]],
+                ],
+                {
+                  padding: {
+                    left: 35,
+                    right: Math.round(width * 0.45),
+                    top: 60,
+                    bottom: 60,
+                  },
+                  maxZoom: 11,
+                  duration: 0,
+                },
+              )
+            }
+          >
+            {copy.relatedReference.replace(
+              '{count}',
+              String(referenceGeometry.features.length),
+            )}
+          </button>
+        )}
       </div>
+      {referenceBounds && <p>{copy.relatedReferenceHint}</p>}
       {failed ? (
         <p role="alert">
           {copy.mapFailed}{' '}

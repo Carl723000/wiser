@@ -53,6 +53,56 @@ export type SpatialSceneAnchor = {
   labelPoint: [number, number];
 };
 
+/** Reference navigation only: never promotes a mention or candidate to an exact location. */
+export function relatedSpatialReferences(
+  scene: BusinessScene,
+  anchors: ReadonlyMap<string, SpatialSceneAnchor>,
+  selectedId: string | null,
+) {
+  const result = new Map<string, SpatialSceneAnchor>();
+  const nodes = new Map(scene.nodes.map((n) => [n.id, n]));
+  if (!selectedId || !nodes.has(selectedId)) return result;
+  const spatialKinds = new Set([
+    'PLACE',
+    'RIVER_REACH',
+    'BASIN',
+    'MONITORING_POINT',
+  ]);
+  const spatial = (id: string) => spatialKinds.has(nodes.get(id)?.kind ?? '');
+  const edges = scene.edges.filter(
+    ({ from, to, row }) =>
+      nodes.has(from) &&
+      nodes.has(to) &&
+      (row.status === 'PENDING_REVIEW' || row.status === 'APPROVED') &&
+      row.candidate.qualifiers?.context?.recordNature === 'SOURCE_RELATION' &&
+      row.candidate.qualifiers?.context?.locationRole === 'REFERENCE_LOCATION',
+  );
+  const add = (id: string) => {
+    const anchor = anchors.get(id);
+    if (id !== selectedId && anchor && spatial(id)) result.set(id, anchor);
+  };
+  const identity = (id: string) => {
+    if (!spatial(id)) return;
+    for (const e of edges) {
+      if (e.row.candidate.predicate !== 'IDENTITY_MATCH') continue;
+      const other = e.from === id ? e.to : e.to === id ? e.from : null;
+      if (other && nodes.get(other)?.kind === nodes.get(id)?.kind) add(other);
+    }
+  };
+  identity(selectedId);
+  for (const e of edges) {
+    if (
+      e.from !== selectedId ||
+      e.row.candidate.predicate !== 'ABOUT_ENTITY' ||
+      !spatial(e.to)
+    )
+      continue;
+    add(e.to);
+    identity(e.to);
+  }
+  return result;
+}
+
 /** Readout for the complete current map scope, not extraction recall or unique places. */
 export function spatialSceneCoverage(
   scene: BusinessScene,
