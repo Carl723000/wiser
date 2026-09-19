@@ -575,9 +575,29 @@ it.each([
 );
 
 it('keeps explicit OSM attribution visible outside the interactive canvas', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok:true, json:async()=>({...page,features:page.features.map(f=>({...f,properties:{...f.properties,values:{c6:'© OpenStreetMap contributors · ODbL 1.0'}}}))})}));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...page,
+          features: page.features.map((f) => ({
+            ...f,
+            properties: {
+              ...f.properties,
+              values: { c6: '© OpenStreetMap contributors · ODbL 1.0' },
+            },
+          })),
+        }),
+    }),
+  );
   render(<BusinessSceneMap {...props} />);
-  const link=await screen.findByRole('link',{name:'© OpenStreetMap contributors · ODbL 1.0'});
-  expect(link.getAttribute('href')).toBe('https://www.openstreetmap.org/copyright');
+  const link = await screen.findByRole('link', {
+    name: '© OpenStreetMap contributors · ODbL 1.0',
+  });
+  expect(link.getAttribute('href')).toBe(
+    'https://www.openstreetmap.org/copyright',
+  );
   expect(link.closest('svg')).toBeNull();
 });

@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-19
-lastReviewedCommit: 419db1eedb3f7c017eb6ba42ad1c0a21f426e470
+lastReviewedAt: 2026-09-20
+lastReviewedCommit: a1d39d4
 ---
 
 ## Authority boundary

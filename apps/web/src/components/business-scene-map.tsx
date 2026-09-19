@@ -24,6 +24,7 @@ import {
   type InvalidateExploration,
 } from '@/lib/exploration-request';
 import { AmapBasemap, type AmapBasemapHandle } from './amap-basemap';
+import { SpatialAttribution } from './spatial-attribution';
 import styles from './business-scene-canvas.module.css';
 maplibre.setWorkerUrl('/vendor/maplibre/6.8.0/maplibre-gl-worker.mjs');
 const mapStyle: maplibre.StyleSpecification = {
@@ -582,6 +583,7 @@ export function BusinessSceneMap({
           </svg>
         ) : null}
       </div>
+      <SpatialAttribution collection={anchoredGeometry} />
       <p className={styles.hint}>
         {copy.located} · {anchors.size} / {scene.nodes.length} · {copy.mapHint}
       </p>

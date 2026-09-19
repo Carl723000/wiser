@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: f05f81f
+lastReviewedCommit: a1d39d4
 ---
 
 ## What this guide governs
@@ -256,3 +256,5 @@ Business graph panning retains rendered nodes, edges and keyboard lists and tran
 The Data homepage lists authorized saved topics with a title filter scoped only to that bounded list (up to 100). It does not claim a complete project panorama or source-content search. Opening reuses saved-view reauthorization; refresh failure, revoked entries and late responses cannot retain a previous topic list. Identical titles include visibility and creation time, and clearing the filter restores input focus. This entry changes neither query contracts nor existing saved configurations.
 
 Calendar stepping remembers an explicit year/month choice in bounded URL presentation state. Applying business dates carries only that choice into the new query; ordinary unrelated queries do not inherit it. Tabs and refresh retain it within the same query. Changing the step never changes the applied bounds until Apply and does not change sampling frequency. Invalid or repeated unit parameters fall back to month.
+
+Business map views retain a visible, linked OSM/ODbL notice when displayed geometry carries that exact source declaration. Attribution is outside the zooming graph and independent of selection. This is a reviewed provider mapping, not license inference; other providers require their own declaration mapping before display.
