@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cleanup,
+  fireEvent,
   act,
   render,
   screen,
@@ -642,4 +643,32 @@ it('switches the visible view when a record return link supplies new route props
   expect(
     screen.getByRole('tab', { name: '知识图谱' }).getAttribute('aria-selected'),
   ).toBe('true');
+});
+
+it('does not submit a partial Chinese composition and searches after the composition ends', async () => {
+  const initial = result(firstId, '永定河资料', '永定河');
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(Response.json(result(secondId, '永定河资料', '永定河')));
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorer
+      locale="zh-CN"
+      initialResult={initial}
+      initialFailure={null}
+      initialText="永定河"
+    />,
+  );
+  const input = screen.getByLabelText('查询数据');
+  const before = fetcher.mock.calls.length;
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: 'yong' } });
+  fireEvent.submit(input.closest('form')!);
+  expect(fetcher.mock.calls.length).toBe(before);
+  fireEvent.compositionEnd(input, { data: '永定河' });
+  fireEvent.change(input, { target: { value: '永定河' } });
+  fireEvent.submit(input.closest('form')!);
+  await waitFor(() =>
+    expect(fetcher.mock.calls.length).toBeGreaterThan(before),
+  );
 });

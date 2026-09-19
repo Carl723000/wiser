@@ -8,6 +8,7 @@ import {
   type BusinessQuery,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import { businessPeriod, type BusinessPeriodUnit } from '@/lib/business-period';
 import { businessGraphRows, businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 import {
@@ -86,6 +87,10 @@ export function DataExplorerBusiness({
   };
   const edgeRow = rows.find((r) => r.assertionId === selectedEdge);
   const [draft, setDraft] = useState(scope.filters);
+  const [periodUnit, setPeriodUnit] = useState<BusinessPeriodUnit>('month');
+  useEffect(() => {
+    setDraft(scope.filters);
+  }, [scope.filters]);
   const viewState = useExplorationViewState();
   useEffect(() => {
     const controller = new AbortController();
@@ -377,6 +382,36 @@ export function DataExplorerBusiness({
                 }
               />
             </label>
+            <label>
+              {copy.periodUnit}
+              <select
+                value={periodUnit}
+                onChange={(event) =>
+                  setPeriodUnit(event.target.value as BusinessPeriodUnit)
+                }
+              >
+                <option value="month">{copy.periodMonth}</option>
+                <option value="year">{copy.periodYear}</option>
+              </select>
+            </label>
+            {([-1, 0, 1] as const).map((offset) => {
+              const period = businessPeriod(draft.from, periodUnit, offset);
+              return (
+                <button
+                  key={offset}
+                  type="button"
+                  disabled={busy || !period || draft.timeRole === 'ALL'}
+                  onClick={() => period && setDraft({ ...draft, ...period })}
+                >
+                  {offset === -1
+                    ? copy.periodPrevious
+                    : offset === 1
+                      ? copy.periodNext
+                      : copy.periodCurrent}
+                </button>
+              );
+            })}
+            <p>{copy.periodHint}</p>
             <label className={styles.check}>
               <input
                 type="checkbox"

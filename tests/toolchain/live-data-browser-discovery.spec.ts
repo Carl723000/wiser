@@ -127,9 +127,10 @@ it('discovers the CI browser suite without private case URLs', () => {
       'business-record-navigation.case.ts',
       'business-relation-navigation.case.ts',
       'exploration-record-focus.case.ts',
+      'exploration-workspace.case.ts',
     ])
       expect(cases.stdout).toContain(name);
-    expect(cases.stdout).toContain('Total: 4 tests in 3 files');
+    expect(cases.stdout).toContain('Total: 6 tests in 4 files');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

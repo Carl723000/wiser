@@ -3,6 +3,11 @@ import {
   relationReturnHref,
   withRelationReturn,
 } from '@/lib/relation-navigation';
+import { ExplorationWorkspace } from './exploration-workspace';
+import {
+  resourceSearchMatch,
+  resourceSearchExamples,
+} from '@/lib/resource-search';
 import { DataSpatialSource } from './data-spatial-source';
 import { dataResourceName } from '@/lib/data-foundation-presentation';
 
@@ -128,6 +133,7 @@ function DataExplorerSession({
       focus,
     );
   }
+  const composing = useRef(false);
   const [text, setText] = useState(initialResult?.spec.text ?? initialText);
   const [quality, setQuality] = useState(
     initialResult?.spec.qualityGrades?.[0] ?? '',
@@ -532,6 +538,7 @@ function DataExplorerSession({
   }
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (composing.current) return;
     const spec: QuerySpec = {
       ...(text.trim() ? { text: text.trim() } : {}),
       ...(provider.trim() ? { providers: [provider.trim()] } : {}),
@@ -619,7 +626,8 @@ function DataExplorerSession({
 
   return (
     <ExplorationViewContext.Provider value={viewState}>
-      <main
+      <ExplorationWorkspace
+        locale={locale}
         id="main-content"
         className={`page-main ${styles.explorer}`}
         data-testid="data-explorer"
@@ -641,6 +649,32 @@ function DataExplorerSession({
           </div>
           <span className={styles.scope}>{copy.scope}</span>
         </header>
+        <p id="resource-search-help" className={styles.searchHelp}>
+          {copy.searchScope}
+        </p>
+        {result?.resources.length ? (
+          <details className={styles.searchExamples}>
+            <summary>{copy.searchExamples}</summary>
+            {resourceSearchExamples(result.resources).map((name) => (
+              <button
+                key={name}
+                aria-label={`${copy.searchExampleAction} ${dataResourceName(name)}`}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setText(name);
+                  void query(
+                    { spec: { text: name }, view: 'resources', first: 25 },
+                    0,
+                    true,
+                  );
+                }}
+              >
+                {dataResourceName(name)}
+              </button>
+            ))}
+          </details>
+        ) : null}
         <form className={styles.query} onSubmit={submit}>
           <label className={styles.search}>
             <span className={styles.visuallyHidden}>{copy.queryLabel}</span>
@@ -649,6 +683,20 @@ function DataExplorerSession({
               onChange={(event) => setText(event.target.value)}
               placeholder={copy.placeholder}
               maxLength={512}
+              aria-describedby="resource-search-help"
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={() => {
+                composing.current = false;
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  (composing.current || event.nativeEvent.isComposing)
+                )
+                  event.preventDefault();
+              }}
             />
           </label>
           <label>
@@ -917,6 +965,21 @@ function DataExplorerSession({
                             >
                               {dataResourceName(resource.name)}
                             </Link>
+                            {resourceSearchMatch(
+                              resource.name,
+                              result?.spec.text,
+                            ) ? (
+                              <small className={styles.matchReason}>
+                                {
+                                  copy.searchMatches[
+                                    resourceSearchMatch(
+                                      resource.name,
+                                      result?.spec.text,
+                                    )!
+                                  ]
+                                }
+                              </small>
+                            ) : null}
                             <button
                               aria-label={dataResourceName(resource.name)}
                               aria-pressed={
@@ -950,6 +1013,19 @@ function DataExplorerSession({
                   <div className={styles.empty}>
                     <h2>{copy.emptyTitle}</h2>
                     <p>{copy.emptyDescription}</p>
+                    <button
+                      disabled={busy}
+                      onClick={() => {
+                        setText('');
+                        void query(
+                          { spec: {}, view: 'resources', first: 25 },
+                          0,
+                          true,
+                        );
+                      }}
+                    >
+                      {copy.browseResources}
+                    </button>
                   </div>
                 ) : null}
                 <footer className={styles.pagination}>
@@ -1317,7 +1393,7 @@ function DataExplorerSession({
             )}
           </DataExplorerInspector>
         </div>
-      </main>
+      </ExplorationWorkspace>
     </ExplorationViewContext.Provider>
   );
 }
