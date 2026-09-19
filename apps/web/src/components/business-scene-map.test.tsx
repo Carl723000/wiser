@@ -202,3 +202,104 @@ it('aborts pending location requests on unmount', () => {
   view.unmount();
   expect(signal?.aborted).toBe(true);
 });
+
+it('ignores a late denial from an abandoned query while retaining the current geometry', async () => {
+  let finishOld!: (response: Response) => void;
+  const currentId = '20000000-0000-4000-8000-000000000001';
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(Response.json({ ...page, queryId: currentId })),
+  );
+  const view = render(<BusinessSceneMap {...props} />);
+  view.rerender(<BusinessSceneMap {...props} queryId={currentId} />);
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1'),
+  );
+  await act(async () => {
+    finishOld(new Response('', { status: 403 }));
+  });
+  expect(props.onInvalidated).not.toHaveBeenCalled();
+  expect(screen.getByTestId('business-spatial-scene').dataset.state).toBe(
+    'ready',
+  );
+  expect(screen.getByTestId('business-spatial-scene').dataset.anchorCount).toBe(
+    '1',
+  );
+});
+
+it('does not dispatch continuation pages after unmount while an earlier body is pending', async () => {
+  let finishBody!: (value: unknown) => void;
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        new Promise((resolve) => {
+          finishBody = resolve;
+        }),
+    } as Response)
+    .mockResolvedValue(Response.json(page));
+  vi.stubGlobal('fetch', fetch);
+  const view = render(<BusinessSceneMap {...props} />);
+  await waitFor(() => expect(finishBody).toBeTypeOf('function'));
+  view.unmount();
+  await act(async () => {
+    finishBody({ ...page, totalCount: 2, nextCursor: 'next' });
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(props.onInvalidated).not.toHaveBeenCalled();
+});
+
+it('never exposes partial geometry when a continuation page fails and recovers through retry', async () => {
+  let finishNext!: (response: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ ...page, totalCount: 2, nextCursor: 'next' }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishNext = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(Response.json(page)),
+  );
+  render(<BusinessSceneMap {...props} />);
+  act(() => probe.load?.());
+  await waitFor(() => expect(finishNext).toBeTypeOf('function'));
+  expect(screen.getByTestId('business-spatial-scene').dataset.state).toBe(
+    'loading',
+  );
+  expect(screen.getByTestId('business-spatial-scene').dataset.anchorCount).toBe(
+    '0',
+  );
+  await act(async () => {
+    finishNext(new Response('', { status: 503 }));
+  });
+  await screen.findByRole('alert');
+  expect(
+    screen
+      .getByTestId('business-spatial-scene')
+      .querySelectorAll('[data-node-id]'),
+  ).toHaveLength(0);
+  expect(props.onInvalidated).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '重新读取位置依据' }));
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1'),
+  );
+});
