@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-09-19
-lastReviewedCommit: dca7b129302a86168466e614cb6c8dbcddd73a34
+lastReviewedCommit: 75237db5f8d6cd7f4d1c33cd4fc53949b83c3477
 ---
 
 # WISER Web / 产品前端
