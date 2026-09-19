@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import type { FeatureCollection } from 'geojson';
 import {
   spatialSceneAnchors,
+  spatialSceneCoverage,
   unlocatedSceneLayout,
 } from './business-scene-spatial';
 import type { BusinessScene } from './business-scene';
@@ -69,6 +70,83 @@ it('does not guess positions for names, empty features, invalid coordinates or u
     ],
   };
   expect(spatialSceneAnchors(scene, bad).size).toBe(0);
+});
+
+it('counts areas as areas, not label points, and keeps same-name unbound source objects visible', () => {
+  const expanded: BusinessScene = {
+    nodes: [
+      ...scene.nodes,
+      { ...node, id: 'another-bound-node' },
+      { ...node, id: 'document', kind: 'DOCUMENT', record: null },
+    ],
+    edges: [],
+  };
+  expect(
+    spatialSceneCoverage(expanded, spatialSceneAnchors(expanded, features)),
+  ).toEqual({
+    boundObjects: 2,
+    namedUnboundObjects: 2,
+    geometries: { point: 0, line: 0, area: 1, mixed: 0 },
+  });
+});
+
+it('counts a multipart river once, separates mixed geometry, and never counts unused map features', () => {
+  const mixed: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        ...features.features[0],
+        geometry: {
+          type: 'MultiLineString',
+          coordinates: [
+            [
+              [115, 40],
+              [116, 41],
+            ],
+            [
+              [116, 41],
+              [117, 41],
+            ],
+          ],
+        },
+      },
+      {
+        ...features.features[0],
+        id: 'second',
+        properties: { ...node.record, recordId: 'second' },
+        geometry: {
+          type: 'GeometryCollection',
+          geometries: [
+            { type: 'Point', coordinates: [115, 40] },
+            {
+              type: 'LineString',
+              coordinates: [
+                [115, 40],
+                [116, 41],
+              ],
+            },
+          ],
+        },
+      },
+      {
+        ...features.features[0],
+        id: 'unused',
+        properties: { ...node.record, recordId: 'unused' },
+      },
+    ],
+  };
+  const nodes = [
+    node,
+    { ...node, id: 'second', record: { ...node.record, recordId: 'second' } },
+  ];
+  const input = { nodes, edges: [] };
+  expect(
+    spatialSceneCoverage(input, spatialSceneAnchors(input, mixed)),
+  ).toEqual({
+    boundObjects: 2,
+    namedUnboundObjects: 0,
+    geometries: { point: 0, line: 1, area: 0, mixed: 1 },
+  });
 });
 
 it('retains every source identity in a deterministic narrow reading layout without changing source locations', () => {

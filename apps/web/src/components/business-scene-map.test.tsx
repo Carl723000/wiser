@@ -135,6 +135,44 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+it.each([
+  [
+    'zh-CN',
+    '地图几何：点 0 · 线 0 · 面 1 · 混合 0',
+    '有地名、尚未绑定范围的对象：1',
+  ],
+  [
+    'en',
+    'Map geometries: points 0 · lines 0 · areas 1 · mixed 0',
+    'Named spatial objects without a bound extent: 1',
+  ],
+] as const)(
+  'explains geometry and named-unbound coverage in %s',
+  async (locale, shapes, names) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+    render(<BusinessSceneMap {...props} locale={locale} />);
+    expect(await screen.findByText(shapes)).toBeTruthy();
+    expect(screen.getByText(names)).toBeTruthy();
+  },
+);
+it('does not claim zero spatial coverage while loading or after a denied response', async () => {
+  let resolve!: (response: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockReturnValue(
+      new Promise<Response>((r) => {
+        resolve = r;
+      }),
+    ),
+  );
+  render(<BusinessSceneMap {...props} />);
+  expect(screen.queryByTestId('spatial-coverage')).toBeNull();
+  await act(async () => {
+    resolve(Response.json({}, { status: 403 }));
+    await Promise.resolve();
+  });
+  expect(screen.queryByTestId('spatial-coverage')).toBeNull();
+});
 it('uses the full scoped map and only binds exact records while retaining unlocated nodes', async () => {
   const fetch = vi
     .fn<typeof globalThis.fetch>()

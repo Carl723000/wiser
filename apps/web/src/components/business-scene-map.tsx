@@ -8,6 +8,7 @@ import { ExplorationResultSchema } from '@wiser/data-contracts';
 import { loadBusinessMap, businessMapBounds } from '@/lib/business-map';
 import {
   spatialSceneAnchors,
+  spatialSceneCoverage,
   unlocatedSceneLayout,
 } from '@/lib/business-scene-spatial';
 import {
@@ -149,6 +150,10 @@ export function BusinessSceneMap({
       ],
     }),
     [anchors],
+  );
+  const coverage = useMemo(
+    () => spatialSceneCoverage(scene, anchors),
+    [scene, anchors],
   );
   const bounds = useMemo(
     () => businessMapBounds(anchoredGeometry),
@@ -584,9 +589,28 @@ export function BusinessSceneMap({
         ) : null}
       </div>
       <SpatialAttribution collection={anchoredGeometry} />
-      <p className={styles.hint}>
-        {copy.located} · {anchors.size} / {scene.nodes.length} · {copy.mapHint}
-      </p>
+      {collection ? (
+        <div className={styles.hint} data-testid="spatial-coverage">
+          <p>
+            {copy.located} · {coverage.boundObjects} / {scene.nodes.length}
+          </p>
+          <p>
+            {copy.geometryCounts
+              .replace('{point}', String(coverage.geometries.point))
+              .replace('{line}', String(coverage.geometries.line))
+              .replace('{area}', String(coverage.geometries.area))
+              .replace('{mixed}', String(coverage.geometries.mixed))}
+          </p>
+          <p>
+            {copy.namedUnboundCount.replace(
+              '{count}',
+              String(coverage.namedUnboundObjects),
+            )}
+          </p>
+          <p>{copy.coverageBasis}</p>
+        </div>
+      ) : null}
+      <p className={styles.hint}>{copy.mapHint}</p>
       {collection && !anchors.size ? <p>{copy.mapEmpty}</p> : null}
     </div>
   );

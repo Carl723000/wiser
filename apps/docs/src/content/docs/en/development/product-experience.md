@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 8bc453a84005ef616a775e180d83affe196fedf9
 ---
 
 ## What this guide governs
@@ -260,3 +260,5 @@ Calendar stepping remembers an explicit year/month choice in bounded URL present
 Business map views retain a visible, linked OSM/ODbL notice when displayed geometry carries that exact source declaration. Attribution is outside the zooming graph and independent of selection. This is a reviewed provider mapping, not license inference; other providers require their own declaration mapping before display.
 
 Saved business topics restore presentation controls with their authorized query. Explicit URL overrides affect reading only. Full-screen remains a user action and is not restored automatically.
+
+Spatial coverage separates source-scoped objects with an exact record binding from unique point, line, area and mixed geometries. Multiple graph objects bound to the same record count once as geometry; multipart geometry remains one feature. Named place/reach/basin/station objects without a binding are counted separately and retain their identity. Counts appear only after the complete authorized map result loads, never as zero while loading or denied. These counts do not measure extraction recall, distinct real-world locations or professional validation.

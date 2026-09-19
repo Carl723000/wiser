@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 8bc453a84005ef616a775e180d83affe196fedf9
 ---
 
 ## Design direction
@@ -201,3 +201,5 @@ Group captions avoid each other within the available canvas and use neutral, arr
 Spatial anchors retain the same node families, shapes, predicate colors, pending dashes and arrowless identity matches as the planar graph. Unlocated members use deterministic rows within each source-qualified group, allocating room by member count rather than compressing every group into a fixed-radius cluster. All members and relationships remain present; this screen-space arrangement creates no geographic position or identity.
 
 Locating a spatial graph object fits its full line, area or multi-part extent within the unobscured map region. Only zero-extent geometry uses point focus. Display centers remain label connectors; named places without an exact permitted geometry binding retain their existing relations without invented coordinates.
+
+Spatial coverage separates source-scoped objects with an exact record binding from unique point, line, area and mixed geometries. Multiple graph objects bound to the same record count once as geometry; multipart geometry remains one feature. Named place/reach/basin/station objects without a binding are counted separately and retain their identity. Counts appear only after the complete authorized map result loads, never as zero while loading or denied. These counts do not measure extraction recall, distinct real-world locations or professional validation.

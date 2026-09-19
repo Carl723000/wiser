@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection } from 'geojson';
+import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { BusinessScene } from './business-scene';
 import { businessMapBounds } from './business-map';
 
@@ -52,6 +52,44 @@ export type SpatialSceneAnchor = {
   feature: Feature;
   labelPoint: [number, number];
 };
+
+/** Readout for the complete current map scope, not extraction recall or unique places. */
+export function spatialSceneCoverage(
+  scene: BusinessScene,
+  anchors: ReadonlyMap<string, SpatialSceneAnchor>,
+) {
+  type Family = 'point' | 'line' | 'area';
+  const families = (geometry: Geometry): Family[] => {
+    if (geometry.type === 'GeometryCollection')
+      return geometry.geometries.flatMap(families);
+    if (geometry.type === 'Point' || geometry.type === 'MultiPoint')
+      return ['point'];
+    if (geometry.type === 'LineString' || geometry.type === 'MultiLineString')
+      return ['line'];
+    return ['area'];
+  };
+  const geometries = { point: 0, line: 0, area: 0, mixed: 0 };
+  // Multiple knowledge nodes may bind the same original record geometry.
+  const features = new Set([...anchors.values()].map((a) => a.feature));
+  for (const feature of features) {
+    const kinds = new Set(families(feature.geometry));
+    if (kinds.size > 1) geometries.mixed++;
+    else for (const kind of kinds) geometries[kind]++;
+  }
+  const spatialKinds = new Set([
+    'PLACE',
+    'RIVER_REACH',
+    'BASIN',
+    'MONITORING_POINT',
+  ]);
+  return {
+    boundObjects: anchors.size,
+    namedUnboundObjects: scene.nodes.filter(
+      (n) => spatialKinds.has(n.kind) && n.label.trim() && !anchors.has(n.id),
+    ).length,
+    geometries,
+  };
+}
 /** The center is a connector label position for the original geometry, not a new point feature. */
 export function spatialSceneAnchors(
   scene: BusinessScene,

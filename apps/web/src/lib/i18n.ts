@@ -191,6 +191,11 @@ const zhCN = {
       retry: '重新读取位置依据',
       unlocated: '尚未绑定空间范围的资料与知识',
       located: '有明确记录位置绑定',
+      geometryCounts:
+        '地图几何：点 {point} · 线 {line} · 面 {area} · 混合 {mixed}',
+      namedUnboundCount: '有地名、尚未绑定范围的对象：{count}',
+      coverageBasis:
+        '按当前图中的来源内对象统计，同名不自动合并；几何不重复计算。此处不代表全部资料的空间解析覆盖率。',
       mapHint:
         '点、线、面保留原几何；定位河段或区域时展示其范围。资料卡位置只为阅读排布；标签引线不是采样点，也不新增业务关系。只有地名、尚未匹配可靠范围的资料仍保留在知识图谱中。',
       mapEmpty: '当前范围没有可绑定的位置几何，可继续查看未定位资料。',
@@ -2452,6 +2457,12 @@ const en: typeof zhCN = {
       retry: 'Reload location evidence',
       unlocated: 'Sources and knowledge without a bound geometry',
       located: 'Explicit record location binding',
+      geometryCounts:
+        'Map geometries: points {point} · lines {line} · areas {area} · mixed {mixed}',
+      namedUnboundCount:
+        'Named spatial objects without a bound extent: {count}',
+      coverageBasis:
+        'Counts use source-scoped objects in this graph; matching names are not merged, and each geometry is counted once. This is not spatial extraction coverage across all materials.',
       mapHint:
         'Points, lines and areas retain their source geometry. Locating a reach or area fits its extent; source cards are arranged for reading, and a label connector is not a sampling point or a new business relation. Named places without a verified geometry remain in the knowledge graph.',
       mapEmpty:
