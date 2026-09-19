@@ -1,6 +1,6 @@
 'use client';
 import {
-  useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -51,7 +51,8 @@ export function AmapBasemap({
     }),
     [],
   );
-  useEffect(() => {
+  // Release the SDK before React detaches its sized container on navigation.
+  useLayoutEffect(() => {
     let disposed = false;
     let instance: AmapMap | null = null;
     let observer: MutationObserver | undefined;

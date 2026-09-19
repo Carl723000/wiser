@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: a5f80f730cda08c83058916ee977fac56bb77615
+lastReviewedCommit: ae5fdb11b82a4ce49421f7d90e21617e680746b6
 ---
 
 ## Design direction
@@ -209,3 +209,5 @@ Panning uses a CSS transform on the retained SVG group, with an equivalent SVG a
 Selecting an object or relation flushes the pending wheel/pan camera into URL state before selection. Immediate selection must not discard the latest viewport or allow a delayed camera write to overwrite the selection.
 
 Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
+
+The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.

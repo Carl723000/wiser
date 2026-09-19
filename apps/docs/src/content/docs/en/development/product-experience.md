@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: a5f80f730cda08c83058916ee977fac56bb77615
+lastReviewedCommit: ae5fdb11b82a4ce49421f7d90e21617e680746b6
 ---
 
 ## What this guide governs
@@ -270,3 +270,5 @@ Selecting an object or relation flushes the pending wheel/pan camera into URL st
 Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
 
 Spatial reading offers a separate related-reference-extent action. It follows only loaded, authorized source-reference mentions and spatial identity-candidate links, at most two edges, and fits their existing geometries without assigning coordinates to the selected source. Rejected/correction-required links, observations, same-name guesses and unavailable geometries do not provide this action. Multiple linked areas remain visible together; a reference extent is not a precise source location or historical boundary. The action preserves selection, query, review status and geometry counts.
+
+The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
