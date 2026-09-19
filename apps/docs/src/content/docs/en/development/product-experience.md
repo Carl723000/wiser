@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 43405df3d3f51f20b56268c5d043510c9406dc43
+lastReviewedCommit: d26eadfaff2de3d6ddeecff5d7653d4456877c6b
 ---
 
 ## What this guide governs
@@ -268,3 +268,5 @@ Panning uses a CSS transform on the retained SVG group, with an equivalent SVG a
 Selecting an object or relation flushes the pending wheel/pan camera into URL state before selection. Immediate selection must not discard the latest viewport or allow a delayed camera write to overwrite the selection.
 
 Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
+
+Spatial reading offers a separate related-reference-extent action. It follows only loaded, authorized source-reference mentions and spatial identity-candidate links, at most two edges, and fits their existing geometries without assigning coordinates to the selected source. Rejected/correction-required links, observations, same-name guesses and unavailable geometries do not provide this action. Multiple linked areas remain visible together; a reference extent is not a precise source location or historical boundary. The action preserves selection, query, review status and geometry counts.

@@ -2,10 +2,12 @@ import { expect, it } from 'vitest';
 import type { FeatureCollection } from 'geojson';
 import {
   spatialSceneAnchors,
+  relatedSpatialReferences,
   spatialSceneCoverage,
   unlocatedSceneLayout,
 } from './business-scene-spatial';
 import type { BusinessScene } from './business-scene';
+import type { RelationAssertion } from '@wiser/data-contracts';
 const node = {
   id: 'source-object',
   label: '官厅水库',
@@ -48,6 +50,106 @@ const features: FeatureCollection = {
     },
   ],
 };
+const referenceEdge = (
+  from: string,
+  to: string,
+  predicate: string,
+  state = 'PENDING_REVIEW',
+  role = 'REFERENCE_LOCATION',
+) => ({
+  id: from + ':' + to,
+  from,
+  to,
+  row: {
+    status: state,
+    candidate: {
+      predicate,
+      qualifiers: {
+        context: { recordNature: 'SOURCE_RELATION', locationRole: role },
+      },
+    },
+  } as RelationAssertion,
+});
+it('lets a source inspect an explicitly linked reference area without assigning source coordinates', () => {
+  const linked: BusinessScene = {
+    nodes: [
+      ...scene.nodes,
+      { ...node, id: 'doc', kind: 'DOCUMENT', record: null },
+    ],
+    edges: [
+      referenceEdge('doc', 'same-name', 'ABOUT_ENTITY'),
+      referenceEdge('same-name', 'source-object', 'IDENTITY_MATCH'),
+    ],
+  };
+  const anchors = spatialSceneAnchors(linked, features);
+  const before = JSON.stringify(linked);
+  expect([...relatedSpatialReferences(linked, anchors, 'doc').keys()]).toEqual([
+    'source-object',
+  ]);
+  expect([
+    ...relatedSpatialReferences(linked, anchors, 'same-name').keys(),
+  ]).toEqual(['source-object']);
+  expect(anchors.has('doc')).toBe(false);
+  expect(anchors.has('same-name')).toBe(false);
+  expect(JSON.stringify(linked)).toBe(before);
+});
+it('does not turn names, observations, reversed mentions or venue links into a reference location', () => {
+  for (const edges of [
+    [],
+    [referenceEdge('same-name', 'source-object', 'OBSERVES_ENTITY')],
+    [referenceEdge('source-object', 'same-name', 'ABOUT_ENTITY')],
+    [
+      referenceEdge(
+        'same-name',
+        'source-object',
+        'ABOUT_ENTITY',
+        'APPROVED',
+        'VENUE',
+      ),
+    ],
+    [referenceEdge('same-name', 'source-object', 'IDENTITY_MATCH', 'REJECTED')],
+  ]) {
+    expect(
+      relatedSpatialReferences(
+        { ...scene, edges },
+        spatialSceneAnchors(scene, features),
+        'same-name',
+      ).size,
+    ).toBe(0);
+  }
+});
+it('keeps multiple explicit reference areas, excludes unbound and unavailable endpoints, and stops after two edges', () => {
+  const area2 = {
+    ...node,
+    id: 'area2',
+    record: { ...node.record, recordId: 'r2' },
+  };
+  const extra = { ...features.features[0], id: 'g2', properties: area2.record };
+  const linked: BusinessScene = {
+    nodes: [
+      ...scene.nodes,
+      area2,
+      { ...node, id: 'doc', kind: 'DOCUMENT', record: null },
+      { ...node, id: 'middle', record: null },
+    ],
+    edges: [
+      referenceEdge('doc', 'source-object', 'ABOUT_ENTITY'),
+      referenceEdge('doc', 'area2', 'ABOUT_ENTITY'),
+      referenceEdge('doc', 'absent', 'ABOUT_ENTITY'),
+      referenceEdge('doc', 'middle', 'ABOUT_ENTITY'),
+      referenceEdge('middle', 'same-name', 'IDENTITY_MATCH'),
+      referenceEdge('same-name', 'wrong-version', 'IDENTITY_MATCH'),
+    ],
+  };
+  const anchors = spatialSceneAnchors(linked, {
+    ...features,
+    features: [...features.features, extra],
+  });
+  expect(
+    [...relatedSpatialReferences(linked, anchors, 'doc').keys()].sort(),
+  ).toEqual(['area2', 'source-object']);
+  expect(relatedSpatialReferences(linked, anchors, null).size).toBe(0);
+});
 it('anchors only the exact bound resource, version and record; an area remains an area', () => {
   const anchors = spatialSceneAnchors(scene, features);
   expect([...anchors.keys()]).toEqual(['source-object']);

@@ -136,6 +136,110 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 it.each([
+  ['zh-CN', '查看关联参考范围（1）', '不表示资料自身坐标'],
+  [
+    'en',
+    'View related reference extents (1)',
+    'not the source’s own coordinates',
+  ],
+] as const)(
+  'locates a related area separately from exact object location in %s',
+  async (locale, label, hint) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+    const linked: BusinessScene = {
+      nodes: [
+        { ...scene.nodes[0], kind: 'PLACE' },
+        scene.nodes[1],
+        { ...scene.nodes[1], id: 'doc', kind: 'DOCUMENT' },
+      ],
+      edges: [
+        {
+          id: 'about',
+          from: 'doc',
+          to: 'unlocated',
+          row: {
+            status: 'PENDING_REVIEW',
+            candidate: {
+              predicate: 'ABOUT_ENTITY',
+              subject: { label: '资料' },
+              object: { label: '地区' },
+              qualifiers: {
+                context: {
+                  recordNature: 'SOURCE_RELATION',
+                  locationRole: 'REFERENCE_LOCATION',
+                },
+              },
+            },
+          } as RelationAssertion,
+        },
+        {
+          id: 'identity',
+          from: 'unlocated',
+          to: 'bound',
+          row: {
+            status: 'PENDING_REVIEW',
+            candidate: {
+              predicate: 'IDENTITY_MATCH',
+              subject: { label: '地区' },
+              object: { label: '参考面' },
+              qualifiers: {
+                context: {
+                  recordNature: 'SOURCE_RELATION',
+                  locationRole: 'REFERENCE_LOCATION',
+                },
+              },
+            },
+          } as RelationAssertion,
+        },
+      ],
+    };
+    const rendered = render(
+      <BusinessSceneMap
+        {...props}
+        scene={linked}
+        locale={locale}
+        selectedId="doc"
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+      ).toBe('1'),
+    );
+    const button = screen.getByRole('button', { name: label });
+    expect(screen.getByText(new RegExp(hint))).toBeTruthy();
+    expect(
+      screen
+        .getByRole('button', {
+          name: locale === 'zh-CN' ? '定位所选对象' : 'Locate selected object',
+        })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    probe.fit.mockClear();
+    fireEvent.click(button);
+    expect(probe.fit).toHaveBeenCalledWith(
+      [
+        [115, 40],
+        [116, 41],
+      ],
+      expect.objectContaining({ maxZoom: 11, duration: 0 }),
+    );
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1');
+    rendered.rerender(
+      <BusinessSceneMap
+        {...props}
+        scene={linked}
+        locale={locale}
+        selectedId={null}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: label })).toBeNull();
+  },
+);
+it.each([
   [
     'zh-CN',
     '地图几何：点 0 · 线 0 · 面 1 · 混合 0',
