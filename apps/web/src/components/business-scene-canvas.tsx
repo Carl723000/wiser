@@ -12,6 +12,7 @@ import { getDictionary, type Locale } from '@/lib/i18n';
 import { sceneNeighborhood, type BusinessScene } from '@/lib/business-scene';
 import {
   projectScenePoint,
+  placeSceneGroupLabels,
   sceneEdgesAt,
   scenePositions,
   zoomSceneCamera,
@@ -197,6 +198,30 @@ export function BusinessSceneCanvas({
     () => new Map([...projected].map(([id, p]) => [id, screenPoint(p)])),
     [projected, screenPoint],
   );
+  const groupLabels = useMemo(() => {
+    const labels = placeSceneGroupLabels(
+      planes.map((p, index) => {
+        const point = screenPoint(p.corners[0]);
+        return {
+          id: p.id,
+          x: settings.form === 'layers' ? 20 : point[0],
+          y:
+            settings.form === 'layers'
+              ? 101 +
+                (planes.length - 1 - index) *
+                  Math.min(34, 560 / Math.max(1, planes.length - 1))
+              : point[1],
+          width:
+            settings.form === 'layers'
+              ? 185
+              : Math.max(160, groupLabel(p.id).length * 14 + 60),
+        };
+      }),
+      width,
+      height,
+    );
+    return new Map(labels.map((label) => [label.id, label]));
+  }, [planes, screenPoint, settings.form, width, locale]);
   const focus = useMemo(() => {
     if (group || (selectedKind && !selectedId && !selectedEdge && !hover)) {
       const members = new Set(
@@ -927,47 +952,53 @@ export function BusinessSceneCanvas({
               >
                 {marks}
               </g>
-              {planes.map((p, index) => {
+              {planes.map((p) => {
+                const label = groupLabels.get(p.id);
+                if (!label) return null;
                 const basePoint = screenPoint(p.corners[0]);
                 const point = [
                   basePoint[0] + camera.panX,
                   basePoint[1] + camera.panY,
                 ];
                 const layered = settings.form === 'layers';
-                const x = layered ? 14 : point[0];
-                const y = layered
-                  ? 65 +
-                    (planes.length - 1 - index) *
-                      Math.min(34, 560 / Math.max(1, planes.length - 1))
-                  : point[1] - 16;
+                const x = label.x + (layered ? 0 : camera.panX);
+                const y = label.y + (layered ? 0 : camera.panY);
+                const name = groupLabel(p.id);
+                const maxCharacters = Math.max(
+                  3,
+                  Math.floor(
+                    (label.width - String(p.members.length).length * 8 - 32) /
+                      14,
+                  ),
+                );
+                const shortName =
+                  [...name].length > maxCharacters
+                    ? [...name].slice(0, maxCharacters - 1).join('') + '…'
+                    : name;
                 return (
                   <g
                     key={p.id}
+                    data-group-caption={p.id}
                     onClick={() => {
                       if (!dragged.current) selectGroup(p.id);
                     }}
                     className={styles.hit}
                   >
-                    {layered ? (
-                      <line
-                        x1={190}
-                        y1={y - 4}
-                        x2={point[0]}
-                        y2={point[1]}
-                        stroke="var(--border-strong)"
-                      />
-                    ) : null}
+                    <title>
+                      {name} · {p.members.length}
+                    </title>
+                    <line
+                      x1={x + label.width / 2}
+                      y1={y + 28}
+                      x2={point[0]}
+                      y2={point[1]}
+                      stroke="var(--border-strong)"
+                      pointerEvents="none"
+                    />
                     <rect
-                      x={x - 6}
-                      y={y - 20}
-                      width={
-                        layered
-                          ? 185
-                          : Math.min(
-                              width - 20,
-                              Math.max(160, groupLabel(p.id).length * 14 + 80),
-                            )
-                      }
+                      x={x}
+                      y={y}
+                      width={label.width}
                       height={28}
                       rx={6}
                       fill="var(--surface)"
@@ -977,8 +1008,8 @@ export function BusinessSceneCanvas({
                           : 'var(--border-strong)'
                       }
                     />
-                    <text x={x} y={y} className={styles.groupLabel}>
-                      {groupLabel(p.id)} · {p.members.length}
+                    <text x={x + 6} y={y + 20} className={styles.groupLabel}>
+                      {shortName} · {p.members.length}
                     </text>
                   </g>
                 );
@@ -990,6 +1021,11 @@ export function BusinessSceneCanvas({
               {copy.count
                 .replace('{nodes}', String(scene.nodes.length))
                 .replace('{edges}', String(scene.edges.length))}
+            </span>
+            <span>
+              {copy.groupCaptions
+                .replace('{shown}', String(groupLabels.size))
+                .replace('{total}', String(planes.length))}
             </span>
             <span>
               {copy.scale} ·{' '}

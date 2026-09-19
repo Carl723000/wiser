@@ -152,6 +152,8 @@ const zhCN = {
       direct: '直接关系',
       twoHops: '再展开一层',
       search: '查找节点或关系',
+      groupCaptions:
+        '显示 {shown}/{total} 个分组标签；完整分组见分层依据，节点与关系未删减。',
       nodeList: '节点列表',
       edgeList: '关系列表',
       evidence: '所选关系的原文依据',
@@ -2394,6 +2396,8 @@ const en: typeof zhCN = {
       direct: 'Direct relations',
       twoHops: 'Expand one more step',
       search: 'Find a node or relation',
+      groupCaptions:
+        '{shown}/{total} group captions shown; all groups remain in the grouping list. Nodes and relations are unchanged.',
       nodeList: 'Nodes',
       edgeList: 'Relations',
       evidence: 'Original evidence for the selected relation',

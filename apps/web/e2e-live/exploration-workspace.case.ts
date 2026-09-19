@@ -96,6 +96,22 @@ test('measures the real saved graph and preserves identities through full screen
       nodes.map((n) => n.getAttribute('data-node-id')).sort(),
     );
   expect(ids.length).toBeGreaterThan(1);
+  const captions = await graph
+    .locator('[data-group-caption] rect')
+    .evaluateAll((elements) =>
+      elements.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+      }),
+    );
+  expect(captions.length).toBeGreaterThan(1);
+  for (let i = 0; i < captions.length; i++)
+    for (const b of captions.slice(i + 1)) {
+      const a = captions[i];
+      expect(
+        a.right <= b.x || b.right <= a.x || a.bottom <= b.y || b.bottom <= a.y,
+      ).toBe(true);
+    }
   await page.getByRole('button', { name: '全屏工作区', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   const svg = graph.getByRole('img', { name: '平面图谱', exact: true });

@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-19
-lastReviewedCommit: f24bceaf26d88cfbde028ef75ecb9ab5baec8cac
+lastReviewedCommit: dca7b129302a86168466e614cb6c8dbcddd73a34
 ---
 
 ## Design direction
@@ -195,3 +195,5 @@ Spatial presentation uses the existing complete, bounded HTTP map query and exac
 Workspace expansion uses the existing semantic surface, an accessible named dialog and a sticky exit control. The same children retain reading state. Expansion traps keyboard focus and restores it on exit; it does not change query membership. Search explanations and examples remain secondary to results and wrap within narrow viewports.
 
 Node color and shape encode type families, edge colors encode predicate families, and dashes indicate pending review. Identity matches have no directional arrow. Overview/evidence/smooth styles change labels only and retain all members, restoring through the existing URL view state.
+
+Group captions avoid each other within the available canvas and use neutral, arrowless leaders to their original groups. When space is insufficient, only captions are omitted and the displayed caption count is disclosed; complete groups and members remain accessible through keyboard lists. Caption placement never changes business objects, relationships or spatial coordinates.

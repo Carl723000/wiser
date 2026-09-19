@@ -184,7 +184,12 @@ it('names category layers and retains the same nodes and directed edges across r
       settings={{ ...defaultSceneView, form: 'layers' }}
     />,
   );
-  expect(screen.getAllByText('地点 · 4')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: /地点 · 4/ })).toBeTruthy();
+  expect(
+    screen
+      .getByTestId('business-scene')
+      .querySelector('[data-group-caption] text')?.textContent,
+  ).toBe('地点 · 4');
   const root = screen.getByTestId('business-scene');
   const before = root.querySelector('polygon')?.getAttribute('points');
   view.rerender(
