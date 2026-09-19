@@ -16,6 +16,7 @@ import type { RelationAssertion } from '@wiser/data-contracts';
 const probe = vi.hoisted(() => ({
   load: null as null | (() => void),
   fit: vi.fn(),
+  jump: vi.fn(),
   move: null as null | (() => void),
 }));
 vi.mock('maplibre-gl', () => ({ setWorkerUrl: vi.fn() }));
@@ -34,7 +35,7 @@ vi.mock('react-map-gl/maplibre', async () => {
         getZoom: () => 8,
         getCenter: () => ({ lng: 115, lat: 40 }),
         project: () => ({ x: 100, y: 100 }),
-        jumpTo: vi.fn(),
+        jumpTo: probe.jump,
         zoomIn: vi.fn(),
         zoomOut: vi.fn(),
       }));
@@ -487,3 +488,77 @@ it('uses available space for large unlocated groups without collapsing members o
     }
   }
 });
+
+it.each([
+  [
+    'LineString',
+    [
+      [115, 40],
+      [117, 41],
+    ],
+  ],
+  [
+    'MultiLineString',
+    [
+      [
+        [115, 40],
+        [117, 41],
+      ],
+    ],
+  ],
+  [
+    'Polygon',
+    [
+      [
+        [115, 40],
+        [117, 40],
+        [117, 41],
+        [115, 40],
+      ],
+    ],
+  ],
+  [
+    'MultiPolygon',
+    [
+      [
+        [
+          [115, 40],
+          [117, 40],
+          [117, 41],
+          [115, 40],
+        ],
+      ],
+    ],
+  ],
+])(
+  'locates the full %s extent instead of presenting its center as a point',
+  async (type, coordinates) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          ...page,
+          features: [{ ...page.features[0], geometry: { type, coordinates } }],
+        }),
+      ),
+    );
+    render(<BusinessSceneMap {...props} selectedId="bound" />);
+    act(() => probe.load?.());
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+      ).toBe('1'),
+    );
+    probe.fit.mockClear();
+    fireEvent.click(
+      screen.getByRole('button', { name: '定位所选对象', exact: true }),
+    );
+    expect(probe.jump).not.toHaveBeenCalled();
+    expect(probe.fit).toHaveBeenCalledOnce();
+    const [bounds, options] = probe.fit.mock.calls[0];
+    expect(bounds[1][0] - bounds[0][0]).toBeGreaterThan(1.9);
+    expect(bounds[1][1] - bounds[0][1]).toBeGreaterThan(0.9);
+    expect(options.padding.right).toBeGreaterThan(options.padding.left);
+    expect(options.duration).toBe(0);
+  },
+);

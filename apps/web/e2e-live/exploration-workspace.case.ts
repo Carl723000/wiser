@@ -328,3 +328,109 @@ test('retains real public spatial anchors and unlocated evidence across presenta
       ),
   ).toEqual(originalIds);
 });
+
+test('applies a real public monthly period consistently across graph, records, map and refresh', async ({
+  page,
+}) => {
+  test.setTimeout(240000);
+  const saved = process.env['WISER_WEB_LIVE_SAVED_VIEW'];
+  if (!saved) throw Error('Supply a verified public saved case');
+  await page.goto(
+    '/zh-CN/login?next=' +
+      encodeURIComponent('/zh-CN/data-foundation/explore?saved=' + saved),
+  );
+  await page.getByLabel('邮箱').fill(credentials.email);
+  await page.getByLabel('密码').fill(credentials.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByTestId('business-scene')).toBeVisible({
+    timeout: 90000,
+  });
+  await page
+    .locator('summary')
+    .filter({ hasText: '图谱、表格和地图共用的业务时段' })
+    .click();
+  await page
+    .getByRole('combobox', { name: '筛选时间含义', exact: true })
+    .selectOption('OBSERVATION_TIME');
+  await page.getByLabel('筛选开始日期', { exact: true }).fill('2019-06-01');
+  await page.getByLabel('筛选结束日期', { exact: true }).fill('2019-06-30');
+  await page.getByLabel('日期筛选时保留时段不明的关系').uncheck();
+  const applied = page.waitForResponse((response) => {
+    const request = response.request();
+    if (
+      !response.url().endsWith('/api/data-foundation/explore') ||
+      request.method() !== 'POST'
+    )
+      return false;
+    const body = request.postDataJSON();
+    return body.spec?.businessQuery?.filters?.from === '2019-06-01';
+  });
+  await page
+    .getByRole('button', { name: '应用到所有视图', exact: true })
+    .click();
+  const response = await applied;
+  expect(response.status()).toBe(200);
+  const result = await response.json();
+  const expectedFilters = {
+    kind: 'ALL',
+    timeRole: 'OBSERVATION_TIME',
+    from: '2019-06-01',
+    to: '2019-06-30',
+    includeUndated: false,
+  };
+  expect(result.spec.businessQuery.filters).toEqual(expectedFilters);
+  const queryId = result.queryId as string;
+  await expect(page.getByTestId('business-scene')).toBeVisible({
+    timeout: 60000,
+  });
+  expect(
+    Number(
+      await page.getByTestId('business-scene').getAttribute('data-edge-count'),
+    ),
+  ).toBeGreaterThan(0);
+  for (const view of ['records', 'map'] as const) {
+    const requested = page.waitForResponse((response) => {
+      if (
+        !response.url().endsWith('/api/data-foundation/explore') ||
+        response.request().method() !== 'POST'
+      )
+        return false;
+      const body = response.request().postDataJSON();
+      return body.queryId === queryId && body.view === view;
+    });
+    await page.locator('#explorer-tab-' + view).click();
+    const response = await requested;
+    expect(response.status()).toBe(200);
+    const linked = await response.json();
+    expect(linked.queryId).toBe(queryId);
+    expect(linked.spec.businessQuery.filters).toEqual(expectedFilters);
+  }
+  await page.locator('#explorer-tab-graph').click();
+  await page.reload();
+  await expect(page.getByTestId('business-scene')).toBeVisible({
+    timeout: 60000,
+  });
+  await page
+    .locator('summary')
+    .filter({ hasText: '图谱、表格和地图共用的业务时段' })
+    .click();
+  await expect(page.getByLabel('筛选开始日期', { exact: true })).toHaveValue(
+    '2019-06-01',
+  );
+  await expect(page.getByLabel('筛选结束日期', { exact: true })).toHaveValue(
+    '2019-06-30',
+  );
+  await expect(
+    page.getByRole('combobox', { name: '筛选时间含义', exact: true }),
+  ).toHaveValue('OBSERVATION_TIME');
+  await page.getByRole('button', { name: '下一时段', exact: true }).click();
+  await expect(page.getByLabel('筛选开始日期', { exact: true })).toHaveValue(
+    '2019-07-01',
+  );
+  await expect(page.getByLabel('筛选结束日期', { exact: true })).toHaveValue(
+    '2019-07-31',
+  );
+  expect(
+    await page.getByTestId('data-explorer').getAttribute('data-query-id'),
+  ).toBe(queryId);
+});
