@@ -8,6 +8,7 @@ const mock = vi.hoisted(() => ({
   options: vi.fn(),
   center: vi.fn(),
   destroy: vi.fn(),
+  connectedAtDestroy: vi.fn(),
   load: vi.fn(),
   webgl: true,
 }));
@@ -18,6 +19,9 @@ vi.mock('@/lib/amap-loader', () => ({
       Map: class {
         constructor(_element: HTMLElement, options: unknown) {
           mock.options(options);
+          mock.destroy.mockImplementation(() => {
+            mock.connectedAtDestroy(_element.isConnected);
+          });
         }
         on(_event: string, callback: () => void) {
           mock.load.mockImplementation(callback);
@@ -71,4 +75,11 @@ it('retains a camera arriving before the official SDK and releases its map on un
   expect(mock.center).toHaveBeenLastCalledWith(9, [-77.1276, 38.9498], true);
   result.unmount();
   expect(mock.destroy).toHaveBeenCalledOnce();
+});
+
+it('destroys the official map before navigation detaches its sized container', async () => {
+  const result = render(<AmapBasemap ref={null} locale="en" />);
+  await waitFor(() => expect(mock.options).toHaveBeenCalledOnce());
+  result.unmount();
+  expect(mock.connectedAtDestroy).toHaveBeenCalledExactlyOnceWith(true);
 });
