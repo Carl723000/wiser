@@ -16,6 +16,7 @@ import {
   type ExplorationResult,
 } from '@wiser/data-contracts';
 import { DataExplorer } from './data-explorer';
+import { capturePresentation } from '@/lib/exploration-presentation';
 import {
   readRelationView,
   relationSourceExploreHref,
@@ -671,4 +672,62 @@ it('does not submit a partial Chinese composition and searches after the composi
   await waitFor(() =>
     expect(fetcher.mock.calls.length).toBeGreaterThan(before),
   );
+});
+
+it('restores a saved presentation after router initialization and preserves an intervening explicit choice', async () => {
+  const initial = result(firstId, 'Station source', 'station');
+  const presentation = capturePresentation(
+    new URLSearchParams('businessForm=space&businessStyle=evidence'),
+  );
+  const saved = OpenExplorationViewOutputSchema.parse({
+    savedView: {
+      viewId: secondId,
+      title: 'Spatial scene',
+      visibility: 'private',
+      createdAt: initial.createdAt,
+      revokedAt: null,
+    },
+    result: initial,
+    viewSpec: {
+      activeView: 'resources',
+      requests: { resources: { queryId: firstId, view: 'resources' } },
+      presentation,
+    },
+  });
+  window.history.replaceState(
+    null,
+    '',
+    '/en/data-foundation/explore?saved=' + secondId,
+  );
+  const { unmount } = render(
+    <DataExplorer
+      locale="en"
+      initialResult={initial}
+      initialFailure={null}
+      initialText="station"
+      initialSaved={saved}
+    />,
+  );
+  // The enclosing Next router installs its history listener after child mount effects.
+  expect(new URLSearchParams(window.location.search).has('businessForm')).toBe(
+    false,
+  );
+  window.history.replaceState(
+    null,
+    '',
+    window.location.href + '&businessStyle=smooth',
+  );
+  await waitFor(() =>
+    expect(
+      new URLSearchParams(window.location.search).get('businessForm'),
+    ).toBe('space'),
+  );
+  expect(new URLSearchParams(window.location.search).get('businessStyle')).toBe(
+    'smooth',
+  );
+  expect(new URLSearchParams(window.location.search).get('saved')).toBe(
+    secondId,
+  );
+  unmount();
+  window.history.replaceState(null, '', '/');
 });

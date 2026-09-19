@@ -18,6 +18,10 @@ import { DataExplorerInspector } from './data-explorer-inspector';
 import { DataExplorerSaved } from './data-explorer-saved';
 import { ExplorationViewContext } from './exploration-view-context';
 import { createExplorationViewState } from '@/lib/exploration-view-state';
+import {
+  capturePresentation,
+  restorePresentation,
+} from '@/lib/exploration-presentation';
 import { withBusinessFocus } from '@/lib/exploration-business-focus';
 import {
   writeBusinessPeriodUnit,
@@ -114,6 +118,27 @@ function DataExplorerSession({
 }) {
   const copy = getDictionary(locale).dataFoundation.explorer;
   const [result, setResult] = useState(initialResult);
+  useEffect(() => {
+    if (!initialSaved?.viewSpec.presentation) return;
+    const presentation = initialSaved.viewSpec.presentation;
+    // Next installs its History API bridge in the enclosing router's mount effect.
+    // Restore on the next frame so its search-param subscribers receive the change.
+    const frame = window.requestAnimationFrame(() => {
+      const before = new URLSearchParams(window.location.search);
+      const after = restorePresentation(
+        before,
+        initialSaved.savedView.viewId,
+        presentation,
+      );
+      if (after.toString() !== before.toString())
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + after.toString(),
+        );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialSaved]);
   const [returnGraph, setReturnGraph] = useState<string | null>(null);
   function queryHref(queryId: string, tab: ExplorationView, keepFocus = true) {
     const values = new URLSearchParams(window.location.search).getAll(
@@ -296,6 +321,9 @@ function DataExplorerSession({
                 }
               : {}),
           }
+        : undefined,
+      result?.spec.businessQuery
+        ? capturePresentation(new URLSearchParams(window.location.search))
         : undefined,
     );
   };

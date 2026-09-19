@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: a1d39d4
+lastReviewedCommit: 2bdf167
 ---
 
 ## What this guide governs
@@ -258,3 +258,5 @@ The Data homepage lists authorized saved topics with a title filter scoped only 
 Calendar stepping remembers an explicit year/month choice in bounded URL presentation state. Applying business dates carries only that choice into the new query; ordinary unrelated queries do not inherit it. Tabs and refresh retain it within the same query. Changing the step never changes the applied bounds until Apply and does not change sampling frequency. Invalid or repeated unit parameters fall back to month.
 
 Business map views retain a visible, linked OSM/ODbL notice when displayed geometry carries that exact source declaration. Attribution is outside the zooming graph and independent of selection. This is a reviewed provider mapping, not license inference; other providers require their own declaration mapping before display.
+
+Saved business topics restore presentation controls with their authorized query. Explicit URL overrides affect reading only. Full-screen remains a user action and is not restored automatically.
