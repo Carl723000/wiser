@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 8bc453a84005ef616a775e180d83affe196fedf9
+lastReviewedCommit: 140bbffe91d19ba2002d85d341119f5c3b99de1d
 ---
 
 ## Design direction
@@ -203,3 +203,5 @@ Spatial anchors retain the same node families, shapes, predicate colors, pending
 Locating a spatial graph object fits its full line, area or multi-part extent within the unobscured map region. Only zero-extent geometry uses point focus. Display centers remain label connectors; named places without an exact permitted geometry binding retain their existing relations without invented coordinates.
 
 Spatial coverage separates source-scoped objects with an exact record binding from unique point, line, area and mixed geometries. Multiple graph objects bound to the same record count once as geometry; multipart geometry remains one feature. Named place/reach/basin/station objects without a binding are counted separately and retain their identity. Counts appear only after the complete authorized map result loads, never as zero while loading or denied. These counts do not measure extraction recall, distinct real-world locations or professional validation.
+
+Panning uses a CSS transform on the retained SVG group, with an equivalent SVG attribute fallback; it does not recreate or remove members. Wheel motion and active dragging suspend incidental hover previews as geometry passes under the pointer. The pinned selection and its evidence remain intact; deliberate hover resumes after the wheel becomes idle. Verify visual hit targets after translation in both planar and layered views. These local changes do not imply that zooming or large-graph performance has met its target; record each interaction separately.

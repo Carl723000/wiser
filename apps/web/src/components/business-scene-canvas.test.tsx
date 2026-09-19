@@ -60,6 +60,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+it('does not preview incidental hover while zooming, then resumes object inspection', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('ResizeObserver', Resize);
+  render(<BusinessSceneCanvas {...props} selectedId="a" />);
+  const root = screen.getByTestId('business-scene');
+  const unrelated = root.querySelector('[data-node-id="x"]')!;
+  fireEvent.pointerEnter(unrelated);
+  expect(unrelated.getAttribute('data-highlighted')).toBe('true');
+  fireEvent.wheel(screen.getByRole('img', { name: '平面图谱' }), {
+    deltaY: -50,
+    clientX: 200,
+    clientY: 200,
+  });
+  fireEvent.pointerLeave(unrelated);
+  fireEvent.pointerEnter(unrelated);
+  expect(unrelated.getAttribute('data-highlighted')).toBe('false');
+  expect(
+    root.querySelector('[data-node-id="a"]')?.getAttribute('data-highlighted'),
+  ).toBe('true');
+  expect(props.onSelect).not.toHaveBeenCalled();
+  await act(() => vi.advanceTimersByTime(200));
+  fireEvent.pointerLeave(unrelated);
+  fireEvent.pointerEnter(unrelated);
+  expect(unrelated.getAttribute('data-highlighted')).toBe('true');
+  fireEvent.click(unrelated);
+  expect(props.onSelect).toHaveBeenCalledWith('x');
+});
 it('keeps a new preset and the current camera when a delayed zoom write is pending', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('ResizeObserver', Resize);

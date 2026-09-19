@@ -81,6 +81,7 @@ export function BusinessSceneCanvas({
   cameraRef.current = camera;
   const previous = useRef<(typeof camera)[]>([]),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wheelIdle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointers = useRef(new Map<number, [number, number]>()),
     dragged = useRef(false);
   const height = 700;
@@ -104,6 +105,7 @@ export function BusinessSceneCanvas({
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
+      if (wheelIdle.current) clearTimeout(wheelIdle.current);
     },
     [],
   );
@@ -303,6 +305,12 @@ export function BusinessSceneCanvas({
   const wheelHandler = useRef<(event: WheelEvent) => void>(() => {});
   wheelHandler.current = (e) => {
     e.preventDefault();
+    // Moving geometry can cross a stationary pointer. It is not an inspection intent.
+    setHover(null);
+    if (wheelIdle.current) clearTimeout(wheelIdle.current);
+    wheelIdle.current = setTimeout(() => {
+      wheelIdle.current = null;
+    }, 150);
     const r = svg.current?.getBoundingClientRect();
     if (r)
       zoom(Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * 0.005), [
@@ -317,6 +325,10 @@ export function BusinessSceneCanvas({
     element.addEventListener('wheel', listener, { passive: false });
     return () => element.removeEventListener('wheel', listener);
   }, [settings.form]);
+  const preview = useCallback((node: string | null, edge: string | null) => {
+    if (wheelIdle.current || pointers.current.size) return;
+    setHover(node || edge ? { node, edge } : null);
+  }, []);
   const selectNode = useCallback(
     (id: string) => {
       if (dragged.current) return;
@@ -461,8 +473,8 @@ export function BusinessSceneCanvas({
                   if (candidates.length > 1) setEdgeCandidates(candidates);
                   else selectEdge(e.id);
                 }}
-                onPointerEnter={() => setHover({ node: null, edge: e.id })}
-                onPointerLeave={() => setHover(null)}
+                onPointerEnter={() => preview(null, e.id)}
+                onPointerLeave={() => preview(null, null)}
               >
                 <title>
                   {e.row.candidate.subject.label} →{' '}
@@ -497,8 +509,8 @@ export function BusinessSceneCanvas({
               data-highlighted={active}
               opacity={focused ? (active ? 1 : 0.22) : 1}
               onClick={() => selectNode(n.id)}
-              onPointerEnter={() => setHover({ node: n.id, edge: null })}
-              onPointerLeave={() => setHover(null)}
+              onPointerEnter={() => preview(n.id, null)}
+              onPointerLeave={() => preview(null, null)}
               className={styles.hit}
             >
               {n.id === selectedId ? (
@@ -551,6 +563,7 @@ export function BusinessSceneCanvas({
       selectedId,
       settings.style,
       visible,
+      preview,
     ],
   );
   const memberLists = useMemo(
@@ -883,6 +896,7 @@ export function BusinessSceneCanvas({
                     return;
                   remember();
                   dragged.current = true;
+                  setHover(null);
                 }
                 const other = [...pointers.current].find(
                   ([id]) => id !== e.pointerId,
@@ -949,6 +963,11 @@ export function BusinessSceneCanvas({
               <g
                 data-camera-pan
                 transform={`translate(${camera.panX} ${camera.panY})`}
+                style={{
+                  transform: `matrix(1, 0, 0, 1, ${camera.panX}, ${camera.panY})`,
+                  transformOrigin: '0 0',
+                  willChange: 'transform',
+                }}
               >
                 {marks}
               </g>
