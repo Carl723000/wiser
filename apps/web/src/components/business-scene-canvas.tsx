@@ -184,14 +184,13 @@ export function BusinessSceneCanvas({
       y: (minY + maxY) / 2,
     };
   }, [projected, planes, width]);
+  const layerInset = settings.form === 'layers' ? 70 : 0;
   const screenPoint = useCallback(
     ([x, y]: [number, number]): [number, number] => [
-      (x - fit.x) * fit.scale * camera.zoom +
-        width / 2 +
-        (settings.form === 'layers' ? 70 : 0),
+      (x - fit.x) * fit.scale * camera.zoom + width / 2 + layerInset,
       (y - fit.y) * fit.scale * camera.zoom + height / 2,
     ],
-    [fit, camera.zoom, width, settings.form],
+    [fit, camera.zoom, width, layerInset],
   );
   // A pan translates the retained drawing; it does not move or recreate its members.
   const points = useMemo(
@@ -282,7 +281,7 @@ export function BusinessSceneCanvas({
     const r = svg.current?.getBoundingClientRect();
     if (r)
       zoom(Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * 0.005), [
-        e.clientX - r.left - width / 2,
+        e.clientX - r.left - width / 2 - layerInset,
         e.clientY - r.top - height / 2,
       ]);
   };
@@ -355,8 +354,8 @@ export function BusinessSceneCanvas({
     onEdge(null);
   };
   const change = (partial: Partial<SceneView>) => {
-    remember();
-    onSettings({ ...settings, ...partial });
+    if (timer.current) clearTimeout(timer.current);
+    onSettings({ ...settings, ...cameraRef.current, ...partial });
   };
   const marks = useMemo(
     () => (
@@ -374,6 +373,15 @@ export function BusinessSceneCanvas({
           const a = points.get(e.from)!,
             b = points.get(e.to)!;
           const active = focus.edges.has(e.id);
+          // Keep the arrow outside the node outline; hit testing still uses the full segment.
+          const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          const inset = Math.min(e.to === selectedId ? 11 : 8, length / 3);
+          const end = length
+            ? [
+                b[0] - ((b[0] - a[0]) * inset) / length,
+                b[1] - ((b[1] - a[1]) * inset) / length,
+              ]
+            : b;
           return (
             <g
               key={e.id}
@@ -397,8 +405,8 @@ export function BusinessSceneCanvas({
                 data-relation-line
                 x1={a[0]}
                 y1={a[1]}
-                x2={b[0]}
-                y2={b[1]}
+                x2={end[0]}
+                y2={end[1]}
                 stroke={familyColor(edgeFamilies[e.row.candidate.predicate])}
                 strokeWidth={1.2}
                 strokeDasharray={
@@ -840,14 +848,17 @@ export function BusinessSceneCanvas({
                 pointers.current.set(e.pointerId, [e.clientX, e.clientY]);
                 if (e.target === e.currentTarget)
                   e.currentTarget.setPointerCapture?.(e.pointerId);
-                remember();
               }}
               onPointerMove={(e) => {
                 const before = pointers.current.get(e.pointerId);
                 if (!before) return;
                 const next: [number, number] = [e.clientX, e.clientY];
-                if (Math.hypot(next[0] - before[0], next[1] - before[1]) > 2)
+                if (!dragged.current) {
+                  if (Math.hypot(next[0] - before[0], next[1] - before[1]) <= 2)
+                    return;
+                  remember();
                   dragged.current = true;
+                }
                 const other = [...pointers.current].find(
                   ([id]) => id !== e.pointerId,
                 )?.[1];
@@ -867,7 +878,10 @@ export function BusinessSceneCanvas({
                         cameraRef.current,
                         distance / oldDistance,
                         [
-                          (next[0] + other[0]) / 2 - r.left - width / 2,
+                          (next[0] + other[0]) / 2 -
+                            r.left -
+                            width / 2 -
+                            layerInset,
                           (next[1] + other[1]) / 2 - r.top - height / 2,
                         ],
                       ),

@@ -98,7 +98,7 @@ test('measures the real saved graph and preserves identities through full screen
   expect(ids.length).toBeGreaterThan(1);
   await page.getByRole('button', { name: '全屏工作区', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  const svg = graph.locator('svg').first();
+  const svg = graph.getByRole('img', { name: '平面图谱', exact: true });
   await svg.scrollIntoViewIfNeeded();
   const box = await svg.boundingBox();
   expect(box).not.toBeNull();
@@ -131,8 +131,15 @@ test('measures the real saved graph and preserves identities through full screen
       }),
   );
   await svg.focus();
+  const initialPan = await svg
+    .locator('[data-camera-pan]')
+    .getAttribute('transform');
   for (let index = 0; index < 30; index++) {
     await page.keyboard.press(index % 2 ? 'ArrowLeft' : 'ArrowRight');
+    if (index === 0)
+      expect(
+        await svg.locator('[data-camera-pan]').getAttribute('transform'),
+      ).not.toBe(initialPan);
     await page.waitForTimeout(25);
   }
   const frameMetrics = await metrics;
@@ -149,7 +156,8 @@ test('measures the real saved graph and preserves identities through full screen
   ).toHaveAttribute('aria-pressed', 'true');
   expect(new URL(page.url()).searchParams.get('businessStyle')).toBe('smooth');
   expect(await graph.locator('[data-node-id]').count()).toBe(ids.length);
-  await graph.screenshot({ path: testInfo.outputPath('real-graph.png') });
+  await svg.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('real-graph.png') });
   await testInfo.attach('real-graph-legend', {
     path: testInfo.outputPath('real-graph.png'),
     contentType: 'image/png',

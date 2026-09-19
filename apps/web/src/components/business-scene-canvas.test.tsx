@@ -10,7 +10,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BusinessSceneCanvas } from './business-scene-canvas';
-import { defaultSceneView } from '@/lib/business-scene-view';
+import { defaultSceneView, type SceneView } from '@/lib/business-scene-view';
 import type { BusinessScene } from '@/lib/business-scene';
 import type { RelationAssertion } from '@wiser/data-contracts';
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
@@ -45,7 +45,7 @@ const scene: BusinessScene = {
 const props = {
   scene,
   settings: defaultSceneView,
-  onSettings: vi.fn(),
+  onSettings: vi.fn<(next: SceneView) => void>(),
   selectedId: null,
   selectedEdge: null,
   onSelect: vi.fn(),
@@ -60,7 +60,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
-it('keeps a new preset and the current camera when a delayed zoom write is pending', () => {
+it('keeps a new preset and the current camera when a delayed zoom write is pending', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('ResizeObserver', Resize);
   render(<BusinessSceneCanvas {...props} />);
@@ -70,7 +70,7 @@ it('keeps a new preset and the current camera when a delayed zoom write is pendi
     clientY: 200,
   });
   fireEvent.click(screen.getByRole('button', { name: '流畅优先' }));
-  act(() => vi.advanceTimersByTime(200));
+  await act(() => vi.advanceTimersByTime(200));
   expect(props.onSettings).toHaveBeenLastCalledWith(
     expect.objectContaining({
       style: 'smooth',
@@ -78,7 +78,7 @@ it('keeps a new preset and the current camera when a delayed zoom write is pendi
     }),
   );
 });
-it('anchors wheel zoom to the cursor including the layer inset', () => {
+it('anchors wheel zoom to the cursor including the layer inset', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('ResizeObserver', Resize);
   render(
@@ -92,7 +92,7 @@ it('anchors wheel zoom to the cursor including the layer inset', () => {
     clientX: 200,
     clientY: 200,
   });
-  act(() => vi.advanceTimersByTime(200));
+  await act(() => vi.advanceTimersByTime(200));
   const next = props.onSettings.mock.lastCall![0];
   expect(next.panX).toBeCloseTo((200 - 1100 / 2 - 70) * (1 - Math.exp(0.5)));
 });
@@ -105,7 +105,7 @@ it('does not fill camera history with a click that never moves the view', () => 
   fireEvent.wheel(graph, { deltaY: -100, clientX: 200, clientY: 200 });
   fireEvent.click(screen.getByRole('button', { name: '上一步视野' }));
   expect(
-    (screen.getByRole('button', { name: '上一步视野' }) as HTMLButtonElement)
+    screen.getByRole<HTMLButtonElement>('button', { name: '上一步视野' })
       .disabled,
   ).toBe(true);
 });
