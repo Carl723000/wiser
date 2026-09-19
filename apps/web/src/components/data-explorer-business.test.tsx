@@ -550,3 +550,42 @@ it('explains a mentioned object before evidence without claiming causality', asy
     ),
   ).toBeTruthy();
 });
+
+it('restores an explicitly selected annual step after remount without reinterpreting dates', async () => {
+  nav.search = new URLSearchParams('query=annual&businessPeriodUnit=year');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [], totalCount: 0 })),
+  );
+  const onApply = vi.fn();
+  const dated = {
+    ...scope,
+    filters: {
+      ...scope.filters,
+      timeRole: 'OBSERVATION_TIME' as const,
+      from: '2024-01-01',
+      to: '2024-12-31',
+    },
+  };
+  render(<DataExplorerBusiness {...props} scope={dated} onApply={onApply} />);
+  await screen.findByText(/已加载的关系中没有匹配项/);
+  expect(screen.getByLabelText<HTMLSelectElement>('浏览时段').value).toBe(
+    'year',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '下一时段' }));
+  expect(screen.getByLabelText<HTMLInputElement>('筛选开始日期').value).toBe(
+    '2025-01-01',
+  );
+  expect(screen.getByLabelText<HTMLInputElement>('筛选结束日期').value).toBe(
+    '2025-12-31',
+  );
+  expect(onApply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '应用到所有视图' }));
+  expect(onApply).toHaveBeenCalledWith(
+    {
+      ...dated,
+      filters: { ...dated.filters, from: '2025-01-01', to: '2025-12-31' },
+    },
+    'year',
+  );
+});
