@@ -255,6 +255,16 @@ test('retains real public spatial anchors and unlocated evidence across presenta
     .evaluateAll((nodes) =>
       nodes.map((n) => n.getAttribute('data-node-id')).sort(),
     );
+  const originalFamilies = await graph
+    .locator('[data-node-id], [data-edge-id]')
+    .evaluateAll((elements) =>
+      elements
+        .map((el) => [
+          el.getAttribute('data-node-id') ?? el.getAttribute('data-edge-id'),
+          el.getAttribute('data-family'),
+        ])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    );
   await page.getByRole('button', { name: '空间锚点', exact: true }).click();
   const spatial = page.getByTestId('business-spatial-scene');
   await expect(spatial).toHaveAttribute('data-state', 'ready', {
@@ -293,6 +303,18 @@ test('retains real public spatial anchors and unlocated evidence across presenta
     await spatial.locator('[data-anchored="false"]').count(),
   ).toBeGreaterThan(0);
   expect(await spatial.locator('[data-edge-id]').count()).toBe(expected);
+  expect(
+    await spatial
+      .locator('[data-node-id], [data-edge-id]')
+      .evaluateAll((elements) =>
+        elements
+          .map((el) => [
+            el.getAttribute('data-node-id') ?? el.getAttribute('data-edge-id'),
+            el.getAttribute('data-family'),
+          ])
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+      ),
+  ).toEqual(originalFamilies);
   await spatial.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath('real-spatial-anchors.png'),

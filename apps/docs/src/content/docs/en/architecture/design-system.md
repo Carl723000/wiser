@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-19
-lastReviewedCommit: 55b606be3a3262b75bc5eb54882f9615c1b16784
+lastReviewedCommit: 985af981d9234ac3b3e872453beaadf140c59852
 ---
 
 ## Design direction
@@ -197,3 +197,5 @@ Workspace expansion uses the existing semantic surface, an accessible named dial
 Node color and shape encode type families, edge colors encode predicate families, and dashes indicate pending review. Identity matches have no directional arrow. Overview/evidence/smooth styles change labels only and retain all members, restoring through the existing URL view state.
 
 Group captions avoid each other within the available canvas and use neutral, arrowless leaders to their original groups. When space is insufficient, only captions are omitted and the displayed caption count is disclosed; complete groups and members remain accessible through keyboard lists. Caption placement never changes business objects, relationships or spatial coordinates.
+
+Spatial anchors retain the same node families, shapes, predicate colors, pending dashes and arrowless identity matches as the planar graph. Unlocated members use deterministic rows within each source-qualified group, allocating room by member count rather than compressing every group into a fixed-radius cluster. All members and relationships remain present; this screen-space arrangement creates no geographic position or identity.
