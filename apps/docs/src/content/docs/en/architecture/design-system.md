@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: bbea324fcb5852de25dd98a79e9b671d050b4f80
+lastReviewedCommit: bbcd5a6e1f3574ec8b7efaa7480778b4f52eaaf6
 ---
 
 ## Design direction
@@ -199,3 +199,5 @@ Node color and shape encode type families, edge colors encode predicate families
 Group captions avoid each other within the available canvas and use neutral, arrowless leaders to their original groups. When space is insufficient, only captions are omitted and the displayed caption count is disclosed; complete groups and members remain accessible through keyboard lists. Caption placement never changes business objects, relationships or spatial coordinates.
 
 Spatial anchors retain the same node families, shapes, predicate colors, pending dashes and arrowless identity matches as the planar graph. Unlocated members use deterministic rows within each source-qualified group, allocating room by member count rather than compressing every group into a fixed-radius cluster. All members and relationships remain present; this screen-space arrangement creates no geographic position or identity.
+
+Locating a spatial graph object fits its full line, area or multi-part extent within the unobscured map region. Only zero-extent geometry uses point focus. Display centers remain label connectors; named places without an exact permitted geometry binding retain their existing relations without invented coordinates.

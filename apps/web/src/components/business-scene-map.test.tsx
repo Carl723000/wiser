@@ -15,7 +15,17 @@ import type { BusinessScene } from '@/lib/business-scene';
 import type { RelationAssertion } from '@wiser/data-contracts';
 const probe = vi.hoisted(() => ({
   load: null as null | (() => void),
-  fit: vi.fn(),
+  fit: vi.fn<
+    (
+      bounds: [[number, number], [number, number]],
+      options: {
+        padding:
+          number | { left: number; right: number; top: number; bottom: number };
+        duration: number;
+        maxZoom: number;
+      },
+    ) => void
+  >(),
   jump: vi.fn(),
   move: null as null | (() => void),
 }));
@@ -550,14 +560,15 @@ it.each([
       ).toBe('1'),
     );
     probe.fit.mockClear();
-    fireEvent.click(
-      screen.getByRole('button', { name: '定位所选对象', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: '定位所选对象' }));
     expect(probe.jump).not.toHaveBeenCalled();
     expect(probe.fit).toHaveBeenCalledOnce();
     const [bounds, options] = probe.fit.mock.calls[0];
     expect(bounds[1][0] - bounds[0][0]).toBeGreaterThan(1.9);
     expect(bounds[1][1] - bounds[0][1]).toBeGreaterThan(0.9);
+    expect(typeof options.padding).toBe('object');
+    if (typeof options.padding !== 'object')
+      throw Error('Expected asymmetric map padding');
     expect(options.padding.right).toBeGreaterThan(options.padding.left);
     expect(options.duration).toBe(0);
   },

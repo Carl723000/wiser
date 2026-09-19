@@ -1,3 +1,4 @@
+import { ExplorationResultSchema } from '@wiser/data-contracts';
 import { expect, test } from '@playwright/test';
 import { loadLiveCredentials } from './support/live-fixture';
 const credentials = loadLiveCredentials();
@@ -315,6 +316,20 @@ test('retains real public spatial anchors and unlocated evidence across presenta
           .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
       ),
   ).toEqual(originalFamilies);
+  await spatial
+    .locator('[data-anchored="true"]')
+    .first()
+    .locator('polygon, circle, rect')
+    .last()
+    .click();
+  await expect(
+    page.getByRole('button', { name: '定位所选对象', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '定位所选对象', exact: true }).click();
+  await expect(spatial).toHaveAttribute(
+    'data-anchor-count',
+    String(anchorCount),
+  );
   await spatial.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath('real-spatial-anchors.png'),
@@ -362,7 +377,9 @@ test('applies a real public monthly period consistently across graph, records, m
       request.method() !== 'POST'
     )
       return false;
-    const body = request.postDataJSON();
+    const body = request.postDataJSON() as {
+      spec?: { businessQuery?: { filters?: { from?: string } } };
+    };
     return body.spec?.businessQuery?.filters?.from === '2019-06-01';
   });
   await page
@@ -370,7 +387,7 @@ test('applies a real public monthly period consistently across graph, records, m
     .click();
   const response = await applied;
   expect(response.status()).toBe(200);
-  const result = await response.json();
+  const result = ExplorationResultSchema.parse(await response.json());
   const expectedFilters = {
     kind: 'ALL',
     timeRole: 'OBSERVATION_TIME',
@@ -378,8 +395,8 @@ test('applies a real public monthly period consistently across graph, records, m
     to: '2019-06-30',
     includeUndated: false,
   };
-  expect(result.spec.businessQuery.filters).toEqual(expectedFilters);
-  const queryId = result.queryId as string;
+  expect(result.spec.businessQuery?.filters).toEqual(expectedFilters);
+  const queryId = result.queryId;
   await expect(page.getByTestId('business-scene')).toBeVisible({
     timeout: 60000,
   });
@@ -395,15 +412,18 @@ test('applies a real public monthly period consistently across graph, records, m
         response.request().method() !== 'POST'
       )
         return false;
-      const body = response.request().postDataJSON();
+      const body = response.request().postDataJSON() as {
+        queryId?: string;
+        view?: string;
+      };
       return body.queryId === queryId && body.view === view;
     });
     await page.locator('#explorer-tab-' + view).click();
     const response = await requested;
     expect(response.status()).toBe(200);
-    const linked = await response.json();
+    const linked = ExplorationResultSchema.parse(await response.json());
     expect(linked.queryId).toBe(queryId);
-    expect(linked.spec.businessQuery.filters).toEqual(expectedFilters);
+    expect(linked.spec.businessQuery?.filters).toEqual(expectedFilters);
   }
   await page.locator('#explorer-tab-graph').click();
   await page.reload();

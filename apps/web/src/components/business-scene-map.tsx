@@ -280,11 +280,37 @@ export function BusinessSceneMap({
           disabled={!selectedId || !anchors.has(selectedId)}
           onClick={() => {
             const a = anchors.get(selectedId!);
-            if (a)
+            if (!a) return;
+            const extent = businessMapBounds({
+              type: 'FeatureCollection',
+              features: [a.feature],
+            });
+            if (
+              extent &&
+              (extent[0] !== extent[2] || extent[1] !== extent[3])
+            ) {
+              map.current?.fitBounds(
+                [
+                  [extent[0], extent[1]],
+                  [extent[2], extent[3]],
+                ],
+                {
+                  padding: {
+                    left: 35,
+                    right: Math.round(width * 0.45),
+                    top: 60,
+                    bottom: 60,
+                  },
+                  maxZoom: 11,
+                  duration: 0,
+                },
+              );
+            } else {
               map.current?.jumpTo({
                 center: a.labelPoint,
                 zoom: Math.max(map.current.getZoom(), 10),
               });
+            }
           }}
         >
           {copy.locate}
