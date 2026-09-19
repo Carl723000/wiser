@@ -499,10 +499,13 @@ it('steps a calendar period as a draft and only applies the shared condition exp
   );
   expect(onApply).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '应用到所有视图' }));
-  expect(onApply).toHaveBeenCalledWith({
-    ...dated,
-    filters: { ...dated.filters, from: '2024-02-01', to: '2024-02-29' },
-  });
+  expect(onApply).toHaveBeenCalledWith(
+    {
+      ...dated,
+      filters: { ...dated.filters, from: '2024-02-01', to: '2024-02-29' },
+    },
+    'month',
+  );
 });
 
 it('restores the newly applied query dates instead of reusing a previous draft', async () => {

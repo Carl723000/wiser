@@ -453,4 +453,56 @@ test('applies a real public monthly period consistently across graph, records, m
   expect(
     await page.getByTestId('data-explorer').getAttribute('data-query-id'),
   ).toBe(queryId);
+  await page
+    .getByRole('combobox', { name: '浏览时段', exact: true })
+    .selectOption('year');
+  await page.getByRole('button', { name: '选中完整时段', exact: true }).click();
+  const annual = page.waitForResponse((response) => {
+    if (
+      !response.url().endsWith('/api/data-foundation/explore') ||
+      response.request().method() !== 'POST'
+    )
+      return false;
+    const body = response.request().postDataJSON() as {
+      spec?: { businessQuery?: { filters?: { to?: string } } };
+    };
+    return body.spec?.businessQuery?.filters?.to === '2019-12-31';
+  });
+  await page
+    .getByRole('button', { name: '应用到所有视图', exact: true })
+    .click();
+  const annualResponse = await annual;
+  expect(annualResponse.status()).toBe(200);
+  const annualResult = ExplorationResultSchema.parse(
+    await annualResponse.json(),
+  );
+  expect(annualResult.spec.businessQuery?.filters).toEqual({
+    ...expectedFilters,
+    from: '2019-01-01',
+    to: '2019-12-31',
+  });
+  await expect(page.getByTestId('business-scene')).toBeVisible({
+    timeout: 60000,
+  });
+  await page.reload();
+  await expect(page.getByTestId('business-scene')).toBeVisible({
+    timeout: 60000,
+  });
+  await page
+    .locator('summary')
+    .filter({ hasText: '图谱、表格和地图共用的业务时段' })
+    .click();
+  await expect(
+    page.getByRole('combobox', { name: '浏览时段', exact: true }),
+  ).toHaveValue('year');
+  await page.getByRole('button', { name: '下一时段', exact: true }).click();
+  await expect(page.getByLabel('筛选开始日期', { exact: true })).toHaveValue(
+    '2020-01-01',
+  );
+  await expect(page.getByLabel('筛选结束日期', { exact: true })).toHaveValue(
+    '2020-12-31',
+  );
+  expect(
+    await page.getByTestId('data-explorer').getAttribute('data-query-id'),
+  ).toBe(annualResult.queryId);
 });

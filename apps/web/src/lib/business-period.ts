@@ -37,3 +37,18 @@ export function businessPeriod(
         to: `${y}-${m}-${lastDay(targetYear, targetMonth)}`,
       };
 }
+
+/** Presentation preference only; this never changes the source or query time precision. */
+export function readBusinessPeriodUnit(
+  search: Pick<URLSearchParams, 'getAll'>,
+): BusinessPeriodUnit {
+  const values = search.getAll('businessPeriodUnit');
+  return values.length === 1 && values[0] === 'year' ? 'year' : 'month';
+}
+export function writeBusinessPeriodUnit(
+  params: URLSearchParams,
+  unit: BusinessPeriodUnit,
+) {
+  params.delete('businessPeriodUnit');
+  if (unit === 'year') params.set('businessPeriodUnit', unit);
+}

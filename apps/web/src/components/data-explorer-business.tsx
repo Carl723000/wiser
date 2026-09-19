@@ -8,7 +8,12 @@ import {
   type BusinessQuery,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
-import { businessPeriod, type BusinessPeriodUnit } from '@/lib/business-period';
+import {
+  businessPeriod,
+  readBusinessPeriodUnit,
+  writeBusinessPeriodUnit,
+  type BusinessPeriodUnit,
+} from '@/lib/business-period';
 import { businessGraphRows, businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 import {
@@ -50,7 +55,10 @@ export function DataExplorerBusiness({
   readonly scope: BusinessQuery;
   readonly locale: Locale;
   readonly onInvalidated: InvalidateExploration;
-  readonly onApply: (scope: BusinessQuery) => void;
+  readonly onApply: (
+    scope: BusinessQuery,
+    periodUnit: BusinessPeriodUnit,
+  ) => void;
 }) {
   const copy = getDictionary(locale).knowledgeRelations;
   const search = useSearchParams(),
@@ -87,7 +95,10 @@ export function DataExplorerBusiness({
   };
   const edgeRow = rows.find((r) => r.assertionId === selectedEdge);
   const [draft, setDraft] = useState(scope.filters);
-  const [periodUnit, setPeriodUnit] = useState<BusinessPeriodUnit>('month');
+  const urlPeriodUnit = readBusinessPeriodUnit(search);
+  const [periodUnit, setPeriodUnit] =
+    useState<BusinessPeriodUnit>(urlPeriodUnit);
+  useEffect(() => setPeriodUnit(urlPeriodUnit), [urlPeriodUnit]);
   useEffect(() => {
     setDraft(scope.filters);
   }, [scope.filters]);
@@ -338,7 +349,7 @@ export function DataExplorerBusiness({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            onApply({ ...scope, filters: draft });
+            onApply({ ...scope, filters: draft }, periodUnit);
           }}
         >
           <fieldset className={businessStyles.timeFilters}>
@@ -386,9 +397,17 @@ export function DataExplorerBusiness({
               {copy.periodUnit}
               <select
                 value={periodUnit}
-                onChange={(event) =>
-                  setPeriodUnit(event.target.value as BusinessPeriodUnit)
-                }
+                onChange={(event) => {
+                  const unit = event.target.value as BusinessPeriodUnit;
+                  setPeriodUnit(unit);
+                  const params = new URLSearchParams(window.location.search);
+                  writeBusinessPeriodUnit(params, unit);
+                  window.history.replaceState(
+                    window.history.state,
+                    '',
+                    pathname + '?' + params.toString(),
+                  );
+                }}
               >
                 <option value="month">{copy.periodMonth}</option>
                 <option value="year">{copy.periodYear}</option>

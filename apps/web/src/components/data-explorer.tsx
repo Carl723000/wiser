@@ -19,6 +19,10 @@ import { DataExplorerSaved } from './data-explorer-saved';
 import { ExplorationViewContext } from './exploration-view-context';
 import { createExplorationViewState } from '@/lib/exploration-view-state';
 import { withBusinessFocus } from '@/lib/exploration-business-focus';
+import {
+  writeBusinessPeriodUnit,
+  type BusinessPeriodUnit,
+} from '@/lib/business-period';
 import { invalidatesExploration } from '@/lib/exploration-request';
 import {
   explorationHref,
@@ -376,6 +380,7 @@ function DataExplorerSession({
     restoreView?: ExplorationView,
     historyAction?: 'pushState' | 'replaceState',
     restoreFocus?: RecordFocus,
+    calendarUnit?: BusinessPeriodUnit,
   ) {
     pending.current?.abort();
     const controller = new AbortController();
@@ -453,14 +458,20 @@ function DataExplorerSession({
       const method =
         historyAction ??
         (reset && restoreView === undefined ? 'pushState' : 'replaceState');
-      window.history[method](
-        window.history.state,
-        '',
+      const nextHref = new URL(
         queryHref(
           next.queryId,
           restoreView ?? (reset ? 'resources' : view),
           !reset || !!restoreFocus,
         ),
+        window.location.origin,
+      );
+      if (calendarUnit !== undefined)
+        writeBusinessPeriodUnit(nextHref.searchParams, calendarUnit);
+      window.history[method](
+        window.history.state,
+        '',
+        nextHref.pathname + nextHref.search,
       );
     } catch {
       if (!controller.signal.aborted) setFailure('unavailable');
@@ -1107,7 +1118,7 @@ function DataExplorerSession({
                 scope={result.spec.businessQuery}
                 locale={locale}
                 onInvalidated={invalidate}
-                onApply={(businessQuery) => {
+                onApply={(businessQuery, periodUnit) => {
                   void query(
                     {
                       spec: { ...result.spec, businessQuery },
@@ -1117,6 +1128,9 @@ function DataExplorerSession({
                     0,
                     true,
                     'graph',
+                    undefined,
+                    undefined,
+                    periodUnit,
                   );
                 }}
               />

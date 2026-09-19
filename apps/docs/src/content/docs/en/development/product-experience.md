@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: eb9e9ef31109cb63c926909664ab50f2a8db1bb6
+lastReviewedCommit: 81e6fc3
 ---
 
 ## What this guide governs
@@ -254,3 +254,5 @@ Selecting a relation explains its controlled predicate before displaying context
 Business graph panning retains rendered nodes, edges and keyboard lists and translates the viewport. Zoom, focus and grouping still update the original members. Overlap hit testing compensates for the translated camera; performance must be measured on the same real case and browser rather than improved by dropping members.
 
 The Data homepage lists authorized saved topics with a title filter scoped only to that bounded list (up to 100). It does not claim a complete project panorama or source-content search. Opening reuses saved-view reauthorization; refresh failure, revoked entries and late responses cannot retain a previous topic list. Identical titles include visibility and creation time, and clearing the filter restores input focus. This entry changes neither query contracts nor existing saved configurations.
+
+Calendar stepping remembers an explicit year/month choice in bounded URL presentation state. Applying business dates carries only that choice into the new query; ordinary unrelated queries do not inherit it. Tabs and refresh retain it within the same query. Changing the step never changes the applied bounds until Apply and does not change sampling frequency. Invalid or repeated unit parameters fall back to month.
