@@ -130,7 +130,10 @@ it('discovers the CI browser suite without private case URLs', () => {
       'exploration-workspace.case.ts',
     ])
       expect(cases.stdout).toContain(name);
-    expect(cases.stdout).toContain('Total: 6 tests in 4 files');
+    expect(cases.stdout).toContain(
+      'retains real public spatial anchors and unlocated evidence across presentation changes',
+    );
+    expect(cases.stdout).toContain('Total: 7 tests in 4 files');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

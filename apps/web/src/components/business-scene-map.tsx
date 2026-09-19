@@ -82,6 +82,7 @@ export function BusinessSceneMap({
     setFailed(false);
     fitted.current = false;
     const request = async (after?: string) => {
+      controller.signal.throwIfAborted();
       const response = await fetch('/api/data-foundation/explore', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -94,12 +95,15 @@ export function BusinessSceneMap({
         signal: controller.signal,
         cache: 'no-store',
       });
+      controller.signal.throwIfAborted();
       if (!response.ok) {
         if (invalidatesExploration(response.status))
           onInvalidated(queryId, response.status);
         throw Error('Unavailable');
       }
-      const value = ExplorationResultSchema.parse(await response.json());
+      const body: unknown = await response.json();
+      controller.signal.throwIfAborted();
+      const value = ExplorationResultSchema.parse(body);
       if (value.queryId !== queryId || value.view !== 'map')
         throw Error('Wrong scope');
       return value;

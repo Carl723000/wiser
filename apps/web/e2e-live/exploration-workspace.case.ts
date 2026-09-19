@@ -230,3 +230,79 @@ test('measures the real saved graph and preserves identities through full screen
   });
   console.log(JSON.stringify(report));
 });
+
+test('retains real public spatial anchors and unlocated evidence across presentation changes', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(180000);
+  const saved = process.env['WISER_WEB_LIVE_SAVED_VIEW'];
+  const expected = Number(process.env['WISER_WEB_LIVE_RELATION_COUNT']);
+  if (!saved || !Number.isSafeInteger(expected) || expected < 1)
+    throw Error('Supply a verified public saved case and relation count');
+  await page.goto(
+    '/zh-CN/login?next=' +
+      encodeURIComponent('/zh-CN/data-foundation/explore?saved=' + saved),
+  );
+  await page.getByLabel('邮箱').fill(credentials.email);
+  await page.getByLabel('密码').fill(credentials.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  const graph = page.getByTestId('business-scene');
+  await expect(graph).toHaveAttribute('data-edge-count', String(expected), {
+    timeout: 90000,
+  });
+  const originalIds = await graph
+    .locator('[data-node-id]')
+    .evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute('data-node-id')).sort(),
+    );
+  await page.getByRole('button', { name: '空间锚点', exact: true }).click();
+  const spatial = page.getByTestId('business-spatial-scene');
+  await expect(spatial).toHaveAttribute('data-state', 'ready', {
+    timeout: 45000,
+  });
+  const anchorCount = Number(await spatial.getAttribute('data-anchor-count'));
+  console.log(
+    JSON.stringify({
+      nodes: originalIds.length,
+      anchors: anchorCount,
+      relations: expected,
+    }),
+  );
+  await testInfo.attach('spatial-source-counts', {
+    body: JSON.stringify({
+      nodes: originalIds.length,
+      anchors: anchorCount,
+      relations: expected,
+    }),
+    contentType: 'application/json',
+  });
+  expect(anchorCount).toBeGreaterThan(0);
+  await expect(page.getByTestId('amap-basemap')).toHaveAttribute(
+    'data-state',
+    'ready',
+    { timeout: 35000 },
+  );
+  expect(
+    await spatial
+      .locator('[data-node-id]')
+      .evaluateAll((nodes) =>
+        nodes.map((n) => n.getAttribute('data-node-id')).sort(),
+      ),
+  ).toEqual(originalIds);
+  expect(
+    await spatial.locator('[data-anchored="false"]').count(),
+  ).toBeGreaterThan(0);
+  expect(await spatial.locator('[data-edge-id]').count()).toBe(expected);
+  await spatial.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath('real-spatial-anchors.png'),
+  });
+  await page.getByRole('button', { name: '平面图谱', exact: true }).click();
+  expect(
+    await graph
+      .locator('[data-node-id]')
+      .evaluateAll((nodes) =>
+        nodes.map((n) => n.getAttribute('data-node-id')).sort(),
+      ),
+  ).toEqual(originalIds);
+});

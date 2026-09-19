@@ -227,6 +227,7 @@ it('ignores a late denial from an abandoned query while retaining the current ge
   );
   await act(async () => {
     finishOld(new Response('', { status: 403 }));
+    await Promise.resolve();
   });
   expect(props.onInvalidated).not.toHaveBeenCalled();
   expect(screen.getByTestId('business-spatial-scene').dataset.state).toBe(
@@ -255,6 +256,7 @@ it('does not dispatch continuation pages after unmount while an earlier body is 
   view.unmount();
   await act(async () => {
     finishBody({ ...page, totalCount: 2, nextCursor: 'next' });
+    await Promise.resolve();
   });
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(props.onInvalidated).not.toHaveBeenCalled();
@@ -288,6 +290,7 @@ it('never exposes partial geometry when a continuation page fails and recovers t
   );
   await act(async () => {
     finishNext(new Response('', { status: 503 }));
+    await Promise.resolve();
   });
   await screen.findByRole('alert');
   expect(
@@ -302,4 +305,79 @@ it('never exposes partial geometry when a continuation page fails and recovers t
       screen.getByTestId('business-spatial-scene').dataset.anchorCount,
     ).toBe('1'),
   );
+});
+
+it('clears already displayed geometry while a replacement query is pending and then denied', async () => {
+  let finish!: (response: Response) => void;
+  const currentId = '20000000-0000-4000-8000-000000000001';
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json(page))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      ),
+  );
+  const view = render(<BusinessSceneMap {...props} />);
+  act(() => probe.load?.());
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1'),
+  );
+  expect(
+    screen
+      .getByTestId('business-spatial-scene')
+      .querySelectorAll('[data-node-id]'),
+  ).toHaveLength(2);
+  view.rerender(<BusinessSceneMap {...props} queryId={currentId} />);
+  expect(screen.getByTestId('business-spatial-scene').dataset.anchorCount).toBe(
+    '0',
+  );
+  expect(
+    screen
+      .getByTestId('business-spatial-scene')
+      .querySelectorAll('[data-node-id]'),
+  ).toHaveLength(0);
+  await act(async () => {
+    finish(new Response('', { status: 403 }));
+    await Promise.resolve();
+  });
+  await screen.findByRole('alert');
+  expect(props.onInvalidated).toHaveBeenCalledWith(currentId, 403);
+  expect(screen.getByTestId('business-spatial-scene').dataset.anchorCount).toBe(
+    '0',
+  );
+});
+
+it('aborts a pending continuation page and discards its late body without requesting a third page', async () => {
+  let finish!: (response: Response) => void;
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({ ...page, totalCount: 3, nextCursor: 'second' }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+  vi.stubGlobal('fetch', fetch);
+  const view = render(<BusinessSceneMap {...props} />);
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  const signal = fetch.mock.calls[1][1]?.signal;
+  expect(signal).toBe(fetch.mock.calls[0][1]?.signal);
+  view.unmount();
+  expect(signal?.aborted).toBe(true);
+  await act(async () => {
+    finish(Response.json({ ...page, totalCount: 3, nextCursor: 'third' }));
+    await Promise.resolve();
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(props.onInvalidated).not.toHaveBeenCalled();
 });
