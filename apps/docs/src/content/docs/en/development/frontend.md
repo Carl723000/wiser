@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-19
-lastReviewedCommit: 882539145ebb2f1a973355bbc2aeef9d9ea99b18
+lastReviewedCommit: eb95129a9024d245021c4c12d9125dee116c6371
 ---
 
 ## Two frontend applications

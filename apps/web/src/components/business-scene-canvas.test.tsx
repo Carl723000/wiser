@@ -55,9 +55,73 @@ const props = {
   onInvalidated: vi.fn(),
 };
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+});
+it('keeps a new preset and the current camera when a delayed zoom write is pending', () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('ResizeObserver', Resize);
+  render(<BusinessSceneCanvas {...props} />);
+  fireEvent.wheel(screen.getByRole('img', { name: '平面图谱' }), {
+    deltaY: -100,
+    clientX: 200,
+    clientY: 200,
+  });
+  fireEvent.click(screen.getByRole('button', { name: '流畅优先' }));
+  act(() => vi.advanceTimersByTime(200));
+  expect(props.onSettings).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      style: 'smooth',
+      zoom: Math.exp(0.5),
+    }),
+  );
+});
+it('anchors wheel zoom to the cursor including the layer inset', () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('ResizeObserver', Resize);
+  render(
+    <BusinessSceneCanvas
+      {...props}
+      settings={{ ...defaultSceneView, form: 'layers' }}
+    />,
+  );
+  fireEvent.wheel(screen.getByRole('img', { name: '立体分层' }), {
+    deltaY: -100,
+    clientX: 200,
+    clientY: 200,
+  });
+  act(() => vi.advanceTimersByTime(200));
+  const next = props.onSettings.mock.lastCall![0];
+  expect(next.panX).toBeCloseTo((200 - 1100 / 2 - 70) * (1 - Math.exp(0.5)));
+});
+it('does not fill camera history with a click that never moves the view', () => {
+  vi.stubGlobal('ResizeObserver', Resize);
+  render(<BusinessSceneCanvas {...props} />);
+  const graph = screen.getByRole('img', { name: '平面图谱' });
+  fireEvent.pointerDown(graph, { pointerId: 1, clientX: 200, clientY: 200 });
+  fireEvent.pointerUp(graph, { pointerId: 1, clientX: 200, clientY: 200 });
+  fireEvent.wheel(graph, { deltaY: -100, clientX: 200, clientY: 200 });
+  fireEvent.click(screen.getByRole('button', { name: '上一步视野' }));
+  expect(
+    (screen.getByRole('button', { name: '上一步视野' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+});
+it('keeps directed arrow tips outside the selected target glyph', () => {
+  vi.stubGlobal('ResizeObserver', Resize);
+  render(<BusinessSceneCanvas {...props} selectedId="b" />);
+  const edge = screen
+    .getByTestId('business-scene')
+    .querySelector('[data-edge-id="ab"]')!;
+  const line = edge.querySelector('[data-relation-line]')!;
+  const hit = edge.querySelector('line[stroke="transparent"]')!;
+  const inset = Math.hypot(
+    Number(line.getAttribute('x2')) - Number(hit.getAttribute('x2')),
+    Number(line.getAttribute('y2')) - Number(hit.getAttribute('y2')),
+  );
+  expect(inset).toBeGreaterThanOrEqual(10);
 });
 it('keeps every relation visible while focusing one edge, and the evidence list selects the exact assertion', () => {
   vi.stubGlobal('ResizeObserver', Resize);
