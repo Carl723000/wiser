@@ -439,3 +439,30 @@ it('defaults to all relations and retains the complete network while inspecting 
   view.rerender(<DataExplorerBusiness {...props} />);
   expect(nodes()).toHaveLength(3);
 });
+
+it('hides prior-query relationships while the replacement loads and recovers from an earlier failure', async () => {
+  let release!: (response: Response) => void;
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ items: [row], totalCount: 1 }))
+    .mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(new Response('', { status: 503 }))
+    .mockResolvedValueOnce(Response.json({ items: [row], totalCount: 1 }));
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '政策' });
+  view.rerender(<DataExplorerBusiness {...props} queryId="replacement" />);
+  expect(screen.queryByRole('button', { name: '政策' })).toBeNull();
+  release(Response.json({ items: [], totalCount: 0 }));
+  await screen.findByText(/已加载的关系中没有匹配项/);
+  view.rerender(<DataExplorerBusiness {...props} queryId="failed" />);
+  await screen.findByRole('alert');
+  view.rerender(<DataExplorerBusiness {...props} queryId="recovered" />);
+  await screen.findByRole('button', { name: '政策' });
+  expect(screen.queryByRole('alert')).toBeNull();
+});

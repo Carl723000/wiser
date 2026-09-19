@@ -15,8 +15,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: 5e30f7f2f342f16c958938d6778cbcc8960bdffb
+lastReviewedAt: 2026-09-19
+lastReviewedCommit: dd22bfe4412fa9a55a4f9db8352d0550fe167696
 ---
 
 ## 这份文档约束什么
