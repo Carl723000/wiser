@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 7d05949b658f6c92978f0277a657807fe484e32f
+lastReviewedCommit: 9ef75964fa2c1d7d2f734cd6520c56d0b53f1cec
 ---
 
 ## What this guide governs
@@ -272,3 +272,5 @@ Business graph pagination checks cancellation after both the response and decode
 Spatial reading offers a separate related-reference-extent action. It follows only loaded, authorized source-reference mentions and spatial identity-candidate links, at most two edges, and fits their existing geometries without assigning coordinates to the selected source. Rejected/correction-required links, observations, same-name guesses and unavailable geometries do not provide this action. Multiple linked areas remain visible together; a reference extent is not a precise source location or historical boundary. The action preserves selection, query, review status and geometry counts.
 
 The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
+
+Evidence-path reading retains the explicitly chosen assertion IDs and versions until a new search. A changed or unavailable path clears its graph and excerpts and asks the reader to search again; it never substitutes an alternative or newly shorter route silently. Missing endpoints disable search. Evidence is read only from the current authorized relation rows, not retained in path state.

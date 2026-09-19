@@ -289,6 +289,8 @@ const zhCN = {
     businessPathFind: '显示联系路径',
     businessPathMissing:
       '当前范围内未找到八步以内的连接。可调整起终点；这不表示现实中没有联系。',
+    businessPathChanged:
+      '原路径中的关系已变化或不再可用，旧路径已清除。请核对起终点并重新查找；不会自动替换原文依据。',
     businessPathCount: '路径关系数：',
     businessPathReverse: '阅读此步时逆向沿边查找；上方仍是原关系的方向。',
     businessSelectedObject: '当前对象',
@@ -2563,6 +2565,8 @@ const en: typeof zhCN = {
     businessPathFind: 'Show connection path',
     businessPathMissing:
       'No connection within eight edges in this scope. Try other endpoints; this does not establish that no real-world connection exists.',
+    businessPathChanged:
+      'Relations in the previous path changed or became unavailable. The old path was cleared. Search again after checking the endpoints; evidence is never replaced automatically.',
     businessPathCount: 'Path edges: ',
     businessPathReverse:
       'This step is read against the edge; the statement above retains its original direction.',
