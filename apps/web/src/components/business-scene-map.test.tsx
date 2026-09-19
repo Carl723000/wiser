@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { BusinessSceneMap } from './business-scene-map';
 import { defaultSceneView } from '@/lib/business-scene-view';
 import type { BusinessScene } from '@/lib/business-scene';
+import type { RelationAssertion } from '@wiser/data-contracts';
 const probe = vi.hoisted(() => ({
   load: null as null | (() => void),
   fit: vi.fn(),
@@ -380,4 +381,109 @@ it('aborts a pending continuation page and discards its late body without reques
   });
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(props.onInvalidated).not.toHaveBeenCalled();
+});
+
+it('retains predicate colors, pending dashes and arrowless identity across the spatial presentation', async () => {
+  const relation = (
+    predicate: 'IDENTITY_MATCH' | 'ABOUT_ENTITY',
+    status: 'PENDING_REVIEW' | 'APPROVED',
+  ) => ({
+    id: predicate,
+    from: 'bound',
+    to: 'unlocated',
+    row: {
+      status,
+      candidate: {
+        predicate,
+        subject: { label: '影像覆盖范围' },
+        object: { label: '同名地点' },
+      },
+    } as RelationAssertion,
+  });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+  render(
+    <BusinessSceneMap
+      {...props}
+      scene={{
+        ...scene,
+        edges: [
+          relation('IDENTITY_MATCH', 'PENDING_REVIEW'),
+          relation('ABOUT_ENTITY', 'APPROVED'),
+        ],
+      }}
+    />,
+  );
+  act(() => probe.load?.());
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1'),
+  );
+  const root = screen.getByTestId('business-spatial-scene');
+  const identity = root.querySelector(
+    '[data-edge-id="IDENTITY_MATCH"] [data-relation-line]',
+  );
+  expect(identity?.getAttribute('stroke')).toBe('var(--scene-identity)');
+  expect(identity?.getAttribute('stroke-dasharray')).toBe('5 3');
+  expect(identity?.hasAttribute('marker-end')).toBe(false);
+  const context = root.querySelector(
+    '[data-edge-id="ABOUT_ENTITY"] [data-relation-line]',
+  );
+  expect(context?.getAttribute('stroke')).toBe('var(--scene-context)');
+  expect(context?.hasAttribute('stroke-dasharray')).toBe(false);
+  expect(context?.getAttribute('marker-end')).toContain('-context)');
+  expect(
+    root.querySelector('[data-node-id="bound"]')?.getAttribute('data-family'),
+  ).toBe('asset');
+  expect(root.querySelector('[data-node-id="bound"] rect')).not.toBeNull();
+  expect(
+    root
+      .querySelector('[data-node-id="unlocated"] circle')
+      ?.getAttribute('fill'),
+  ).toBe('var(--scene-water)');
+});
+
+it('uses available space for large unlocated groups without collapsing members or overlapping their symbols', async () => {
+  const nodes = Array.from({ length: 600 }, (_, i) => ({
+    ...scene.nodes[1],
+    id: String(i),
+    group: i < 450 ? 'PLACE' : 'BASIN',
+  }));
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ...page, totalCount: 0, features: [] }),
+      ),
+  );
+  render(<BusinessSceneMap {...props} scene={{ nodes, edges: [] }} />);
+  act(() => probe.load?.());
+  await waitFor(() =>
+    expect(screen.getByTestId('business-spatial-scene').dataset.state).toBe(
+      'ready',
+    ),
+  );
+  const circles = [
+    ...screen
+      .getByTestId('business-spatial-scene')
+      .querySelectorAll('[data-node-id] circle'),
+  ];
+  expect(circles).toHaveLength(600);
+  for (const [i, circle] of circles.entries()) {
+    const x = Number(circle.getAttribute('cx')),
+      y = Number(circle.getAttribute('cy'));
+    expect(x).toBeGreaterThan(570);
+    expect(x).toBeLessThan(1000);
+    expect(y).toBeGreaterThan(35);
+    expect(y).toBeLessThan(640);
+    for (const other of circles.slice(i + 1)) {
+      expect(
+        Math.hypot(
+          x - Number(other.getAttribute('cx')),
+          y - Number(other.getAttribute('cy')),
+        ),
+      ).toBeGreaterThan(6);
+    }
+  }
 });
