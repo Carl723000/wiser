@@ -2,6 +2,7 @@
 import {
   useEffect,
   useMemo,
+  useCallback,
   useRef,
   useState,
   useId,
@@ -177,14 +178,20 @@ export function BusinessSceneCanvas({
       y: (minY + maxY) / 2,
     };
   }, [projected, planes, width]);
-  const screenPoint = ([x, y]: [number, number]): [number, number] => [
-    (x - fit.x) * fit.scale * camera.zoom +
-      width / 2 +
-      (settings.form === 'layers' ? 70 : 0) +
-      camera.panX,
-    (y - fit.y) * fit.scale * camera.zoom + height / 2 + camera.panY,
-  ];
-  const points = new Map([...projected].map(([id, p]) => [id, screenPoint(p)]));
+  const screenPoint = useCallback(
+    ([x, y]: [number, number]): [number, number] => [
+      (x - fit.x) * fit.scale * camera.zoom +
+        width / 2 +
+        (settings.form === 'layers' ? 70 : 0),
+      (y - fit.y) * fit.scale * camera.zoom + height / 2,
+    ],
+    [fit, camera.zoom, width, settings.form],
+  );
+  // A pan translates the retained drawing; it does not move or recreate its members.
+  const points = useMemo(
+    () => new Map([...projected].map(([id, p]) => [id, screenPoint(p)])),
+    [projected, screenPoint],
+  );
   const focus = useMemo(() => {
     if (group || (selectedKind && !selectedId && !selectedEdge && !hover)) {
       const members = new Set(
@@ -217,18 +224,21 @@ export function BusinessSceneCanvas({
     layout.groups,
   ]);
   const focused = focus.nodes.size > 0;
-  const labelNodes = scene.nodes.filter(
-    (n) => camera.zoom >= 1.4 || focus.nodes.has(n.id),
-  );
-  const visible = visibleGraphLabels(
-    labelNodes.map((n) => ({
-      id: n.id,
-      x: points.get(n.id)![0],
-      y: points.get(n.id)![1],
-      preferred: focus.nodes.has(n.id),
-    })),
-    1,
-    hover?.node ?? selectedId,
+  const visible = useMemo(
+    () =>
+      visibleGraphLabels(
+        scene.nodes
+          .filter((n) => camera.zoom >= 1.4 || focus.nodes.has(n.id))
+          .map((n) => ({
+            id: n.id,
+            x: points.get(n.id)![0],
+            y: points.get(n.id)![1],
+            preferred: focus.nodes.has(n.id),
+          })),
+        1,
+        hover?.node ?? selectedId,
+      ),
+    [scene.nodes, camera.zoom, focus.nodes, points, hover?.node, selectedId],
   );
   const commit = (next: typeof camera, delay = false) => {
     setCamera(next);
@@ -264,42 +274,62 @@ export function BusinessSceneCanvas({
     element.addEventListener('wheel', listener, { passive: false });
     return () => element.removeEventListener('wheel', listener);
   }, [settings.form]);
-  const selectNode = (id: string) => {
-    if (dragged.current) return;
-    setGroup(null);
-    setEdgeCandidates([]);
-    if (timer.current) clearTimeout(timer.current);
-    onSelect(id);
-  };
-  const selectEdge = (id: string) => {
-    if (dragged.current) return;
-    setGroup(null);
-    setEdgeCandidates([]);
-    if (timer.current) clearTimeout(timer.current);
-    onEdge(id);
-  };
-  const matchedNodes = scene.nodes.filter((n) =>
-    n.label
-      .toLocaleLowerCase(locale)
-      .includes(search.toLocaleLowerCase(locale)),
+  const selectNode = useCallback(
+    (id: string) => {
+      if (dragged.current) return;
+      setGroup(null);
+      setEdgeCandidates([]);
+      if (timer.current) clearTimeout(timer.current);
+      onSelect(id);
+    },
+    [onSelect],
   );
-  const matchedEdges = scene.edges.filter(
-    (e) =>
-      (!focused || focus.edges.has(e.id)) &&
-      `${e.row.candidate.subject.label} ${dictionary.predicates[e.row.candidate.predicate]} ${e.row.candidate.object.label}`
-        .toLocaleLowerCase(locale)
-        .includes(search.toLocaleLowerCase(locale)),
+  const selectEdge = useCallback(
+    (id: string) => {
+      if (dragged.current) return;
+      setGroup(null);
+      setEdgeCandidates([]);
+      if (timer.current) clearTimeout(timer.current);
+      onEdge(id);
+    },
+    [onEdge],
+  );
+  const matchedNodes = useMemo(
+    () =>
+      scene.nodes.filter((n) =>
+        n.label
+          .toLocaleLowerCase(locale)
+          .includes(search.toLocaleLowerCase(locale)),
+      ),
+    [scene.nodes, search, locale],
+  );
+  const matchedEdges = useMemo(
+    () =>
+      scene.edges.filter(
+        (e) =>
+          (!focused || focus.edges.has(e.id)) &&
+          `${e.row.candidate.subject.label} ${dictionary.predicates[e.row.candidate.predicate]} ${e.row.candidate.object.label}`
+            .toLocaleLowerCase(locale)
+            .includes(search.toLocaleLowerCase(locale)),
+      ),
+    [scene.edges, focused, focus.edges, search, locale, dictionary.predicates],
   );
   const selectedNode = scene.nodes.find((n) => n.id === selectedId);
-  const nodeById = new Map(scene.nodes.map((n) => [n.id, n]));
-  const nodeColor = (id: string) => {
-    const n = nodeById.get(id);
-    return n?.kind === 'DOCUMENT'
-      ? 'var(--success)'
-      : n?.kind === 'CLAIM'
-        ? 'var(--warning-bright)'
-        : 'var(--accent)';
-  };
+  const nodeById = useMemo(
+    () => new Map(scene.nodes.map((n) => [n.id, n])),
+    [scene.nodes],
+  );
+  const nodeColor = useCallback(
+    (id: string) => {
+      const n = nodeById.get(id);
+      return n?.kind === 'DOCUMENT'
+        ? 'var(--success)'
+        : n?.kind === 'CLAIM'
+          ? 'var(--warning-bright)'
+          : 'var(--accent)';
+    },
+    [nodeById],
+  );
   const selectGroup = (id: string) => {
     if (timer.current) clearTimeout(timer.current);
     setEdgeCandidates([]);
@@ -312,6 +342,200 @@ export function BusinessSceneCanvas({
     remember();
     onSettings({ ...settings, ...partial });
   };
+  const marks = useMemo(
+    () => (
+      <>
+        {planes.map((p) => (
+          <polygon
+            key={p.id}
+            data-layer-id={p.id}
+            points={p.corners.map((v) => screenPoint(v).join(',')).join(' ')}
+            className={styles.plane}
+            opacity={group && group !== p.id ? 0.25 : 1}
+          />
+        ))}
+        {scene.edges.map((e) => {
+          const a = points.get(e.from)!,
+            b = points.get(e.to)!;
+          const active = focus.edges.has(e.id);
+          return (
+            <g
+              key={e.id}
+              data-edge-id={e.id}
+              data-highlighted={active}
+              opacity={focused ? (active ? 1 : 0.1) : 0.45}
+            >
+              <line
+                x1={a[0]}
+                y1={a[1]}
+                x2={b[0]}
+                y2={b[1]}
+                stroke={active ? 'var(--warning-bright)' : 'var(--accent)'}
+                strokeWidth={active ? 2.5 : 0.8}
+                markerEnd={`url(#${marker})`}
+              />
+              <line
+                x1={a[0]}
+                y1={a[1]}
+                x2={b[0]}
+                y2={b[1]}
+                stroke="transparent"
+                strokeWidth="9"
+                className={styles.hit}
+                onClick={(event) => {
+                  if (dragged.current) return;
+                  const rect = svg.current!.getBoundingClientRect();
+                  const candidates = sceneEdgesAt(scene.edges, points, [
+                    event.clientX - rect.left - cameraRef.current.panX,
+                    event.clientY - rect.top - cameraRef.current.panY,
+                  ]);
+                  if (candidates.length > 1) setEdgeCandidates(candidates);
+                  else selectEdge(e.id);
+                }}
+                onPointerEnter={() => setHover({ node: null, edge: e.id })}
+                onPointerLeave={() => setHover(null)}
+              >
+                <title>
+                  {e.row.candidate.subject.label} →{' '}
+                  {dictionary.predicates[e.row.candidate.predicate]} →{' '}
+                  {e.row.candidate.object.label}
+                </title>
+              </line>
+              {selectedEdge === e.id || (camera.zoom >= 3 && active) ? (
+                <text
+                  x={(a[0] + b[0]) / 2}
+                  y={(a[1] + b[1]) / 2 - 8}
+                  className={styles.edgeLabel}
+                >
+                  {dictionary.predicates[e.row.candidate.predicate]}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+        {scene.nodes.map((n) => {
+          const p = points.get(n.id)!;
+          const active = focus.nodes.has(n.id);
+          return (
+            <g
+              key={n.id}
+              data-node-id={n.id}
+              data-world-x={layout.positions.get(n.id)![0]}
+              data-highlighted={active}
+              opacity={focused ? (active ? 1 : 0.22) : 1}
+              onClick={() => selectNode(n.id)}
+              onPointerEnter={() => setHover({ node: n.id, edge: null })}
+              onPointerLeave={() => setHover(null)}
+              className={styles.hit}
+            >
+              <circle
+                cx={p[0]}
+                cy={p[1]}
+                r={n.id === selectedId ? 7 : 4}
+                fill={nodeColor(n.id)}
+                stroke={
+                  n.id === selectedId
+                    ? 'var(--warning-bright)'
+                    : 'var(--surface)'
+                }
+                strokeWidth={n.id === selectedId ? 3 : 0.5}
+              />
+              <title>
+                {dictionary.kinds[n.kind]} · {n.label}
+              </title>
+              {visible.has(n.id) ? (
+                <text x={p[0] + 10} y={p[1] - 9} className={styles.nodeLabel}>
+                  {n.label.length > 24 && n.id !== selectedId
+                    ? n.label.slice(0, 24) + '…'
+                    : n.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </>
+    ),
+    [
+      planes,
+      screenPoint,
+      group,
+      scene.edges,
+      scene.nodes,
+      points,
+      focus,
+      focused,
+      marker,
+      selectEdge,
+      selectNode,
+      dictionary,
+      selectedEdge,
+      camera.zoom,
+      layout.positions,
+      selectedId,
+      nodeColor,
+      visible,
+    ],
+  );
+  const memberLists = useMemo(
+    () => (
+      <>
+        <details open={Boolean(search)}>
+          <summary>
+            {copy.nodeList} ({matchedNodes.length})
+          </summary>
+          <ul className={styles.list}>
+            {matchedNodes.map((n) => (
+              <li key={n.id}>
+                <button
+                  aria-pressed={n.id === selectedId}
+                  onClick={() => {
+                    dragged.current = false;
+                    selectNode(n.id);
+                  }}
+                >
+                  {dictionary.kinds[n.kind]} · {n.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+        <details open={focused}>
+          <summary>
+            {copy.edgeList} ({matchedEdges.length})
+          </summary>
+          <ul className={styles.list}>
+            {matchedEdges.map((e) => (
+              <li key={e.id}>
+                <button
+                  aria-pressed={e.id === selectedEdge}
+                  onClick={() => {
+                    dragged.current = false;
+                    selectEdge(e.id);
+                  }}
+                >
+                  {e.row.candidate.subject.label} →{' '}
+                  {dictionary.predicates[e.row.candidate.predicate]} →{' '}
+                  {e.row.candidate.object.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      </>
+    ),
+    [
+      search,
+      copy,
+      matchedNodes,
+      selectedId,
+      selectNode,
+      focused,
+      matchedEdges,
+      selectedEdge,
+      selectEdge,
+      dictionary,
+    ],
+  );
   return (
     <section
       className={styles.frame}
@@ -588,127 +812,18 @@ export function BusinessSceneCanvas({
                   <path d="M0 0 L8 4 L0 8" fill="var(--accent)" />
                 </marker>
               </defs>
-              {planes.map((p) => (
-                <polygon
-                  key={p.id}
-                  data-layer-id={p.id}
-                  points={p.corners
-                    .map((v) => screenPoint(v).join(','))
-                    .join(' ')}
-                  className={styles.plane}
-                  opacity={group && group !== p.id ? 0.25 : 1}
-                />
-              ))}
-              {scene.edges.map((e) => {
-                const a = points.get(e.from)!,
-                  b = points.get(e.to)!;
-                const active = focus.edges.has(e.id);
-                return (
-                  <g
-                    key={e.id}
-                    data-edge-id={e.id}
-                    data-highlighted={active}
-                    opacity={focused ? (active ? 1 : 0.1) : 0.45}
-                  >
-                    <line
-                      x1={a[0]}
-                      y1={a[1]}
-                      x2={b[0]}
-                      y2={b[1]}
-                      stroke={
-                        active ? 'var(--warning-bright)' : 'var(--accent)'
-                      }
-                      strokeWidth={active ? 2.5 : 0.8}
-                      markerEnd={`url(#${marker})`}
-                    />
-                    <line
-                      x1={a[0]}
-                      y1={a[1]}
-                      x2={b[0]}
-                      y2={b[1]}
-                      stroke="transparent"
-                      strokeWidth="9"
-                      className={styles.hit}
-                      onClick={(event) => {
-                        if (dragged.current) return;
-                        const rect = svg.current!.getBoundingClientRect();
-                        const candidates = sceneEdgesAt(scene.edges, points, [
-                          event.clientX - rect.left,
-                          event.clientY - rect.top,
-                        ]);
-                        if (candidates.length > 1)
-                          setEdgeCandidates(candidates);
-                        else selectEdge(e.id);
-                      }}
-                      onPointerEnter={() =>
-                        setHover({ node: null, edge: e.id })
-                      }
-                      onPointerLeave={() => setHover(null)}
-                    >
-                      <title>
-                        {e.row.candidate.subject.label} →{' '}
-                        {dictionary.predicates[e.row.candidate.predicate]} →{' '}
-                        {e.row.candidate.object.label}
-                      </title>
-                    </line>
-                    {selectedEdge === e.id || (camera.zoom >= 3 && active) ? (
-                      <text
-                        x={(a[0] + b[0]) / 2}
-                        y={(a[1] + b[1]) / 2 - 8}
-                        className={styles.edgeLabel}
-                      >
-                        {dictionary.predicates[e.row.candidate.predicate]}
-                      </text>
-                    ) : null}
-                  </g>
-                );
-              })}
-              {scene.nodes.map((n) => {
-                const p = points.get(n.id)!;
-                const active = focus.nodes.has(n.id);
-                return (
-                  <g
-                    key={n.id}
-                    data-node-id={n.id}
-                    data-world-x={layout.positions.get(n.id)![0]}
-                    data-highlighted={active}
-                    opacity={focused ? (active ? 1 : 0.22) : 1}
-                    onClick={() => selectNode(n.id)}
-                    onPointerEnter={() => setHover({ node: n.id, edge: null })}
-                    onPointerLeave={() => setHover(null)}
-                    className={styles.hit}
-                  >
-                    <circle
-                      cx={p[0]}
-                      cy={p[1]}
-                      r={n.id === selectedId ? 7 : 4}
-                      fill={nodeColor(n.id)}
-                      stroke={
-                        n.id === selectedId
-                          ? 'var(--warning-bright)'
-                          : 'var(--surface)'
-                      }
-                      strokeWidth={n.id === selectedId ? 3 : 0.5}
-                    />
-                    <title>
-                      {dictionary.kinds[n.kind]} · {n.label}
-                    </title>
-                    {visible.has(n.id) ? (
-                      <text
-                        x={p[0] + 10}
-                        y={p[1] - 9}
-                        className={styles.nodeLabel}
-                      >
-                        {n.label.length > 24 && n.id !== selectedId
-                          ? n.label.slice(0, 24) + '…'
-                          : n.label}
-                      </text>
-                    ) : null}
-                  </g>
-                );
-              })}
+              <g
+                data-camera-pan
+                transform={`translate(${camera.panX} ${camera.panY})`}
+              >
+                {marks}
+              </g>
               {planes.map((p, index) => {
-                const point = screenPoint(p.corners[0]);
+                const basePoint = screenPoint(p.corners[0]);
+                const point = [
+                  basePoint[0] + camera.panX,
+                  basePoint[1] + camera.panY,
+                ];
                 const layered = settings.form === 'layers';
                 const x = layered ? 14 : point[0];
                 const y = layered
@@ -850,48 +965,7 @@ export function BusinessSceneCanvas({
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
-          <details open={Boolean(search)}>
-            <summary>
-              {copy.nodeList} ({matchedNodes.length})
-            </summary>
-            <ul className={styles.list}>
-              {matchedNodes.map((n) => (
-                <li key={n.id}>
-                  <button
-                    aria-pressed={n.id === selectedId}
-                    onClick={() => {
-                      dragged.current = false;
-                      selectNode(n.id);
-                    }}
-                  >
-                    {dictionary.kinds[n.kind]} · {n.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
-          <details open={focused}>
-            <summary>
-              {copy.edgeList} ({matchedEdges.length})
-            </summary>
-            <ul className={styles.list}>
-              {matchedEdges.map((e) => (
-                <li key={e.id}>
-                  <button
-                    aria-pressed={e.id === selectedEdge}
-                    onClick={() => {
-                      dragged.current = false;
-                      selectEdge(e.id);
-                    }}
-                  >
-                    {e.row.candidate.subject.label} →{' '}
-                    {dictionary.predicates[e.row.candidate.predicate]} →{' '}
-                    {e.row.candidate.object.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
+          {memberLists}
         </aside>
       </div>
       <p className={styles.hint}>{copy.zoomHint}</p>

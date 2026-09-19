@@ -250,3 +250,5 @@ Resource search matches the registered resource name or source organization, not
 Expanding the workspace keeps its existing graph/map children mounted. Escape exits expansion before graph-local Escape clears selection; focus returns to the expansion control and background interaction is disabled only while expanded. Month/year controls prepare inclusive calendar bounds and require explicit application to all views. They preserve the chosen time role and unknown-period policy and never resample annual observations.
 
 Selecting a relation explains its controlled predicate before displaying context and original evidence. Mention, attribution, citation, candidate identity and candidate receiving-water links must retain their distinct meaning and review state.
+
+Business graph panning retains rendered nodes, edges and keyboard lists and translates the viewport. Zoom, focus and grouping still update the original members. Overlap hit testing compensates for the translated camera; performance must be measured on the same real case and browser rather than improved by dropping members.

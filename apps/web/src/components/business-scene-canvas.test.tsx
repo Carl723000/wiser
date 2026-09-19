@@ -181,3 +181,34 @@ it('clears an earlier selected assertion when switching to a category focus', ()
   fireEvent.click(within(legend).getByRole('button', { name: /地点 · 4/ }));
   expect(props.onEdge).toHaveBeenCalledWith(null);
 });
+
+it('pans without rewriting node geometry and hit-tests overlapping edges in the translated view', () => {
+  vi.stubGlobal('ResizeObserver', Resize);
+  const overlapping = {
+    ...scene,
+    edges: [scene.edges[0], { ...scene.edges[0], id: 'ab-other-source' }],
+  };
+  render(<BusinessSceneCanvas {...props} scene={overlapping} />);
+  const graph = screen.getByRole('img', { name: '平面图谱' });
+  const geometry = () =>
+    [...graph.querySelectorAll('[data-node-id] circle')].map((el) => [
+      el.getAttribute('cx'),
+      el.getAttribute('cy'),
+    ]);
+  const before = geometry();
+  fireEvent.keyDown(graph, { key: 'ArrowLeft' });
+  expect(geometry()).toEqual(before);
+  const hit = graph.querySelector(
+    '[data-edge-id="ab"] line[stroke="transparent"]',
+  )!;
+  fireEvent.click(hit, {
+    clientX:
+      (Number(hit.getAttribute('x1')) + Number(hit.getAttribute('x2'))) / 2 +
+      40,
+    clientY:
+      (Number(hit.getAttribute('y1')) + Number(hit.getAttribute('y2'))) / 2,
+  });
+  expect(screen.getByText(/重叠.*2/)).toBeTruthy();
+  expect(graph.querySelectorAll('[data-node-id]')).toHaveLength(4);
+  expect(graph.querySelectorAll('[data-edge-id]')).toHaveLength(2);
+});
