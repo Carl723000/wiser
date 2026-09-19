@@ -286,13 +286,14 @@ export function BusinessSceneCanvas({
     ],
   );
   const commit = (next: typeof camera, delay = false) => {
+    cameraRef.current = next;
     setCamera(next);
     if (timer.current) clearTimeout(timer.current);
     if (delay)
-      timer.current = setTimeout(
-        () => onSettings({ ...settings, ...next }),
-        150,
-      );
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        onSettings({ ...settings, ...next });
+      }, 150);
     else onSettings({ ...settings, ...next });
   };
   const remember = () => {
@@ -329,12 +330,19 @@ export function BusinessSceneCanvas({
     if (wheelIdle.current || pointers.current.size) return;
     setHover(node || edge ? { node, edge } : null);
   }, []);
+  const flushCamera = useRef(() => {});
+  flushCamera.current = () => {
+    if (!timer.current) return;
+    clearTimeout(timer.current);
+    timer.current = null;
+    onSettings({ ...settings, ...cameraRef.current });
+  };
   const selectNode = useCallback(
     (id: string) => {
       if (dragged.current) return;
       setGroup(null);
       setEdgeCandidates([]);
-      if (timer.current) clearTimeout(timer.current);
+      flushCamera.current();
       onSelect(id);
     },
     [onSelect],
@@ -344,7 +352,7 @@ export function BusinessSceneCanvas({
       if (dragged.current) return;
       setGroup(null);
       setEdgeCandidates([]);
-      if (timer.current) clearTimeout(timer.current);
+      flushCamera.current();
       onEdge(id);
     },
     [onEdge],

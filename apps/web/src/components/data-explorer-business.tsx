@@ -311,7 +311,8 @@ export function DataExplorerBusiness({
     nextKind: Kind | null = kind,
     nextMode: 'overview' | 'all' = mode,
   ) => {
-    const params = new URLSearchParams(search.toString());
+    // The scene may have just flushed its camera before Next updates this snapshot.
+    const params = new URLSearchParams(window.location.search);
     params.delete('businessPage');
     params.delete('businessEdge');
     if (id) params.set('businessEntity', id);

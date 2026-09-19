@@ -60,6 +60,25 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+it.each(['node', 'edge'])(
+  'keeps the current wheel viewport when selecting a %s before it is saved',
+  async (target) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('ResizeObserver', Resize);
+    render(<BusinessSceneCanvas {...props} />);
+    const graph = screen.getByRole('img', { name: '平面图谱' });
+    fireEvent.wheel(graph, { deltaY: -50, clientX: 200, clientY: 200 });
+    if (target === 'node')
+      fireEvent.click(graph.querySelector('[data-node-id="a"]')!);
+    else
+      fireEvent.click(screen.getByRole('button', { name: 'a → 涉及对象 → b' }));
+    expect(props.onSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ zoom: Math.exp(0.25) }),
+    );
+    await act(() => vi.advanceTimersByTime(200));
+    expect(props.onSettings).toHaveBeenCalledTimes(1);
+  },
+);
 it('does not preview incidental hover while zooming, then resumes object inspection', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('ResizeObserver', Resize);

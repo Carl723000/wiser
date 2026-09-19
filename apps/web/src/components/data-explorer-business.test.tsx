@@ -143,6 +143,26 @@ afterEach(() => {
   nav.search = new URLSearchParams('saved=case');
   nav.replace.mockReset();
 });
+it('preserves a camera already flushed to history when the search snapshot is still stale', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '政策' });
+  // The scene saves its pending viewport before the parent receives new search params.
+  window.history.replaceState(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?saved=case&businessZoom=1.1052&businessPanX=17.2',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '政策' }));
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get('saved')).toBe('case');
+  expect(params.get('businessKind')).toBe('POLICY');
+  expect(params.get('businessZoom')).toBe('1.1052');
+  expect(params.get('businessPanX')).toBe('17.2');
+});
 it('preserves the saved query while selecting a category and restores selection from URL changes', async () => {
   vi.stubGlobal(
     'fetch',
@@ -293,6 +313,11 @@ it('keeps same-source duplicates distinct and labels missing document titles wit
 
 it('keeps expanded observations after a saved view remount and restores overview explicitly', async () => {
   nav.search = new URLSearchParams('saved=case&businessPresentation=reading');
+  originalHistory(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?saved=case&businessPresentation=reading',
+  );
   vi.stubGlobal(
     'fetch',
     vi
