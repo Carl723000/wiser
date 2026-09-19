@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -496,6 +497,94 @@ it('hides prior-query relationships while the replacement loads and recovers fro
   view.rerender(<DataExplorerBusiness {...props} queryId="recovered" />);
   await screen.findByRole('button', { name: '政策' });
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('ignores a late permission failure from a cancelled graph query', async () => {
+  let release!: (response: Response) => void;
+  const onInvalidated = vi.fn();
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  const view = render(
+    <DataExplorerBusiness {...props} onInvalidated={onInvalidated} />,
+  );
+  view.rerender(
+    <DataExplorerBusiness
+      {...props}
+      queryId="replacement"
+      onInvalidated={onInvalidated}
+    />,
+  );
+  await screen.findByRole('button', { name: '政策' });
+  await act(async () => {
+    release(new Response(null, { status: 403 }));
+    await Promise.resolve();
+  });
+  expect(onInvalidated).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: '政策' })).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it.each(['response', 'body'])(
+  'stops continuation pages when cancelled during the %s wait',
+  async (phase) => {
+    let release!: () => void;
+    const page = { items: [row], totalCount: 2, nextCursor: row.assertionId };
+    const fetcher = vi.fn<typeof fetch>().mockImplementationOnce(() => {
+      if (phase === 'response')
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(Response.json(page));
+        });
+      const response = Response.json(page);
+      vi.spyOn(response, 'json').mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(page);
+          }),
+      );
+      return Promise.resolve(response);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const view = render(<DataExplorerBusiness {...props} />);
+    await act(async () => {});
+    view.unmount();
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  },
+);
+
+it('invalidates an active query denied on a later page and never displays a partial graph', async () => {
+  const onInvalidated = vi.fn();
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [row],
+        totalCount: 2,
+        nextCursor: row.assertionId,
+      }),
+    )
+    .mockResolvedValueOnce(new Response(null, { status: 403 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataExplorerBusiness {...props} onInvalidated={onInvalidated} />);
+  await screen.findByRole('alert');
+  expect(onInvalidated).toHaveBeenCalledWith('query', 403);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('button', { name: '政策' })).toBeNull();
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
 });
 
 it('steps a calendar period as a draft and only applies the shared condition explicitly', async () => {

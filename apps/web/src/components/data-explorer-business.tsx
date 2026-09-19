@@ -128,12 +128,14 @@ export function DataExplorerBusiness({
             cache: 'no-store',
             signal: controller.signal,
           });
+          if (controller.signal.aborted) return;
           if (!response.ok) {
             if (invalidatesExploration(response.status))
               onInvalidated(queryId, response.status);
             throw Error('Unavailable');
           }
           const page = RelationListOutputSchema.parse(await response.json());
+          if (controller.signal.aborted) return;
           if (total !== undefined && total !== page.totalCount)
             throw Error('Changed scope');
           total = page.totalCount;

@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 9ead9f5c401fbde654c390e133cccd648469471f
+lastReviewedCommit: 43405df3d3f51f20b56268c5d043510c9406dc43
 ---
 
 ## What this guide governs
@@ -266,3 +266,5 @@ Spatial coverage separates source-scoped objects with an exact record binding fr
 Panning uses a CSS transform on the retained SVG group, with an equivalent SVG attribute fallback; it does not recreate or remove members. Wheel motion and active dragging suspend incidental hover previews as geometry passes under the pointer. The pinned selection and its evidence remain intact; deliberate hover resumes after the wheel becomes idle. Verify visual hit targets after translation in both planar and layered views. These local changes do not imply that zooming or large-graph performance has met its target; record each interaction separately.
 
 Selecting an object or relation flushes the pending wheel/pan camera into URL state before selection. Immediate selection must not discard the latest viewport or allow a delayed camera write to overwrite the selection.
+
+Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
