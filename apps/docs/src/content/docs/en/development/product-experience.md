@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 122f8d9b9631fb1d847aefde9c1d809a6aa4f40e
+lastReviewedCommit: 4134b4e
 ---
 
 ## What this guide governs
@@ -276,3 +276,5 @@ The official basemap releases its SDK and observers before navigation detaches i
 Evidence-path reading retains the explicitly chosen assertion IDs and versions until a new search. A changed or unavailable path clears its graph and excerpts and asks the reader to search again; it never substitutes an alternative or newly shorter route silently. Missing endpoints disable search. Evidence is read only from the current authorized relation rows, not retained in path state.
 
 Unlocated spatial objects use a named, source-distinct searchable list with category filters and bounded pages. Paging affects only this reading list; the full query identity set remains available. Spatial lines show the current focus by default, with an explicit option for connections between currently visible objects. Full-network reading remains a separate existing presentation. The graph toolbar reuses workspace expansion without unmounting the map. Optional explanatory text uses pointer- and keyboard/touch-operable question-mark help; permission, partial-scope and review states remain visible.
+
+Clicking a spatial point, line or area resolves all source-version-record bindings in the current authorized query. Overlapping objects require an explicit choice; repeated layer hits do not merge identities. Related sources are grouped by category and open original relation evidence. One explicitly qualified spatial reference-identity hop may reveal another source area and adjacent evidence, labeled as indirect reference. Selection preserves camera and query conditions; names never imply location bindings.

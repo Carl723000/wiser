@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 122f8d9b9631fb1d847aefde9c1d809a6aa4f40e
+lastReviewedCommit: 4134b4e
 ---
 
 ## Design direction
@@ -211,3 +211,5 @@ Selecting an object or relation flushes the pending wheel/pan camera into URL st
 Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
 
 The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
+
+Clicking a spatial point, line or area resolves all source-version-record bindings in the current authorized query. Overlapping objects require an explicit choice; repeated layer hits do not merge identities. Related sources are grouped by category and open original relation evidence. One explicitly qualified spatial reference-identity hop may reveal another source area and adjacent evidence, labeled as indirect reference. Selection preserves camera and query conditions; names never imply location bindings.

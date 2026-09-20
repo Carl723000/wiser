@@ -8,6 +8,8 @@ import { ExplorationResultSchema } from '@wiser/data-contracts';
 import { loadBusinessMap, businessMapBounds } from '@/lib/business-map';
 import {
   spatialSceneAnchors,
+  spatialHitNodes,
+  spatialObjectRelations,
   relatedSpatialReferences,
   spatialSceneCoverage,
 } from '@/lib/business-scene-spatial';
@@ -145,14 +147,34 @@ export function BusinessSceneMap({
   const anchoredGeometry = useMemo<FeatureCollection>(
     () => ({
       type: 'FeatureCollection',
-      features: [
-        ...new globalThis.Map(
-          [...anchors.values()].map((a) => [a.feature.id, a.feature]),
-        ).values(),
-      ],
+      features: [...new Set([...anchors.values()].map((a) => a.feature))],
     }),
     [anchors],
   );
+  const [mapPick, setMapPick] = useState<{
+    queryId: string;
+    ids: string[];
+    active: string | null;
+  } | null>(null);
+  const pickedIds =
+    mapPick?.queryId === queryId && collection
+      ? mapPick.ids.filter((id) => anchors.has(id))
+      : [];
+  const pickedId =
+    mapPick?.active && pickedIds.includes(mapPick.active)
+      ? mapPick.active
+      : null;
+  const mapRelations = useMemo(() => {
+    const rows = pickedId ? spatialObjectRelations(scene, pickedId) : [];
+    const groups = new globalThis.Map<string, typeof rows>();
+    for (const row of rows) {
+      const group = dictionary.kinds[row.node.kind];
+      const members = groups.get(group) ?? [];
+      members.push(row);
+      groups.set(group, members);
+    }
+    return [...groups];
+  }, [scene, pickedId, dictionary]);
   const coverage = useMemo(
     () => spatialSceneCoverage(scene, anchors),
     [scene, anchors],
@@ -442,6 +464,17 @@ export function BusinessSceneMap({
             sync();
           }}
           onMoveEnd={saveCamera}
+          interactiveLayerIds={[
+            'business-scene-areas',
+            'business-scene-outlines',
+            'business-scene-points',
+          ]}
+          onClick={(event) => {
+            const ids = spatialHitNodes(anchors, event.features ?? []);
+            const active = ids.length === 1 ? ids[0] : null;
+            setMapPick(ids.length ? { queryId, ids, active } : null);
+            if (active) onSelect(active);
+          }}
         >
           {collection && palette.accent ? (
             <Source
@@ -633,112 +666,186 @@ export function BusinessSceneMap({
             })}
           </svg>
         ) : null}
-        {collection && (
+        {pickedIds.length > 0 ? (
           <section
             className={styles.unlocatedBrowser}
-            aria-label={copy.unlocated}
+            aria-label={copy.mapSources}
           >
-            <strong>{copy.unlocated}</strong>
-            <label>
-              <span>{copy.unlocatedSearch}</span>
-              <input
-                type="search"
-                value={listSearch}
-                onChange={(e) => {
-                  setListSearch(e.target.value);
-                  setListPage(0);
-                }}
-              />
-            </label>
-            <select
-              aria-label={copy.unlocatedKind}
-              value={listKind}
-              onChange={(e) => {
-                setListKind(e.target.value);
-                setListPage(0);
-              }}
-            >
-              <option value="">{copy.unlocatedAll}</option>
-              {[...new Set(unlocatedNodes.map((n) => n.kind))]
-                .sort()
-                .map((kind) => (
-                  <option key={kind} value={kind}>
-                    {dictionary.kinds[kind]}
-                  </option>
-                ))}
-            </select>
-            <div className={styles.unlocatedRows}>
-              {visibleNodes.map((n) => (
-                <button
-                  key={n.id}
-                  data-node-id={n.id}
-                  data-anchored="false"
-                  data-family={nodeFamilies[n.kind]}
-                  aria-pressed={selectedId === n.id}
-                  onClick={() => onSelect(n.id)}
-                  title={`${n.label} · ${n.sourceTitle ?? dictionary.kinds[n.kind]}`}
-                >
-                  <span>
-                    <svg width="16" height="16" aria-hidden="true">
-                      <BusinessSceneGlyph
-                        family={nodeFamilies[n.kind]}
-                        x={8}
-                        y={8}
-                        size={5}
-                      />
-                    </svg>{' '}
-                    {n.label}
-                  </span>
-                  <small>
-                    {dictionary.kinds[n.kind]} ·{' '}
-                    {n.sourceTitle ?? copy.unclassified}
-                  </small>
-                </button>
-              ))}
-              {!matchingNodes.length && (
-                <p role="status">{copy.unlocatedEmpty}</p>
-              )}
-            </div>
-            <div className={styles.unlocatedPaging}>
-              <button
-                disabled={pageIndex === 0}
-                onClick={() => setListPage(pageIndex - 1)}
-              >
-                {copy.unlocatedPrevious}
-              </button>
-              <button
-                disabled={(pageIndex + 1) * pageSize >= matchingNodes.length}
-                onClick={() => setListPage(pageIndex + 1)}
-              >
-                {copy.unlocatedNext}
-              </button>
-            </div>
-            <small aria-live="polite">
-              {copy.unlocatedPage
-                .replace(
-                  '{start}',
-                  String(matchingNodes.length ? pageIndex * pageSize + 1 : 0),
-                )
-                .replace(
-                  '{end}',
-                  String(
-                    Math.min((pageIndex + 1) * pageSize, matchingNodes.length),
-                  ),
-                )
-                .replace('{total}', String(matchingNodes.length))}
+            <strong>{copy.mapSources}</strong>
+            <small>
+              {copy.mapPickCount.replace('{count}', String(pickedIds.length))}
             </small>
-            {(listSearch || listKind) && (
-              <button
-                onClick={() => {
-                  setListSearch('');
-                  setListKind('');
+            <div className={styles.mapRelatedRows}>
+              {pickedIds.map((id) => {
+                const node = scene.nodes.find((n) => n.id === id)!;
+                return (
+                  <button
+                    key={id}
+                    aria-pressed={pickedId === id}
+                    onClick={() => {
+                      setMapPick({ queryId, ids: pickedIds, active: id });
+                      onSelect(id);
+                    }}
+                  >
+                    {node.label} ·{' '}
+                    {node.sourceTitle ?? dictionary.kinds[node.kind]}
+                  </button>
+                );
+              })}
+            </div>
+            {pickedId && (
+              <>
+                <small>{copy.mapRelationsScope}</small>
+                {mapRelations.map(([kind, rows]) => (
+                  <details key={kind} open>
+                    <summary>
+                      {kind} · {rows.length}
+                    </summary>
+                    <div className={styles.mapRelatedRows}>
+                      {rows.map(({ node, edge, via }) => (
+                        <button key={edge.id} onClick={() => onEdge(edge.id)}>
+                          <span>
+                            {node.label} ·{' '}
+                            {node.sourceTitle ?? dictionary.kinds[node.kind]}
+                          </span>
+                          <small>
+                            {
+                              dictionary.predicates[
+                                edge.row.candidate.predicate
+                              ]
+                            }{' '}
+                            · {dictionary.statuses[edge.row.status]}
+                          </small>
+                          {via && (
+                            <small>
+                              {copy.mapRelatedVia.replace('{name}', via.label)}
+                            </small>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+                {!mapRelations.length && (
+                  <p role="status">{copy.mapSourcesEmpty}</p>
+                )}
+              </>
+            )}
+            <button onClick={() => setMapPick(null)}>
+              {copy.mapSourcesBack}
+            </button>
+          </section>
+        ) : (
+          collection && (
+            <section
+              className={styles.unlocatedBrowser}
+              aria-label={copy.unlocated}
+            >
+              <strong>{copy.unlocated}</strong>
+              <label>
+                <span>{copy.unlocatedSearch}</span>
+                <input
+                  type="search"
+                  value={listSearch}
+                  onChange={(e) => {
+                    setListSearch(e.target.value);
+                    setListPage(0);
+                  }}
+                />
+              </label>
+              <select
+                aria-label={copy.unlocatedKind}
+                value={listKind}
+                onChange={(e) => {
+                  setListKind(e.target.value);
                   setListPage(0);
                 }}
               >
-                {copy.unlocatedClear}
-              </button>
-            )}
-          </section>
+                <option value="">{copy.unlocatedAll}</option>
+                {[...new Set(unlocatedNodes.map((n) => n.kind))]
+                  .sort()
+                  .map((kind) => (
+                    <option key={kind} value={kind}>
+                      {dictionary.kinds[kind]}
+                    </option>
+                  ))}
+              </select>
+              <div className={styles.unlocatedRows}>
+                {visibleNodes.map((n) => (
+                  <button
+                    key={n.id}
+                    data-node-id={n.id}
+                    data-anchored="false"
+                    data-family={nodeFamilies[n.kind]}
+                    aria-pressed={selectedId === n.id}
+                    onClick={() => onSelect(n.id)}
+                    title={`${n.label} · ${n.sourceTitle ?? dictionary.kinds[n.kind]}`}
+                  >
+                    <span>
+                      <svg width="16" height="16" aria-hidden="true">
+                        <BusinessSceneGlyph
+                          family={nodeFamilies[n.kind]}
+                          x={8}
+                          y={8}
+                          size={5}
+                        />
+                      </svg>{' '}
+                      {n.label}
+                    </span>
+                    <small>
+                      {dictionary.kinds[n.kind]} ·{' '}
+                      {n.sourceTitle ?? copy.unclassified}
+                    </small>
+                  </button>
+                ))}
+                {!matchingNodes.length && (
+                  <p role="status">{copy.unlocatedEmpty}</p>
+                )}
+              </div>
+              <div className={styles.unlocatedPaging}>
+                <button
+                  disabled={pageIndex === 0}
+                  onClick={() => setListPage(pageIndex - 1)}
+                >
+                  {copy.unlocatedPrevious}
+                </button>
+                <button
+                  disabled={(pageIndex + 1) * pageSize >= matchingNodes.length}
+                  onClick={() => setListPage(pageIndex + 1)}
+                >
+                  {copy.unlocatedNext}
+                </button>
+              </div>
+              <small aria-live="polite">
+                {copy.unlocatedPage
+                  .replace(
+                    '{start}',
+                    String(matchingNodes.length ? pageIndex * pageSize + 1 : 0),
+                  )
+                  .replace(
+                    '{end}',
+                    String(
+                      Math.min(
+                        (pageIndex + 1) * pageSize,
+                        matchingNodes.length,
+                      ),
+                    ),
+                  )
+                  .replace('{total}', String(matchingNodes.length))}
+              </small>
+              {(listSearch || listKind) && (
+                <button
+                  onClick={() => {
+                    setListSearch('');
+                    setListKind('');
+                    setListPage(0);
+                  }}
+                >
+                  {copy.unlocatedClear}
+                </button>
+              )}
+            </section>
+          )
         )}
       </div>
       <SpatialAttribution collection={anchoredGeometry} />

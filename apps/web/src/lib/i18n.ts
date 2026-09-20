@@ -192,6 +192,12 @@ const zhCN = {
       loading: '正在读取当前查询的位置依据…',
       mapFailed: '位置资料暂时无法读取，可重试；平面与立体图谱仍可查阅。',
       retry: '重新读取位置依据',
+      mapSources: '此处关联的资料与知识',
+      mapPickCount: '该位置对应 {count} 个来源内对象，请选择查阅。',
+      mapRelationsScope: '仅列当前查询中的已有关系，点选可查看原文依据。',
+      mapRelatedVia: '经参考对象：{name}',
+      mapSourcesEmpty: '当前查询中尚无该对象的其他关联资料。',
+      mapSourcesBack: '返回未定位资料列表',
       unlocated: '尚未绑定空间范围的资料与知识',
       unlocatedSearch: '查找未定位资料',
       unlocatedKind: '对象类别',
@@ -2477,6 +2483,15 @@ const en: typeof zhCN = {
       mapFailed:
         'Location sources could not be read. Retry, or continue with the planar and layered graphs.',
       retry: 'Reload location evidence',
+      mapSources: 'Related sources and knowledge here',
+      mapPickCount:
+        'This location matches {count} source-scoped objects. Choose one to inspect.',
+      mapRelationsScope:
+        'Existing relations in this query only. Select one to inspect its original evidence.',
+      mapRelatedVia: 'Via reference object: {name}',
+      mapSourcesEmpty:
+        'No other related sources for this object in the current query.',
+      mapSourcesBack: 'Return to unlocated sources',
       unlocated: 'Sources and knowledge without a bound geometry',
       unlocatedSearch: 'Find unlocated sources',
       unlocatedKind: 'Object category',

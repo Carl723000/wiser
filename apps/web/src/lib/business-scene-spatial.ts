@@ -178,3 +178,91 @@ export function spatialSceneAnchors(
   }
   return anchors;
 }
+
+/** Rendered tiles/layers can repeat a feature. Match only the authorized record triple. */
+export function spatialHitNodes(
+  anchors: ReadonlyMap<string, SpatialSceneAnchor>,
+  hits: readonly { properties: Record<string, unknown> | null }[],
+) {
+  const key = (properties: Record<string, unknown> | null) => {
+    const ids = ['dataItemId', 'versionId', 'recordId'].map(
+      (k) => properties?.[k],
+    );
+    return ids.every((id) => typeof id === 'string' && id.length > 0)
+      ? JSON.stringify(ids)
+      : null;
+  };
+  const keys = new Set(
+    hits.map((hit) => key(hit.properties)).filter((k) => k !== null),
+  );
+  return [...anchors]
+    .filter(([, anchor]) => {
+      const value = key(anchor.feature.properties);
+      return value !== null && keys.has(value);
+    })
+    .map(([id]) => id);
+}
+
+/** Existing relations only; one explicit reference-identity hop may connect a source's own area. */
+export function spatialObjectRelations(
+  scene: BusinessScene,
+  selectedId: string,
+) {
+  const nodes = new Map(scene.nodes.map((n) => [n.id, n]));
+  const selected = nodes.get(selectedId);
+  if (!selected) return [];
+  const edges = scene.edges.filter(
+    (e) =>
+      nodes.has(e.from) &&
+      nodes.has(e.to) &&
+      (e.row.status === 'PENDING_REVIEW' || e.row.status === 'APPROVED'),
+  );
+  const spatialKinds = new Set([
+    'PLACE',
+    'RIVER_REACH',
+    'BASIN',
+    'MONITORING_POINT',
+  ]);
+  const objects = new Map<string, BusinessScene['nodes'][number] | null>([
+    [selectedId, null],
+  ]);
+  if (spatialKinds.has(selected.kind))
+    for (const edge of edges) {
+      const otherId =
+        edge.from === selectedId
+          ? edge.to
+          : edge.to === selectedId
+            ? edge.from
+            : null;
+      const other = otherId ? nodes.get(otherId) : undefined;
+      const context = edge.row.candidate.qualifiers?.context;
+      if (
+        other &&
+        other.kind === selected.kind &&
+        edge.row.candidate.predicate === 'IDENTITY_MATCH' &&
+        context?.recordNature === 'SOURCE_RELATION' &&
+        context.locationRole === 'REFERENCE_LOCATION'
+      )
+        objects.set(other.id, other);
+    }
+  const result: {
+    node: BusinessScene['nodes'][number];
+    edge: BusinessScene['edges'][number];
+    via: BusinessScene['nodes'][number] | null;
+  }[] = [];
+  const seen = new Set<string>();
+  for (const [objectId, via] of objects)
+    for (const edge of edges) {
+      const otherId =
+        edge.from === objectId
+          ? edge.to
+          : edge.to === objectId
+            ? edge.from
+            : null;
+      const other = otherId ? nodes.get(otherId) : undefined;
+      if (!other || other.id === selectedId || seen.has(edge.id)) continue;
+      seen.add(edge.id);
+      result.push({ node: other, edge, via });
+    }
+  return result;
+}

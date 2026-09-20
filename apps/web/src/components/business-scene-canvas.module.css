@@ -337,3 +337,18 @@
     border-top: 1px solid var(--border);
   }
 }
+
+.mapRelatedRows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mapRelatedRows button {
+  text-align: start;
+  overflow-wrap: anywhere;
+  width: 100%;
+}
+.mapRelatedRows small {
+  display: block;
+  color: var(--text-secondary);
+}
