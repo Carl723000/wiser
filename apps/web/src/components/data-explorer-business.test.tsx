@@ -706,3 +706,70 @@ it('restores an explicitly selected annual step after remount without reinterpre
     'year',
   );
 });
+
+it('loads every page beyond the legacy bound for a server-owned project membership', async () => {
+  const items = Array.from({ length: 2033 }, (_, index) => ({
+    ...row,
+    assertionId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+  }));
+  let offset = 0;
+  const fetcher = vi.fn().mockImplementation(() => {
+    const page = items.slice(offset, offset + 100);
+    offset += page.length;
+    return Promise.resolve(
+      Response.json({
+        items: page,
+        totalCount: items.length,
+        ...(offset < items.length
+          ? { nextCursor: page.at(-1)!.assertionId }
+          : {}),
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2033 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  expect(fetcher).toHaveBeenCalledTimes(21);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText(/2033.*2033/)).toBeTruthy();
+});
+
+it('rejects a page total above the server membership before requesting more pages', async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      items: [row],
+      totalCount: 3,
+      nextCursor: row.assertionId,
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2 }}
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
+
+it('allows a filtered graph smaller than its immutable project membership', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2033 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  expect(screen.queryByRole('alert')).toBeNull();
+});
