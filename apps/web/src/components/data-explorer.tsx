@@ -1131,6 +1131,7 @@ function DataExplorerSession({
                     setView('resources');
                     void query(
                       {
+                        baseQueryId: result.queryId,
                         spec: { ...result.spec, readiness },
                         view: 'resources',
                         first: 25,

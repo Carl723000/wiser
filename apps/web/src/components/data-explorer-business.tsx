@@ -144,6 +144,8 @@ export function DataExplorerBusiness({
             throw Error('Changed scope');
           total = page.totalCount;
           if (total > membershipLimit) throw Error('Scope too large');
+          if (page.nextCursor && page.items.length === 0)
+            throw Error('Empty continuation page');
           items.push(...page.items);
           if (items.length > total) throw Error('Changed scope');
           after = page.nextCursor;
