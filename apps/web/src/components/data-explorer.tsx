@@ -334,6 +334,8 @@ function DataExplorerSession({
   const invalidate = useCallback((queryId: string, status = 410) => {
     if (activeQueryId.current !== queryId) return;
     activeQueryId.current = null;
+    pending.current?.abort();
+    setBusy(false);
     setResult(null);
     dispatch({ type: 'query', queryId: null });
     setRecordAssets([]);

@@ -276,3 +276,5 @@ The official basemap releases its SDK and observers before navigation detaches i
 Evidence-path reading retains the explicitly chosen assertion IDs and versions until a new search. A changed or unavailable path clears its graph and excerpts and asks the reader to search again; it never substitutes an alternative or newly shorter route silently. Missing endpoints disable search. Evidence is read only from the current authorized relation rows, not retained in path state.
 
 Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
+
+Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.

@@ -825,11 +825,15 @@ it('keeps an expired scope cleared when an earlier query response arrives late',
   const clock = vi
     .spyOn(Date, 'now')
     .mockReturnValue(Date.parse(initial.expiresAt) + 1);
-  act(() => window.dispatchEvent(new Event('pageshow')));
+  await act(async () => {
+    window.dispatchEvent(new Event('pageshow'));
+    await Promise.resolve();
+  });
   clock.mockRestore();
   await screen.findByRole('alert');
   await act(async () => {
     release(Response.json(result(secondId, 'Late source', 'source')));
+    await Promise.resolve();
   });
   expect(
     screen.getByTestId('data-explorer').getAttribute('data-query-id'),
