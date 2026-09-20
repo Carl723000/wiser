@@ -744,3 +744,76 @@ it('keeps explicit OSM attribution visible outside the interactive canvas', asyn
   );
   expect(link.closest('svg')).toBeNull();
 });
+
+it('offers named, source-distinct unlocated objects with searchable paging without fetching another scope', async () => {
+  const fetch = vi.fn().mockResolvedValue(Response.json(page));
+  vi.stubGlobal('fetch', fetch);
+  const nodes = Array.from({ length: 45 }, (_, i) => ({
+    ...scene.nodes[1],
+    id: `place-${i}`,
+    label: '永定河平原段',
+    sourceTitle: `月报-${String(i).padStart(2, '0')}`,
+  }));
+  render(
+    <BusinessSceneMap
+      {...props}
+      scene={{ nodes: [scene.nodes[0], ...nodes], edges: [] }}
+    />,
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1'),
+  );
+  const search = screen.getByRole('searchbox', { name: '查找未定位资料' });
+  expect(
+    screen.getByRole('button', { name: /永定河平原段.*月报-00/ }),
+  ).toBeTruthy();
+  fireEvent.change(search, { target: { value: '月报-44' } });
+  const match = screen.getByRole('button', { name: /永定河平原段.*月报-44/ });
+  fireEvent.click(match);
+  expect(props.onSelect).toHaveBeenCalledWith('place-44');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fireEvent.change(search, { target: { value: '没有的来源' } });
+  expect(
+    screen.getByText('当前列表没有匹配对象，可清除条件重试。'),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '清除查找条件' }));
+  expect(
+    screen.getByRole('button', { name: '下一页资料' }).hasAttribute('disabled'),
+  ).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: '下一页资料' }));
+  expect(
+    screen.queryByRole('button', { name: /永定河平原段.*月报-00/ }),
+  ).toBeNull();
+});
+
+it('keeps map relations quiet until selected and offers an explicit full-network option', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+  const edge = {
+    id: 'link',
+    from: 'bound',
+    to: 'unlocated',
+    row: {
+      status: 'PENDING_REVIEW',
+      candidate: {
+        predicate: 'ABOUT_ENTITY',
+        subject: { label: '资料' },
+        object: { label: '同名地点' },
+      },
+    },
+  } as BusinessScene['edges'][number];
+  const view = render(
+    <BusinessSceneMap {...props} scene={{ ...scene, edges: [edge] }} />,
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').dataset.anchorCount,
+    ).toBe('1'),
+  );
+  act(() => probe.load?.());
+  expect(view.container.querySelector('[data-edge-id="link"]')).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox', { name: '显示全部连线' }));
+  expect(view.container.querySelector('[data-edge-id="link"]')).toBeTruthy();
+  expect(view.container.querySelectorAll('[data-node-id]')).toHaveLength(2);
+});
