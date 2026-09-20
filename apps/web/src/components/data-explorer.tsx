@@ -1144,11 +1144,13 @@ function DataExplorerSession({
                 key={result.queryId}
                 queryId={result.queryId}
                 scope={result.spec.businessQuery}
+                membership={result.membership}
                 locale={locale}
                 onInvalidated={invalidate}
                 onApply={(businessQuery, periodUnit) => {
                   void query(
                     {
+                      baseQueryId: result.queryId,
                       spec: { ...result.spec, businessQuery },
                       view: 'resources',
                       first: 25,

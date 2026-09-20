@@ -758,7 +758,7 @@ it('refines the existing project membership when applying a business period', as
     membership: { complete: true, versionCount: 1, assertionCount: 0 },
   });
   const fetcher = vi.fn<typeof fetch>().mockImplementation((input) => {
-    if (String(input).endsWith('/relations/list'))
+    if (typeof input === 'string' && input.endsWith('/relations/list'))
       return Promise.resolve(Response.json({ items: [], totalCount: 0 }));
     return Promise.resolve(Response.json({ ...initial, queryId: secondId }));
   });
@@ -784,11 +784,13 @@ it('refines the existing project membership when applying a business period', as
   fireEvent.click(screen.getByRole('button', { name: 'Apply to all views' }));
   await waitFor(() =>
     expect(
-      fetcher.mock.calls.some(([input]) => String(input).endsWith('/explore')),
+      fetcher.mock.calls.some(
+        ([input]) => typeof input === 'string' && input.endsWith('/explore'),
+      ),
     ).toBe(true),
   );
-  const call = fetcher.mock.calls.find(([input]) =>
-    String(input).endsWith('/explore'),
+  const call = fetcher.mock.calls.find(
+    ([input]) => typeof input === 'string' && input.endsWith('/explore'),
   )!;
   expect(inputBody(call[1])).toMatchObject({
     baseQueryId: firstId,

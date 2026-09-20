@@ -6,6 +6,7 @@ import {
   RelationListOutputSchema,
   type RelationAssertion,
   type BusinessQuery,
+  type ExplorationResult,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import {
@@ -50,9 +51,11 @@ export function DataExplorerBusiness({
   locale,
   onInvalidated,
   onApply,
+  membership,
 }: {
   readonly queryId: string;
   readonly scope: BusinessQuery;
+  readonly membership?: ExplorationResult['membership'];
   readonly locale: Locale;
   readonly onInvalidated: InvalidateExploration;
   readonly onApply: (
@@ -103,6 +106,7 @@ export function DataExplorerBusiness({
     setDraft(scope.filters);
   }, [scope.filters]);
   const viewState = useExplorationViewState();
+  const membershipLimit = membership?.assertionCount ?? 2000;
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -139,11 +143,12 @@ export function DataExplorerBusiness({
           if (total !== undefined && total !== page.totalCount)
             throw Error('Changed scope');
           total = page.totalCount;
+          if (total > membershipLimit) throw Error('Scope too large');
           items.push(...page.items);
+          if (items.length > total) throw Error('Changed scope');
           after = page.nextCursor;
           if (after && cursors.has(after)) throw Error('Repeated cursor');
           if (after) cursors.add(after);
-          if (items.length > 2000) throw Error('Scope too large');
           if (!controller.signal.aborted) setLoaded(items.length);
         } while (after);
         if (
@@ -165,7 +170,7 @@ export function DataExplorerBusiness({
       }
     })();
     return () => controller.abort();
-  }, [queryId, scope.status, onInvalidated, viewState]);
+  }, [queryId, scope.status, onInvalidated, viewState, membershipLimit]);
   const visible = useMemo(
     () =>
       edgeRow

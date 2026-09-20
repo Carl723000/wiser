@@ -211,3 +211,5 @@ Selecting an object or relation flushes the pending wheel/pan camera into URL st
 Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
 
 The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
+
+Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
