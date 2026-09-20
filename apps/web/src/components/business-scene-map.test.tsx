@@ -573,6 +573,9 @@ it('retains predicate colors, pending dashes and arrowless identity across the s
       screen.getByTestId('business-spatial-scene').dataset.anchorCount,
     ).toBe('1'),
   );
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: '显示本页对象的全部连线' }),
+  );
   const root = screen.getByTestId('business-spatial-scene');
   const identity = root.querySelector(
     '[data-edge-id="IDENTITY_MATCH"] [data-relation-line]',
@@ -597,7 +600,7 @@ it('retains predicate colors, pending dashes and arrowless identity across the s
   ).toBe('var(--scene-water)');
 });
 
-it('uses available space for large unlocated groups without collapsing members or overlapping their symbols', async () => {
+it('keeps all 600 unlocated identities reachable through named pages', async () => {
   const nodes = Array.from({ length: 600 }, (_, i) => ({
     ...scene.nodes[1],
     id: String(i),
@@ -618,29 +621,20 @@ it('uses available space for large unlocated groups without collapsing members o
       'ready',
     ),
   );
-  const circles = [
-    ...screen
+  // Named paging replaces the fixed dot grid; prove every original ID remains reachable.
+  const seen = new Set<string>();
+  const next = screen.getByRole('button', { name: '下一页资料' });
+  for (let pageIndex = 0; pageIndex < 100; pageIndex++) {
+    const items = screen
       .getByTestId('business-spatial-scene')
-      .querySelectorAll('[data-node-id] circle'),
-  ];
-  expect(circles).toHaveLength(600);
-  for (const [i, circle] of circles.entries()) {
-    const x = Number(circle.getAttribute('cx')),
-      y = Number(circle.getAttribute('cy'));
-    expect(x).toBeGreaterThan(570);
-    expect(x).toBeLessThan(1000);
-    expect(y).toBeGreaterThan(35);
-    expect(y).toBeLessThan(640);
-    for (const other of circles.slice(i + 1)) {
-      expect(
-        Math.hypot(
-          x - Number(other.getAttribute('cx')),
-          y - Number(other.getAttribute('cy')),
-        ),
-      ).toBeGreaterThan(6);
-    }
+      .querySelectorAll('[data-node-id]');
+    expect(items).toHaveLength(6);
+    for (const item of items) seen.add(item.getAttribute('data-node-id')!);
+    expect(next.hasAttribute('disabled')).toBe(pageIndex === 99);
+    if (pageIndex < 99) fireEvent.click(next);
   }
-});
+  expect(seen).toEqual(new Set(nodes.map((n) => n.id)));
+}, 20000);
 
 it.each([
   [
@@ -813,7 +807,9 @@ it('keeps map relations quiet until selected and offers an explicit full-network
   );
   act(() => probe.load?.());
   expect(view.container.querySelector('[data-edge-id="link"]')).toBeNull();
-  fireEvent.click(screen.getByRole('checkbox', { name: '显示全部连线' }));
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: '显示本页对象的全部连线' }),
+  );
   expect(view.container.querySelector('[data-edge-id="link"]')).toBeTruthy();
   expect(view.container.querySelectorAll('[data-node-id]')).toHaveLength(2);
 });

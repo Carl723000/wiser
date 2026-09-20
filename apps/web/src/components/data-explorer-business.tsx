@@ -1,4 +1,5 @@
 'use client';
+import { ContextHelp } from './context-help';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -543,13 +544,13 @@ export function DataExplorerBusiness({
             </div>
             {presentation === 'reading' ? pagination : null}
           </div>
-          <p className={businessStyles.readingHint}>
+          <ContextHelp label={copy.scene.readingHelp}>
             {presentation === 'reading'
               ? copy.businessReadingHint
                   .replace('{count}', String(page.rows.length))
                   .replace('{total}', String(visible.length))
               : copy.businessNetworkHint}
-          </p>
+          </ContextHelp>
           {graphRows.length ? (
             presentation === 'network' ? (
               <BusinessSceneCanvas

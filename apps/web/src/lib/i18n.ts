@@ -193,6 +193,19 @@ const zhCN = {
       mapFailed: '位置资料暂时无法读取，可重试；平面与立体图谱仍可查阅。',
       retry: '重新读取位置依据',
       unlocated: '尚未绑定空间范围的资料与知识',
+      unlocatedSearch: '查找未定位资料',
+      unlocatedKind: '对象类别',
+      unlocatedAll: '全部类别',
+      unlocatedPrevious: '上一页资料',
+      unlocatedNext: '下一页资料',
+      unlocatedClear: '清除查找条件',
+      unlocatedEmpty: '当前列表没有匹配对象，可清除条件重试。',
+      unlocatedPage: '{start}—{end} / {total} 个对象',
+      allMapEdges: '显示本页对象的全部连线',
+      spatialHelp: '空间视图说明',
+      readingHelp: '读图说明',
+      unlocatedHelp:
+        '按名称、来源或类别查找对象。列表翻页仅调整阅读内容，不改变查询范围；选中后显示关联。全景网络可查看完整网络。',
       located: '有明确记录位置绑定',
       geometryCounts:
         '地图几何：点 {point} · 线 {line} · 面 {area} · 混合 {mixed}',
@@ -1071,6 +1084,7 @@ const zhCN = {
       scope: '当前项目 · 按权限显示',
       queryLabel: '查询数据',
       searchExampleAction: '搜索资料',
+      searchHelpLabel: '资料搜索范围',
       searchScope:
         '资料搜索检索登记名称和来源机构。图内对象请使用图谱中的对象定位；专题请从保存视图打开。本搜索不检索正文，也不解释自然语言问题。',
       searchExamples: '用当前资料名称试搜（重新查询资料范围）',
@@ -2464,6 +2478,20 @@ const en: typeof zhCN = {
         'Location sources could not be read. Retry, or continue with the planar and layered graphs.',
       retry: 'Reload location evidence',
       unlocated: 'Sources and knowledge without a bound geometry',
+      unlocatedSearch: 'Find unlocated sources',
+      unlocatedKind: 'Object category',
+      unlocatedAll: 'All categories',
+      unlocatedPrevious: 'Previous sources',
+      unlocatedNext: 'Next sources',
+      unlocatedClear: 'Clear search conditions',
+      unlocatedEmpty:
+        'No matching objects in this list. Clear the conditions to try again.',
+      unlocatedPage: '{start}–{end} / {total} objects',
+      allMapEdges: 'Show all connections between visible objects',
+      spatialHelp: 'About the spatial view',
+      readingHelp: 'Reading help',
+      unlocatedHelp:
+        'Find objects by name, source or category. Paging changes only the reading list, not query membership. Select an object to show related connections; the network view retains the complete network.',
       located: 'Explicit record location binding',
       geometryCounts:
         'Map geometries: points {point} · lines {line} · areas {area} · mixed {mixed}',
@@ -3416,6 +3444,7 @@ const en: typeof zhCN = {
       scope: 'Current project · Authorized data',
       queryLabel: 'Query data',
       searchExampleAction: 'Search resource',
+      searchHelpLabel: 'About source search',
       searchScope:
         'Search registered resource names and source organizations. Locate graph objects within the graph; open topics from saved views. This search does not search document bodies or interpret natural-language questions.',
       searchExamples:

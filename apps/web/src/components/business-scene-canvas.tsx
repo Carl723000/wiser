@@ -1,4 +1,5 @@
 'use client';
+import { ContextHelp } from './context-help';
 import {
   useEffect,
   useMemo,
@@ -691,7 +692,7 @@ export function BusinessSceneCanvas({
             {copy.edgeFamilies[family]}
           </span>
         ))}
-        <small>{copy.statusLegend}</small>
+        <ContextHelp label={copy.readingHelp}>{copy.statusLegend}</ContextHelp>
       </div>
       <div className={styles.toolbar}>
         <label>
@@ -821,7 +822,7 @@ export function BusinessSceneCanvas({
           ) : null}
         </div>
       </details>
-      <p className={styles.hint}>
+      <ContextHelp label={copy.readingHelp}>
         {settings.form === 'layers'
           ? copy.layerHint
           : settings.view === 'time'
@@ -831,7 +832,7 @@ export function BusinessSceneCanvas({
               : settings.view === 'compare'
                 ? copy.compareHint
                 : copy.planeHint}
-      </p>
+      </ContextHelp>
       <div className={styles.workspace}>
         <div className={styles.plot} ref={root}>
           {settings.form === 'space' ? (
@@ -1140,7 +1141,7 @@ export function BusinessSceneCanvas({
           {memberLists}
         </aside>
       </div>
-      <p className={styles.hint}>{copy.zoomHint}</p>
+      <ContextHelp label={copy.readingHelp}>{copy.zoomHint}</ContextHelp>
       <details className={styles.legend}>
         <summary>
           {copy.grouping} · {layout.groups.length}

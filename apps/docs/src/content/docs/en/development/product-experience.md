@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 00ed94c03969a594ca9a86f43368b2d1595708a5
+lastReviewedCommit: 71bbfd47931e25c997cb3943ae70d65761cd660e
 ---
 
 ## What this guide governs
@@ -274,3 +274,5 @@ Spatial reading offers a separate related-reference-extent action. It follows on
 The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
 
 Evidence-path reading retains the explicitly chosen assertion IDs and versions until a new search. A changed or unavailable path clears its graph and excerpts and asks the reader to search again; it never substitutes an alternative or newly shorter route silently. Missing endpoints disable search. Evidence is read only from the current authorized relation rows, not retained in path state.
+
+Unlocated spatial objects use a named, source-distinct searchable list with category filters and bounded pages. Paging affects only this reading list; the full query identity set remains available. Spatial lines show the current focus by default, with an explicit option for connections between currently visible objects. Full-network reading remains a separate existing presentation. The graph toolbar reuses workspace expansion without unmounting the map. Optional explanatory text uses pointer- and keyboard/touch-operable question-mark help; permission, partial-scope and review states remain visible.

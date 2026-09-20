@@ -1,4 +1,5 @@
 'use client';
+import { ContextHelp } from './context-help';
 import {
   relationReturnHref,
   withRelationReturn,
@@ -688,9 +689,11 @@ function DataExplorerSession({
           </div>
           <span className={styles.scope}>{copy.scope}</span>
         </header>
-        <p id="resource-search-help" className={styles.searchHelp}>
-          {copy.searchScope}
-        </p>
+        <span id="resource-search-help">
+          <ContextHelp label={copy.searchHelpLabel}>
+            {copy.searchScope}
+          </ContextHelp>
+        </span>
         {result?.resources.length ? (
           <details className={styles.searchExamples}>
             <summary>{copy.searchExamples}</summary>
@@ -952,12 +955,13 @@ function DataExplorerSession({
         </div>
         {result ? (
           <div className={styles.countScope}>
-            <p>{copy.recordCountScope}</p>
             <dl>
               <dt>{copy.independentObservations}</dt>
               <dd>{copy.observationsUnverified}</dd>
             </dl>
-            <p>{copy.observationVerification}</p>
+            <ContextHelp label={copy.independentObservations}>
+              {copy.recordCountScope} {copy.observationVerification}
+            </ContextHelp>
           </div>
         ) : null}
         {failure === null ? null : (

@@ -10,7 +10,6 @@ import {
   spatialSceneAnchors,
   relatedSpatialReferences,
   spatialSceneCoverage,
-  unlocatedSceneLayout,
 } from '@/lib/business-scene-spatial';
 import {
   nodeFamilies,
@@ -26,6 +25,8 @@ import {
   type InvalidateExploration,
 } from '@/lib/exploration-request';
 import { AmapBasemap, type AmapBasemapHandle } from './amap-basemap';
+import { ContextHelp } from './context-help';
+import { WorkspaceExpandButton } from './exploration-workspace';
 import { SpatialAttribution } from './spatial-attribution';
 import styles from './business-scene-canvas.module.css';
 maplibre.setWorkerUrl('/vendor/maplibre/6.8.0/maplibre-gl-worker.mjs');
@@ -225,21 +226,51 @@ export function BusinessSceneMap({
     settings.mapLat,
     settings.mapZoom,
   ]);
-  const unlocated = useMemo(
+  const [listSearch, setListSearch] = useState('');
+  const [listKind, setListKind] = useState('');
+  const [listPage, setListPage] = useState(0);
+  const [allEdges, setAllEdges] = useState(false);
+  const unlocatedNodes = useMemo(
     () =>
-      unlocatedSceneLayout(
-        scene.nodes.filter((n) => !anchors.has(n.id)),
-        Math.max(1, width * 0.43 - 24),
-        590,
-      ),
-    [scene, anchors, width],
+      scene.nodes
+        .filter((n) => !anchors.has(n.id))
+        .sort(
+          (a, b) =>
+            a.label.localeCompare(b.label, locale) ||
+            (a.sourceTitle ?? '').localeCompare(b.sourceTitle ?? '', locale) ||
+            a.id.localeCompare(b.id),
+        ),
+    [scene, anchors, locale],
   );
+  const matchingNodes = useMemo(() => {
+    const query = listSearch.trim().toLocaleLowerCase();
+    return unlocatedNodes.filter(
+      (n) =>
+        (!listKind || n.kind === listKind) &&
+        (!query ||
+          `${n.label} ${n.sourceTitle ?? ''}`
+            .toLocaleLowerCase()
+            .includes(query)),
+    );
+  }, [unlocatedNodes, listSearch, listKind]);
+  const pageSize = 6;
+  const pageIndex = Math.min(
+    listPage,
+    Math.max(0, Math.ceil(matchingNodes.length / pageSize) - 1),
+  );
+  const visibleNodes = matchingNodes.slice(
+    pageIndex * pageSize,
+    (pageIndex + 1) * pageSize,
+  );
+  useEffect(() => {
+    setListSearch('');
+    setListKind('');
+    setListPage(0);
+    setAllEdges(false);
+  }, [queryId]);
   const positions = useMemo(() => {
     const result = new globalThis.Map<string, [number, number]>(
-      [...unlocated.positions].map(([id, [x, y]]) => [
-        id,
-        [width * 0.57 + 12 + x, 40 + y],
-      ]),
+      visibleNodes.map((n, i) => [n.id, [width * 0.57 + 12, 164 + i * 72]]),
     );
     const located = [...anchors];
     for (const [i, [id, anchor]] of located.entries()) {
@@ -253,7 +284,7 @@ export function BusinessSceneMap({
       }
     }
     return result;
-  }, [unlocated, anchors, width, revision]);
+  }, [matchingNodes, pageIndex, anchors, width, revision]);
   const saveCamera = () => {
     const m = map.current;
     if (m)
@@ -280,6 +311,7 @@ export function BusinessSceneMap({
       data-anchor-count={anchors.size}
     >
       <div className={styles.toolbar}>
+        <WorkspaceExpandButton locale={locale} />
         <button onClick={() => map.current?.zoomIn({ duration: 0 })}>
           {copy.zoomIn}
         </button>
@@ -463,17 +495,6 @@ export function BusinessSceneMap({
                 </marker>
               ))}
             </defs>
-            <rect
-              x={width * 0.57}
-              y={0}
-              width={width * 0.43}
-              height={650}
-              fill="var(--surface)"
-              opacity={0.96}
-            />
-            <text x={width * 0.6} y={28} className={styles.groupLabel}>
-              {copy.unlocated}
-            </text>
             {[...anchors].map(([id, a]) => {
               const origin = map.current?.project(a.labelPoint),
                 position = positions.get(id);
@@ -490,6 +511,7 @@ export function BusinessSceneMap({
               ) : null;
             })}
             {scene.edges.map((e) => {
+              if (!allEdges && !focus.edges.has(e.id)) return null;
               const a = positions.get(e.from),
                 b = positions.get(e.to);
               if (!a || !b) return null;
@@ -497,11 +519,7 @@ export function BusinessSceneMap({
               const family = edgeFamilies[e.row.candidate.predicate];
               const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
               const inset = Math.min(
-                e.to === selectedId
-                  ? 11
-                  : anchors.has(e.to)
-                    ? 8
-                    : unlocated.radius + 2,
+                e.to === selectedId ? 11 : anchors.has(e.to) ? 8 : 4,
                 length / 3,
               );
               const end = length
@@ -567,7 +585,7 @@ export function BusinessSceneMap({
             })}
             {scene.nodes.map((n) => {
               const p = positions.get(n.id);
-              if (!p) return null;
+              if (!p || !anchors.has(n.id)) return null;
               const anchored = anchors.has(n.id),
                 active = focus.nodes.has(n.id);
               return (
@@ -594,9 +612,7 @@ export function BusinessSceneMap({
                     family={nodeFamilies[n.kind]}
                     x={p[0]}
                     y={p[1]}
-                    size={
-                      n.id === selectedId ? 7 : anchored ? 6 : unlocated.radius
-                    }
+                    size={n.id === selectedId ? 7 : 6}
                   />
                   <title>
                     {n.label} · {anchored ? copy.located : copy.unlocated}
@@ -614,25 +630,116 @@ export function BusinessSceneMap({
                   ) : null}
                 </g>
               );
-            })}{' '}
-            {unlocated.captions.map(({ group: key, y, count }) => {
-              const title =
-                (copy.groups as Record<string, string>)[key] ??
-                (dictionary.kinds as Record<string, string>)[key] ??
-                copy.unclassified;
-              return (
-                <text
-                  key={key}
-                  x={width * 0.57 + 12}
-                  y={40 + y}
-                  className={styles.spatialGroupLabel}
-                >
-                  {title} · {count}
-                </text>
-              );
             })}
           </svg>
         ) : null}
+        {collection && (
+          <section
+            className={styles.unlocatedBrowser}
+            aria-label={copy.unlocated}
+          >
+            <strong>{copy.unlocated}</strong>
+            <label>
+              <span>{copy.unlocatedSearch}</span>
+              <input
+                type="search"
+                value={listSearch}
+                onChange={(e) => {
+                  setListSearch(e.target.value);
+                  setListPage(0);
+                }}
+              />
+            </label>
+            <select
+              aria-label={copy.unlocatedKind}
+              value={listKind}
+              onChange={(e) => {
+                setListKind(e.target.value);
+                setListPage(0);
+              }}
+            >
+              <option value="">{copy.unlocatedAll}</option>
+              {[...new Set(unlocatedNodes.map((n) => n.kind))]
+                .sort()
+                .map((kind) => (
+                  <option key={kind} value={kind}>
+                    {dictionary.kinds[kind]}
+                  </option>
+                ))}
+            </select>
+            <div className={styles.unlocatedRows}>
+              {visibleNodes.map((n) => (
+                <button
+                  key={n.id}
+                  data-node-id={n.id}
+                  data-anchored="false"
+                  data-family={nodeFamilies[n.kind]}
+                  aria-pressed={selectedId === n.id}
+                  onClick={() => onSelect(n.id)}
+                  title={`${n.label} · ${n.sourceTitle ?? dictionary.kinds[n.kind]}`}
+                >
+                  <span>
+                    <svg width="16" height="16" aria-hidden="true">
+                      <BusinessSceneGlyph
+                        family={nodeFamilies[n.kind]}
+                        x={8}
+                        y={8}
+                        size={5}
+                      />
+                    </svg>{' '}
+                    {n.label}
+                  </span>
+                  <small>
+                    {dictionary.kinds[n.kind]} ·{' '}
+                    {n.sourceTitle ?? copy.unclassified}
+                  </small>
+                </button>
+              ))}
+              {!matchingNodes.length && (
+                <p role="status">{copy.unlocatedEmpty}</p>
+              )}
+            </div>
+            <div className={styles.unlocatedPaging}>
+              <button
+                disabled={pageIndex === 0}
+                onClick={() => setListPage(pageIndex - 1)}
+              >
+                {copy.unlocatedPrevious}
+              </button>
+              <button
+                disabled={(pageIndex + 1) * pageSize >= matchingNodes.length}
+                onClick={() => setListPage(pageIndex + 1)}
+              >
+                {copy.unlocatedNext}
+              </button>
+            </div>
+            <small aria-live="polite">
+              {copy.unlocatedPage
+                .replace(
+                  '{start}',
+                  String(matchingNodes.length ? pageIndex * pageSize + 1 : 0),
+                )
+                .replace(
+                  '{end}',
+                  String(
+                    Math.min((pageIndex + 1) * pageSize, matchingNodes.length),
+                  ),
+                )
+                .replace('{total}', String(matchingNodes.length))}
+            </small>
+            {(listSearch || listKind) && (
+              <button
+                onClick={() => {
+                  setListSearch('');
+                  setListKind('');
+                  setListPage(0);
+                }}
+              >
+                {copy.unlocatedClear}
+              </button>
+            )}
+          </section>
+        )}
       </div>
       <SpatialAttribution collection={anchoredGeometry} />
       {collection ? (
@@ -653,10 +760,19 @@ export function BusinessSceneMap({
               String(coverage.namedUnboundObjects),
             )}
           </p>
-          <p>{copy.coverageBasis}</p>
         </div>
       ) : null}
-      <p className={styles.hint}>{copy.mapHint}</p>
+      <label className={styles.mapEdgeToggle}>
+        <input
+          type="checkbox"
+          checked={allEdges}
+          onChange={(e) => setAllEdges(e.target.checked)}
+        />
+        {copy.allMapEdges}
+      </label>
+      <ContextHelp label={copy.spatialHelp}>
+        {copy.unlocatedHelp} {copy.coverageBasis} {copy.mapHint}
+      </ContextHelp>
       {collection && !anchors.size ? <p>{copy.mapEmpty}</p> : null}
     </div>
   );

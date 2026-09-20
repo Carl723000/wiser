@@ -1,5 +1,7 @@
 'use client';
 import {
+  createContext,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -8,6 +10,21 @@ import {
 } from 'react';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './exploration-workspace.module.css';
+
+const WorkspaceExpansion = createContext<{
+  expanded: boolean;
+  toggle: () => void;
+} | null>(null);
+export function WorkspaceExpandButton({ locale }: { locale: Locale }) {
+  const state = useContext(WorkspaceExpansion);
+  if (!state) return null;
+  const copy = getDictionary(locale).dataFoundation.explorer;
+  return (
+    <button aria-expanded={state.expanded} onClick={state.toggle}>
+      {state.expanded ? copy.exitWorkspace : copy.expandWorkspace}
+    </button>
+  );
+}
 
 /** Expand in place: graph/map components and their reading state remain mounted. */
 export function ExplorationWorkspace({
@@ -108,7 +125,11 @@ export function ExplorationWorkspace({
         </button>
         {expanded ? <span>{copy.workspaceEscape}</span> : null}
       </div>
-      {children}
+      <WorkspaceExpansion.Provider
+        value={{ expanded, toggle: () => setExpanded((value) => !value) }}
+      >
+        {children}
+      </WorkspaceExpansion.Provider>
     </main>
   );
 }
