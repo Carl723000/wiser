@@ -29,7 +29,7 @@ export default async function DataFoundationPage({
     <DataExplorer
       {...initial}
       supplementary={
-        <Suspense fallback={null}>
+        <Suspense key="overview-status" fallback={null}>
           <DataOverviewStatus locale={locale} />
         </Suspense>
       }

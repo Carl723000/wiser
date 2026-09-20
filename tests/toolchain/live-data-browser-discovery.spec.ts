@@ -93,6 +93,7 @@ it('discovers the CI browser suite without private case URLs', () => {
       'business-record-navigation',
       'business-relation-navigation',
       'exploration-record-focus',
+      'home-entry',
     ])
       expect(result.stdout).not.toContain(name);
 
@@ -128,6 +129,7 @@ it('discovers the CI browser suite without private case URLs', () => {
       'business-relation-navigation.case.ts',
       'exploration-record-focus.case.ts',
       'exploration-workspace.case.ts',
+      'home-entry.case.ts',
     ])
       expect(cases.stdout).toContain(name);
     expect(cases.stdout).toContain(
@@ -136,7 +138,7 @@ it('discovers the CI browser suite without private case URLs', () => {
     expect(cases.stdout).toContain(
       'applies a real public monthly period consistently across graph, records, map and refresh',
     );
-    expect(cases.stdout).toContain('Total: 8 tests in 4 files');
+    expect(cases.stdout).toContain('Total: 9 tests in 5 files');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
