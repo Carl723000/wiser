@@ -13,11 +13,12 @@ const token = `${Buffer.from('{}').toString('base64url')}.${Buffer.from(JSON.str
 const auth = () =>
   Promise.resolve({
     auth: {
-      getClaims: async () => ({ data: { claims }, error: null }),
-      getSession: async () => ({
-        data: { session: { access_token: token } },
-        error: null,
-      }),
+      getClaims: () => Promise.resolve({ data: { claims }, error: null }),
+      getSession: () =>
+        Promise.resolve({
+          data: { session: { access_token: token } },
+          error: null,
+        }),
     },
   });
 const input = {
@@ -70,7 +71,7 @@ it('uses the verified session, fixed endpoint, scoped headers and a metadata-onl
   const headers = new Headers(options?.headers);
   expect(headers.get('authorization')).toBe(`Bearer ${token}`);
   expect(headers.get('x-wiser-project-id')).toBe(other);
-  expect(JSON.parse(String(options?.body))).toEqual({
+  expect(JSON.parse(options?.body as string)).toEqual({
     fromYear: 2020,
     toYear: 2021,
     offset: 0,
@@ -166,18 +167,21 @@ it('keeps an authorized empty result distinct from failure', async () => {
 });
 it('rejects an expired session before calling the API', async () => {
   const fetch = vi.fn();
-  const getAuth = async () => ({
-    auth: {
-      getClaims: async () => ({
-        data: { claims: { ...claims, exp: 1 } },
-        error: null,
-      }),
-      getSession: async () => ({
-        data: { session: { access_token: token } },
-        error: null,
-      }),
-    },
-  });
+  const getAuth = () =>
+    Promise.resolve({
+      auth: {
+        getClaims: () =>
+          Promise.resolve({
+            data: { claims: { ...claims, exp: 1 } },
+            error: null,
+          }),
+        getSession: () =>
+          Promise.resolve({
+            data: { session: { access_token: token } },
+            error: null,
+          }),
+      },
+    });
   await expect(
     make(fetch, 1000, getAuth).externalMetadata(input),
   ).rejects.toMatchObject({ status: 401 });
