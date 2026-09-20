@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 258d349
 ---
 
 ## 协议边界
@@ -367,3 +367,9 @@ Data REST 错误是扁平安全 envelope：
 检查列表能力 1.1 新增可选 `assetId` 和 `latestPerAsset`（REST 使用 `true` / `false`）。启用后先按 `created_at DESC, assessment_id DESC` 选出每份可访问原件的最新检查，再按既有检查编号分页。较新记录即使缺项或声明与原件不符，也不会暗中退回较旧完整说明。省略参数仍查询完整历史，1.0 输入合同保留；无需迁移或修改返回结构。
 
 栅格显示查询接受 `bidx`（1–256）、有限且严格递增的十进制 `rescale=min,max`、可选的有限十进制 `nodata`、白名单重采样方式、`colormap_name` 与 `return_mask`。`nodata` 经两层白名单传至 TiTiler，不修改原件元数据。单位标签仅是浏览器中的填写说明，不作为查询参数，也不执行单位换算。来源选择与鉴权规则保持不变。
+
+### 项目业务范围（探索1.13）
+
+使用 `scope: "project"` 与 `businessQuery`，由服务器按权限确定来源清单；此模式不接受调用方提供版本或关系清单。现有查询快照固定资料版本、解析版本及关系UUID/修订号，只返回短查询编号和 `membership` 计数。计数描述显示筛选前的固定范围，不是独立观测量或当前页数量；资源与关系列表仍有界分页。超过服务器上限直接失败，不静默截断；存储上限不代表绘制性能。
+
+保存视图打开1.3、导出1.2保留该范围。通过 `baseQueryId` 调整条件时，先重新核验原有来源和关系，再在其中筛选，不吸收后来新增的成员；切换审核状态须重新查询。成员缺失、撤回或修订变化时整次失败，不返回不完整全景。探索1.12、保存视图打开1.2及导出1.1的历史契约保持冻结，明确版本查询沿用原限制。无权读取且未获目录公开许可的元数据不包含在内；受限来源的可发现目录需另行授权。沿用原GraphQL、REST和MCP入口，不建立新的身份体系。

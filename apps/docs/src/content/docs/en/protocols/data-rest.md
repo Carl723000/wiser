@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 258d349
 ---
 
 ## Protocol boundary
@@ -367,3 +367,9 @@ Cross-source relation evidence optionally pins `source.dataItemId`, `versionId`,
 Assessment list capability 1.1 adds optional `assetId` and `latestPerAsset` (REST `true` / `false`). With `latestPerAsset=true`, choose the newest visible report per original by `created_at DESC, assessment_id DESC` before applying the existing assessment-ID pagination. A newer incomplete or source-mismatched declaration is returned instead of silently falling back to an older complete one. Omitted options preserve full history; the immutable 1.0 input schema remains in the archive. No migration or public output changes are needed.
 
 Raster display queries accept `bidx` (1–256), a finite strictly increasing decimal `rescale=min,max`, optional finite decimal `nodata`, allowlisted resampling, `colormap_name` and `return_mask`. The `nodata` override is forwarded through both allowlists to TiTiler without changing source metadata. Unit labels are browser-only declarations, never a query parameter or a unit conversion. Source selection and authorization are unchanged.
+
+### Project business scope (exploration 1.13)
+
+`scope: "project"` with `businessQuery` requests a server-resolved authorized source manifest; callers cannot supply version or assertion pins in this mode. Source versions, analysis versions and assertion UUID/revisions are fixed in the existing owner-scoped snapshot. Responses expose `membership` counts and a short `queryId`, not the assertion list. Counts describe fixed membership before display filters, not independent observations or the current page. Resource pages and relation pages remain bounded. Exceeding server limits fails without truncation; the storage ceiling is not a rendering performance claim.
+
+Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQueryId` retains existing members and rechecks every original source/assertion before narrowing; it does not absorb later additions. Changing review status requires a fresh query. Missing, withdrawn or changed pins fail the request rather than returning a partial panorama. Exploration 1.12, saved-view open 1.2 and export 1.1 schemas remain immutable archives; explicit-version queries keep their existing limits. Hidden data and undiscoverable metadata are not included. A separately authorized source catalogue is required for discoverable restricted sources. No new GraphQL, REST or MCP route or authority model is introduced.

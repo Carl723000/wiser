@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 5afd0a3
+lastReviewedCommit: 258d349
 ---
 
 ## Authority boundary
@@ -390,3 +390,9 @@ Spatial presentation uses the existing complete, bounded HTTP map query and exac
 ### Server-owned business membership storage
 
 Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the existing owner-scoped exploration snapshot and saved-view tables. It stores only assertion UUID/version pairs, separately from the bounded client specification. Existing rows remain null and unchanged. The database rejects malformed, duplicate or oversized memberships (100,000 pairs / 8 MiB maximum); this is a storage guard, not a claimed query/render capacity. Forced RLS, immutable snapshot contents and saved-view one-way revocation continue to apply to the whole row. `packages/data-infra/test/migrations/exploration-membership.spec.ts` exercises 2,033 synthetic members, six scope boundaries and mutation rejection in a disposable database. This storage slice alone does not enable project-wide business queries, change existing capability limits, approve knowledge or load external observations. API use and client integration require separate verification.
+
+### Project business scope (exploration 1.13)
+
+`scope: "project"` with `businessQuery` requests a server-resolved authorized source manifest; callers cannot supply version or assertion pins in this mode. Source versions, analysis versions and assertion UUID/revisions are fixed in the existing owner-scoped snapshot. Responses expose `membership` counts and a short `queryId`, not the assertion list. Counts describe fixed membership before display filters, not independent observations or the current page. Resource pages and relation pages remain bounded. Exceeding server limits fails without truncation; the storage ceiling is not a rendering performance claim.
+
+Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQueryId` retains existing members and rechecks every original source/assertion before narrowing; it does not absorb later additions. Changing review status requires a fresh query. Missing, withdrawn or changed pins fail the request rather than returning a partial panorama. Exploration 1.12, saved-view open 1.2 and export 1.1 schemas remain immutable archives; explicit-version queries keep their existing limits. Hidden data and undiscoverable metadata are not included. A separately authorized source catalogue is required for discoverable restricted sources. No new GraphQL, REST or MCP route or authority model is introduced.

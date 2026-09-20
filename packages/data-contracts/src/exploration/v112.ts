@@ -11,10 +11,9 @@ export const QuerySpecSchema = z
   .strictObject({
     ...PreviousSpec.shape,
     businessQuery: BusinessQuerySchema.optional(),
-    scope: z.literal('project').optional(),
   })
   .superRefine((value, context) => {
-    const { businessQuery, scope, ...previous } = value;
+    const { businessQuery, ...previous } = value;
     const checked = PreviousSpec.safeParse(previous);
     if (!checked.success)
       for (const issue of checked.error.issues)
@@ -30,15 +29,7 @@ export const QuerySpecSchema = z
         message:
           'Viewport filtering is not defined for a business relation scope',
       });
-    if (
-      scope &&
-      (!businessQuery || value.versions || businessQuery.assertionPins)
-    )
-      context.addIssue({
-        code: 'custom',
-        message: 'Project membership is owned by the server',
-      });
-    if (businessQuery && ((!value.versions && !scope) || value.recordQuery))
+    if (businessQuery && (!value.versions || value.recordQuery))
       context.addIssue({
         code: 'custom',
         message:
@@ -48,11 +39,7 @@ export const QuerySpecSchema = z
 export const ExplorationQueryInputSchema = z
   .strictObject({ ...PreviousInput.shape, spec: QuerySpecSchema.optional() })
   .superRefine((value, context) => {
-    const {
-      businessQuery: _business,
-      scope: _scope,
-      ...spec
-    } = value.spec ?? {};
+    const { businessQuery: _business, ...spec } = value.spec ?? {};
     const checked = PreviousInput.safeParse({
       ...value,
       ...(value.spec ? { spec } : {}),
@@ -66,27 +53,10 @@ export const ExplorationQueryInputSchema = z
         });
   });
 export const ExplorationResultSchema = z
-  .strictObject({
-    ...PreviousResult.shape,
-    spec: QuerySpecSchema,
-    membership: z
-      .strictObject({
-        complete: z.literal(true),
-        versionCount: z.number().int().min(0).max(10000),
-        assertionCount: z.number().int().min(0).max(100000),
-      })
-      .optional(),
-  })
+  .strictObject({ ...PreviousResult.shape, spec: QuerySpecSchema })
   .superRefine((value, context) => {
-    const { businessQuery: _business, scope: _scope, ...spec } = value.spec;
-    const { membership, ...previous } = value;
-    if ((value.spec.scope === 'project') !== (membership !== undefined))
-      context.addIssue({
-        code: 'custom',
-        path: ['membership'],
-        message: 'Project results require complete server membership counts',
-      });
-    const checked = PreviousResult.safeParse({ ...previous, spec });
+    const { businessQuery: _business, ...spec } = value.spec;
+    const checked = PreviousResult.safeParse({ ...value, spec });
     if (!checked.success)
       for (const issue of checked.error.issues)
         context.addIssue({

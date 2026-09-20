@@ -963,7 +963,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.view.open': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
-    output: 'a0df69063e82bd746b47aae2e04eb3f4a2faa8932c86b723c4e1374b11113efc',
+    output: '89305b69aadfb46ec08e7a09a6cc371c7eb890750540a176595cdede4e282889',
   },
   'data.explore.view.revoke': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
@@ -971,7 +971,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.export': {
     input: '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
-    output: '5160ecc1bd3fb87b278c1124dd2f12a638aa7920cd4549461d9ac960b4580742',
+    output: '93b5feefa2ed2963fa29adfa2365e4b74b88a09fcf99969abd5a8a158c057c9d',
   },
 
   'data.analysis.create': {
@@ -979,8 +979,8 @@ const expectedJsonSchemaHashes = {
     output: '157a58322075047c67537707e26c0307eb80090d55e7bf3443b704345d9e3d16',
   },
   'data.explore.query': {
-    input: 'e2f0a6419ebe7ae26bb2b36b08cf44a7578e487902c7ecfab05326c9257c4109',
-    output: 'f31e39c629c1f50fc10049979595d648980f2aedb3bfd29e028dd17de2316745',
+    input: 'c556303261c0375da19b4f44ec13da6f152155d31fe4ed32e61dac8319ea571e',
+    output: 'ccdd21e381b4e13e8dc4ba4368e710eae1989cb8723cfddb4af390efc2ea3811',
   },
   'data.catalog.search': {
     input: '9fa0f09f57dc5063f42406cdaefd0e19b0ab8e019a3a4ba9824a3445c24139be',
@@ -1957,7 +1957,7 @@ it('archives saved-view discovery unchanged when presentation is introduced', ()
     '1.1.0',
   );
   expect(DATA_CAPABILITY_REGISTRY['data.explore.view.open'].version).toBe(
-    '1.2.0',
+    '1.3.0',
   );
   expect(jsonSchemaHash(create.inputSchema)).toBe(
     'b87e4f4b326ae62836ddd3a4411c5537a17fa2444fc73adf9e88dff049829fb4',
@@ -1965,4 +1965,32 @@ it('archives saved-view discovery unchanged when presentation is introduced', ()
   expect(jsonSchemaHash(open.outputSchema)).toBe(
     '67c4c0d7b588932dfa8b7756325a7f4379f2f4bc81247e6b7b67d76e02b90d4c',
   );
+});
+
+it('keeps pre-project membership discovery hashes unchanged', () => {
+  const expected = {
+    'data.explore.query': [
+      '1.12.0',
+      'e2f0a6419ebe7ae26bb2b36b08cf44a7578e487902c7ecfab05326c9257c4109',
+      'f31e39c629c1f50fc10049979595d648980f2aedb3bfd29e028dd17de2316745',
+    ],
+    'data.explore.view.open': [
+      '1.2.0',
+      '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+      'a0df69063e82bd746b47aae2e04eb3f4a2faa8932c86b723c4e1374b11113efc',
+    ],
+    'data.explore.export': [
+      '1.1.0',
+      '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
+      '5160ecc1bd3fb87b278c1124dd2f12a638aa7920cd4549461d9ac960b4580742',
+    ],
+  } as const;
+  for (const [key, [version, input, output]] of Object.entries(expected)) {
+    const archived = DATA_CAPABILITY_ARCHIVE[
+      key as keyof typeof DATA_CAPABILITY_ARCHIVE
+    ]?.find((entry) => entry.version === version);
+    expect(archived).toBeDefined();
+    expect(jsonSchemaHash(archived!.inputSchema)).toBe(input);
+    expect(jsonSchemaHash(archived!.outputSchema)).toBe(output);
+  }
 });

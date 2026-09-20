@@ -137,6 +137,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         subject: string,
         predicate: string,
         object: string,
+        evidenceAsset = asset,
       ) => ({
         subject: entity(subject),
         predicate,
@@ -153,7 +154,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         generation: { method: 'SOURCE_TABLE', model: null },
         evidence: [
           {
-            assetId: asset,
+            assetId: evidenceAsset,
             sourceHash: 'a'.repeat(64),
             locator: 'PDF page 1, table row 1',
             excerpt: null,
@@ -168,17 +169,48 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       await client.query(
         `grant execute on function service.valid_exploration_business_pins(jsonb) to ${role}`,
       );
-      for (let n = 0; n < 298; n++) {
+      const sources = [{ item, version, asset }];
+      for (let n = 0; n < 299; n++) {
         const extraItem = randomUUID(),
           extraVersion = randomUUID();
         await client.query(
-          `insert into catalog.data_item(data_item_id,tenant_id,project_id,owner_project_id,name,business_domains,source_natures,source_channels,processing_stage,intended_uses,source_organization,authorization_scope,citation_requirements,unit_definitions,missing_value_rules,anomaly_rules,generation_method,quality_grade,acceptance_status,publication_status,security_level,version,update_mode) values($1,$2,$3,$3,'Synthetic observations',array['water'],array['observed'],array['file-upload'],'RAW',array['analysis'],'Synthetic source','data.catalog.read','{}','[]','[]','[]','OBSERVED','C','PASSED','PUBLISHED','L1_INTERNAL',1,'SNAPSHOT')`,
-          [extraItem, tenant, project],
+          `insert into catalog.data_item(data_item_id,tenant_id,project_id,owner_project_id,name,business_domains,source_natures,source_channels,processing_stage,intended_uses,source_organization,authorization_scope,citation_requirements,unit_definitions,missing_value_rules,anomaly_rules,generation_method,quality_grade,acceptance_status,publication_status,security_level,version,update_mode) values($1,$2,$3,$3,'Synthetic observations',array['water'],array['observed'],array['file-upload'],'RAW',array['analysis'],'Synthetic source','data.catalog.read','{}','[]','[]','[]','OBSERVED','C','PASSED','PUBLISHED',$4,1,'SNAPSHOT')`,
+          [
+            extraItem,
+            tenant,
+            project,
+            n === 298 ? 'L2_RESTRICTED' : 'L1_INTERNAL',
+          ],
         );
         await client.query(
-          `insert into catalog.data_item_version(version_id,tenant_id,project_id,data_item_id,version_number,asset_manifest,source_hash,metadata_hash,processing_stage,generation_method,quality_grade,acceptance_status,publication_status,security_level,committed_at,published_at) values($1,$2,$3,$4,1,'{}',decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),'RAW','OBSERVED','C','PASSED','PUBLISHED','L1_INTERNAL',now(),now())`,
-          [extraVersion, tenant, project, extraItem],
+          `insert into catalog.data_item_version(version_id,tenant_id,project_id,data_item_id,version_number,asset_manifest,source_hash,metadata_hash,processing_stage,generation_method,quality_grade,acceptance_status,publication_status,security_level,committed_at,published_at) values($1,$2,$3,$4,1,'{}',decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),'RAW','OBSERVED','C','PASSED','PUBLISHED',$5,now(),now())`,
+          [
+            extraVersion,
+            tenant,
+            project,
+            extraItem,
+            n === 298 ? 'L2_RESTRICTED' : 'L1_INTERNAL',
+          ],
         );
+        if (n < 298) {
+          const extraAsset = randomUUID();
+          await client.query(
+            `insert into catalog.asset(asset_id,tenant_id,project_id,version_id,storage_key,content_hash,media_type,byte_size,lifecycle_state,security_level,content_blob_id) values($1,$2,$3,$4,$5,decode(repeat('a',64),'hex'),'application/pdf',20,'RAW','L1_INTERNAL',$6)`,
+            [
+              extraAsset,
+              tenant,
+              project,
+              extraVersion,
+              `synthetic/${extraAsset}`,
+              asset,
+            ],
+          );
+          sources.push({
+            item: extraItem,
+            version: extraVersion,
+            asset: extraAsset,
+          });
+        }
       }
       const explore = new PostgresExplorationExecutor(transactionalPool);
       const saved = createExplorationSavedExecutors(transactionalPool, explore);
@@ -187,22 +219,33 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         if (!executor) throw new Error('Missing saved executor');
         return executor.execute(body, ctx);
       };
-      for (let start = 0; start < 2033; start += 100) {
+      const startedAt = performance.now();
+      const checkpoint = (phase: string) =>
+        console.info(
+          'project-membership-fixture',
+          phase,
+          Math.round(performance.now() - startedAt),
+        );
+      // Exercise membership across sources; import performance of thousands of
+      // distinct entities in one source is a separate measured ingestion concern.
+      for (let start = 0; start < 2033; start += 7) {
+        const source = sources[Math.floor(start / 7)]!;
         const batch = Array.from(
-          { length: Math.min(100, 2033 - start) },
+          { length: Math.min(7, 2033 - start) },
           (_, i) =>
             relation(
               'point:' + String(start + i),
               'HAS_REPORTED_INDICATOR',
               'measurement:' + String(start + i),
+              source.asset,
             ),
         );
         const imported = ImportRelationsOutputSchema.parse(
           await call(
             'import',
             {
-              dataItemId: item,
-              versionId: version,
+              dataItemId: source.item,
+              versionId: source.version,
               mappingVersion: 'project.v1',
               candidates: batch,
             },
@@ -210,7 +253,9 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           ),
         );
         expect(imported.createdCount).toBe(batch.length);
+        if (start % 500 === 0) checkpoint(`imported-${start + batch.length}`);
       }
+      checkpoint('import-complete');
       const businessQuery = {
         schemaVersion: 1,
         status: 'PENDING_REVIEW',
@@ -227,6 +272,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       const initial = ExplorationResultSchema.parse(
         await explore.execute({ spec, view: 'resources', first: 100 }, context),
       );
+      checkpoint('query-created');
       expect(initial.totalCount).toBe(299);
       expect(initial.membership).toEqual({
         complete: true,
@@ -246,6 +292,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
             ...(after ? { after } : {}),
           }),
         );
+        checkpoint(`page-${seen.size}`);
         expect(page.totalCount).toBe(2033);
         for (const row of page.items) {
           expect(seen.has(row.assertionId)).toBe(false);
@@ -254,6 +301,72 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         after = page.nextCursor;
       } while (after);
       expect(seen.size).toBe(2033);
+      const sourceIds = new Set(initial.resources.map((row) => row.versionId));
+      let resourceAfter = initial.nextCursor;
+      while (resourceAfter) {
+        const page = ExplorationResultSchema.parse(
+          await explore.execute(
+            {
+              queryId: initial.queryId,
+              view: 'resources',
+              first: 100,
+              after: resourceAfter,
+            },
+            context,
+          ),
+        );
+        expect(page.membership).toEqual(initial.membership);
+        for (const row of page.resources) {
+          expect(sourceIds.has(row.versionId)).toBe(false);
+          sourceIds.add(row.versionId);
+        }
+        resourceAfter = page.nextCursor;
+      }
+      expect(sourceIds.size).toBe(299);
+      const future = ExplorationResultSchema.parse(
+        await explore.execute(
+          {
+            baseQueryId: initial.queryId,
+            spec: {
+              ...spec,
+              businessQuery: {
+                ...businessQuery,
+                filters: {
+                  ...businessQuery.filters,
+                  from: '2099-01-01',
+                  to: '2099-12-31',
+                  includeUndated: false,
+                },
+              },
+            },
+            view: 'resources',
+          },
+          context,
+        ),
+      );
+      expect(future.membership).toEqual(initial.membership);
+      const futurePage = RelationListOutputSchema.parse(
+        await call('list', {
+          queryId: future.queryId,
+          status: 'PENDING_REVIEW',
+        }),
+      );
+      expect(futurePage.totalCount).toBe(0);
+      expect(futurePage.items).toEqual([]);
+      await expect(
+        explore.execute(
+          {
+            baseQueryId: initial.queryId,
+            spec: {
+              ...spec,
+              businessQuery: { ...businessQuery, status: 'APPROVED' },
+            },
+            view: 'resources',
+          },
+          context,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
       // A later valid addition must not silently enter an existing saved/query scope.
       await call(
         'import',
@@ -273,6 +386,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           context,
         ),
       );
+      checkpoint('refined');
       expect(refined.membership).toEqual(initial.membership);
       const created = CreateExplorationViewOutputSchema.parse(
         await savedCall(

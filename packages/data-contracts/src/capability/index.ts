@@ -1,3 +1,5 @@
+import * as ExploreV112 from '../exploration/v112.ts';
+import * as SavedV112 from '../exploration/saved-v112.ts';
 import * as RelationsV11 from '../knowledge-relations/v11.ts';
 import * as SavedV11 from '../exploration/saved-v11.ts';
 import * as SavedV1 from '../exploration/saved-v1.ts';
@@ -1016,7 +1018,7 @@ const capabilityRegistry = {
   }),
   'data.explore.view.open': defineCapability({
     id: 'data.explore.view.open',
-    version: '1.2.0',
+    version: '1.3.0',
     kind: 'query',
     inputSchema: OpenExplorationViewInputSchema,
     outputSchema: OpenExplorationViewOutputSchema,
@@ -1061,7 +1063,7 @@ const capabilityRegistry = {
   }),
   'data.explore.export': defineCapability({
     id: 'data.explore.export',
-    version: '1.1.0',
+    version: '1.2.0',
     kind: 'query',
     inputSchema: ExportExplorationInputSchema,
     outputSchema: ExportExplorationOutputSchema,
@@ -1082,7 +1084,7 @@ const capabilityRegistry = {
   }),
   'data.explore.query': defineCapability({
     id: 'data.explore.query',
-    version: '1.12.0',
+    version: '1.13.0',
     kind: 'query',
     inputSchema: ExplorationQueryInputSchema,
     outputSchema: ExplorationResultSchema,
@@ -1496,6 +1498,12 @@ const capabilityArchive = {
       inputSchema: SavedV1.OpenExplorationViewInputSchema,
       outputSchema: SavedV1.OpenExplorationViewOutputSchema,
     }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.open'],
+      version: '1.2.0',
+      inputSchema: SavedV112.OpenExplorationViewInputSchema,
+      outputSchema: SavedV112.OpenExplorationViewOutputSchema,
+    }),
   ]),
   'data.explore.export': Object.freeze([
     defineCapability({
@@ -1503,6 +1511,12 @@ const capabilityArchive = {
       version: '1.0.0',
       inputSchema: SavedV1.ExportExplorationInputSchema,
       outputSchema: SavedV1.ExportExplorationOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.export'],
+      version: '1.1.0',
+      inputSchema: SavedV112.ExportExplorationInputSchema,
+      outputSchema: SavedV112.ExportExplorationOutputSchema,
     }),
   ]),
   'data.explore.query': Object.freeze([
@@ -1577,6 +1591,12 @@ const capabilityArchive = {
       version: '1.11.0',
       inputSchema: ExplorationQueryInputV111Schema,
       outputSchema: ExplorationResultV111Schema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.query'],
+      version: '1.12.0',
+      inputSchema: ExploreV112.ExplorationQueryInputSchema,
+      outputSchema: ExploreV112.ExplorationResultSchema,
     }),
   ]),
   'data.catalog.search': Object.freeze([

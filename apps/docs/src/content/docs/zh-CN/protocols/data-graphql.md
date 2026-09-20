@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 258d349
 ---
 
 ## 入口与权威契约
@@ -245,3 +245,9 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 跨来源关系证据可选填写 `source.dataItemId`、`versionId`、`analysisId` 和 `recordId`，同时保留原文件哈希。定位固定为 `record:<recordId>`；非空摘录须存在于该条解析记录中。导入、详情和审核接口为1.2，列表为1.5，既有契约版本保留。读取与重试均重新校验关系所属资料及全部证据来源；来源撤回、无权访问或定位不匹配的证据不能继续支撑关系或从证据与检索入口泄露。提取的日期仍是有来源的候选，不代表专业审核。
 
 `dataAssessments` 使用检查列表 1.1：可选 `assetId` 限定原文件，`latestPerAsset: true` 先逐文件选择最新且仍可访问的检查，再有界分页；缺项或失效声明不退回旧结论，默认仍返回历史。
+
+### 项目业务范围（探索1.13）
+
+使用 `scope: "project"` 与 `businessQuery`，由服务器按权限确定来源清单；此模式不接受调用方提供版本或关系清单。现有查询快照固定资料版本、解析版本及关系UUID/修订号，只返回短查询编号和 `membership` 计数。计数描述显示筛选前的固定范围，不是独立观测量或当前页数量；资源与关系列表仍有界分页。超过服务器上限直接失败，不静默截断；存储上限不代表绘制性能。
+
+保存视图打开1.3、导出1.2保留该范围。通过 `baseQueryId` 调整条件时，先重新核验原有来源和关系，再在其中筛选，不吸收后来新增的成员；切换审核状态须重新查询。成员缺失、撤回或修订变化时整次失败，不返回不完整全景。探索1.12、保存视图打开1.2及导出1.1的历史契约保持冻结，明确版本查询沿用原限制。无权读取且未获目录公开许可的元数据不包含在内；受限来源的可发现目录需另行授权。沿用原GraphQL、REST和MCP入口，不建立新的身份体系。
