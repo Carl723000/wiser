@@ -14,7 +14,9 @@ export default defineConfig({
   },
   webServer: {
     command: 'pnpm exec next dev --hostname 127.0.0.1 --port 3200',
-    url: 'http://127.0.0.1:3200/zh-CN',
+    // Wait for the graph workspace to compile before timing user navigation.
+    url: 'http://127.0.0.1:3200/zh-CN/data-foundation',
+    timeout: 120_000,
     env: {
       WISER_AUTH_MODE: 'off',
       AGENT_EXCON_WEB_DATA_MODE: 'reference',
