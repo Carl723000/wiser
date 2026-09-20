@@ -16,7 +16,14 @@ import type { RelationAssertion } from '@wiser/data-contracts';
 const probe = vi.hoisted(() => ({
   load: null as null | (() => void),
   click: null as
-    null | ((event: { features: { properties: typeof record }[] }) => void),
+    | null
+    | ((event: {
+        features: { properties: typeof record }[];
+        point?: { x: number; y: number };
+      }) => void),
+  query: vi.fn<(...args: unknown[]) => { properties: typeof record }[]>(
+    () => [],
+  ),
   interactiveLayers: [] as string[],
   fit: vi.fn<
     (
@@ -56,6 +63,7 @@ vi.mock('react-map-gl/maplibre', async () => {
         getZoom: () => 8,
         getCenter: () => ({ lng: 115, lat: 40 }),
         project: () => ({ x: 100, y: 100 }),
+        queryRenderedFeatures: probe.query,
         jumpTo: probe.jump,
         zoomIn: vi.fn(),
         zoomOut: vi.fn(),
@@ -145,6 +153,54 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  probe.query.mockReset().mockReturnValue([]);
+});
+it('opens a thin river hit near the pointer without assigning locations to nearby objects', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        ...page,
+        features: [
+          {
+            ...page.features[0],
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [115, 40],
+                [116, 41],
+              ],
+            },
+          },
+        ],
+      }),
+    ),
+  );
+  probe.query.mockReturnValue([
+    { properties: record },
+    { properties: { ...record, recordId: 'unrelated' } },
+  ]);
+  render(<BusinessSceneMap {...props} />);
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').getAttribute('data-state'),
+    ).toBe('ready'),
+  );
+  act(() => probe.click?.({ features: [], point: { x: 100, y: 200 } }));
+  expect(props.onSelect).toHaveBeenCalledWith('bound');
+  expect(props.onSelect).not.toHaveBeenCalledWith('unlocated');
+  expect(probe.query).toHaveBeenCalledWith(
+    [
+      [94, 194],
+      [106, 206],
+    ],
+    {
+      layers: ['business-scene-outlines', 'business-scene-points'],
+      filter: ['in', ['geometry-type'], ['literal', ['LineString', 'Point']]],
+    },
+  );
+  expect(probe.fit).not.toHaveBeenCalled();
+  expect(probe.jump).not.toHaveBeenCalled();
 });
 it.each([
   ['zh-CN', '查看关联参考范围（1）', '不表示资料自身坐标'],
