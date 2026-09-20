@@ -1,3 +1,5 @@
+import * as ExploreV113 from '../exploration/v113.ts';
+import * as SavedV113 from '../exploration/saved-v113.ts';
 import * as ExploreV112 from '../exploration/v112.ts';
 import * as SavedV112 from '../exploration/saved-v112.ts';
 import * as RelationsV11 from '../knowledge-relations/v11.ts';
@@ -15,6 +17,7 @@ import {
   RelationOutputSchema,
   RelationReviewInputSchema,
   RelationListInputSchema,
+  RelationListInputV15Schema,
   RelationListOutputSchema,
 } from '../knowledge-relations/index.ts';
 import {
@@ -1018,7 +1021,7 @@ const capabilityRegistry = {
   }),
   'data.explore.view.open': defineCapability({
     id: 'data.explore.view.open',
-    version: '1.3.0',
+    version: '1.4.0',
     kind: 'query',
     inputSchema: OpenExplorationViewInputSchema,
     outputSchema: OpenExplorationViewOutputSchema,
@@ -1063,7 +1066,7 @@ const capabilityRegistry = {
   }),
   'data.explore.export': defineCapability({
     id: 'data.explore.export',
-    version: '1.2.0',
+    version: '1.3.0',
     kind: 'query',
     inputSchema: ExportExplorationInputSchema,
     outputSchema: ExportExplorationOutputSchema,
@@ -1084,7 +1087,7 @@ const capabilityRegistry = {
   }),
   'data.explore.query': defineCapability({
     id: 'data.explore.query',
-    version: '1.13.0',
+    version: '1.14.0',
     kind: 'query',
     inputSchema: ExplorationQueryInputSchema,
     outputSchema: ExplorationResultSchema,
@@ -1349,7 +1352,7 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.list': defineCapability({
     id: 'data.knowledge.relations.list',
-    version: '1.5.0',
+    version: '1.6.0',
     kind: 'query',
     inputSchema: RelationListInputSchema,
     outputSchema: RelationListOutputSchema,
@@ -1462,6 +1465,12 @@ const capabilityArchive = {
       inputSchema: RelationsV11.RelationListInputSchema,
       outputSchema: RelationsV11.RelationListOutputSchema,
     }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.5.0',
+      inputSchema: RelationListInputV15Schema,
+      outputSchema: RelationListOutputSchema,
+    }),
   ]),
   'data.knowledge.relations.review': Object.freeze([
     defineCapability({
@@ -1504,6 +1513,12 @@ const capabilityArchive = {
       inputSchema: SavedV112.OpenExplorationViewInputSchema,
       outputSchema: SavedV112.OpenExplorationViewOutputSchema,
     }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.open'],
+      version: '1.3.0',
+      inputSchema: SavedV113.OpenExplorationViewInputSchema,
+      outputSchema: SavedV113.OpenExplorationViewOutputSchema,
+    }),
   ]),
   'data.explore.export': Object.freeze([
     defineCapability({
@@ -1517,6 +1532,12 @@ const capabilityArchive = {
       version: '1.1.0',
       inputSchema: SavedV112.ExportExplorationInputSchema,
       outputSchema: SavedV112.ExportExplorationOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.export'],
+      version: '1.2.0',
+      inputSchema: SavedV113.ExportExplorationInputSchema,
+      outputSchema: SavedV113.ExportExplorationOutputSchema,
     }),
   ]),
   'data.explore.query': Object.freeze([
@@ -1597,6 +1618,12 @@ const capabilityArchive = {
       version: '1.12.0',
       inputSchema: ExploreV112.ExplorationQueryInputSchema,
       outputSchema: ExploreV112.ExplorationResultSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.query'],
+      version: '1.13.0',
+      inputSchema: ExploreV113.ExplorationQueryInputSchema,
+      outputSchema: ExploreV113.ExplorationResultSchema,
     }),
   ]),
   'data.catalog.search': Object.freeze([

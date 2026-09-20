@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   RelationListOutputSchema,
+  businessQueryStatuses,
+  type BusinessQueryStatus,
   type RelationAssertion,
 } from '@wiser/data-contracts';
 import {
@@ -23,7 +25,7 @@ type Props = {
   locale: Locale;
   record: RecordFocus;
   returnGraph: string | null;
-  business?: { queryId: string; status: RelationAssertion['status'] };
+  business?: { queryId: string; status: BusinessQueryStatus };
 };
 export function DataRecordRelations(props: Props) {
   return (
@@ -65,7 +67,7 @@ function RecordRelations({ locale, record, returnGraph, business }: Props) {
       pages: 1,
     };
   });
-  const [status, setStatus] = useState<RelationAssertion['status']>(
+  const [status, setStatus] = useState<BusinessQueryStatus>(
     business?.status ??
       (scope.status === 'PENDING_REVIEW' && scope.preview
         ? 'PENDING_REVIEW'
@@ -130,7 +132,7 @@ function RecordRelations({ locale, record, returnGraph, business }: Props) {
         if (
           page.items.some(
             (row) =>
-              row.status !== status ||
+              !businessQueryStatuses(status).includes(row.status) ||
               (!business &&
                 !sources.some(
                   (source) =>
@@ -212,7 +214,7 @@ function RecordRelations({ locale, record, returnGraph, business }: Props) {
             `http://local/${locale}/data-foundation/catalog/${scope.dataItemId}?version=${scope.versionId}`,
             {
               ...view,
-              status,
+              status: status === 'APPROVED_AND_PENDING' ? 'APPROVED' : status,
               preview: status === 'PENDING_REVIEW',
               entity: identity,
               pages: 1,
@@ -239,13 +241,21 @@ function RecordRelations({ locale, record, returnGraph, business }: Props) {
           }}
         >
           {business && !['APPROVED', 'PENDING_REVIEW'].includes(status) ? (
-            <option value={status}>{copy.statuses[status]}</option>
+            <option value={status}>
+              {status === 'APPROVED_AND_PENDING'
+                ? copy.mixedReviewScope
+                : copy.statuses[status]}
+            </option>
           ) : null}
           <option value="APPROVED">{copy.statuses.APPROVED}</option>
           <option value="PENDING_REVIEW">{copy.statuses.PENDING_REVIEW}</option>
         </select>
       </label>
-      {status === 'PENDING_REVIEW' ? <p>{copy.recordRelationPending}</p> : null}
+      {status === 'PENDING_REVIEW' ? (
+        <p>{copy.recordRelationPending}</p>
+      ) : status === 'APPROVED_AND_PENDING' ? (
+        <p>{copy.mixedReviewHint}</p>
+      ) : null}
       <button disabled={busy} onClick={() => void load()}>
         {copy.findRecordRelations}
       </button>

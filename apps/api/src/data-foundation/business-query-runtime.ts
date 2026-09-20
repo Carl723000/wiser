@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { BusinessQuery, RelationAssertion } from '@wiser/data-contracts';
+import {
+  businessQueryStatuses,
+  type BusinessQuery,
+  type RelationAssertion,
+} from '@wiser/data-contracts';
 import { filterRelationRows, selectRelationRevisions } from '@wiser/data-core';
 import { relationVisibleSql } from '@wiser/data-infra';
 import { DataCapabilityHandlerError } from './capability-handler.js';
@@ -39,10 +43,10 @@ export async function loadBusinessRelations(
   const limit = membership ? 100000 : 2000;
   const result = await client.query(
     `${RELATION_SELECT} where exists(select 1 from jsonb_array_elements($1::jsonb) ref where b.data_item_id=(ref->>'dataItemId')::uuid and b.version_id=(ref->>'versionId')::uuid)
-    and a.status=$2 and ($3::jsonb is null or exists(select 1 from jsonb_array_elements($3::jsonb) pin where b.assertion_id=(pin->>0)::uuid)) and ${relationVisibleSql()} order by b.assertion_id limit $4`,
+    and a.status=any($2::text[]) and ($3::jsonb is null or exists(select 1 from jsonb_array_elements($3::jsonb) pin where b.assertion_id=(pin->>0)::uuid)) and ${relationVisibleSql()} order by b.assertion_id limit $4`,
     [
       JSON.stringify(refs),
-      scope.status,
+      businessQueryStatuses(scope.status),
       pins ? JSON.stringify(pins) : null,
       limit + 1,
     ],

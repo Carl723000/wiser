@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: ddbad80
+lastReviewedCommit: 96b3f4c
 ---
 
 ## Design direction
@@ -215,3 +215,5 @@ The official basemap releases its SDK and observers before navigation detaches i
 Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
 
 Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
+
+Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.

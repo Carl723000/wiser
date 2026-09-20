@@ -343,13 +343,18 @@ export function DataExplorerBusiness({
           <p>{copy.businessHint}</p>
         </div>
         <p className={businessStyles.authority}>
-          {copy.statuses[scope.status]} · {copy.pageCount}
+          {scope.status === 'APPROVED_AND_PENDING'
+            ? copy.mixedReviewScope
+            : copy.statuses[scope.status]}{' '}
+          · {copy.pageCount}
           {loaded}
           {busy ? ' · ' + copy.businessLoading : ''}
         </p>
       </header>
       {scope.status === 'PENDING_REVIEW' ? (
         <p>{copy.recordRelationPending}</p>
+      ) : scope.status === 'APPROVED_AND_PENDING' ? (
+        <p>{copy.mixedReviewHint}</p>
       ) : null}
       <details>
         <summary>

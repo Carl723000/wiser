@@ -912,7 +912,7 @@ const expectedJsonSchemaHashes = {
     output: '72db7b7c7c1ac7a8b678826b2eb97a13399fdf0a49ae66f128371a31cbbae916',
   },
   'data.knowledge.relations.list': {
-    input: 'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
+    input: '8e042884dfe7bc7948b27f23280dc3934de8497ff23e0e822f87dd0e2e41cbc0',
     output: '6cec20d8ba8e5f2209590dcb02ef0909141629123e902f27d52462813be7cab4',
   },
   'data.knowledge.relations.review': {
@@ -963,7 +963,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.view.open': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
-    output: '89305b69aadfb46ec08e7a09a6cc371c7eb890750540a176595cdede4e282889',
+    output: 'c8b24afb6c41d1311d7dccf6e22945d2b3f3edd20a7885e104ea3cedcbf7ad39',
   },
   'data.explore.view.revoke': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
@@ -971,7 +971,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.export': {
     input: '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
-    output: '93b5feefa2ed2963fa29adfa2365e4b74b88a09fcf99969abd5a8a158c057c9d',
+    output: '3272d8c67da118aaa53327456771869fa56cd7ab1f8033013b12b9e9dfe9cab4',
   },
 
   'data.analysis.create': {
@@ -979,8 +979,8 @@ const expectedJsonSchemaHashes = {
     output: '157a58322075047c67537707e26c0307eb80090d55e7bf3443b704345d9e3d16',
   },
   'data.explore.query': {
-    input: 'c556303261c0375da19b4f44ec13da6f152155d31fe4ed32e61dac8319ea571e',
-    output: 'ccdd21e381b4e13e8dc4ba4368e710eae1989cb8723cfddb4af390efc2ea3811',
+    input: 'ec49c644f72f5b272909969c40ed324037693940909ef2264f2b36a8d4fba31c',
+    output: '4ce0447f0aaa23711a25f0c302d931a2e4fa1c358ff23e82693a4788c5091a8f',
   },
   'data.catalog.search': {
     input: '9fa0f09f57dc5063f42406cdaefd0e19b0ab8e019a3a4ba9824a3445c24139be',
@@ -1838,7 +1838,7 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
     const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
     expect(old.version).toBe('1.0.0');
     expect(DATA_CAPABILITY_REGISTRY[key].version).toBe(
-      key === 'data.knowledge.relations.list' ? '1.5.0' : '1.2.0',
+      key === 'data.knowledge.relations.list' ? '1.6.0' : '1.2.0',
     );
     expect({
       input: jsonSchemaHash(old.inputSchema),
@@ -1861,7 +1861,7 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.3 list', 
     versionId: VERSION_ID,
     relatedSources: sources,
   };
-  expect(current.version).toBe('1.5.0');
+  expect(current.version).toBe('1.6.0');
   expect(jsonSchemaHash(previous.inputSchema)).toBe(
     '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
   );
@@ -1957,7 +1957,7 @@ it('archives saved-view discovery unchanged when presentation is introduced', ()
     '1.1.0',
   );
   expect(DATA_CAPABILITY_REGISTRY['data.explore.view.open'].version).toBe(
-    '1.3.0',
+    '1.4.0',
   );
   expect(jsonSchemaHash(create.inputSchema)).toBe(
     'b87e4f4b326ae62836ddd3a4411c5537a17fa2444fc73adf9e88dff049829fb4',
@@ -1989,6 +1989,39 @@ it('keeps pre-project membership discovery hashes unchanged', () => {
     const archived = DATA_CAPABILITY_ARCHIVE[
       key as keyof typeof DATA_CAPABILITY_ARCHIVE
     ]?.find((entry) => entry.version === version);
+    expect(archived).toBeDefined();
+    expect(jsonSchemaHash(archived!.inputSchema)).toBe(input);
+    expect(jsonSchemaHash(archived!.outputSchema)).toBe(output);
+  }
+});
+
+it('freezes the project membership discovery hashes before mixed scope is added', () => {
+  const prior = {
+    'data.explore.query': [
+      '1.13.0',
+      'c556303261c0375da19b4f44ec13da6f152155d31fe4ed32e61dac8319ea571e',
+      'ccdd21e381b4e13e8dc4ba4368e710eae1989cb8723cfddb4af390efc2ea3811',
+    ],
+    'data.explore.view.open': [
+      '1.3.0',
+      '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+      '89305b69aadfb46ec08e7a09a6cc371c7eb890750540a176595cdede4e282889',
+    ],
+    'data.explore.export': [
+      '1.2.0',
+      '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
+      '93b5feefa2ed2963fa29adfa2365e4b74b88a09fcf99969abd5a8a158c057c9d',
+    ],
+    'data.knowledge.relations.list': [
+      '1.5.0',
+      'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
+      '6cec20d8ba8e5f2209590dcb02ef0909141629123e902f27d52462813be7cab4',
+    ],
+  } as const;
+  for (const [key, [version, input, output]] of Object.entries(prior)) {
+    const archived = DATA_CAPABILITY_ARCHIVE[
+      key as keyof typeof DATA_CAPABILITY_ARCHIVE
+    ]?.find((e) => e.version === version);
     expect(archived).toBeDefined();
     expect(jsonSchemaHash(archived!.inputSchema)).toBe(input);
     expect(jsonSchemaHash(archived!.outputSchema)).toBe(output);

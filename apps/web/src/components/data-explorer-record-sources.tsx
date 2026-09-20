@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   RelationListOutputSchema,
+  type BusinessQueryStatus,
   type RelationAssertion,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
@@ -30,7 +31,7 @@ export function DataExplorerRecordSources({
 }: {
   readonly locale: Locale;
   readonly queryId: string;
-  readonly status: RelationAssertion['status'];
+  readonly status: BusinessQueryStatus;
   readonly versionId: string | null;
   readonly onInvalidated: InvalidateExploration;
 }) {

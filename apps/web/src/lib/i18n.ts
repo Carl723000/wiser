@@ -442,6 +442,8 @@ const zhCN = {
     external: '外部来源标识',
     supersedes: '查看更正前的关系',
     history: '审核记录',
+    mixedReviewScope: '已审与待审',
+    mixedReviewHint: '待审核关系保留候选标识，不代表已经确认。',
     statuses: {
       PENDING_REVIEW: '待审核',
       APPROVED: '已通过',
@@ -2729,6 +2731,9 @@ const en: typeof zhCN = {
     external: 'External source identifier',
     supersedes: 'View preceding relation',
     history: 'Review history',
+    mixedReviewScope: 'Approved and pending',
+    mixedReviewHint:
+      'Pending relationships remain candidates, not confirmed findings.',
     statuses: {
       PENDING_REVIEW: 'Pending review',
       APPROVED: 'Approved',

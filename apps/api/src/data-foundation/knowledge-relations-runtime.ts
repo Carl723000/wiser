@@ -429,6 +429,8 @@ export function createKnowledgeRelationExecutors(
             // Reject conflicting ownership before deduplication, preserving legacy behavior.
             for (const source of selectedSources) await authorize(c, source);
           }
+          if (input.status === 'APPROVED_AND_PENDING')
+            throw new DataCapabilityHandlerError('VALIDATION_FAILED');
           const sources = [
             ...new Map(
               selectedSources.map((source) => [source.versionId, source]),

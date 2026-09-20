@@ -787,3 +787,36 @@ it('stops an empty continuation page before following a fresh cursor', async () 
   expect(fetcher).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
 });
+
+it('labels a mixed query without promoting its pending relationships', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        items: [
+          row,
+          {
+            ...row,
+            assertionId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            status: 'APPROVED',
+          },
+        ],
+        totalCount: 2,
+      }),
+    ),
+  );
+  render(
+    <DataExplorerBusiness
+      {...props}
+      scope={BusinessQuerySchema.parse({
+        ...props.scope,
+        schemaVersion: 2,
+        status: 'APPROVED_AND_PENDING',
+      })}
+    />,
+  );
+  await screen.findByText(/已审与待审/);
+  expect(
+    screen.getByText('待审核关系保留候选标识，不代表已经确认。'),
+  ).toBeTruthy();
+});

@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 9ef75964fa2c1d7d2f734cd6520c56d0b53f1cec
+lastReviewedCommit: 96b3f4c
 ---
 
 ## Two frontend applications
@@ -234,3 +234,5 @@ The business scene uses deterministic category positions and SVG projection; ord
 Spatial presentation uses the existing complete, bounded HTTP map query and exact data-item/version/record bindings. It keeps original point/line/area geometry, converts display coordinates through the existing map adapter, and retains unlocated knowledge separately with its original relations. Dashed connectors place document labels around a geometry's display center; neither labels nor their centers become new point features or business relations. Geometry lookup rejects changed scope, incomplete pagination and denied access. Map movement does not change the business question. Location precision and knowledge review remain separate. No source acquisition, parser rerun, migration or business-data write is performed by scene controls.
 
 Spatial scene requests check cancellation before dispatch and after response/body completion. Abandoned requests cannot invalidate the active scene or continue pagination; partial page failures never expose an incomplete geometry set, and retry rechecks the same scoped query.
+
+BusinessQuery v2 selects approved and pending rows together without changing assertion states. The business heading and record relationship selector use a distinct mixed-scope label; reverse record lookup validates each returned state against the query scope and retains the same query ID. Historical single-state links remain valid.

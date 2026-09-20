@@ -419,6 +419,142 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         await explore.execute({ spec, view: 'resources' }, context),
       );
       expect(fresh.membership?.assertionCount).toBe(2034);
+      // Synthetic authority states only, inside the rollback-only isolated fixture.
+      const reviewer = {
+        ...command(),
+        principal: { ...context.principal, actorId: randomUUID() },
+      };
+      const changed = [...seen].slice(0, 3);
+      for (const [index, status] of [
+        'APPROVED',
+        'REJECTED',
+        'CORRECTION_REQUIRED',
+      ].entries())
+        await call(
+          'review',
+          {
+            assertionId: changed[index],
+            expectedVersion: 1,
+            decision: status,
+            rationale: 'Synthetic isolated review',
+          },
+          { ...reviewer, idempotencyKey: randomUUID() },
+        );
+      const mixedSpec = {
+        ...spec,
+        businessQuery: {
+          ...businessQuery,
+          schemaVersion: 2,
+          status: 'APPROVED_AND_PENDING',
+        },
+      };
+      const mixed = ExplorationResultSchema.parse(
+        await explore.execute({ spec: mixedSpec, view: 'resources' }, context),
+      );
+      expect(mixed.membership).toEqual({
+        complete: true,
+        versionCount: 299,
+        assertionCount: 2032,
+      });
+      const mixedRows = [];
+      let mixedCursor: string | undefined;
+      do {
+        const page = RelationListOutputSchema.parse(
+          await call('list', {
+            queryId: mixed.queryId,
+            status: 'APPROVED_AND_PENDING',
+            first: 100,
+            ...(mixedCursor ? { after: mixedCursor } : {}),
+          }),
+        );
+        expect(page.totalCount).toBe(2032);
+        mixedRows.push(...page.items);
+        mixedCursor = page.nextCursor;
+      } while (mixedCursor);
+      expect(new Set(mixedRows.map((r) => r.status))).toEqual(
+        new Set(['APPROVED', 'PENDING_REVIEW']),
+      );
+      expect(mixedRows.find((r) => r.assertionId === changed[0])?.status).toBe(
+        'APPROVED',
+      );
+      expect(
+        mixedRows.some((r) => changed.slice(1).includes(r.assertionId)),
+      ).toBe(false);
+      expect(new Set(mixedRows.map((r) => r.assertionId)).size).toBe(2032);
+      await expect(
+        call('list', { queryId: mixed.queryId, status: 'APPROVED' }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(
+        explore.execute(
+          { baseQueryId: mixed.queryId, spec, view: 'resources' },
+          context,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      const mixedSaved = CreateExplorationViewOutputSchema.parse(
+        await savedCall(
+          'data.explore.view.create',
+          {
+            queryId: mixed.queryId,
+            title: 'Mixed synthetic scope',
+            viewSpec: {
+              activeView: 'resources',
+              requests: {
+                resources: {
+                  queryId: mixed.queryId,
+                  view: 'resources',
+                  first: 25,
+                },
+              },
+            },
+          },
+          command(),
+        ),
+      );
+      const mixedOpened = OpenExplorationViewOutputSchema.parse(
+        await savedCall('data.explore.view.open', {
+          viewId: mixedSaved.savedView.viewId,
+        }),
+      );
+      expect(mixedOpened.result.membership).toEqual(mixed.membership);
+      expect(mixedOpened.result.spec.businessQuery?.status).toBe(
+        'APPROVED_AND_PENDING',
+      );
+      const ordinary = ExplorationResultSchema.parse(
+        await explore.execute({ spec: {}, view: 'resources' }, context),
+      );
+      await expect(
+        call('list', {
+          queryId: ordinary.queryId,
+          status: 'APPROVED_AND_PENDING',
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      await expect(
+        call(
+          'list',
+          { queryId: mixed.queryId, status: 'APPROVED_AND_PENDING' },
+          {
+            ...context,
+            principal: { ...context.principal, actorId: randomUUID() },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      // Even a review that stays inside the two-state set invalidates old membership.
+      await call(
+        'review',
+        {
+          assertionId: changed[0],
+          expectedVersion: 2,
+          decision: 'APPROVED',
+          rationale: 'Synthetic repeated review invalidates old snapshot',
+        },
+        { ...reviewer, idempotencyKey: randomUUID() },
+      );
+      await expect(
+        call('list', {
+          queryId: mixed.queryId,
+          status: 'APPROVED_AND_PENDING',
+        }),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
       const stranger = {
         ...context,
         principal: { ...context.principal, actorId: randomUUID() },

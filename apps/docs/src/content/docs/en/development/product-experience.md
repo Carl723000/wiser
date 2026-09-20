@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: ddbad80
+lastReviewedCommit: 96b3f4c
 ---
 
 ## What this guide governs
@@ -280,3 +280,5 @@ Project business graphs use the server-owned assertion membership count as their
 Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
 
 Readiness statistics refine the active query membership just like business-period controls. A continuation page must contain at least one relation; empty pages with a next cursor fail visibly without following another cursor or presenting a partial graph.
+
+Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.

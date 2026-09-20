@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 9ef75964fa2c1d7d2f734cd6520c56d0b53f1cec
+lastReviewedCommit: 96b3f4c
 ---
 
 # WISER Web / 产品前端
@@ -145,3 +145,5 @@ Business problem graphs keep the full authorized relation set across five readin
 The business scene uses deterministic category positions and SVG projection; ordinary provenance and optional six-assertion reading retain G6. Layer titles occupy a separate caption gutter with connector lines. Continuous pointer/pinch/keyboard zoom changes the camera without recomputing positions or dropping edges. Labels appear progressively; selected nodes/edges and their evidence remain inspectable in a keyboard-accessible list. Hover previews direct connections; selection pins evidence and dims the full-network background. Crossing-edge hit testing offers the actual candidate assertions. Evidence includes original polarity, exact source version, table/paragraph locator, limitations, review state and preceding-assertion links.
 
 Spatial presentation uses the existing complete, bounded HTTP map query and exact data-item/version/record bindings. It keeps original point/line/area geometry, converts display coordinates through the existing map adapter, and retains unlocated knowledge separately with its original relations. Dashed connectors place document labels around a geometry's display center; neither labels nor their centers become new point features or business relations. Geometry lookup rejects changed scope, incomplete pagination and denied access. Map movement does not change the business question. Location precision and knowledge review remain separate. No source acquisition, parser rerun, migration or business-data write is performed by scene controls.
+
+Mixed business review queries display an explicit scope label while preserving each assertion’s actual status. Record-to-graph navigation retains the same authorized query; this UI never approves a pending relationship.
