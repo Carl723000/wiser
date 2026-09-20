@@ -217,3 +217,9 @@ Clicking a spatial point, line or area resolves all source-version-record bindin
 A chosen map object is retained as a bounded source-qualified navigation identity in the URL, separately from the selected evidence edge. Restoration reopens its related-source panel only after the current authorized map result supplies an exact geometry binding; unavailable targets never fall back to a same-name object. Returning to the unlocated list clears this navigation choice. The URL contains no geometry or source text and grants no access.
 
 Thin lines and points allow a six-screen-pixel click tolerance within the already rendered, authorized geometry layers. Exact area hits remain unchanged; overlapping candidates are all offered, and unknown bindings are discarded. This interaction tolerance does not buffer geographic extents, relocate evidence, create relations or move the camera.
+
+Exploration keeps repeated introductions, graph-scope explanations, style semantics and map-reference guidance in the existing circular question-mark help. Hover opens it; click/keyboard activation pins it and Escape dismisses it. Query counts, review/permission/failure states and source-specific evidence remain visible at their relevant surfaces. Optional help is not a substitute for a current warning, and the original explanation remains available in both locales.
+
+In an expanded workspace, Escape on an open question-mark help closes that help first; a subsequent Escape retains the normal workspace exit behavior without clearing graph selection.
+
+Question-mark triggers retain their circular shape against workspace button styles, use larger targets for coarse pointers, and clamp open explanations to the viewport on resize.

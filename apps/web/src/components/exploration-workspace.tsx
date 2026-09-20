@@ -81,6 +81,13 @@ export function ExplorationWorkspace({
       aria-label={copy.title}
       onKeyDownCapture={(event) => {
         if (expanded && event.key === 'Escape') {
+          if (
+            event.target instanceof Element &&
+            event.target.closest(
+              '[data-context-help="true"][aria-expanded="true"]',
+            )
+          )
+            return;
           event.preventDefault();
           event.stopPropagation();
           setExpanded(false);

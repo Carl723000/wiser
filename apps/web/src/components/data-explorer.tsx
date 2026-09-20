@@ -685,7 +685,7 @@ function DataExplorerSession({
                 ? initialSaved.savedView.title
                 : copy.title}
             </h1>
-            <p>{copy.description}</p>
+            <ContextHelp label={copy.title}>{copy.description}</ContextHelp>
           </div>
           <span className={styles.scope}>{copy.scope}</span>
         </header>

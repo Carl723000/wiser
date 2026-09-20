@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ContextHelp } from './context-help';
 import { ExplorationWorkspace } from './exploration-workspace';
 afterEach(cleanup);
 it('expands the same mounted workspace and restores focus, scroll and body overflow on Escape', () => {
@@ -58,5 +59,21 @@ it('uses Escape to exit full screen before a child graph clears its selection', 
     key: 'Escape',
   });
   expect(clearSelection).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('dismisses an open help popup before exiting fullscreen, then restores ordinary Escape behavior', () => {
+  render(
+    <ExplorationWorkspace locale="en">
+      <ContextHelp label="Graph help">Explanation</ContextHelp>
+    </ExplorationWorkspace>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Expand workspace' }));
+  const help = screen.getByRole('button', { name: 'Graph help' });
+  fireEvent.click(help);
+  fireEvent.keyDown(help, { key: 'Escape' });
+  expect(screen.queryByRole('note')).toBeNull();
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  fireEvent.keyDown(help, { key: 'Escape' });
   expect(screen.queryByRole('dialog')).toBeNull();
 });

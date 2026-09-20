@@ -343,8 +343,15 @@ export function DataExplorerBusiness({
     >
       <header className={businessStyles.heading}>
         <div>
-          <h2>{copy.businessTitle}</h2>
-          <p>{copy.businessHint}</p>
+          <h2 aria-label={copy.businessTitle}>
+            {copy.businessTitle}{' '}
+            <ContextHelp label={copy.businessTitle}>
+              <span>{copy.businessHint}</span>
+              {scope.status === 'PENDING_REVIEW' ? (
+                <span> {copy.recordRelationPending}</span>
+              ) : null}
+            </ContextHelp>
+          </h2>
         </div>
         <p className={businessStyles.authority}>
           {copy.statuses[scope.status]} · {copy.pageCount}
@@ -352,9 +359,6 @@ export function DataExplorerBusiness({
           {busy ? ' · ' + copy.businessLoading : ''}
         </p>
       </header>
-      {scope.status === 'PENDING_REVIEW' ? (
-        <p>{copy.recordRelationPending}</p>
-      ) : null}
       <details>
         <summary>
           {copy.businessScope} · {scope.filters.from ?? copy.filterAll} —{' '}
@@ -444,7 +448,7 @@ export function DataExplorerBusiness({
                 </button>
               );
             })}
-            <p>{copy.periodHint}</p>
+            <ContextHelp label={copy.periodHelp}>{copy.periodHint}</ContextHelp>
             <label className={styles.check}>
               <input
                 type="checkbox"
@@ -511,14 +515,18 @@ export function DataExplorerBusiness({
             ))}
           </div>
           {kind && presentation === 'reading' ? (
-            <p>{copy.businessCategoryHint}</p>
+            <ContextHelp label={copy.businessCategories}>
+              {copy.businessCategoryHint}
+            </ContextHelp>
           ) : null}
           <p>
             {copy.businessVisible}
-            {graphRows.length} / {rows.length} ·{' '}
-            {presentation === 'network'
-              ? copy.businessGlobalHint
-              : copy.businessOverviewHint}
+            {graphRows.length} / {rows.length}{' '}
+            <ContextHelp label={copy.businessVisible}>
+              {presentation === 'network'
+                ? copy.businessGlobalHint
+                : copy.businessOverviewHint}
+            </ContextHelp>
           </p>
           {selectedSource ? (
             <section

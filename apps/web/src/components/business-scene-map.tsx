@@ -435,7 +435,11 @@ export function BusinessSceneMap({
           </button>
         )}
       </div>
-      {referenceBounds && <p>{copy.relatedReferenceHint}</p>}
+      {referenceBounds && (
+        <ContextHelp label={copy.spatialHelp}>
+          {copy.relatedReferenceHint}
+        </ContextHelp>
+      )}
       {failed ? (
         <p role="alert">
           {copy.mapFailed}{' '}
@@ -732,7 +736,9 @@ export function BusinessSceneMap({
             </div>
             {pickedId && (
               <>
-                <small>{copy.mapRelationsScope}</small>
+                <ContextHelp label={copy.mapSources}>
+                  {copy.mapRelationsScope}
+                </ContextHelp>
                 {mapRelations.map(([kind, rows]) => (
                   <details key={kind} open>
                     <summary>

@@ -670,7 +670,7 @@ export function BusinessSceneCanvas({
             {copy.styles[style]}
           </button>
         ))}
-        <small>{copy.styleScope}</small>
+        <ContextHelp label={copy.readingHelp}>{copy.styleScope}</ContextHelp>
       </div>
       <div className={styles.typeLegend} aria-label={copy.typeLegend}>
         {presentFamilies.map((family) => (
@@ -1086,7 +1086,9 @@ export function BusinessSceneCanvas({
               ) : null}
             </>
           ) : null}
-          <p>{focused ? copy.focusHint : copy.choose}</p>
+          <ContextHelp label={copy.evidence}>
+            {focused ? copy.focusHint : copy.choose}
+          </ContextHelp>
           <div className={styles.toolbar}>
             <button
               disabled={!focused}
