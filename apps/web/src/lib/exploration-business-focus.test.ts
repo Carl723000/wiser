@@ -114,3 +114,39 @@ it('retains a validated calendar step only within the same query', () => {
   ])
     expect(withBusinessFocus(href, query)).toBe(href);
 });
+
+it('retains a validated map object independently from its evidence edge only in the same query', () => {
+  const identity = JSON.stringify([
+    '10000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000002',
+    'v1',
+    'river',
+  ]);
+  const href = '/zh-CN/data-foundation/explore?query=next&view=records';
+  const params = new URLSearchParams({
+    query: 'next',
+    businessMapObject: identity,
+  });
+  expect(
+    new URL(
+      withBusinessFocus(href, params.toString()),
+      'http://local',
+    ).searchParams.get('businessMapObject'),
+  ).toBe(identity);
+  params.set('query', 'other');
+  expect(withBusinessFocus(href, params.toString())).toBe(href);
+  for (const raw of ['invalid', identity + 'x']) {
+    expect(
+      withBusinessFocus(
+        href,
+        new URLSearchParams({
+          query: 'next',
+          businessMapObject: raw,
+        }).toString(),
+      ),
+    ).toBe(href);
+  }
+  params.set('query', 'next');
+  params.append('businessMapObject', identity);
+  expect(withBusinessFocus(href, params.toString())).toBe(href);
+});

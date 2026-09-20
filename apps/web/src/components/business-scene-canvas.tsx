@@ -46,6 +46,8 @@ export function BusinessSceneCanvas({
   evidence,
   queryId,
   onInvalidated,
+  mapObject,
+  onMapObject,
 }: {
   scene: BusinessScene;
   settings: SceneView;
@@ -59,6 +61,8 @@ export function BusinessSceneCanvas({
   evidence?: ReactNode;
   queryId: string;
   onInvalidated: InvalidateExploration;
+  mapObject?: string | null;
+  onMapObject?: (id: string | null) => void;
 }) {
   const dictionary = getDictionary(locale).knowledgeRelations,
     copy = dictionary.scene;
@@ -848,6 +852,8 @@ export function BusinessSceneCanvas({
               selectedId={selectedId}
               onSelect={selectNode}
               onEdge={selectEdge}
+              mapObject={mapObject}
+              onMapObject={onMapObject}
             />
           ) : (
             <svg

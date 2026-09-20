@@ -10,6 +10,19 @@ import {
 import { readBusinessReading } from './business-reading';
 import { RelationEntitySchema } from '@wiser/data-contracts';
 import { parseRelationNodeIdentity } from './relation-graph';
+/** A navigation identity never substitutes for the current map's authorization and binding. */
+export function readMapObject(
+  search: Pick<URLSearchParams, 'getAll'>,
+): string | null {
+  const values = search.getAll('businessMapObject');
+  if (values.length !== 1 || values[0].length > 2048) return null;
+  try {
+    parseRelationNodeIdentity(values[0]);
+    return values[0];
+  } catch {
+    return null;
+  }
+}
 /** Retain diagram focus only within the same authorized query; it is not a data filter. */
 export function withBusinessFocus(
   href: string,
@@ -30,6 +43,8 @@ export function withBusinessFocus(
   if (!sameQuery && !sameSaved) return href;
   writeSceneView(url.searchParams, readSceneView(source));
   writeBusinessPeriodUnit(url.searchParams, readBusinessPeriodUnit(source));
+  const mapObject = readMapObject(source);
+  if (mapObject) url.searchParams.set('businessMapObject', mapObject);
   const edge = source.getAll('businessEdge');
   if (
     edge.length === 1 &&

@@ -49,6 +49,8 @@ export function BusinessSceneMap({
   onSelect,
   onEdge,
   selectedId,
+  mapObject = null,
+  onMapObject,
 }: {
   scene: BusinessScene;
   queryId: string;
@@ -61,6 +63,8 @@ export function BusinessSceneMap({
   onSelect: (id: string) => void;
   onEdge: (id: string) => void;
   selectedId: string | null;
+  mapObject?: string | null;
+  onMapObject?: (id: string | null) => void;
 }) {
   const dictionary = getDictionary(locale).knowledgeRelations;
   const copy = dictionary.scene;
@@ -156,14 +160,23 @@ export function BusinessSceneMap({
     ids: string[];
     active: string | null;
   } | null>(null);
+  useEffect(() => {
+    setMapPick((current) => (current?.active === mapObject ? current : null));
+  }, [mapObject]);
   const pickedIds =
     mapPick?.queryId === queryId && collection
       ? mapPick.ids.filter((id) => anchors.has(id))
-      : [];
+      : collection && mapObject && anchors.has(mapObject)
+        ? [mapObject]
+        : [];
+  const activePick = mapPick?.queryId === queryId ? mapPick.active : mapObject;
   const pickedId =
-    mapPick?.active && pickedIds.includes(mapPick.active)
-      ? mapPick.active
-      : null;
+    activePick && pickedIds.includes(activePick) ? activePick : null;
+  const pickObject = (id: string | null, ids: string[] = id ? [id] : []) => {
+    setMapPick({ queryId, ids, active: id });
+    onMapObject?.(id);
+    if (id) onSelect(id);
+  };
   const mapRelations = useMemo(() => {
     const rows = pickedId ? spatialObjectRelations(scene, pickedId) : [];
     const groups = new globalThis.Map<string, typeof rows>();
@@ -359,6 +372,7 @@ export function BusinessSceneMap({
           onClick={() => {
             const a = anchors.get(selectedId!);
             if (!a) return;
+            pickObject(selectedId);
             const extent = businessMapBounds({
               type: 'FeatureCollection',
               features: [a.feature],
@@ -472,8 +486,7 @@ export function BusinessSceneMap({
           onClick={(event) => {
             const ids = spatialHitNodes(anchors, event.features ?? []);
             const active = ids.length === 1 ? ids[0] : null;
-            setMapPick(ids.length ? { queryId, ids, active } : null);
-            if (active) onSelect(active);
+            pickObject(active, ids);
           }}
         >
           {collection && palette.accent ? (
@@ -683,8 +696,7 @@ export function BusinessSceneMap({
                     key={id}
                     aria-pressed={pickedId === id}
                     onClick={() => {
-                      setMapPick({ queryId, ids: pickedIds, active: id });
-                      onSelect(id);
+                      pickObject(id, pickedIds);
                     }}
                   >
                     {node.label} ·{' '}
@@ -731,7 +743,7 @@ export function BusinessSceneMap({
                 )}
               </>
             )}
-            <button onClick={() => setMapPick(null)}>
+            <button onClick={() => pickObject(null)}>
               {copy.mapSourcesBack}
             </button>
           </section>

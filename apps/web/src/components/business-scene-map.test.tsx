@@ -923,6 +923,7 @@ it('restores a source-qualified map object only after its authorized geometry lo
   ).toBeNull();
   await act(async () => {
     finish(Response.json(page));
+    await Promise.resolve();
   });
   expect(
     await screen.findByRole('region', { name: '此处关联的资料与知识' }),
@@ -970,4 +971,51 @@ it('persists an unambiguous map selection without persisting hit geometry or sou
   );
   act(() => probe.click?.({ features: [{ properties: record }] }));
   expect(onMapObject).toHaveBeenCalledWith('bound');
+});
+
+it('preserves overlap choices when clearing a previous URL selection and follows later history restoration', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+  const overlapping = {
+    ...scene,
+    nodes: [
+      ...scene.nodes,
+      { ...scene.nodes[0], id: 'other', label: '另一区域' },
+    ],
+  };
+  const onMapObject = vi.fn();
+  const view = render(
+    <BusinessSceneMap
+      {...props}
+      scene={overlapping}
+      mapObject="bound"
+      onMapObject={onMapObject}
+    />,
+  );
+  await screen.findByRole('region', { name: '此处关联的资料与知识' });
+  act(() => probe.click?.({ features: [{ properties: record }] }));
+  expect(onMapObject).toHaveBeenLastCalledWith(null);
+  view.rerender(
+    <BusinessSceneMap
+      {...props}
+      scene={overlapping}
+      mapObject={null}
+      onMapObject={onMapObject}
+    />,
+  );
+  expect(screen.getByRole('button', { name: /另一区域/ })).toBeTruthy();
+  expect(props.onSelect).not.toHaveBeenCalled();
+  view.rerender(
+    <BusinessSceneMap
+      {...props}
+      scene={overlapping}
+      mapObject="bound"
+      onMapObject={onMapObject}
+    />,
+  );
+  expect(
+    screen
+      .getByRole('button', { name: /影像覆盖范围/ })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(screen.queryByRole('button', { name: /另一区域/ })).toBeNull();
 });

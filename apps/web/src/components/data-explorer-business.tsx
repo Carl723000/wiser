@@ -23,7 +23,10 @@ import {
   type GraphLayoutSettings,
 } from '@/lib/graph-layout-settings';
 import { readBusinessReading, readingPage } from '@/lib/business-reading';
-import { withBusinessFocus } from '@/lib/exploration-business-focus';
+import {
+  withBusinessFocus,
+  readMapObject,
+} from '@/lib/exploration-business-focus';
 import { businessObjectSources } from '@/lib/business-object-sources';
 import { withRecordFocus } from '@/lib/exploration-record-focus';
 import { explorationHref } from '@/lib/exploration-navigation';
@@ -78,6 +81,13 @@ export function DataExplorerBusiness({
   const layoutSettings = readGraphLayoutSettings(search);
   const selected = search.get('businessEntity');
   const selectedEdge = search.get('businessEdge');
+  const mapObject = readMapObject(search);
+  const changeMapObject = (id: string | null) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('businessMapObject');
+    if (id) params.set('businessMapObject', id);
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
+  };
   const scene = useMemo(() => businessScene(rows), [rows]);
   const sceneSettings = readSceneView(search);
   const changeScene = (value: SceneView) => {
@@ -559,6 +569,8 @@ export function DataExplorerBusiness({
                 scene={scene}
                 settings={sceneSettings}
                 onSettings={changeScene}
+                mapObject={mapObject}
+                onMapObject={changeMapObject}
                 selectedId={selected}
                 selectedEdge={selectedEdge}
                 selectedKind={kind}
