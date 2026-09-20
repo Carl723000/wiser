@@ -15,8 +15,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 4e83321
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 02345029
 ---
 
 ## What this guide governs
@@ -275,6 +275,16 @@ The official basemap releases its SDK and observers before navigation detaches i
 
 Evidence-path reading retains the explicitly chosen assertion IDs and versions until a new search. A changed or unavailable path clears its graph and excerpts and asks the reader to search again; it never substitutes an alternative or newly shorter route silently. Missing endpoints disable search. Evidence is read only from the current authorized relation rows, not retained in path state.
 
+Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
+
+Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
+
+Readiness statistics refine the active query membership just like business-period controls. A continuation page must contain at least one relation; empty pages with a next cursor fail visibly without following another cursor or presenting a partial graph.
+
+Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.
+
+The normal Data Foundation homepage reuses the exploration workspace rather than a fixed demonstration view. After a successful query, its URL records the authorized query ID and selected graph view through the existing exploration route; refresh and return reopen that scope. Explicit resource searches, fixed-version links and saved topics keep their own scope. A failed project request remains a failure; it never opens a narrower topic as a substitute.
+
 Unlocated spatial objects use a named, source-distinct searchable list with category filters and bounded pages. Paging affects only this reading list; the full query identity set remains available. Spatial lines show the current focus by default, with an explicit option for connections between currently visible objects. Full-network reading remains a separate existing presentation. The graph toolbar reuses workspace expansion without unmounting the map. Optional explanatory text uses pointer- and keyboard/touch-operable question-mark help; permission, partial-scope and review states remain visible.
 
 Clicking a spatial point, line or area resolves all source-version-record bindings in the current authorized query. Overlapping objects require an explicit choice; repeated layer hits do not merge identities. Related sources are grouped by category and open original relation evidence. One explicitly qualified spatial reference-identity hop may reveal another source area and adjacent evidence, labeled as indirect reference. Selection preserves camera and query conditions; names never imply location bindings.
@@ -283,6 +293,10 @@ A chosen map object is retained as a bounded source-qualified navigation identit
 
 Thin lines and points allow a six-screen-pixel click tolerance within the already rendered, authorized geometry layers. Exact area hits remain unchanged; overlapping candidates are all offered, and unknown bindings are discarded. This interaction tolerance does not buffer geographic extents, relocate evidence, create relations or move the camera.
 
+The business record directory uses the same server membership bound as the graph, including queries above the legacy 2,000-assertion limit. It publishes record links only after complete pagination, rejecting oversized totals, empty continuation pages, inconsistent counts and duplicate assertions. Replaced queries stop after either response or body completion; they cannot dispatch another page or invalidate the current query. Source/version/record bindings remain exact.
+
 Exploration keeps repeated introductions, graph-scope explanations, style semantics and map-reference guidance in the existing circular question-mark help. Hover opens it; click/keyboard activation pins it and Escape dismisses it. Query counts, review/permission/failure states and source-specific evidence remain visible at their relevant surfaces. Optional help is not a substitute for a current warning, and the original explanation remains available in both locales.
 
 In an expanded workspace, Escape on an open question-mark help closes that help first; a subsequent Escape retains the normal workspace exit behavior without clearing graph selection.
+
+Explicitly mapped external-source details offer a year-range station-directory query, without fetching on entry. Registration, loading, empty, unconfigured, denied, expired and unavailable states remain distinct. Each bounded page replaces the previous one; failures, cancellation, source/range changes and page hiding clear retained rows. Only permitted station identifiers, years and administrative labels appear; results are neither ingested nor mapped automatically. Optional guidance uses the shared question-mark help component with keyboard/touch access. This panel does not grant provider access or establish live-provider acceptance.

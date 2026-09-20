@@ -7,6 +7,7 @@ import {
   RelationListOutputSchema,
   type RelationAssertion,
   type BusinessQuery,
+  type ExplorationResult,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import {
@@ -54,9 +55,11 @@ export function DataExplorerBusiness({
   locale,
   onInvalidated,
   onApply,
+  membership,
 }: {
   readonly queryId: string;
   readonly scope: BusinessQuery;
+  readonly membership?: ExplorationResult['membership'];
   readonly locale: Locale;
   readonly onInvalidated: InvalidateExploration;
   readonly onApply: (
@@ -114,6 +117,7 @@ export function DataExplorerBusiness({
     setDraft(scope.filters);
   }, [scope.filters]);
   const viewState = useExplorationViewState();
+  const membershipLimit = membership?.assertionCount ?? 2000;
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -150,11 +154,14 @@ export function DataExplorerBusiness({
           if (total !== undefined && total !== page.totalCount)
             throw Error('Changed scope');
           total = page.totalCount;
+          if (total > membershipLimit) throw Error('Scope too large');
+          if (page.nextCursor && page.items.length === 0)
+            throw Error('Empty continuation page');
           items.push(...page.items);
+          if (items.length > total) throw Error('Changed scope');
           after = page.nextCursor;
           if (after && cursors.has(after)) throw Error('Repeated cursor');
           if (after) cursors.add(after);
-          if (items.length > 2000) throw Error('Scope too large');
           if (!controller.signal.aborted) setLoaded(items.length);
         } while (after);
         if (
@@ -176,7 +183,7 @@ export function DataExplorerBusiness({
       }
     })();
     return () => controller.abort();
-  }, [queryId, scope.status, onInvalidated, viewState]);
+  }, [queryId, scope.status, onInvalidated, viewState, membershipLimit]);
   const visible = useMemo(
     () =>
       edgeRow
@@ -354,11 +361,17 @@ export function DataExplorerBusiness({
           </h2>
         </div>
         <p className={businessStyles.authority}>
-          {copy.statuses[scope.status]} · {copy.pageCount}
+          {scope.status === 'APPROVED_AND_PENDING'
+            ? copy.mixedReviewScope
+            : copy.statuses[scope.status]}{' '}
+          · {copy.pageCount}
           {loaded}
           {busy ? ' · ' + copy.businessLoading : ''}
         </p>
       </header>
+      {scope.status === 'APPROVED_AND_PENDING' ? (
+        <p>{copy.mixedReviewHint}</p>
+      ) : null}
       <details>
         <summary>
           {copy.businessScope} · {scope.filters.from ?? copy.filterAll} —{' '}

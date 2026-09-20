@@ -18,6 +18,10 @@ test('searches actual authorized resources and preserves the workspace across ex
   await expect(page.getByTestId('data-explorer')).toBeVisible({
     timeout: 45000,
   });
+  await expect(
+    page.getByRole('tab', { name: '知识图谱', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: '资源', exact: true }).click();
   const resourceLinks = page.getByRole('table').getByRole('link');
   await expect(resourceLinks.first()).toBeVisible({ timeout: 45000 });
   const originalHref = await resourceLinks.first().getAttribute('href');
@@ -60,6 +64,7 @@ test('searches actual authorized resources and preserves the workspace across ex
     .click();
   await expect(resourceLinks.first()).toBeVisible({ timeout: 30000 });
   await page.goto('/zh-CN/data-foundation');
+  await page.locator('summary').filter({ hasText: '打开已保存专题' }).click();
   const topics = page.getByRole('region', { name: '打开已保存专题' });
   await expect(topics).toBeVisible({ timeout: 30000 });
   const topic = topics.locator('a[href*="?saved="]').first();

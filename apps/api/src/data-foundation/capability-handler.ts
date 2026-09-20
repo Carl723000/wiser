@@ -25,10 +25,30 @@ export type DataCapabilityHandlerErrorCode =
   | 'CAPABILITY_TIMEOUT'
   | 'EXECUTION_FAILED'
   | 'IMPLEMENTATION_CONTRACT_VIOLATION'
-  | 'AUDIT_FAILED';
+  | 'AUDIT_FAILED'
+  | 'REQUEST_CANCELLED'
+  | 'EXTERNAL_SOURCE_UNCONFIGURED'
+  | 'EXTERNAL_SOURCE_UNAVAILABLE'
+  | 'EXTERNAL_SOURCE_TIMEOUT'
+  | 'EXTERNAL_SOURCE_ACCESS_DENIED'
+  | 'EXTERNAL_AUTHORIZATION_EXPIRED'
+  | 'EXTERNAL_METADATA_INVALID';
 
 const ERROR_MESSAGES: Readonly<Record<DataCapabilityHandlerErrorCode, string>> =
   {
+    REQUEST_CANCELLED: '请求已取消。 / The request was cancelled.',
+    EXTERNAL_SOURCE_UNCONFIGURED:
+      '该外部读取服务尚未启用。 / External metadata reading is not enabled.',
+    EXTERNAL_SOURCE_UNAVAILABLE:
+      '外部来源暂时无法访问。 / The external source is unavailable.',
+    EXTERNAL_SOURCE_TIMEOUT:
+      '外部来源响应超时。 / The external source timed out.',
+    EXTERNAL_SOURCE_ACCESS_DENIED:
+      '外部来源未允许本次读取。 / The external source denied this read.',
+    EXTERNAL_AUTHORIZATION_EXPIRED:
+      '来源读取许可已过期，请重新核对许可。 / Source permission expired; recheck authorization.',
+    EXTERNAL_METADATA_INVALID:
+      '外部来源返回的信息未通过检查。 / External metadata failed validation.',
     INVALID_CONFIGURATION:
       '数据能力运行时配置无效。 / Data Capability runtime configuration is invalid.',
     NOT_AUTHENTICATED:
@@ -117,6 +137,8 @@ export interface DataCapabilityHandlerOptions {
 }
 
 export interface ExecuteDataCapabilityInput {
+  /** Trusted transport cancellation for readonly work; never accepted from request JSON. */
+  readonly signal?: AbortSignal;
   readonly capabilityId: DataCapabilityId;
   readonly input: unknown;
   readonly requestContext: PlatformRequestContext;
@@ -312,14 +334,30 @@ export class DataCapabilityHandler {
     }
 
     const executor = this.#executors.get(definition.id)!;
-    const signal = AbortSignal.timeout(definition.timeout);
+    const deadline = AbortSignal.timeout(definition.timeout);
+    const callerSignal =
+      definition.kind === 'query' ? request.signal : undefined;
+    const signal = callerSignal
+      ? AbortSignal.any([callerSignal, deadline])
+      : deadline;
+    const abortError = () =>
+      error(
+        callerSignal?.aborted &&
+          !(
+            callerSignal.reason instanceof DOMException &&
+            callerSignal.reason.name === 'TimeoutError'
+          )
+          ? 'REQUEST_CANCELLED'
+          : 'CAPABILITY_TIMEOUT',
+      );
     let timeoutListener: (() => void) | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {
-      timeoutListener = () => reject(error('CAPABILITY_TIMEOUT'));
+      timeoutListener = () => reject(abortError());
       signal.addEventListener('abort', timeoutListener, { once: true });
     });
     let rawOutput: unknown;
     try {
+      if (signal.aborted) throw abortError();
       rawOutput = await Promise.race([
         executor.execute(parsedInput.data, {
           principal: requestContext.principal,
@@ -335,11 +373,20 @@ export class DataCapabilityHandler {
         }),
         timeout,
       ]);
+      if (signal.aborted) throw abortError();
     } catch (caught) {
-      const handlerError = translatedExecutorError(caught);
+      const handlerError = signal.aborted
+        ? abortError()
+        : translatedExecutorError(caught);
       await this.#record({
         ...auditBase,
-        decision: 'FAILED',
+        decision: [
+          'FORBIDDEN',
+          'EXTERNAL_SOURCE_ACCESS_DENIED',
+          'EXTERNAL_AUTHORIZATION_EXPIRED',
+        ].includes(handlerError.code)
+          ? 'DENIED'
+          : 'FAILED',
         errorCode: handlerError.code,
       });
       throw handlerError;

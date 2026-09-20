@@ -95,6 +95,7 @@ input ApprovalInput {
 }
 
 type Query {
+  externalSourceMetadata(input: JSON!): JSON!
   dataAssessmentOverview(input: JSON!): JSON!
   dataRelation(input: JSON!): JSON!
   dataRelations(input: JSON!): JSON!

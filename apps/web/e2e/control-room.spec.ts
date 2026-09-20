@@ -90,14 +90,14 @@ test('switches WISER systems without losing locale or color theme', async ({
   // Local reference runs use next dev and compile cold routes on navigation.
   await page.waitForURL(/\/zh-CN\/data-foundation$/, { timeout: 20_000 });
   await expect(
-    page.getByRole('heading', { name: '管理可信的水系统数据' }),
+    page.getByRole('heading', { name: '数据探索', exact: true }),
   ).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
   await page.getByRole('link', { name: 'English' }).click();
   await expect(page).toHaveURL(/\/en\/data-foundation$/);
   await expect(
-    page.getByRole('heading', { name: 'Manage trusted water-system data' }),
+    page.getByRole('heading', { name: 'Data exploration', exact: true }),
   ).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });

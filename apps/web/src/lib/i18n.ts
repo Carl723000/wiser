@@ -27,6 +27,33 @@ export function isLocale(value: string): value is Locale {
 }
 
 const zhCN = {
+  externalMetadata: {
+    title: '外部站点目录',
+    start: '起始年份',
+    end: '结束年份',
+    query: '查询站点目录',
+    next: '下一页',
+    cancel: '取消查询',
+    clear: '清除结果',
+    loading: '正在检查访问权限并查询…',
+    registered: '已登记来源，尚未查询',
+    invalid: '请填写有效的起止年份。',
+    empty: '此年度范围内没有可访问的站点记录。',
+    unavailable: '暂时无法读取此来源，请稍后重试。',
+    unconfigured: '此来源尚未开通在线查询。',
+    denied: '当前账号没有此来源的访问权限。',
+    expired: '来源授权已过期，请联系项目管理员。',
+    timeout: '来源响应超时，请稍后重试。',
+    authentication: '登录已失效，请重新登录后查询。',
+    checked: '查询时间',
+    count: '本页记录',
+    station: '来源站码',
+    year: '数据年份',
+    province: '省级区域',
+    city: '城市',
+    help: '查看查询说明',
+    note: '仅查询当前账号获准的站点目录字段；数据年份不表示具体采样日期。结果不自动保存，也不生成地图位置。每页重新检查权限。',
+  },
   rasterDisplay: {
     settings: '单波段数值显示',
     integerZoom:
@@ -462,6 +489,8 @@ const zhCN = {
     external: '外部来源标识',
     supersedes: '查看更正前的关系',
     history: '审核记录',
+    mixedReviewScope: '已审与待审',
+    mixedReviewHint: '待审核关系保留候选标识，不代表已经确认。',
     statuses: {
       PENDING_REVIEW: '待审核',
       APPROVED: '已通过',
@@ -1087,6 +1116,10 @@ const zhCN = {
       loadingView: '正在加载结果…',
       recordPage: '记录页',
       title: '数据探索',
+      restartProject: '重新打开项目总览',
+      projectTitle: '当前项目 · 业务关系总览',
+      projectDescription:
+        '按当前权限查看资料与业务对象之间的联系，已审与待审关系分别标识。',
       description: '查询已发布的数据，检查来源、版本与可用内容。',
       scope: '当前项目 · 按权限显示',
       queryLabel: '查询数据',
@@ -2308,6 +2341,33 @@ const zhCN = {
 };
 
 const en: typeof zhCN = {
+  externalMetadata: {
+    title: 'External station directory',
+    start: 'From year',
+    end: 'To year',
+    query: 'Query station directory',
+    next: 'Next page',
+    cancel: 'Cancel query',
+    clear: 'Clear results',
+    loading: 'Checking access and querying…',
+    registered: 'Source registered; not queried',
+    invalid: 'Enter a valid year range.',
+    empty: 'No accessible station records in this year range.',
+    unavailable: 'This source cannot be read now. Try again later.',
+    unconfigured: 'Online querying is not enabled for this source.',
+    denied: 'Your account cannot access this source.',
+    expired: 'Source permission expired. Contact the project administrator.',
+    timeout: 'The source timed out. Try again later.',
+    authentication: 'Your session expired. Sign in again to query.',
+    checked: 'Checked at',
+    count: 'Records on this page',
+    station: 'Source station code',
+    year: 'Data year',
+    province: 'Province',
+    city: 'City',
+    help: 'Query guidance',
+    note: 'Reads only station-directory fields authorized for your account. A data year is not a sampling date. Results are not saved or mapped automatically. Each page rechecks access.',
+  },
   rasterDisplay: {
     settings: 'Single-band value display',
     integerZoom:
@@ -2774,6 +2834,9 @@ const en: typeof zhCN = {
     external: 'External source identifier',
     supersedes: 'View preceding relation',
     history: 'Review history',
+    mixedReviewScope: 'Approved and pending',
+    mixedReviewHint:
+      'Pending relationships remain candidates, not confirmed findings.',
     statuses: {
       PENDING_REVIEW: 'Pending review',
       APPROVED: 'Approved',
@@ -3456,6 +3519,10 @@ const en: typeof zhCN = {
       loadingView: 'Loading results…',
       recordPage: 'Record page',
       title: 'Data exploration',
+      restartProject: 'Reopen project overview',
+      projectTitle: 'Current project · Business relationships',
+      projectDescription:
+        'Explore permitted sources and business objects, with approved and pending relationships labeled separately.',
       description:
         'Query published data and inspect its sources, versions and available content.',
       scope: 'Current project · Authorized data',

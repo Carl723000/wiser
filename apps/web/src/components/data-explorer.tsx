@@ -4,6 +4,7 @@ import {
   relationReturnHref,
   withRelationReturn,
 } from '@/lib/relation-navigation';
+import { DataSavedTopics } from './data-saved-topics';
 import { ExplorationWorkspace } from './exploration-workspace';
 import {
   resourceSearchMatch,
@@ -51,6 +52,7 @@ import {
   useReducer,
   useCallback,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import {
   type OpenExplorationViewOutput,
@@ -108,7 +110,9 @@ function DataExplorerSession({
   initialView = 'resources',
   initialSaved,
   initialFocusedRecord,
+  supplementary,
 }: {
+  readonly supplementary?: ReactNode;
   readonly initialSaved?: OpenExplorationViewOutput;
   readonly initialFocusedRecord?: ExplorationRecord;
   readonly locale: Locale;
@@ -118,6 +122,7 @@ function DataExplorerSession({
   readonly initialView?: ExplorationView;
 }) {
   const copy = getDictionary(locale).dataFoundation.explorer;
+  const [topicsOpen, setTopicsOpen] = useState(false);
   const [result, setResult] = useState(initialResult);
   useEffect(() => {
     if (!initialSaved?.viewSpec.presentation) return;
@@ -335,6 +340,8 @@ function DataExplorerSession({
   const invalidate = useCallback((queryId: string, status = 410) => {
     if (activeQueryId.current !== queryId) return;
     activeQueryId.current = null;
+    pending.current?.abort();
+    setBusy(false);
     setResult(null);
     dispatch({ type: 'query', queryId: null });
     setRecordAssets([]);
@@ -683,12 +690,25 @@ function DataExplorerSession({
             <h1>
               {result?.spec.businessQuery && initialSaved
                 ? initialSaved.savedView.title
-                : copy.title}
+                : result?.spec.scope === 'project'
+                  ? copy.projectTitle
+                  : copy.title}
             </h1>
-            <ContextHelp label={copy.title}>{copy.description}</ContextHelp>
+            <ContextHelp label={copy.title}>
+              {result?.spec.scope === 'project'
+                ? copy.projectDescription
+                : copy.description}
+            </ContextHelp>
           </div>
           <span className={styles.scope}>{copy.scope}</span>
         </header>
+        <details
+          className={styles.searchExamples}
+          onToggle={(event) => setTopicsOpen(event.currentTarget.open)}
+        >
+          <summary>{copy.topics.title}</summary>
+          {topicsOpen ? <DataSavedTopics locale={locale} /> : null}
+        </details>
         <span id="resource-search-help">
           <ContextHelp label={copy.searchHelpLabel}>
             {copy.searchScope}
@@ -967,6 +987,9 @@ function DataExplorerSession({
         {failure === null ? null : (
           <div role="alert" className={styles.failure}>
             {copy[failure]}
+            <Link href={`/${locale}/data-foundation`}>
+              {copy.restartProject}
+            </Link>
           </div>
         )}
         <div
@@ -1133,6 +1156,7 @@ function DataExplorerSession({
                     setView('resources');
                     void query(
                       {
+                        baseQueryId: result.queryId,
                         spec: { ...result.spec, readiness },
                         view: 'resources',
                         first: 25,
@@ -1148,11 +1172,13 @@ function DataExplorerSession({
                 key={result.queryId}
                 queryId={result.queryId}
                 scope={result.spec.businessQuery}
+                membership={result.membership}
                 locale={locale}
                 onInvalidated={invalidate}
                 onApply={(businessQuery, periodUnit) => {
                   void query(
                     {
+                      baseQueryId: result.queryId,
                       spec: { ...result.spec, businessQuery },
                       view: 'resources',
                       first: 25,
@@ -1191,6 +1217,7 @@ function DataExplorerSession({
                     locale={locale}
                     queryId={result.queryId}
                     status={result.spec.businessQuery.status}
+                    membership={result.membership}
                     versionId={focusedVersion}
                     onInvalidated={invalidate}
                   />
@@ -1439,6 +1466,7 @@ function DataExplorerSession({
             )}
           </DataExplorerInspector>
         </div>
+        {supplementary}
       </ExplorationWorkspace>
     </ExplorationViewContext.Provider>
   );

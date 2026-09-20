@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { BusinessQuery, RelationAssertion } from '@wiser/data-contracts';
+import {
+  businessQueryStatuses,
+  type BusinessQuery,
+  type RelationAssertion,
+} from '@wiser/data-contracts';
 import { filterRelationRows, selectRelationRevisions } from '@wiser/data-core';
 import { relationVisibleSql } from '@wiser/data-infra';
 import { DataCapabilityHandlerError } from './capability-handler.js';
@@ -12,29 +16,48 @@ import {
 
 const invalid = () => new DataCapabilityHandlerError('VALIDATION_FAILED');
 const conflict = () => new DataCapabilityHandlerError('CONFLICT');
+const serverPinsSchema = z
+  .array(z.tuple([z.uuid(), z.number().int().positive().max(2147483647)]))
+  .max(100000);
+export function storedBusinessMembership(
+  spec: { scope?: 'project' | undefined },
+  raw: unknown,
+) {
+  if (spec.scope !== 'project') return undefined;
+  const parsed = serverPinsSchema.safeParse(raw);
+  if (
+    !parsed.success ||
+    new Set(parsed.data.map(([id]) => id.toLowerCase())).size !==
+      parsed.data.length
+  )
+    throw conflict();
+  return { pins: parsed.data };
+}
 export async function loadBusinessRelations(
   client: QueryAdapterPgClient,
   refs: readonly AnalysisVersionRef[],
   scope: BusinessQuery,
+  membership?: { pins?: [string, number][] | undefined },
 ) {
+  const pins = membership ? membership.pins : scope.assertionPins;
+  const limit = membership ? 100000 : 2000;
   const result = await client.query(
     `${RELATION_SELECT} where exists(select 1 from jsonb_array_elements($1::jsonb) ref where b.data_item_id=(ref->>'dataItemId')::uuid and b.version_id=(ref->>'versionId')::uuid)
-    and a.status=$2 and ($3::jsonb is null or exists(select 1 from jsonb_array_elements($3::jsonb) pin where b.assertion_id=(pin->>0)::uuid)) and ${relationVisibleSql()} order by b.assertion_id limit 2001`,
+    and a.status=any($2::text[]) and ($3::jsonb is null or exists(select 1 from jsonb_array_elements($3::jsonb) pin where b.assertion_id=(pin->>0)::uuid)) and ${relationVisibleSql()} order by b.assertion_id limit $4`,
     [
       JSON.stringify(refs),
-      scope.status,
-      scope.assertionPins ? JSON.stringify(scope.assertionPins) : null,
+      businessQueryStatuses(scope.status),
+      pins ? JSON.stringify(pins) : null,
+      limit + 1,
     ],
   );
-  if (result.rows.length > 2000) throw invalid();
+  if (result.rows.length > limit) throw invalid();
   const all = result.rows.map(readRelationAssertion);
+  const versions = new Map(all.map((row) => [row.assertionId, row.version]));
   if (
-    scope.assertionPins &&
-    (all.length !== scope.assertionPins.length ||
-      scope.assertionPins.some(
-        ([id, version]) =>
-          !all.some((row) => row.assertionId === id && row.version === version),
-      ))
+    pins &&
+    (all.length !== pins.length ||
+      pins.some(([id, version]) => versions.get(id) !== version))
   )
     throw conflict();
   const current = selectRelationRevisions(all, scope.revisionMode, true);

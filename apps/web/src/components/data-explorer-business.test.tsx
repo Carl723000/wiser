@@ -708,6 +708,119 @@ it('restores an explicitly selected annual step after remount without reinterpre
   );
 });
 
+it('loads every page beyond the legacy bound for a server-owned project membership', async () => {
+  const items = Array.from({ length: 2033 }, (_, index) => ({
+    ...row,
+    assertionId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+  }));
+  let offset = 0;
+  const fetcher = vi.fn().mockImplementation(() => {
+    const page = items.slice(offset, offset + 100);
+    offset += page.length;
+    return Promise.resolve(
+      Response.json({
+        items: page,
+        totalCount: items.length,
+        ...(offset < items.length
+          ? { nextCursor: page.at(-1)!.assertionId }
+          : {}),
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2033 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  expect(fetcher).toHaveBeenCalledTimes(21);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText(/2033.*2033/)).toBeTruthy();
+});
+
+it('rejects a page total above the server membership before requesting more pages', async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      items: [row],
+      totalCount: 3,
+      nextCursor: row.assertionId,
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2 }}
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
+
+it('allows a filtered graph smaller than its immutable project membership', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2033 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('stops an empty continuation page before following a fresh cursor', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({ items: [], totalCount: 1, nextCursor: row.assertionId }),
+    )
+    .mockResolvedValue(Response.json({ items: [row], totalCount: 1 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
+
+it('labels a mixed query without promoting its pending relationships', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        items: [
+          row,
+          {
+            ...row,
+            assertionId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            status: 'APPROVED',
+          },
+        ],
+        totalCount: 2,
+      }),
+    ),
+  );
+  render(
+    <DataExplorerBusiness
+      {...props}
+      scope={BusinessQuerySchema.parse({
+        ...props.scope,
+        schemaVersion: 2,
+        status: 'APPROVED_AND_PENDING',
+      })}
+    />,
+  );
+  await screen.findByText(/已审与待审/);
+  expect(
+    screen.getByText('待审核关系保留候选标识，不代表已经确认。'),
+  ).toBeTruthy();
+});
 it.each(['zh-CN', 'en'] as const)(
   'keeps guidance on demand and review status visible in %s',
   async (locale) => {

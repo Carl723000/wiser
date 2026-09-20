@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 
 import { Pool } from 'pg';
 
+import { createExternalMetadataExecutor } from './external-metadata-executor.js';
 import { DATA_CAPABILITY_IDS } from '@wiser/data-contracts';
 import {
   createDataEmbedding,
@@ -255,6 +256,7 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       ...createReconciliationExecutors(pg),
       ...createAssessmentExecutors(pg),
       ...createKnowledgeRelationExecutors(pg),
+      createExternalMetadataExecutor(),
     ];
   },
   createAssetDownloadPort(pool, objectStore) {

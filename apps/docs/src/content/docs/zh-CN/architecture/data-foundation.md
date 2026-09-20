@@ -19,9 +19,17 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 02345029
 ---
+
+## 外部元数据读取边界
+
+外部元数据 reader 通过已注册的只读能力 `data.external.metadata.read` 提供，只接收来源标识、明确年度范围和有界数值分页。可信宿主端口必须解析当前 WISER 成员权限与提供方来源许可；请求 JSON 不得提供许可、令牌、字段表或 URL。读取前后均核对主体、委派、租户、项目、用途、授权版本、安全上限、许可年份、字段集合及有效期；在途授权变化或取消会丢弃该页。仅返回站码、年份及获准行政标签，坐标与观测数值不返回；不完整页和提供方失败不能作为空结果。
+
+该组件不创建资料资产、索引或存储观测。宿主配置的 HTTP 适配器只向固定端点请求一页规范化元数据，不跟随重定向，凭据仅放请求头。必须使用 HTTPS；隔离测试可显式允许字面回环地址 HTTP。超时覆盖响应头和正文（默认10秒、最多30秒）；解压后的响应字节受限（默认256 KiB、最多1 MiB），压缩响应也不能绕过上限。提供方拒绝、超时、内容异常和调用方取消返回稳定脱敏错误，不作为零条成功。页面结果不缓存，提供方正文不记录或持久化。该传输层不代表某个真实供方协议已适配，也不授予来源访问许可。
+
+REST、GraphQL及Registry驱动的MCP复用现有身份、严格校验和仅哈希审计。REST与GraphQL响应禁止缓存；GraphQL元数据别名也不复用请求级缓存。客户端断连会取消外部读取，命令仍保留原生命周期。默认运行时注册未启用执行器，返回 `EXTERNAL_SOURCE_UNCONFIGURED`；只有可信宿主注入具备实时来源许可的读取器后才可读取。注册能力不等于启用真实来源或授予元数据权限；真实供方配置、网页状态和来源验收仍需单独完成。
 
 ## 权威边界
 
@@ -32,7 +40,7 @@ Data Foundation 是与 Agent EXCON 平级的 WISER 业务系统。它拥有 Data
 ```text
 Supabase principal + Tenant/Project/Purpose
   → Fastify REST / schema-first GraphQL
-  → 同一 DataCapabilityHandler（33 项静态 executor）
+  → 同一 DataCapabilityHandler（42 项静态 executor）
   → data-postgres RLS transaction / SeaweedFS S3
   → PostgreSQL durable job + Transactional Outbox
   → Data Worker
@@ -47,7 +55,7 @@ GeoServer、TiTiler 和 Martin 作为 Compose-internal GIS 服务存在于同一
 
 | 模块                                        | 职责                                                                        |
 | ------------------------------------------- | --------------------------------------------------------------------------- |
-| `@wiser/data-contracts`                     | 严格 Zod DTO、41 项 Capability、四种 transport mapping                      |
+| `@wiser/data-contracts`                     | 严格 Zod DTO、42 项 Capability、四种 transport mapping                      |
 | `@wiser/data-core`                          | 纯确定性的入库/Operation 状态机、质量、安全继承和发布门禁                   |
 | `@wiser/data-infra`                         | checksum migration、PostgreSQL/S3、任务/Outbox、投影、检索和 fake embedding |
 | `@wiser/data-worker`                        | 具体入库 Handler、Scheduler、投影 consumer、健康与指标                      |
@@ -177,7 +185,7 @@ Worker 使用 PostgreSQL `FOR UPDATE SKIP LOCKED`、lease owner/expiry、heartbe
 
 数据总览使用 `includeTotal=true` 取得受授权的目录总数，指标不再取预览页大小。目录计数和当前页使用同一个短 repeatable-read 权威事务。该数量表示登记对象，不表示已经通过分析验证的记录。
 
-- REST：`/api/data/v1` 的 discovery、41 项 Capability、Operation SSE、Evidence/STAC Resource、授权资产重定向，以及唯一外部 OGC/STAC/矢量/栅格 GIS 代理；41 个 Capability 的 Fastify OpenAPI 直接由 Zod 4 Registry 投影，GIS GET 使用显式安全 route Schema，共享文档标题为 **WISER Platform API**；见 [Data REST](/protocols/data-rest/)。
+- REST：`/api/data/v1` 的 discovery、42 项 Capability、Operation SSE、Evidence/STAC Resource、授权资产重定向，以及唯一外部 OGC/STAC/矢量/栅格 GIS 代理；42 个 Capability 的 Fastify OpenAPI 直接由 Zod 4 Registry 投影，GIS GET 使用显式安全 route Schema，共享文档标题为 **WISER Platform API**；见 [Data REST](/protocols/data-rest/)。
 - GraphQL：`POST /graphql`，36 个 schema-first field 共用同一 Handler；见 [Data GraphQL](/protocols/data-graphql/)。
 - MCP：stdio/无状态 Streamable HTTP，36 个 Tool 与受控 Resource 都只调用 HTTP；见 [Data MCP](/protocols/data-mcp/)。
 - Skill：`skills/wiser-data-foundation` 定义发现、查询、上传、入库、Operation 与安全解释流程。
@@ -386,3 +394,27 @@ XML解析保留各节点的展开命名空间、同级序号路径、属性、�
 业务画布使用确定性分类位置和 SVG 立体投影；普通来源图及可选的六条断言分组阅读继续使用 G6。立体层标题放入独立侧边标注区，通过引线连接图层。滚轮、双指和键盘缩放只改变视口，不重排节点或删除连线，名称随尺度逐步出现；所选对象、关系与证据也可通过键盘列表访问。悬停预览直接联系，点击锁定依据并淡化完整网络背景。交叉连线命中时列出实际候选断言供选择。证据区保留原始支持／矛盾含义、准确来源版本、表格／段落定位、限制、审核状态和前版关系入口。
 
 空间呈现复用完整有界的 HTTP 地图查询，按资料、版本、记录三个标识绑定原始点线面几何，沿用既有显示坐标转换；无位置知识单列并保留原关系。虚线将资料标签连接到原几何的显示中心，标签和中心均不成为新增点要素或业务关系。位置读取拒绝范围不符、分页不完整及无权结果。移动地图不改变业务问题；位置精度与知识审核保持独立。画布操作不下载原件、不重跑解析、不迁移数据库、不写入业务数据。
+
+### 服务端业务成员清单存储
+
+追加迁移`0029_exploration_membership.sql`在既有查询快照和保存视图中增加可空的`business_pins`，只保存断言UUID与版本对，与有大小限制的客户端条件分开。旧行继续为null，不回填或改写。数据库拒绝格式错误、重复或超限清单（最多100,000对／8 MiB）；这是存储保护上限，不是已验证的查询或绘图能力。整行强制RLS、快照不可改写及保存视图单向撤销约束同样覆盖新列。`packages/data-infra/test/migrations/exploration-membership.spec.ts`在独立合成库验证2,033个成员、六项作用域隔离及修改拒绝。本存储切片本身尚未启用项目全景查询，不修改既有协议上限，不批准知识或导入外部观测；API和网页接续另行验证。
+
+### 项目业务范围（探索1.13）
+
+使用 `scope: "project"` 与 `businessQuery`，由服务器按权限确定来源清单；此模式不接受调用方提供版本或关系清单。现有查询快照固定资料版本、解析版本及关系UUID/修订号，只返回短查询编号和 `membership` 计数。计数描述显示筛选前的固定范围，不是独立观测量或当前页数量；资源与关系列表仍有界分页。超过服务器上限直接失败，不静默截断；存储上限不代表绘制性能。
+
+保存视图打开1.3、导出1.2保留该范围。通过 `baseQueryId` 调整条件时，先重新核验原有来源和关系，再在其中筛选，不吸收后来新增的成员；切换审核状态须重新查询。成员缺失、撤回或修订变化时整次失败，不返回不完整全景。探索1.12、保存视图打开1.2及导出1.1的历史契约保持冻结，明确版本查询沿用原限制。无权读取且未获目录公开许可的元数据不包含在内；受限来源的可发现目录需另行授权。沿用原GraphQL、REST和MCP入口，不建立新的身份体系。
+
+### 混合审核查询范围（探索1.14）
+
+`businessQuery.schemaVersion: 2` 与 `status: "APPROVED_AND_PENDING"` 同时查询有权读取的已审与待审关系。它只表示查询范围，不是新的审核状态或审核决定；每条关系保留实际状态及修订号，已拒绝与要求更正的关系不包含在内。当前修订筛选不会让待审更正隐藏已审关系；版本1保留原有单状态行为。
+
+关系列表1.6仅允许通过状态一致的业务查询编号使用此范围，内联来源或普通非业务查询不能使用。来源授权、固定成员、分页、记录证据及撤回检查保持有效；即使关系仍处于所选状态集合内，修订变化也会使旧查询失效。保存打开1.4与导出1.3保留该范围；探索1.13、保存打开1.3、导出1.2及关系列表1.5的历史发现契约及哈希保持冻结。不更改权威身份模型或新增数据库迁移。
+
+网页默认入口使用项目范围、业务查询v2、已审与待审混合范围及当前修订，不添加来源、类别或时段限制。`/[locale]/data-foundation`与`/explore`共用服务端加载逻辑；已有查询编号与保存视图继续使用其原成员范围。资源每页25项，业务关系列表保留查询成员核验。打开首页不登记、批准或获取外部观测。
+
+网页元数据读取须经已核实会话及同源通道，只保留白名单中的来源访问状态，并限制请求／响应大小及支持取消。目录可见不授予供方数据权限；可信来源许可尚未接线时，正式来源读取保持关闭。
+
+同源 `POST /api/data-foundation/external-metadata` 只接受严格的来源、年度和分页契约，请求正文上限4 KiB、读取上限5秒，并将浏览器取消信号传给已验证会话的DAL。DAL调用已注册的固定Capability路由，响应头与正文共用超时，限制解码后字节，并核对来源、年份、字段白名单和分页一致性。所有结果禁止缓存，网页只接收与状态匹配的公开错误分类。供方许可配置及来源目录绑定仍是独立前置条件，此入口不会启用真实供方。
+
+已通过原目录读取授权的详情页，可通过宿主配置 `WISER_EXTERNAL_METADATA_BINDINGS` JSON数组展示外部站点目录面板。每项只含 `tenantId`、`projectId`、`dataItemId`、`sourceId`；配置非法、重复、过大或范围不匹配均不展示面板。该配置只提供导航对应关系，不是供方许可；不从名称或文档推断，不创建数据库记录，不含供方网址或凭据。读取器在未接入实时来源许可时仍默认关闭。

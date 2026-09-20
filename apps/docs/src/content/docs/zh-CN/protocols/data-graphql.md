@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 ---
 
 ## 入口与权威契约
@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-实现使用 Mercurius 的 schema-first SDL，不使用 decorator 或 TypeScript AST 扫描。GraphQL field 只是 41 项 Capability 的投影；resolver 与 REST 调用同一个 `DataCapabilityHandler`，因此输入/输出 Zod 校验、Scope、安全 ceiling、Purpose、timeout、幂等和 audit 语义一致。
+实现使用 Mercurius 的 schema-first SDL，不使用 decorator 或 TypeScript AST 扫描。GraphQL field 只是 42 项 Capability 的投影；resolver 与 REST 调用同一个 `DataCapabilityHandler`，因此输入/输出 Zod 校验、Scope、安全 ceiling、Purpose、timeout、幂等和 audit 语义一致。
 
 GraphQL 与 Mercurius 的精确兼容版本由 `apps/api/package.json` 和根 lockfile 定义，并由 API typecheck/build 验证。协议文档不复制会随依赖升级变化的版本清单。
 
@@ -59,22 +59,23 @@ Idempotency-Key: <uuid>
 
 `dataCatalog(filter: { includeTotal: true })` 在 `nodes`、`pageInfo` 之外返回可空的 `totalCount`。它是精确非负整数，使用 GraphQL Float 避免 32 位 Int 上限，并限制在 JavaScript 安全整数精度内。计数覆盖已授权且符合筛选的完整目录，不是当前页大小；省略参数时计数为 null。
 
-| Field                 | Capability                   | 作用                                                     |
-| --------------------- | ---------------------------- | -------------------------------------------------------- |
-| `dataCatalog`         | `data.catalog.search`        | 游标目录 connection                                      |
-| `dataItem`            | `data.catalog.get`           | 一个 DataItem 与可选版本                                 |
-| `dataQuery`           | `data.query`                 | 结构化字段/过滤查询                                      |
-| `dataSearch`          | `data.search.federated`      | 多后端 RRF 综合检索                                      |
-| `knowledgeSearch`     | `data.knowledge.search`      | 证据/知识检索                                            |
-| `graphExpand`         | `data.graph.expand`          | 有界实体邻域                                             |
-| `graphFindPath`       | `data.graph.findPath`        | 有界关系路径                                             |
-| `geoQuery`            | `data.geo.query`             | 受控空间谓词                                             |
-| `geoIntersect`        | `data.geo.intersect`         | 两个受控空间目标相交                                     |
-| `dataOperation`       | `data.operation.get`         | 一个 Operation                                           |
-| `dataItemVersions`    | `data.catalog.versions.list` | 版本 connection                                          |
-| `dataItemVersion`     | `data.catalog.versions.get`  | 精确不可变版本                                           |
-| `dataIngestion`       | `data.ingestion.get`         | 入库会话、质量/Agent/投影摘要                            |
-| `dataOperationEvents` | `data.operation.events`      | 有界 Operation event page；GraphQL 返回 JSON，不使用 SSE |
+| Field                    | Capability                    | 作用                                                     |
+| ------------------------ | ----------------------------- | -------------------------------------------------------- |
+| `externalSourceMetadata` | `data.external.metadata.read` | 获准外部元数据的有界读取                                 |
+| `dataCatalog`            | `data.catalog.search`         | 游标目录 connection                                      |
+| `dataItem`               | `data.catalog.get`            | 一个 DataItem 与可选版本                                 |
+| `dataQuery`              | `data.query`                  | 结构化字段/过滤查询                                      |
+| `dataSearch`             | `data.search.federated`       | 多后端 RRF 综合检索                                      |
+| `knowledgeSearch`        | `data.knowledge.search`       | 证据/知识检索                                            |
+| `graphExpand`            | `data.graph.expand`           | 有界实体邻域                                             |
+| `graphFindPath`          | `data.graph.findPath`         | 有界关系路径                                             |
+| `geoQuery`               | `data.geo.query`              | 受控空间谓词                                             |
+| `geoIntersect`           | `data.geo.intersect`          | 两个受控空间目标相交                                     |
+| `dataOperation`          | `data.operation.get`          | 一个 Operation                                           |
+| `dataItemVersions`       | `data.catalog.versions.list`  | 版本 connection                                          |
+| `dataItemVersion`        | `data.catalog.versions.get`   | 精确不可变版本                                           |
+| `dataIngestion`          | `data.ingestion.get`          | 入库会话、质量/Agent/投影摘要                            |
+| `dataOperationEvents`    | `data.operation.events`       | 有界 Operation event page；GraphQL 返回 JSON，不使用 SSE |
 
 Connection 返回 `nodes` 与 `pageInfo { endCursor hasNextPage }`。其余分页结果保留 `nextCursor`。Cursor 是不透明、scope-bound 的；不能从 REST、另一个 Tenant/Project 或旧授权版本复制。
 
@@ -245,3 +246,19 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 跨来源关系证据可选填写 `source.dataItemId`、`versionId`、`analysisId` 和 `recordId`，同时保留原文件哈希。定位固定为 `record:<recordId>`；非空摘录须存在于该条解析记录中。导入、详情和审核接口为1.2，列表为1.5，既有契约版本保留。读取与重试均重新校验关系所属资料及全部证据来源；来源撤回、无权访问或定位不匹配的证据不能继续支撑关系或从证据与检索入口泄露。提取的日期仍是有来源的候选，不代表专业审核。
 
 `dataAssessments` 使用检查列表 1.1：可选 `assetId` 限定原文件，`latestPerAsset: true` 先逐文件选择最新且仍可访问的检查，再有界分页；缺项或失效声明不退回旧结论，默认仍返回历史。
+
+### 项目业务范围（探索1.13）
+
+使用 `scope: "project"` 与 `businessQuery`，由服务器按权限确定来源清单；此模式不接受调用方提供版本或关系清单。现有查询快照固定资料版本、解析版本及关系UUID/修订号，只返回短查询编号和 `membership` 计数。计数描述显示筛选前的固定范围，不是独立观测量或当前页数量；资源与关系列表仍有界分页。超过服务器上限直接失败，不静默截断；存储上限不代表绘制性能。
+
+保存视图打开1.3、导出1.2保留该范围。通过 `baseQueryId` 调整条件时，先重新核验原有来源和关系，再在其中筛选，不吸收后来新增的成员；切换审核状态须重新查询。成员缺失、撤回或修订变化时整次失败，不返回不完整全景。探索1.12、保存视图打开1.2及导出1.1的历史契约保持冻结，明确版本查询沿用原限制。无权读取且未获目录公开许可的元数据不包含在内；受限来源的可发现目录需另行授权。沿用原GraphQL、REST和MCP入口，不建立新的身份体系。
+
+### 混合审核查询范围（探索1.14）
+
+`businessQuery.schemaVersion: 2` 与 `status: "APPROVED_AND_PENDING"` 同时查询有权读取的已审与待审关系。它只表示查询范围，不是新的审核状态或审核决定；每条关系保留实际状态及修订号，已拒绝与要求更正的关系不包含在内。当前修订筛选不会让待审更正隐藏已审关系；版本1保留原有单状态行为。
+
+关系列表1.6仅允许通过状态一致的业务查询编号使用此范围，内联来源或普通非业务查询不能使用。来源授权、固定成员、分页、记录证据及撤回检查保持有效；即使关系仍处于所选状态集合内，修订变化也会使旧查询失效。保存打开1.4与导出1.3保留该范围；探索1.13、保存打开1.3、导出1.2及关系列表1.5的历史发现契约及哈希保持冻结。不更改权威身份模型或新增数据库迁移。
+
+## 外部元数据
+
+`externalSourceMetadata(input: JSON!): JSON!` 对应 `data.external.metadata.read` 1.0。按发现的严格输入模式提供来源标识及明确年度范围。该字段不使用请求级缓存，两个相同别名也分别核对来源许可。返回字段与REST一致，脱敏错误码位于 `extensions.code`，所有响应禁止缓存；断连取消传递到只读执行器。默认注册仍未启用，真实来源需可信许可与供方适配，不导入观测数据。 GraphQL 外层等待超时返回 HTTP 504 与 `CAPABILITY_TIMEOUT`；客户端主动断开记作 `REQUEST_CANCELLED`（仍可响应时为 499）。Capability 审计分别记录这两种结果。

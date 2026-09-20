@@ -5,7 +5,7 @@ import {
   ExplorationResourceSchema,
   ExplorationRecordSchema,
   ExplorationGraphNodeSchema,
-} from './index.ts';
+} from './v112.ts';
 export const ExplorationViewNameSchema = z.enum([
   'resources',
   'records',

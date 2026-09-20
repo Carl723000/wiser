@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   RelationListOutputSchema,
+  type BusinessQueryStatus,
   type RelationAssertion,
+  type ExplorationResult,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import {
@@ -26,12 +28,14 @@ export function DataExplorerRecordSources({
   queryId,
   status,
   versionId,
+  membership,
   onInvalidated,
 }: {
   readonly locale: Locale;
   readonly queryId: string;
-  readonly status: RelationAssertion['status'];
+  readonly status: BusinessQueryStatus;
   readonly versionId: string | null;
+  readonly membership?: ExplorationResult['membership'];
   readonly onInvalidated: InvalidateExploration;
 }) {
   const copy = getDictionary(locale).knowledgeRelations;
@@ -41,6 +45,7 @@ export function DataExplorerRecordSources({
   const [selected, setSelected] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const membershipLimit = membership?.assertionCount ?? 2000;
   useEffect(() => {
     const controller = new AbortController();
     setRows(null);
@@ -66,21 +71,23 @@ export function DataExplorerRecordSources({
             cache: 'no-store',
             signal: controller.signal,
           });
+          if (controller.signal.aborted) return;
           if (!response.ok) {
-            if (
-              !controller.signal.aborted &&
-              invalidatesExploration(response.status)
-            )
+            if (invalidatesExploration(response.status))
               onInvalidated(queryId, response.status);
             throw Error('Unavailable');
           }
           const part = RelationListOutputSchema.parse(await response.json());
+          if (controller.signal.aborted) return;
           if (total !== undefined && total !== part.totalCount)
             throw Error('Changed scope');
           total = part.totalCount;
+          if (total > membershipLimit) throw Error('Scope too large');
+          if (part.nextCursor && part.items.length === 0)
+            throw Error('Empty continuation page');
           items.push(...part.items);
           after = part.nextCursor;
-          if (items.length > 2000 || (after && seen.has(after)))
+          if (items.length > total || (after && seen.has(after)))
             throw Error('Incomplete scope');
           if (after) seen.add(after);
         } while (after);
@@ -98,7 +105,7 @@ export function DataExplorerRecordSources({
       }
     })();
     return () => controller.abort();
-  }, [queryId, status, onInvalidated]);
+  }, [queryId, status, onInvalidated, membershipLimit]);
   const entries = useMemo(() => {
     const sources = businessObjectSources(rows ?? []);
     const unique = new Map<

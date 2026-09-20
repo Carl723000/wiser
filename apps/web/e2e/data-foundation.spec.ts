@@ -5,7 +5,7 @@ test('keeps the live Data Foundation workspace bilingual and fail-closed', async
 }, testInfo) => {
   await page.goto('/zh-CN/data-foundation');
   await expect(
-    page.getByRole('heading', { name: '管理可信的水系统数据' }),
+    page.getByRole('heading', { name: '数据探索', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('navigation', { name: '数据基座工作区' }),
@@ -25,7 +25,7 @@ test('keeps the live Data Foundation workspace bilingual and fail-closed', async
   await page.getByRole('link', { name: 'English' }).click();
   await expect(page).toHaveURL(/\/en\/data-foundation$/);
   await expect(
-    page.getByRole('heading', { name: 'Manage trusted water-system data' }),
+    page.getByRole('heading', { name: 'Data exploration', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', {

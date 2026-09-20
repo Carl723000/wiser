@@ -154,6 +154,11 @@ for (const serverOwnedField of [
 }
 
 const validCapabilityInputs = {
+  'data.external.metadata.read': {
+    sourceId: DATA_ITEM_ID,
+    fromYear: 2021,
+    toYear: 2025,
+  },
   'data.knowledge.relations.import': {
     dataItemId: DATA_ITEM_ID,
     versionId: VERSION_ID,
@@ -387,6 +392,16 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.external.metadata.read': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/external-sources/:sourceId/metadata/query',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'externalSourceMetadata' },
+    mcpMapping: { toolName: 'data_external_metadata_read' },
+    skillMapping: { operation: 'data.external.metadata.read' },
+  },
   'data.knowledge.relations.import': {
     restMapping: {
       method: 'POST',
@@ -839,6 +854,7 @@ const expectedCapabilityMappings = {
 } satisfies Record<DataCapabilityId, unknown>;
 
 const expectedCapabilityScopes = {
+  'data.external.metadata.read': ['data.catalog.read'],
   'data.knowledge.relations.import': [
     'data.catalog.read',
     'data.ingestion.write',
@@ -903,6 +919,10 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.external.metadata.read': {
+    input: 'd57c16966810d2874f059a0ecbb53ac3d07ac4287e6a327bd5ed336feecc48e4',
+    output: 'ca2ba0bd94242c69de6ee1f5cb21d875d499f73671ca0576a1a487fe712f2af5',
+  },
   'data.knowledge.relations.import': {
     input: '73a14c4d050d8b32dac11ca07f17463a1667911d817b355c92d2530e656b7279',
     output: '525aa78f1f6cc1775098c29229281dec8d2c4f01c89493add9592c6ef899dee9',
@@ -912,7 +932,7 @@ const expectedJsonSchemaHashes = {
     output: '72db7b7c7c1ac7a8b678826b2eb97a13399fdf0a49ae66f128371a31cbbae916',
   },
   'data.knowledge.relations.list': {
-    input: 'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
+    input: '8e042884dfe7bc7948b27f23280dc3934de8497ff23e0e822f87dd0e2e41cbc0',
     output: '6cec20d8ba8e5f2209590dcb02ef0909141629123e902f27d52462813be7cab4',
   },
   'data.knowledge.relations.review': {
@@ -963,7 +983,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.view.open': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
-    output: 'a0df69063e82bd746b47aae2e04eb3f4a2faa8932c86b723c4e1374b11113efc',
+    output: 'c8b24afb6c41d1311d7dccf6e22945d2b3f3edd20a7885e104ea3cedcbf7ad39',
   },
   'data.explore.view.revoke': {
     input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
@@ -971,7 +991,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.explore.export': {
     input: '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
-    output: '5160ecc1bd3fb87b278c1124dd2f12a638aa7920cd4549461d9ac960b4580742',
+    output: '3272d8c67da118aaa53327456771869fa56cd7ab1f8033013b12b9e9dfe9cab4',
   },
 
   'data.analysis.create': {
@@ -979,8 +999,8 @@ const expectedJsonSchemaHashes = {
     output: '157a58322075047c67537707e26c0307eb80090d55e7bf3443b704345d9e3d16',
   },
   'data.explore.query': {
-    input: 'e2f0a6419ebe7ae26bb2b36b08cf44a7578e487902c7ecfab05326c9257c4109',
-    output: 'f31e39c629c1f50fc10049979595d648980f2aedb3bfd29e028dd17de2316745',
+    input: 'ec49c644f72f5b272909969c40ed324037693940909ef2264f2b36a8d4fba31c',
+    output: '4ce0447f0aaa23711a25f0c302d931a2e4fa1c358ff23e82693a4788c5091a8f',
   },
   'data.catalog.search': {
     input: '9fa0f09f57dc5063f42406cdaefd0e19b0ab8e019a3a4ba9824a3445c24139be',
@@ -1424,6 +1444,7 @@ describe('Data Foundation capability registry', () => {
       'data.knowledge.relations.get',
       'data.knowledge.relations.list',
       'data.knowledge.relations.review',
+      'data.external.metadata.read',
     ]);
     expect(Object.keys(DATA_CAPABILITY_REGISTRY)).toEqual(DATA_CAPABILITY_IDS);
 
@@ -1838,7 +1859,7 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
     const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
     expect(old.version).toBe('1.0.0');
     expect(DATA_CAPABILITY_REGISTRY[key].version).toBe(
-      key === 'data.knowledge.relations.list' ? '1.5.0' : '1.2.0',
+      key === 'data.knowledge.relations.list' ? '1.6.0' : '1.2.0',
     );
     expect({
       input: jsonSchemaHash(old.inputSchema),
@@ -1861,7 +1882,7 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.3 list', 
     versionId: VERSION_ID,
     relatedSources: sources,
   };
-  expect(current.version).toBe('1.5.0');
+  expect(current.version).toBe('1.6.0');
   expect(jsonSchemaHash(previous.inputSchema)).toBe(
     '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
   );
@@ -1957,7 +1978,7 @@ it('archives saved-view discovery unchanged when presentation is introduced', ()
     '1.1.0',
   );
   expect(DATA_CAPABILITY_REGISTRY['data.explore.view.open'].version).toBe(
-    '1.2.0',
+    '1.4.0',
   );
   expect(jsonSchemaHash(create.inputSchema)).toBe(
     'b87e4f4b326ae62836ddd3a4411c5537a17fa2444fc73adf9e88dff049829fb4',
@@ -1965,4 +1986,65 @@ it('archives saved-view discovery unchanged when presentation is introduced', ()
   expect(jsonSchemaHash(open.outputSchema)).toBe(
     '67c4c0d7b588932dfa8b7756325a7f4379f2f4bc81247e6b7b67d76e02b90d4c',
   );
+});
+
+it('keeps pre-project membership discovery hashes unchanged', () => {
+  const expected = {
+    'data.explore.query': [
+      '1.12.0',
+      'e2f0a6419ebe7ae26bb2b36b08cf44a7578e487902c7ecfab05326c9257c4109',
+      'f31e39c629c1f50fc10049979595d648980f2aedb3bfd29e028dd17de2316745',
+    ],
+    'data.explore.view.open': [
+      '1.2.0',
+      '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+      'a0df69063e82bd746b47aae2e04eb3f4a2faa8932c86b723c4e1374b11113efc',
+    ],
+    'data.explore.export': [
+      '1.1.0',
+      '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
+      '5160ecc1bd3fb87b278c1124dd2f12a638aa7920cd4549461d9ac960b4580742',
+    ],
+  } as const;
+  for (const [key, [version, input, output]] of Object.entries(expected)) {
+    const archived = DATA_CAPABILITY_ARCHIVE[
+      key as keyof typeof DATA_CAPABILITY_ARCHIVE
+    ]?.find((entry) => entry.version === version);
+    expect(archived).toBeDefined();
+    expect(jsonSchemaHash(archived!.inputSchema)).toBe(input);
+    expect(jsonSchemaHash(archived!.outputSchema)).toBe(output);
+  }
+});
+
+it('freezes the project membership discovery hashes before mixed scope is added', () => {
+  const prior = {
+    'data.explore.query': [
+      '1.13.0',
+      'c556303261c0375da19b4f44ec13da6f152155d31fe4ed32e61dac8319ea571e',
+      'ccdd21e381b4e13e8dc4ba4368e710eae1989cb8723cfddb4af390efc2ea3811',
+    ],
+    'data.explore.view.open': [
+      '1.3.0',
+      '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+      '89305b69aadfb46ec08e7a09a6cc371c7eb890750540a176595cdede4e282889',
+    ],
+    'data.explore.export': [
+      '1.2.0',
+      '92f275799d61c10cdccc829dab89b48229380d5ee27d49277b44eb70f726ec32',
+      '93b5feefa2ed2963fa29adfa2365e4b74b88a09fcf99969abd5a8a158c057c9d',
+    ],
+    'data.knowledge.relations.list': [
+      '1.5.0',
+      'ad7c46aa9952338ae144097385721ca484750b0c6b8e554caff839689ea353c6',
+      '6cec20d8ba8e5f2209590dcb02ef0909141629123e902f27d52462813be7cab4',
+    ],
+  } as const;
+  for (const [key, [version, input, output]] of Object.entries(prior)) {
+    const archived = DATA_CAPABILITY_ARCHIVE[
+      key as keyof typeof DATA_CAPABILITY_ARCHIVE
+    ]?.find((e) => e.version === version);
+    expect(archived).toBeDefined();
+    expect(jsonSchemaHash(archived!.inputSchema)).toBe(input);
+    expect(jsonSchemaHash(archived!.outputSchema)).toBe(output);
+  }
 });

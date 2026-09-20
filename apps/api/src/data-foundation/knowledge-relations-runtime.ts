@@ -1,4 +1,7 @@
-import { loadBusinessRelations } from './business-query-runtime.js';
+import {
+  loadBusinessRelations,
+  storedBusinessMembership,
+} from './business-query-runtime.js';
 import {
   RELATION_SELECT as SELECT,
   readRelationAssertion as assertion,
@@ -338,7 +341,7 @@ export function createKnowledgeRelationExecutors(
           if (input.queryId) {
             // Snapshot RLS binds tenant, project and owner. Expiry never becomes an empty success.
             const snapshot = await c.query(
-              'select version_refs,spec from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
+              'select version_refs,spec,business_pins from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
               [input.queryId, context.principal.actorId],
             );
             if (!snapshot.rows[0]) throw fail('NOT_FOUND');
@@ -366,6 +369,10 @@ export function createKnowledgeRelationExecutors(
                 c,
                 selectedSources,
                 spec.businessQuery,
+                storedBusinessMembership(
+                  spec,
+                  snapshot.rows[0]['business_pins'],
+                ),
               );
               const matched = resolved.items.filter(
                 (row) =>
@@ -422,6 +429,8 @@ export function createKnowledgeRelationExecutors(
             // Reject conflicting ownership before deduplication, preserving legacy behavior.
             for (const source of selectedSources) await authorize(c, source);
           }
+          if (input.status === 'APPROVED_AND_PENDING')
+            throw new DataCapabilityHandlerError('VALIDATION_FAILED');
           const sources = [
             ...new Map(
               selectedSources.map((source) => [source.versionId, source]),

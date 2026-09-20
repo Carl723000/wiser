@@ -14,8 +14,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 4e83321
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 02345029
 ---
 
 ## Design direction
@@ -212,11 +212,21 @@ Business graph pagination checks cancellation after both the response and decode
 
 The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
 
+Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
+
+Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
+
+Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.
+
+The normal Data Foundation entry and unfiltered exploration entry open the authorized project business graph. A compact project title distinguishes it from a saved topic or resource search; approved and pending assertions keep their own labels. Saved topics load only when their disclosure is opened. Operational status remains secondary and cannot replace the graph with example data.
+
 Clicking a spatial point, line or area resolves all source-version-record bindings in the current authorized query. Overlapping objects require an explicit choice; repeated layer hits do not merge identities. Related sources are grouped by category and open original relation evidence. One explicitly qualified spatial reference-identity hop may reveal another source area and adjacent evidence, labeled as indirect reference. Selection preserves camera and query conditions; names never imply location bindings.
 
 A chosen map object is retained as a bounded source-qualified navigation identity in the URL, separately from the selected evidence edge. Restoration reopens its related-source panel only after the current authorized map result supplies an exact geometry binding; unavailable targets never fall back to a same-name object. Returning to the unlocated list clears this navigation choice. The URL contains no geometry or source text and grants no access.
 
 Thin lines and points allow a six-screen-pixel click tolerance within the already rendered, authorized geometry layers. Exact area hits remain unchanged; overlapping candidates are all offered, and unknown bindings are discarded. This interaction tolerance does not buffer geographic extents, relocate evidence, create relations or move the camera.
+
+The business record directory uses the same server membership bound as the graph, including queries above the legacy 2,000-assertion limit. It publishes record links only after complete pagination, rejecting oversized totals, empty continuation pages, inconsistent counts and duplicate assertions. Replaced queries stop after either response or body completion; they cannot dispatch another page or invalidate the current query. Source/version/record bindings remain exact.
 
 Exploration keeps repeated introductions, graph-scope explanations, style semantics and map-reference guidance in the existing circular question-mark help. Hover opens it; click/keyboard activation pins it and Escape dismisses it. Query counts, review/permission/failure states and source-specific evidence remain visible at their relevant surfaces. Optional help is not a substitute for a current warning, and the original explanation remains available in both locales.
 

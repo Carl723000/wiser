@@ -1,6 +1,6 @@
 ---
 title: Data REST API
-description: Data Foundation 41 项 Capability、OpenAPI、受控 Resource、幂等、SSE 与资产下载协议。
+description: Data Foundation 42 项 Capability、OpenAPI、受控 Resource、幂等、SSE 与资产下载协议。
 docType: protocol-reference
 scope: data-rest-api
 status: active
@@ -16,12 +16,12 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2bdf167
+lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 ---
 
 ## 协议边界
 
-Data REST 位于现有 Fastify 进程的 `/api/data/v1`，不是第二个服务。33 项业务路由全部调用同一个 `DataCapabilityHandler`；它以 `@wiser/data-contracts` 的 strict Zod 4 schema 校验输入/输出，再执行实时 Scope、安全等级、Purpose、timeout、幂等和 hash-only audit。
+Data REST 位于现有 Fastify 进程的 `/api/data/v1`，不是第二个服务。42 项业务路由全部调用同一个 `DataCapabilityHandler`；它以 `@wiser/data-contracts` 的 strict Zod 4 schema 校验输入/输出，再执行实时 Scope、安全等级、Purpose、timeout、幂等和 hash-only audit。
 
 MCP、Skill 和 Web 的服务端 DAL 都通过这个 HTTP 边界工作。任何客户端都不能提交 SQL、Cypher、OpenSearch DSL、shell 命令或任意对象存储 key。
 
@@ -32,7 +32,7 @@ MCP、Skill 和 Web 的服务端 DAL 都通过这个 HTTP 边界工作。任何�
 | 方法  | 路径                                               | 结果                                                          |
 | ----- | -------------------------------------------------- | ------------------------------------------------------------- |
 | `GET` | `/api/data/v1/health`                              | data-postgres、对象存储、Worker readiness；任一缺失返回 `503` |
-| `GET` | `/api/data/v1/capabilities`                        | 有序 33 项 Registry 与 draft-7 输入/输出 Schema、四种 mapping |
+| `GET` | `/api/data/v1/capabilities`                        | 有序 42 项 Registry 与 draft-7 输入/输出 Schema、四种 mapping |
 | `GET` | `/api/data/v1/capabilities/:capabilityId/:version` | 一个固定版本的完整 Capability；未知版本返回 `404`             |
 
 健康成功的核心形状：
@@ -51,7 +51,7 @@ MCP、Skill 和 Web 的服务端 DAL 都通过这个 HTTP 边界工作。任何�
 
 ## OpenAPI 契约投影
 
-共享 `GET /openapi.json` 返回 OpenAPI 3.1 文档，标题固定为 **WISER Platform API**，同时覆盖 Platform、Agent EXCON 与 Data Foundation。Data 的 41 项 Capability 不维护第二份手写 Schema：Fastify 在注册路由时直接把 Registry 的 Zod 4 输入/输出转换成 draft-7 JSON Schema，再按 path、query、body 与 required Header 投影为 OpenAPI operation。
+共享 `GET /openapi.json` 返回 OpenAPI 3.1 文档，标题固定为 **WISER Platform API**，同时覆盖 Platform、Agent EXCON 与 Data Foundation。Data 的 42 项 Capability 不维护第二份手写 Schema：Fastify 在注册路由时直接把 Registry 的 Zod 4 输入/输出转换成 draft-7 JSON Schema，再按 path、query、body 与 required Header 投影为 OpenAPI operation。
 
 每个 Data operation 都带 `data-foundation` tag、稳定 `operationId`、`bearerAuth`、成功状态的响应 Schema，以及 command 的 `Idempotency-Key` 和版本化 command 的 `If-Match`。Fastify 的 schema compiler 在这里服务于 OpenAPI 投影；运行时唯一业务门禁仍是同一 `DataCapabilityHandler` 的 strict Zod 输入/输出校验，不能让生成文档变成第二个行为来源。
 
@@ -85,10 +85,11 @@ If-Match: "v3"
 
 适用范围是 upload Session complete、ingestion submit/approve/reject 与 Operation cancel。Header 与 body 中已有的 `expectedVersion` 必须一致。成功响应在能找到聚合版本时返回 `ETag: "vN"`。所有身份、业务与错误响应使用 `private, no-store`。
 
-## 41 项 Capability 路由
+## 42 项 Capability 路由
 
 | Capability                        | 方法与路径                                                | 成功  |
 | --------------------------------- | --------------------------------------------------------- | ----- |
+| `data.external.metadata.read`     | `POST /external-sources/:sourceId/metadata/query`         | `200` |
 | `data.catalog.search`             | `GET /catalog/data-items`                                 | `200` |
 | `data.catalog.get`                | `GET /catalog/data-items/:dataItemId`                     | `200` |
 | `data.query`                      | `POST /query`                                             | `200` |
@@ -204,7 +205,7 @@ Publication consumer 尊重 Operation 终态：即使五个 completion target �
 
 ## Evidence 与 STAC Resource 读取
 
-以下两条受控 GET 不属于 33 项业务 Capability；它们专门承载 MCP Resource，并仍复用统一 Auth、data-postgres RLS、授权后审计与 no-store：
+以下两条受控 GET 不属于 42 项业务 Capability；它们专门承载 MCP Resource，并仍复用统一 Auth、data-postgres RLS、授权后审计与 no-store：
 
 | 路径                                                        | Scope                 | 权威与输出边界                                                                                                                 |
 | ----------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -367,3 +368,23 @@ Data REST 错误是扁平安全 envelope：
 检查列表能力 1.1 新增可选 `assetId` 和 `latestPerAsset`（REST 使用 `true` / `false`）。启用后先按 `created_at DESC, assessment_id DESC` 选出每份可访问原件的最新检查，再按既有检查编号分页。较新记录即使缺项或声明与原件不符，也不会暗中退回较旧完整说明。省略参数仍查询完整历史，1.0 输入合同保留；无需迁移或修改返回结构。
 
 栅格显示查询接受 `bidx`（1–256）、有限且严格递增的十进制 `rescale=min,max`、可选的有限十进制 `nodata`、白名单重采样方式、`colormap_name` 与 `return_mask`。`nodata` 经两层白名单传至 TiTiler，不修改原件元数据。单位标签仅是浏览器中的填写说明，不作为查询参数，也不执行单位换算。来源选择与鉴权规则保持不变。
+
+### 项目业务范围（探索1.13）
+
+使用 `scope: "project"` 与 `businessQuery`，由服务器按权限确定来源清单；此模式不接受调用方提供版本或关系清单。现有查询快照固定资料版本、解析版本及关系UUID/修订号，只返回短查询编号和 `membership` 计数。计数描述显示筛选前的固定范围，不是独立观测量或当前页数量；资源与关系列表仍有界分页。超过服务器上限直接失败，不静默截断；存储上限不代表绘制性能。
+
+保存视图打开1.3、导出1.2保留该范围。通过 `baseQueryId` 调整条件时，先重新核验原有来源和关系，再在其中筛选，不吸收后来新增的成员；切换审核状态须重新查询。成员缺失、撤回或修订变化时整次失败，不返回不完整全景。探索1.12、保存视图打开1.2及导出1.1的历史契约保持冻结，明确版本查询沿用原限制。无权读取且未获目录公开许可的元数据不包含在内；受限来源的可发现目录需另行授权。沿用原GraphQL、REST和MCP入口，不建立新的身份体系。
+
+### 混合审核查询范围（探索1.14）
+
+`businessQuery.schemaVersion: 2` 与 `status: "APPROVED_AND_PENDING"` 同时查询有权读取的已审与待审关系。它只表示查询范围，不是新的审核状态或审核决定；每条关系保留实际状态及修订号，已拒绝与要求更正的关系不包含在内。当前修订筛选不会让待审更正隐藏已审关系；版本1保留原有单状态行为。
+
+关系列表1.6仅允许通过状态一致的业务查询编号使用此范围，内联来源或普通非业务查询不能使用。来源授权、固定成员、分页、记录证据及撤回检查保持有效；即使关系仍处于所选状态集合内，修订变化也会使旧查询失效。保存打开1.4与导出1.3保留该范围；探索1.13、保存打开1.3、导出1.2及关系列表1.5的历史发现契约及哈希保持冻结。不更改权威身份模型或新增数据库迁移。
+
+## 外部元数据只读查询
+
+`data.external.metadata.read` 1.0 对应 `POST /api/data/v1/external-sources/:sourceId/metadata/query`。正文为 `{ "fromYear": 2021, "toYear": 2025, "offset": 0, "limit": 50 }`，每页1—100项；来源标识只放路径，不接受调用方URL、令牌、许可或字段表。平台 `data.catalog.read` 是必要条件，不能替代来源许可；可信读取器在每页取得前后重新核权。
+
+成功仅返回站码、年份、获准行政标签、核查时间、年度精度、总量及可选下一偏移，不创建目录资产、观测或索引。成功与失败响应均为private/no-store。未配置或来源不可用分别为 `EXTERNAL_SOURCE_UNCONFIGURED` / `EXTERNAL_SOURCE_UNAVAILABLE`（503）；来源超时为 `EXTERNAL_SOURCE_TIMEOUT`（504）；供方拒绝或许可过期为 `EXTERNAL_SOURCE_ACCESS_DENIED` / `EXTERNAL_AUTHORIZATION_EXPIRED`（403）；无效元数据为 `EXTERNAL_METADATA_INVALID`（502）。无来源许可沿用禁止访问响应。断连取消记为 `REQUEST_CANCELLED`，已断开连接通常不再收到响应。拒绝/许可过期记为拒绝审计；网络、内容异常与取消记为失败，不作为空数据成功。
+
+默认运行时未启用。真实来源需配置可信适配器并同时核对WISER和供方许可，共享凭据不等于用户获权；隔离HTTP测试不能证明某个真实提供方已适配或许可已满足。
