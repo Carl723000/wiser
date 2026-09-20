@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 735b5593561dfa963fa105b09882be497acee10e
+lastReviewedCommit: 35f1db6
 ---
 
 ## What this guide governs
@@ -278,3 +278,5 @@ Evidence-path reading retains the explicitly chosen assertion IDs and versions u
 Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
 
 Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
+
+Readiness statistics refine the active query membership just like business-period controls. A continuation page must contain at least one relation; empty pages with a next cursor fail visibly without following another cursor or presenting a partial graph.

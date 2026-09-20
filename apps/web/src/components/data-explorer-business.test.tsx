@@ -773,3 +773,17 @@ it('allows a filtered graph smaller than its immutable project membership', asyn
   await screen.findByRole('list', { name: 'test graph' });
   expect(screen.queryByRole('alert')).toBeNull();
 });
+
+it('stops an empty continuation page before following a fresh cursor', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({ items: [], totalCount: 1, nextCursor: row.assertionId }),
+    )
+    .mockResolvedValue(Response.json({ items: [row], totalCount: 1 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
