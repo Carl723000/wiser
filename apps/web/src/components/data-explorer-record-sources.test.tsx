@@ -281,6 +281,7 @@ it.each(['response', 'body'])(
     await screen.findByText(/当前条件下尚无明确绑定的记录/);
     await act(async () => {
       finish(stage === 'response' ? Response.json(part) : part);
+      await Promise.resolve();
     });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(props.onInvalidated).not.toHaveBeenCalled();

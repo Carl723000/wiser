@@ -1213,6 +1213,7 @@ function DataExplorerSession({
                     locale={locale}
                     queryId={result.queryId}
                     status={result.spec.businessQuery.status}
+                    membership={result.membership}
                     versionId={focusedVersion}
                     onInvalidated={invalidate}
                   />
