@@ -2,6 +2,8 @@ import { expect, it } from 'vitest';
 import type { FeatureCollection } from 'geojson';
 import {
   spatialSceneAnchors,
+  spatialHitNodes,
+  spatialObjectRelations,
   relatedSpatialReferences,
   spatialSceneCoverage,
   unlocatedSceneLayout,
@@ -274,4 +276,56 @@ it('retains every source identity in a deterministic narrow reading layout witho
   }
   expect(JSON.stringify(nodes)).toBe(before);
   expect(unlocatedSceneLayout([], 140, 590).positions.size).toBe(0);
+});
+
+it('picks all exact source-version-record bindings, deduplicating rendered layers without name matching', () => {
+  const shared = { ...node, id: 'second-binding' };
+  const linked = { ...scene, nodes: [...scene.nodes, shared] };
+  const anchors = spatialSceneAnchors(linked, features);
+  const hit = { properties: { ...node.record } };
+  expect(spatialHitNodes(anchors, [hit, hit])).toEqual([
+    'source-object',
+    'second-binding',
+  ]);
+  expect(
+    spatialHitNodes(anchors, [
+      { properties: { ...node.record, versionId: 'wrong' } },
+      { properties: { label: node.label } },
+    ]),
+  ).toEqual([]);
+});
+it('finds typed evidence around a mapped area through explicit spatial references only', () => {
+  const linked: BusinessScene = {
+    nodes: [
+      ...scene.nodes,
+      { ...node, id: 'report', kind: 'DOCUMENT', record: null },
+      { ...node, id: 'observation', kind: 'OBSERVATION', record: null },
+      { ...node, id: 'unrelated', kind: 'POLICY', record: null },
+    ],
+    edges: [
+      referenceEdge('same-name', 'source-object', 'IDENTITY_MATCH'),
+      referenceEdge('report', 'same-name', 'ABOUT_ENTITY'),
+      referenceEdge('observation', 'same-name', 'OBSERVATION_OF'),
+      referenceEdge('unrelated', 'source-object', 'ABOUT_ENTITY', 'REJECTED'),
+      referenceEdge('report', 'wrong-version', 'ABOUT_ENTITY'),
+    ],
+  };
+  const rows = spatialObjectRelations(linked, 'source-object');
+  expect(rows.map((r) => r.node.id)).toEqual([
+    'same-name',
+    'report',
+    'observation',
+  ]);
+  expect(rows.find((r) => r.node.id === 'report')?.via?.id).toBe('same-name');
+  expect(rows.find((r) => r.node.id === 'observation')?.edge.id).toBe(
+    'observation:same-name',
+  );
+  expect(spatialObjectRelations(linked, 'missing')).toEqual([]);
+  const noReferences = {
+    ...linked,
+    edges: linked.edges.filter(
+      (e) => e.row.candidate.predicate !== 'IDENTITY_MATCH',
+    ),
+  };
+  expect(spatialObjectRelations(noReferences, 'source-object')).toEqual([]);
 });

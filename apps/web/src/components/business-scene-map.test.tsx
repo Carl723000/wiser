@@ -15,6 +15,9 @@ import type { BusinessScene } from '@/lib/business-scene';
 import type { RelationAssertion } from '@wiser/data-contracts';
 const probe = vi.hoisted(() => ({
   load: null as null | (() => void),
+  click: null as
+    null | ((event: { features: { properties: typeof record }[] }) => void),
+  interactiveLayers: [] as string[],
   fit: vi.fn<
     (
       bounds: [[number, number], [number, number]],
@@ -36,9 +39,17 @@ vi.mock('react-map-gl/maplibre', async () => {
   return {
     default: forwardRef<
       unknown,
-      { children?: ReactNode; onLoad: () => void; onMoveEnd: () => void }
+      {
+        children?: ReactNode;
+        onLoad: () => void;
+        onMoveEnd: () => void;
+        onClick?: NonNullable<typeof probe.click>;
+        interactiveLayerIds?: string[];
+      }
     >((p, ref) => {
       probe.load = p.onLoad;
+      probe.click = p.onClick ?? null;
+      probe.interactiveLayers = p.interactiveLayerIds ?? [];
       probe.move = p.onMoveEnd;
       useImperativeHandle(ref, () => ({
         fitBounds: probe.fit,
@@ -812,4 +823,82 @@ it('keeps map relations quiet until selected and offers an explicit full-network
   );
   expect(view.container.querySelector('[data-edge-id="link"]')).toBeTruthy();
   expect(view.container.querySelectorAll('[data-node-id]')).toHaveLength(2);
+});
+
+it('selects a real map geometry and exposes its related source without moving the camera', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+  const linked: BusinessScene = {
+    nodes: [
+      { ...scene.nodes[0], kind: 'PLACE' },
+      {
+        ...scene.nodes[1],
+        id: 'report',
+        label: '区域研究报告',
+        kind: 'DOCUMENT',
+        sourceTitle: '公开研究',
+      },
+    ],
+    edges: [
+      {
+        id: 'report-area',
+        from: 'report',
+        to: 'bound',
+        row: {
+          status: 'PENDING_REVIEW',
+          candidate: { predicate: 'ABOUT_ENTITY' },
+        } as RelationAssertion,
+      },
+    ],
+  };
+  render(<BusinessSceneMap {...props} scene={linked} />);
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').getAttribute('data-state'),
+    ).toBe('ready'),
+  );
+  expect(probe.interactiveLayers).toContain('business-scene-areas');
+  expect(probe.interactiveLayers).toContain('business-scene-outlines');
+  expect(probe.click).toBeTypeOf('function');
+  act(() => probe.click?.({ features: [{ properties: record }] }));
+  expect(props.onSelect).toHaveBeenCalledWith('bound');
+  fireEvent.click(
+    screen.getByRole('button', { name: /区域研究报告.*公开研究/ }),
+  );
+  expect(props.onEdge).toHaveBeenCalledWith('report-area');
+  expect(probe.fit).not.toHaveBeenCalled();
+  expect(probe.jump).not.toHaveBeenCalled();
+});
+it('offers every overlapping binding and a keyboard choice instead of choosing the first match', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+  render(
+    <BusinessSceneMap
+      {...props}
+      scene={{
+        ...scene,
+        nodes: [
+          ...scene.nodes,
+          {
+            ...scene.nodes[0],
+            id: 'other',
+            label: '区域范围',
+            sourceTitle: '另一来源',
+          },
+        ],
+      }}
+    />,
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByTestId('business-spatial-scene').getAttribute('data-state'),
+    ).toBe('ready'),
+  );
+  expect(probe.click).toBeTypeOf('function');
+  act(() =>
+    probe.click?.({
+      features: [{ properties: record }, { properties: record }],
+    }),
+  );
+  expect(props.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: /区域范围.*另一来源/ }));
+  expect(props.onSelect).toHaveBeenCalledWith('other');
 });
