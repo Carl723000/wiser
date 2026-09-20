@@ -902,3 +902,72 @@ it('offers every overlapping binding and a keyboard choice instead of choosing t
   fireEvent.click(screen.getByRole('button', { name: /区域范围.*另一来源/ }));
   expect(props.onSelect).toHaveBeenCalledWith('other');
 });
+
+it('restores a source-qualified map object only after its authorized geometry loads and clears it on return', async () => {
+  let finish!: (response: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  const onMapObject = vi.fn();
+  render(
+    <BusinessSceneMap {...props} mapObject="bound" onMapObject={onMapObject} />,
+  );
+  expect(
+    screen.queryByRole('region', { name: '此处关联的资料与知识' }),
+  ).toBeNull();
+  await act(async () => {
+    finish(Response.json(page));
+  });
+  expect(
+    await screen.findByRole('region', { name: '此处关联的资料与知识' }),
+  ).toBeTruthy();
+  expect(
+    screen
+      .getByRole('button', { name: /影像覆盖范围/ })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '返回未定位资料列表' }));
+  expect(onMapObject).toHaveBeenCalledWith(null);
+  expect(
+    screen.queryByRole('region', { name: '此处关联的资料与知识' }),
+  ).toBeNull();
+});
+it.each(['unlocated', 'missing'])(
+  'does not restore a map target without an authorized exact binding: %s',
+  async (mapObject) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+    render(
+      <BusinessSceneMap
+        {...props}
+        mapObject={mapObject}
+        onMapObject={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('business-spatial-scene').dataset.state).toBe(
+        'ready',
+      ),
+    );
+    expect(
+      screen.queryByRole('region', { name: '此处关联的资料与知识' }),
+    ).toBeNull();
+  },
+);
+it('persists an unambiguous map selection without persisting hit geometry or source text', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(page)));
+  const onMapObject = vi.fn();
+  render(<BusinessSceneMap {...props} onMapObject={onMapObject} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('business-spatial-scene').dataset.state).toBe(
+      'ready',
+    ),
+  );
+  act(() => probe.click?.({ features: [{ properties: record }] }));
+  expect(onMapObject).toHaveBeenCalledWith('bound');
+});
