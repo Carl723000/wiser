@@ -23,7 +23,12 @@ import {
   type DataItemDetailDto,
   type DataItemVersionPageDto,
 } from '@/lib/data-foundation';
-import { getDataFoundationDal } from '@/lib/data-foundation-dal.server';
+import {
+  getDataFoundationDal,
+  loadDataFoundationWebConfig,
+} from '@/lib/data-foundation-dal.server';
+import { externalSourceBinding } from '@/lib/external-source-binding.server';
+import { ExternalSourceMetadata } from '@/components/external-source-metadata';
 import {
   dataFoundationMetadata,
   dataPageFailure,
@@ -112,6 +117,15 @@ export default async function DataItemPage({
   }
 
   const item = detail?.item;
+  const scope = loadDataFoundationWebConfig(process.env);
+  const externalSource =
+    item && failure === undefined && scope
+      ? externalSourceBinding(
+          process.env['WISER_EXTERNAL_METADATA_BINDINGS'],
+          scope,
+          item.dataItemId,
+        )
+      : null;
   const selectedVersion = detail?.selectedVersion;
   const mapSearch = new URLSearchParams();
   if (selectedVersion !== undefined && item !== undefined) {
@@ -140,6 +154,13 @@ export default async function DataItemPage({
       )}
       {item === undefined || versions === undefined ? null : (
         <>
+          {externalSource ? (
+            <ExternalSourceMetadata
+              key={externalSource.sourceId}
+              locale={locale}
+              sourceId={externalSource.sourceId}
+            />
+          ) : null}
           {selectedVersion ? (
             <DataResourceContent
               key={selectedVersion.versionId}

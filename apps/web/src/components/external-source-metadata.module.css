@@ -1,0 +1,73 @@
+.panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface);
+}
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+.panel form,
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.panel label {
+  display: grid;
+  gap: 0.3rem;
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.panel input {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.panel input,
+.panel button {
+  font: inherit;
+  min-height: 44px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  color: var(--text-primary);
+  background: var(--surface);
+}
+.panel button,
+.panel summary {
+  cursor: pointer;
+}
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.panel :focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+.panel p {
+  overflow-wrap: anywhere;
+}
+.panel details {
+  margin-top: 0.75rem;
+  color: var(--text-secondary);
+}
+.table {
+  overflow: auto;
+  max-height: 22rem;
+  margin-block: 0.75rem;
+}
+.table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.table th,
+.table td {
+  text-align: start;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}

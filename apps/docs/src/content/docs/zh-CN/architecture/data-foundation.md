@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedCommit: a48962b
 ---
 
 ## 外部元数据读取边界
@@ -416,3 +416,5 @@ XML解析保留各节点的展开命名空间、同级序号路径、属性、�
 网页元数据读取须经已核实会话及同源通道，只保留白名单中的来源访问状态，并限制请求／响应大小及支持取消。目录可见不授予供方数据权限；可信来源许可尚未接线时，正式来源读取保持关闭。
 
 同源 `POST /api/data-foundation/external-metadata` 只接受严格的来源、年度和分页契约，请求正文上限4 KiB、读取上限5秒，并将浏览器取消信号传给已验证会话的DAL。DAL调用已注册的固定Capability路由，响应头与正文共用超时，限制解码后字节，并核对来源、年份、字段白名单和分页一致性。所有结果禁止缓存，网页只接收与状态匹配的公开错误分类。供方许可配置及来源目录绑定仍是独立前置条件，此入口不会启用真实供方。
+
+已通过原目录读取授权的详情页，可通过宿主配置 `WISER_EXTERNAL_METADATA_BINDINGS` JSON数组展示外部站点目录面板。每项只含 `tenantId`、`projectId`、`dataItemId`、`sourceId`；配置非法、重复、过大或范围不匹配均不展示面板。该配置只提供导航对应关系，不是供方许可；不从名称或文档推断，不创建数据库记录，不含供方网址或凭据。读取器在未接入实时来源许可时仍默认关闭。

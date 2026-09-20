@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 0c687a3
+lastReviewedCommit: a48962b
 ---
 
 ## What this guide governs
@@ -286,3 +286,5 @@ Mixed review exploration labels its query as “Approved and pending”; individ
 The normal Data Foundation homepage reuses the exploration workspace rather than a fixed demonstration view. After a successful query, its URL records the authorized query ID and selected graph view through the existing exploration route; refresh and return reopen that scope. Explicit resource searches, fixed-version links and saved topics keep their own scope. A failed project request remains a failure; it never opens a narrower topic as a substitute.
 
 The business record directory uses the same server membership bound as the graph, including queries above the legacy 2,000-assertion limit. It publishes record links only after complete pagination, rejecting oversized totals, empty continuation pages, inconsistent counts and duplicate assertions. Replaced queries stop after either response or body completion; they cannot dispatch another page or invalidate the current query. Source/version/record bindings remain exact.
+
+Explicitly mapped external-source details offer a year-range station-directory query, without fetching on entry. Registration, loading, empty, unconfigured, denied, expired and unavailable states remain distinct. Each bounded page replaces the previous one; failures, cancellation, source/range changes and page hiding clear retained rows. Only permitted station identifiers, years and administrative labels appear; results are neither ingested nor mapped automatically. Optional guidance uses the shared question-mark help component with keyboard/touch access. This panel does not grant provider access or establish live-provider acceptance.

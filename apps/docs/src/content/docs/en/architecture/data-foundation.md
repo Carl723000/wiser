@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedCommit: a48962b
 ---
 
 ## External metadata reader boundary
@@ -416,3 +416,5 @@ The Web default entry uses project scope, business query v2, mixed approved/pend
 Web metadata reads must use the verified session and same-origin transport, preserve only allowlisted source-access states, and bound request/response sizes and cancellation. A readable catalog does not grant provider access; production source readers remain disabled until trusted source-specific permission is wired.
 
 The same-origin `POST /api/data-foundation/external-metadata` accepts only the strict source/year/page contract, with a 4 KiB request-body limit and a five-second upload bound. It forwards browser cancellation to the session-verified DAL, which uses the fixed capability route, a shared header/body deadline and bounded decoded response. Source, year, allowed fields and page consistency are checked. All outcomes are private/no-store; only status-matched public error codes cross the web boundary. Provider permission configuration and source-catalog association remain separate prerequisites; this route does not enable the production provider.
+
+An authorized catalog detail can expose an external station-directory panel through an explicit host-owned `WISER_EXTERNAL_METADATA_BINDINGS` JSON array. Each mapping contains exactly `tenantId`, `projectId`, `dataItemId` and `sourceId`; invalid, duplicate, oversized or unmatched configurations expose no panel. The configuration is navigation metadata, never a provider grant, and is evaluated only after the existing catalog read succeeds. It is not inferred from names or documents, creates no database record and includes no provider URL or credentials. The reader remains disabled by default until live source permission is supplied.
