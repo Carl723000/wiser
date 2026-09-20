@@ -20,14 +20,16 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 9c9cfcf01771de100bc4b3dc16948bedbfe39851
+lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 ---
 
 ## External metadata reader boundary
 
 The external metadata reader is a preparatory, unregistered API adapter. It accepts only a source identifier, explicit year range and bounded numeric pagination. A trusted host port must resolve live WISER membership and provider-specific permission; request JSON cannot supply a grant, token, field list or URL. The reader checks subject, delegation, tenant, project, purpose, authorization version, security ceiling, granted years, fields and expiry before and after fetching. In-flight changes or cancellation discard the page. Only station code, year and permitted administrative labels can be returned; coordinates and observations are excluded. Invalid pages and provider failures are not empty results.
 
-This component does not create assets, indexes or stored observations. HTTP registration, transport bounds, live permission configuration and client states require the next integration slice and runtime verification. The default runtime and protocol registry do not yet expose an external metadata operation.
+This component creates no assets, indexes or stored observations. A host-configured HTTP provider requests one normalized metadata page from a fixed endpoint, never follows redirects, and keeps credentials in headers. HTTPS is required, with explicit literal-loopback HTTP opt-in only for isolated tests. The deadline covers both headers and body (10 seconds by default, at most 30); decoded response bytes are bounded (256 KiB by default, at most 1 MiB), including compressed responses. Provider rejection, timeout, malformed content and caller cancellation have stable, sanitized errors, never a zero-row success. Pages are not cached; no provider body is logged or persisted. This transport is not a provider-specific protocol implementation or permission grant.
+
+HTTP capability registration, live permission configuration, downstream no-store response headers and client states still require runtime integration and verification. The default runtime and protocol registry do not yet expose an external metadata operation.
 
 ## Authority boundary
 

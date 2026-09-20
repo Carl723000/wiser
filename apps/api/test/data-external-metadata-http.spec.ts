@@ -6,6 +6,8 @@ import {
 import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ExternalMetadataHttpProvider } from '../src/data-foundation/external-metadata-http.js';
+import { ExternalMetadataReader } from '../src/data-foundation/external-metadata.js';
+import type { DataCapabilityExecutionContext } from '../src/data-foundation/capability-handler.js';
 
 const sourceId = 'e1000000-0000-4000-8000-000000000001';
 const input = {
@@ -191,14 +193,21 @@ describe('fixed external metadata HTTP transport (isolated loopback)', () => {
   });
   it('aborts an in-flight body after caller cancellation', async () => {
     const caller = new AbortController();
+    let closed!: () => void;
+    const disconnected = new Promise<void>((resolve) => {
+      closed = resolve;
+    });
     const endpoint = await serve((_req, res) => {
+      res.once('close', closed);
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.write('{');
-      caller.abort();
+      res.write('{', () => {
+        setTimeout(() => caller.abort(), 20);
+      });
     });
     await expect(
       provider(endpoint).readPage({ ...input, signal: caller.signal }),
     ).rejects.toMatchObject({ code: 'CANCELLED' });
+    await disconnected;
   });
   it('never requests when already cancelled', async () => {
     let reached = false;
@@ -254,4 +263,124 @@ describe('fixed external metadata HTTP transport (isolated loopback)', () => {
         }),
     ).toThrow('EXTERNAL_METADATA_HTTP_CONFIGURATION_INVALID');
   });
+});
+
+describe('external reader with actual isolated HTTP provider', () => {
+  const actorId = 'e1000000-0000-4000-8000-000000000002';
+  const projectId = 'e1000000-0000-4000-8000-000000000003';
+  const tenantId = 'e1000000-0000-4000-8000-000000000004';
+  const now = Date.parse('2026-09-20T00:00:00Z');
+  const context: DataCapabilityExecutionContext = {
+    principal: {
+      actorId,
+      actorType: 'human',
+      authUserId: actorId,
+      sessionId: sourceId,
+      authenticationMethod: 'supabase_jwt',
+    },
+    authorization: {
+      tenantId,
+      projectId,
+      purpose: 'synthetic-test',
+      roles: ['reader'],
+      scopes: ['data.catalog.read'],
+      maxSecurityLevel: 'L2_RESTRICTED',
+      authzVersion: 1,
+    },
+    effectiveMaxSecurityLevel: 'L2_RESTRICTED',
+    traceId: 'e'.repeat(32),
+    auditLevel: 'STANDARD',
+    timeoutMs: 30000,
+    signal: input.signal,
+  };
+  const grant = {
+    sourceId,
+    actorId,
+    actorType: 'human',
+    tenantId,
+    projectId,
+    purpose: 'synthetic-test',
+    authzVersion: 1,
+    policyVersion: 'synthetic-v1',
+    expiresAt: '2026-09-21T00:00:00Z',
+    fromYear: 2021,
+    toYear: 2025,
+    fields: ['stationCode', 'year'],
+    securityLevel: 'L2_RESTRICTED',
+  };
+  it('strips disallowed values after a real HTTP response and refuses the next page after revocation', async () => {
+    let permission: unknown = grant;
+    let requests = 0;
+    const endpoint = await serve((_req, res) => {
+      requests++;
+      json(res, {
+        items: [
+          {
+            ...page.items[0],
+            value: 999,
+            province: 'not-granted',
+            longitude: 116,
+            token: 'synthetic-only',
+          },
+        ],
+        total: 2,
+      });
+    });
+    const reader = new ExternalMetadataReader({
+      provider: provider(endpoint),
+      access: { resolve: () => Promise.resolve(permission) },
+      now: () => now,
+    });
+    const first = await reader.read(input.request, context);
+    expect(first).toMatchObject({
+      items: page.items,
+      nextOffset: 1,
+      status: 'AVAILABLE',
+    });
+    permission = null;
+    await expect(
+      reader.read({ ...input.request, offset: first.nextOffset }, context),
+    ).rejects.toMatchObject({ code: 'ACCESS_DENIED' });
+    expect(requests).toBe(1);
+  });
+  it('discards an HTTP page when the grant is revoked during the fetch', async () => {
+    let permission: unknown = grant;
+    const endpoint = await serve((_req, res) => {
+      permission = null;
+      json(res, page);
+    });
+    const reader = new ExternalMetadataReader({
+      provider: provider(endpoint),
+      access: { resolve: () => Promise.resolve(permission) },
+      now: () => now,
+    });
+    await expect(reader.read(input.request, context)).rejects.toMatchObject({
+      code: 'ACCESS_DENIED',
+    });
+  });
+  it.each([
+    ['timeout', 'SOURCE_TIMEOUT'],
+    ['rejected', 'SOURCE_ACCESS_DENIED'],
+    ['malformed', 'INVALID_METADATA'],
+  ])(
+    'preserves the safe %s result through the reader without provider text',
+    async (mode, code) => {
+      const endpoint = await serve((_req, res) => {
+        if (mode === 'timeout') return;
+        res.writeHead(mode === 'rejected' ? 403 : 200, {
+          'content-type': 'application/json',
+        });
+        res.end('synthetic private response');
+      });
+      const reader = new ExternalMetadataReader({
+        provider: provider(endpoint, { timeoutMs: 100 }),
+        access: { resolve: () => Promise.resolve(grant) },
+        now: () => now,
+      });
+      await expect(reader.read(input.request, context)).rejects.toMatchObject({
+        code,
+        message: code,
+      });
+    },
+  );
 });

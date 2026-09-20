@@ -40,6 +40,7 @@ export type ExternalMetadataErrorCode =
   | 'ACCESS_DENIED'
   | 'AUTHORIZATION_EXPIRED'
   | 'SOURCE_UNAVAILABLE'
+  | 'SOURCE_TIMEOUT'
   | 'SOURCE_ACCESS_DENIED'
   | 'INVALID_METADATA'
   | 'CANCELLED';
@@ -176,9 +177,11 @@ export class ExternalMetadataReader {
       checkSignal(context.signal);
       if (
         error instanceof ExternalMetadataError &&
-        error.code === 'SOURCE_ACCESS_DENIED'
+        ['SOURCE_ACCESS_DENIED', 'SOURCE_TIMEOUT', 'INVALID_METADATA'].includes(
+          error.code,
+        )
       )
-        throw error;
+        throw new ExternalMetadataError(error.code);
       throw new ExternalMetadataError('SOURCE_UNAVAILABLE');
     }
     const after = await this.#authorize(request, context);
