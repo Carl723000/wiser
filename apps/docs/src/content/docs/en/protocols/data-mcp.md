@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 96b3f4c
+lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
 ---
 
 ## HTTP adapter only

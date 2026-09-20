@@ -246,4 +246,90 @@ describe('external metadata authority and projection', () => {
       s.reader.read(request, { ...context, signal: controller.signal }),
     ).rejects.toMatchObject({ code: 'CANCELLED' });
   });
+  it('rejects whitespace identity changes rather than silently normalizing station codes', async () => {
+    const s = setup();
+    s.readPage.mockResolvedValue({
+      items: [{ ...row, stationCode: ' SYNTHETIC-A ' }],
+      total: 1,
+    });
+    await expect(s.reader.read(request, context)).rejects.toMatchObject({
+      code: 'INVALID_METADATA',
+    });
+  });
+  it('keeps the authorized field snapshot separate from adapter-owned arguments', async () => {
+    const s = setup();
+    const reader = new ExternalMetadataReader({
+      access: { resolve: s.resolve },
+      now: () => now,
+      provider: {
+        readPage: (input) => {
+          (input.fields as string[]).push('city');
+          return Promise.resolve({ items: [row], total: 1 });
+        },
+      },
+    });
+    expect((await reader.read(request, context)).items[0]).not.toHaveProperty(
+      'city',
+    );
+  });
+  it('does not let an adapter widen the requested years by mutating its arguments', async () => {
+    const s = setup();
+    const reader = new ExternalMetadataReader({
+      access: { resolve: s.resolve },
+      now: () => now,
+      provider: {
+        readPage: (input) => {
+          input.request.fromYear = 2021;
+          return Promise.resolve({ items: [{ ...row, year: 2022 }], total: 1 });
+        },
+      },
+    });
+    await expect(
+      reader.read({ ...request, fromYear: 2024 }, context),
+    ).rejects.toMatchObject({ code: 'INVALID_METADATA' });
+  });
+  it('rejects a policy lookup failure without propagating its raw error', async () => {
+    const s = setup();
+    s.resolve.mockRejectedValue(new Error('internal-policy-location'));
+    await expect(s.reader.read(request, context)).rejects.toMatchObject({
+      code: 'ACCESS_DENIED',
+      message: 'ACCESS_DENIED',
+    });
+  });
+  it('requires fresh scope and delegated identity in addition to the source grant', async () => {
+    const s = setup();
+    await expect(
+      s.reader.read(request, {
+        ...context,
+        authorization: { ...context.authorization, scopes: [] },
+      }),
+    ).rejects.toMatchObject({ code: 'ACCESS_DENIED' });
+    await expect(
+      s.reader.read(request, {
+        ...context,
+        principal: { ...context.principal, delegatedBy: sourceId },
+      }),
+    ).rejects.toMatchObject({ code: 'ACCESS_DENIED' });
+    expect(s.readPage).not.toHaveBeenCalled();
+  });
+  it('omits ungranted positions along with observations and provider fields', async () => {
+    const s = setup();
+    s.readPage.mockResolvedValue({
+      items: [
+        {
+          ...row,
+          longitude: 116,
+          latitude: 40,
+          position: { coordinates: [116, 40] },
+          warehouseTime: '2026-01-01',
+        },
+      ],
+      total: 1,
+    });
+    expect((await s.reader.read(request, context)).items[0]).toEqual({
+      stationCode: 'SYNTHETIC-A',
+      year: 2024,
+      province: 'Synthetic province',
+    });
+  });
 });

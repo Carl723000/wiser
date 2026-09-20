@@ -20,8 +20,14 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: c45976a1ace9d7c428c865825e0342c44de6f179
+lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
 ---
+
+## External metadata reader boundary
+
+The external metadata reader is a preparatory, unregistered API adapter. It accepts only a source identifier, explicit year range and bounded numeric pagination. A trusted host port must resolve live WISER membership and provider-specific permission; request JSON cannot supply a grant, token, field list or URL. The reader checks subject, delegation, tenant, project, purpose, authorization version, security ceiling, granted years, fields and expiry before and after fetching. In-flight changes or cancellation discard the page. Only station code, year and permitted administrative labels can be returned; coordinates and observations are excluded. Invalid pages and provider failures are not empty results.
+
+This component does not create assets, indexes or stored observations. HTTP registration, transport bounds, live permission configuration and client states require the next integration slice and runtime verification. The default runtime and protocol registry do not yet expose an external metadata operation.
 
 ## Authority boundary
 

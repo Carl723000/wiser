@@ -20,8 +20,14 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: c45976a1ace9d7c428c865825e0342c44de6f179
+lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
 ---
+
+## 外部元数据读取边界
+
+外部元数据 reader 是尚未注册的 API 适配组件，只接收来源标识、明确年度范围和有界数值分页。可信宿主端口必须解析当前 WISER 成员权限与提供方来源许可；请求 JSON 不得提供许可、令牌、字段表或 URL。读取前后均核对主体、委派、租户、项目、用途、授权版本、安全上限、许可年份、字段集合及有效期；在途授权变化或取消会丢弃该页。仅返回站码、年份及获准行政标签，坐标与观测数值不返回；不完整页和提供方失败不能作为空结果。
+
+该组件不创建资料资产、索引或存储观测。HTTP 注册、传输上限、真实权限配置和客户端状态需由下一集成切片及运行验收完成。默认 runtime 与协议 Registry 尚不暴露外部元数据操作。
 
 ## 权威边界
 
