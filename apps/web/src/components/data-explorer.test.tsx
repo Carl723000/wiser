@@ -802,3 +802,38 @@ it('refines the existing project membership when applying a business period', as
     first: 25,
   });
 });
+
+it('keeps an expired scope cleared when an earlier query response arrives late', async () => {
+  const initial = result(firstId, 'Original source', 'source');
+  let release!: (response: Response) => void;
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorer
+      locale="en"
+      initialResult={initial}
+      initialFailure={null}
+      initialText=""
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Query' }));
+  const clock = vi
+    .spyOn(Date, 'now')
+    .mockReturnValue(Date.parse(initial.expiresAt) + 1);
+  act(() => window.dispatchEvent(new Event('pageshow')));
+  clock.mockRestore();
+  await screen.findByRole('alert');
+  await act(async () => {
+    release(Response.json(result(secondId, 'Late source', 'source')));
+  });
+  expect(
+    screen.getByTestId('data-explorer').getAttribute('data-query-id'),
+  ).toBe('');
+  expect(screen.queryByRole('button', { name: 'Late source' })).toBeNull();
+  expect(fetcher.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+});

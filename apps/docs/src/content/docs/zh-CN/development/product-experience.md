@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 2ab00d6ef2cda6c27927c88607254c6e954c135f
+lastReviewedCommit: 735b5593561dfa963fa105b09882be497acee10e
 ---
 
 ## 这份文档约束什么
