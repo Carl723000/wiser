@@ -135,3 +135,12 @@ test('restores reconciliation review-only grants after the common table grants',
     'only the four review fields may be updated',
   );
 });
+
+test('restores only the business-membership validator after roles are provisioned', async () => {
+  const sql = (await readFile(sqlPath, 'utf8')).toLowerCase();
+  assert.match(
+    sql,
+    /if to_regprocedure\('service\.valid_exploration_business_pins\(jsonb\)'\) is not null then\s+grant execute on function service\.valid_exploration_business_pins\(jsonb\) to wiser_data_runtime;/,
+  );
+  assert.doesNotMatch(sql, /grant execute on all functions in schema service/);
+});
