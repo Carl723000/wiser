@@ -14,6 +14,7 @@ import {
   type RelationAssertion,
 } from '@wiser/data-contracts';
 import { DataExplorerBusiness } from './data-explorer-business';
+import { getDictionary } from '@/lib/i18n';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 const nav = vi.hoisted(() => ({
   search: new URLSearchParams('saved=case'),
@@ -706,3 +707,34 @@ it('restores an explicitly selected annual step after remount without reinterpre
     'year',
   );
 });
+
+it.each(['zh-CN', 'en'] as const)(
+  'keeps guidance on demand and review status visible in %s',
+  async (locale) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+    );
+    render(<DataExplorerBusiness {...props} locale={locale} />);
+    const copy = getDictionary(locale).knowledgeRelations;
+    await screen.findByRole('button', { name: copy.kinds.POLICY });
+    const hint = screen.getByText(copy.businessHint);
+    expect(hint.closest('[hidden]')).not.toBeNull();
+    const help = screen.getByRole('button', { name: copy.businessTitle });
+    fireEvent.pointerEnter(help.parentElement!);
+    expect(
+      screen.getByRole('note', { name: copy.businessTitle }).textContent,
+    ).toContain(copy.businessHint);
+    expect(
+      screen.getByRole('note', { name: copy.businessTitle }).textContent,
+    ).toContain(copy.recordRelationPending);
+    fireEvent.pointerLeave(help.parentElement!);
+    expect(screen.queryByRole('note', { name: copy.businessTitle })).toBeNull();
+    const frame = screen.getByRole('region', { name: copy.businessTitle });
+    expect(
+      within(frame)
+        .getByText(new RegExp(copy.statuses.PENDING_REVIEW))
+        .closest('[hidden]'),
+    ).toBeNull();
+  },
+);
