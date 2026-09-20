@@ -25,11 +25,11 @@ lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 
 ## External metadata reader boundary
 
-The external metadata reader is a preparatory, unregistered API adapter. It accepts only a source identifier, explicit year range and bounded numeric pagination. A trusted host port must resolve live WISER membership and provider-specific permission; request JSON cannot supply a grant, token, field list or URL. The reader checks subject, delegation, tenant, project, purpose, authorization version, security ceiling, granted years, fields and expiry before and after fetching. In-flight changes or cancellation discard the page. Only station code, year and permitted administrative labels can be returned; coordinates and observations are excluded. Invalid pages and provider failures are not empty results.
+The external metadata reader is exposed through the registered readonly `data.external.metadata.read` Capability. It accepts only a source identifier, explicit year range and bounded numeric pagination. A trusted host port must resolve live WISER membership and provider-specific permission; request JSON cannot supply a grant, token, field list or URL. The reader checks subject, delegation, tenant, project, purpose, authorization version, security ceiling, granted years, fields and expiry before and after fetching. In-flight changes or cancellation discard the page. Only station code, year and permitted administrative labels can be returned; coordinates and observations are excluded. Invalid pages and provider failures are not empty results.
 
 This component creates no assets, indexes or stored observations. A host-configured HTTP provider requests one normalized metadata page from a fixed endpoint, never follows redirects, and keeps credentials in headers. HTTPS is required, with explicit literal-loopback HTTP opt-in only for isolated tests. The deadline covers both headers and body (10 seconds by default, at most 30); decoded response bytes are bounded (256 KiB by default, at most 1 MiB), including compressed responses. Provider rejection, timeout, malformed content and caller cancellation have stable, sanitized errors, never a zero-row success. Pages are not cached; no provider body is logged or persisted. This transport is not a provider-specific protocol implementation or permission grant.
 
-HTTP capability registration, live permission configuration, downstream no-store response headers and client states still require runtime integration and verification. The default runtime and protocol registry do not yet expose an external metadata operation.
+REST, GraphQL and registry-driven MCP route through the same identity, strict validation and hash-only audit boundary. REST and GraphQL responses are no-store; GraphQL metadata aliases deliberately skip request-level memoization. Client disconnects cancel external reads; commands retain their existing lifecycle. The default runtime registers a disabled executor (`EXTERNAL_SOURCE_UNCONFIGURED`) until a trusted host supplies a reader with live source-specific permission. Registration does not enable a real source or grant metadata access. Actual provider configuration, client states and live source acceptance remain separate work.
 
 ## Authority boundary
 
@@ -40,7 +40,7 @@ The default Data runtime composes:
 ```text
 Supabase principal + Tenant/Project/Purpose
   → Fastify REST / schema-first GraphQL
-  → one DataCapabilityHandler (24 static executors)
+  → one DataCapabilityHandler (42 static executors)
   → data-postgres RLS transaction / SeaweedFS S3
   → PostgreSQL durable job + Transactional Outbox
   → Data Worker
@@ -55,7 +55,7 @@ GeoServer, TiTiler, and Martin run as Compose-internal GIS services in the same 
 
 | Module                                      | Responsibility                                                                      |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `@wiser/data-contracts`                     | Strict Zod DTOs, 41 Capabilities, four transport mappings                           |
+| `@wiser/data-contracts`                     | Strict Zod DTOs, 42 Capabilities, four transport mappings                           |
 | `@wiser/data-core`                          | Pure ingestion/Operation state, quality, security inheritance, publication gates    |
 | `@wiser/data-infra`                         | Checksum migration, PostgreSQL/S3, jobs/Outbox, projections, search, fake embedding |
 | `@wiser/data-worker`                        | Concrete ingestion Handler, Scheduler, projection consumer, health and metrics      |
@@ -185,9 +185,9 @@ The graph workspace lazily loads G6 5.1.1 on the client and renders only the bou
 
 The Data overview reads the scoped catalog total with `includeTotal=true`; its metric is independent of the preview page size. Catalog count and page use one short repeatable-read authority transaction. Counts describe registered objects, not analytically validated records.
 
-- REST: `/api/data/v1` discovery, 41 Capabilities, Operation SSE, Evidence/STAC Resources, authorized asset redirects, and the sole external OGC/STAC/vector/raster GIS proxy. Fastify OpenAPI projects all 41 Capabilities directly from the Zod 4 Registry and documents GIS GETs with explicit safe route Schemas under the shared **WISER Platform API** title; see [Data REST](/en/protocols/data-rest/).
-- GraphQL: `POST /graphql`, 24 schema-first fields sharing the same Handler; see [Data GraphQL](/en/protocols/data-graphql/).
-- MCP: stdio/stateless Streamable HTTP, 33 Tools and governed Resources that call HTTP only; see [Data MCP](/en/protocols/data-mcp/).
+- REST: `/api/data/v1` discovery, 42 Capabilities, Operation SSE, Evidence/STAC Resources, authorized asset redirects, and the sole external OGC/STAC/vector/raster GIS proxy. Fastify OpenAPI projects all 42 Capabilities directly from the Zod 4 Registry and documents GIS GETs with explicit safe route Schemas under the shared **WISER Platform API** title; see [Data REST](/en/protocols/data-rest/).
+- GraphQL: `POST /graphql`, registry-mapped schema-first fields sharing the same Handler; see [Data GraphQL](/en/protocols/data-graphql/).
+- MCP: stdio/stateless Streamable HTTP, registry-mapped Tools and governed Resources that call HTTP only; see [Data MCP](/en/protocols/data-mcp/).
 - Skill: `skills/wiser-data-foundation` documents discovery, query, upload, ingestion, Operation, and security workflows.
 - Web: 14 Data routes in the existing Next.js app with server-only DAL, real Supabase session, both locales/themes, immutable-version selection, an official AMap JS API 2.0 basemap with synchronized transparent MapLibre overlays: PostGIS authority GeoJSON, STAC extents, governed vector MVT, and raster.
 

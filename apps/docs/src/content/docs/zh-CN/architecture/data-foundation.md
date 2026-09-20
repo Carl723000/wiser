@@ -25,11 +25,11 @@ lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 
 ## 外部元数据读取边界
 
-外部元数据 reader 是尚未注册的 API 适配组件，只接收来源标识、明确年度范围和有界数值分页。可信宿主端口必须解析当前 WISER 成员权限与提供方来源许可；请求 JSON 不得提供许可、令牌、字段表或 URL。读取前后均核对主体、委派、租户、项目、用途、授权版本、安全上限、许可年份、字段集合及有效期；在途授权变化或取消会丢弃该页。仅返回站码、年份及获准行政标签，坐标与观测数值不返回；不完整页和提供方失败不能作为空结果。
+外部元数据 reader 通过已注册的只读能力 `data.external.metadata.read` 提供，只接收来源标识、明确年度范围和有界数值分页。可信宿主端口必须解析当前 WISER 成员权限与提供方来源许可；请求 JSON 不得提供许可、令牌、字段表或 URL。读取前后均核对主体、委派、租户、项目、用途、授权版本、安全上限、许可年份、字段集合及有效期；在途授权变化或取消会丢弃该页。仅返回站码、年份及获准行政标签，坐标与观测数值不返回；不完整页和提供方失败不能作为空结果。
 
 该组件不创建资料资产、索引或存储观测。宿主配置的 HTTP 适配器只向固定端点请求一页规范化元数据，不跟随重定向，凭据仅放请求头。必须使用 HTTPS；隔离测试可显式允许字面回环地址 HTTP。超时覆盖响应头和正文（默认10秒、最多30秒）；解压后的响应字节受限（默认256 KiB、最多1 MiB），压缩响应也不能绕过上限。提供方拒绝、超时、内容异常和调用方取消返回稳定脱敏错误，不作为零条成功。页面结果不缓存，提供方正文不记录或持久化。该传输层不代表某个真实供方协议已适配，也不授予来源访问许可。
 
-HTTP 能力注册、真实权限配置、对网页的禁止缓存响应头及客户端状态仍需运行集成和验收。默认 runtime 与协议 Registry 尚不暴露外部元数据操作。
+REST、GraphQL及Registry驱动的MCP复用现有身份、严格校验和仅哈希审计。REST与GraphQL响应禁止缓存；GraphQL元数据别名也不复用请求级缓存。客户端断连会取消外部读取，命令仍保留原生命周期。默认运行时注册未启用执行器，返回 `EXTERNAL_SOURCE_UNCONFIGURED`；只有可信宿主注入具备实时来源许可的读取器后才可读取。注册能力不等于启用真实来源或授予元数据权限；真实供方配置、网页状态和来源验收仍需单独完成。
 
 ## 权威边界
 
@@ -40,7 +40,7 @@ Data Foundation 是与 Agent EXCON 平级的 WISER 业务系统。它拥有 Data
 ```text
 Supabase principal + Tenant/Project/Purpose
   → Fastify REST / schema-first GraphQL
-  → 同一 DataCapabilityHandler（33 项静态 executor）
+  → 同一 DataCapabilityHandler（42 项静态 executor）
   → data-postgres RLS transaction / SeaweedFS S3
   → PostgreSQL durable job + Transactional Outbox
   → Data Worker
@@ -55,7 +55,7 @@ GeoServer、TiTiler 和 Martin 作为 Compose-internal GIS 服务存在于同一
 
 | 模块                                        | 职责                                                                        |
 | ------------------------------------------- | --------------------------------------------------------------------------- |
-| `@wiser/data-contracts`                     | 严格 Zod DTO、41 项 Capability、四种 transport mapping                      |
+| `@wiser/data-contracts`                     | 严格 Zod DTO、42 项 Capability、四种 transport mapping                      |
 | `@wiser/data-core`                          | 纯确定性的入库/Operation 状态机、质量、安全继承和发布门禁                   |
 | `@wiser/data-infra`                         | checksum migration、PostgreSQL/S3、任务/Outbox、投影、检索和 fake embedding |
 | `@wiser/data-worker`                        | 具体入库 Handler、Scheduler、投影 consumer、健康与指标                      |
@@ -185,7 +185,7 @@ Worker 使用 PostgreSQL `FOR UPDATE SKIP LOCKED`、lease owner/expiry、heartbe
 
 数据总览使用 `includeTotal=true` 取得受授权的目录总数，指标不再取预览页大小。目录计数和当前页使用同一个短 repeatable-read 权威事务。该数量表示登记对象，不表示已经通过分析验证的记录。
 
-- REST：`/api/data/v1` 的 discovery、41 项 Capability、Operation SSE、Evidence/STAC Resource、授权资产重定向，以及唯一外部 OGC/STAC/矢量/栅格 GIS 代理；41 个 Capability 的 Fastify OpenAPI 直接由 Zod 4 Registry 投影，GIS GET 使用显式安全 route Schema，共享文档标题为 **WISER Platform API**；见 [Data REST](/protocols/data-rest/)。
+- REST：`/api/data/v1` 的 discovery、42 项 Capability、Operation SSE、Evidence/STAC Resource、授权资产重定向，以及唯一外部 OGC/STAC/矢量/栅格 GIS 代理；42 个 Capability 的 Fastify OpenAPI 直接由 Zod 4 Registry 投影，GIS GET 使用显式安全 route Schema，共享文档标题为 **WISER Platform API**；见 [Data REST](/protocols/data-rest/)。
 - GraphQL：`POST /graphql`，36 个 schema-first field 共用同一 Handler；见 [Data GraphQL](/protocols/data-graphql/)。
 - MCP：stdio/无状态 Streamable HTTP，36 个 Tool 与受控 Resource 都只调用 HTTP；见 [Data MCP](/protocols/data-mcp/)。
 - Skill：`skills/wiser-data-foundation` 定义发现、查询、上传、入库、Operation 与安全解释流程。

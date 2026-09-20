@@ -1,6 +1,6 @@
 ---
 title: Data REST API
-description: Data Foundation's 41 Capabilities, OpenAPI, governed Resources, idempotency, SSE, and asset-download protocol.
+description: Data Foundation's 42 Capabilities, OpenAPI, governed Resources, idempotency, SSE, and asset-download protocol.
 docType: protocol-reference
 scope: data-rest-api
 status: active
@@ -21,7 +21,7 @@ lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 
 ## Protocol boundary
 
-Data REST lives at `/api/data/v1` in the existing Fastify process; it is not a second service. All 22 business routes call one `DataCapabilityHandler`, which validates input and output with strict Zod 4 schemas from `@wiser/data-contracts`, then enforces live scopes, security level, purpose, timeout, idempotency, and hash-only audit.
+Data REST lives at `/api/data/v1` in the existing Fastify process; it is not a second service. All 42 business routes call one `DataCapabilityHandler`, which validates input and output with strict Zod 4 schemas from `@wiser/data-contracts`, then enforces live scopes, security level, purpose, timeout, idempotency, and hash-only audit.
 
 MCP, the Skill, and Web's server-side DAL all traverse this HTTP boundary. No caller can submit SQL, Cypher, OpenSearch DSL, shell commands, or arbitrary object-store keys.
 
@@ -32,7 +32,7 @@ These non-cacheable reads require no identity:
 | Method | Path                                               | Result                                                                             |
 | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `GET`  | `/api/data/v1/health`                              | data-postgres, object-store, Worker readiness; any missing authority returns `503` |
-| `GET`  | `/api/data/v1/capabilities`                        | ordered 41-item Registry, draft-7 I/O Schemas, and four mappings                   |
+| `GET`  | `/api/data/v1/capabilities`                        | ordered 42-item Registry, draft-7 I/O Schemas, and four mappings                   |
 | `GET`  | `/api/data/v1/capabilities/:capabilityId/:version` | one fixed Capability version; unknown version returns `404`                        |
 
 A ready response has this core shape:
@@ -51,7 +51,7 @@ A ready response has this core shape:
 
 ## OpenAPI contract projection
 
-Shared `GET /openapi.json` returns OpenAPI 3.1 with the fixed title **WISER Platform API**, covering Platform, Agent EXCON, and Data Foundation. The 41 Data Capabilities do not maintain another handwritten schema. At route registration, Fastify converts Registry Zod 4 input/output into draft-7 JSON Schema and projects it into path, query, body, and required-header OpenAPI operations.
+Shared `GET /openapi.json` returns OpenAPI 3.1 with the fixed title **WISER Platform API**, covering Platform, Agent EXCON, and Data Foundation. The 42 Data Capabilities do not maintain another handwritten schema. At route registration, Fastify converts Registry Zod 4 input/output into draft-7 JSON Schema and projects it into path, query, body, and required-header OpenAPI operations.
 
 Every Data operation has the `data-foundation` tag, a stable `operationId`, `bearerAuth`, its successful response Schema, plus `Idempotency-Key` for commands and `If-Match` for versioned commands. Fastify schema compilers serve the OpenAPI projection here; the single runtime behavior gate remains strict Zod input/output validation in the shared `DataCapabilityHandler`. Generated documentation never becomes a second behavior source.
 
@@ -85,10 +85,11 @@ If-Match: "v3"
 
 This applies to upload Session completion, ingestion submit/approve/reject, and Operation cancel. The header must equal an `expectedVersion` already present in the body. Successful responses include `ETag: "vN"` when an aggregate version is present. Identity, business, and error responses are all `private, no-store`.
 
-## The 41 Capability routes
+## The 42 Capability routes
 
 | Capability                        | Method and path                                           | Success |
 | --------------------------------- | --------------------------------------------------------- | ------- |
+| `data.external.metadata.read`     | `POST /external-sources/:sourceId/metadata/query`         | `200`   |
 | `data.catalog.search`             | `GET /catalog/data-items`                                 | `200`   |
 | `data.catalog.get`                | `GET /catalog/data-items/:dataItemId`                     | `200`   |
 | `data.query`                      | `POST /query`                                             | `200`   |
@@ -204,7 +205,7 @@ Publication consumer respects terminal Operations. Even after all five completio
 
 ## Evidence and STAC Resource reads
 
-These governed GETs are not part of the 41 business Capabilities. They specifically back MCP Resources while still using unified Auth, data-postgres RLS, post-authorization audit, and no-store:
+These governed GETs are not part of the 42 business Capabilities. They specifically back MCP Resources while still using unified Auth, data-postgres RLS, post-authorization audit, and no-store:
 
 | Path                                                        | Scope                 | Authority and output boundary                                                                                                                                       |
 | ----------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -379,3 +380,11 @@ Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQuer
 `businessQuery.schemaVersion: 2` with `status: "APPROVED_AND_PENDING"` selects authorized approved and pending assertions together. This is a query selector, never an authority state or review decision. Each returned assertion retains its real status and revision; rejected/correction-required assertions are excluded. Current-revision selection never lets a pending correction hide an approved assertion. Version 1 keeps its existing single-state behavior.
 
 Relation list 1.6 accepts the selector only with a persisted business `queryId` whose status matches. Inline sources and ordinary non-business queries cannot use it. Existing source authorization, immutable membership, pagination, record evidence and withdrawal checks still apply; any changed assertion revision invalidates replay even when its status remains inside the selected set. Saved-open 1.4 and export 1.3 preserve this scope. Prior query 1.13, saved-open 1.3, export 1.2 and relation-list 1.5 discovery schemas are frozen, including their schema hashes. No authority model or database migration is introduced.
+
+## Read external metadata without ingesting observations
+
+`data.external.metadata.read` 1.0 uses `POST /api/data/v1/external-sources/:sourceId/metadata/query`. Body: `{ "fromYear": 2021, "toYear": 2025, "offset": 0, "limit": 50 }`; limit is 1–100. Source ID comes only from the path; no URL, token, grant or requested fields are accepted. Platform `data.catalog.read` is necessary but never sufficient: the injected trusted reader checks live source-specific permission before and after each page.
+
+Success returns station code, year and only permitted administrative labels, with `checkedAt`, `timePrecision: "year"`, total and optional next offset. It creates no catalog asset, observation or index. Responses, including errors, are private/no-store. Stable errors distinguish `EXTERNAL_SOURCE_UNCONFIGURED` and `EXTERNAL_SOURCE_UNAVAILABLE` (503), `EXTERNAL_SOURCE_TIMEOUT` (504), `EXTERNAL_SOURCE_ACCESS_DENIED` and `EXTERNAL_AUTHORIZATION_EXPIRED` (403), and `EXTERNAL_METADATA_INVALID` (502). Missing source permission uses the existing forbidden response. Cancellation records `REQUEST_CANCELLED`; a disconnected transport generally receives no response. Source rejection/expired permission are denied audits; network/malformed/cancelled work is failed, never successful empty data.
+
+The default runtime is disabled. A real source needs a trusted adapter and live WISER plus provider permission; shared credentials alone are not a grant. Synthetic HTTP integration tests do not certify any real provider protocol or license.

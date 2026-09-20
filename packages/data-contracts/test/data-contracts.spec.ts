@@ -154,6 +154,11 @@ for (const serverOwnedField of [
 }
 
 const validCapabilityInputs = {
+  'data.external.metadata.read': {
+    sourceId: DATA_ITEM_ID,
+    fromYear: 2021,
+    toYear: 2025,
+  },
   'data.knowledge.relations.import': {
     dataItemId: DATA_ITEM_ID,
     versionId: VERSION_ID,
@@ -387,6 +392,16 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.external.metadata.read': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/external-sources/:sourceId/metadata/query',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'externalSourceMetadata' },
+    mcpMapping: { toolName: 'data_external_metadata_read' },
+    skillMapping: { operation: 'data.external.metadata.read' },
+  },
   'data.knowledge.relations.import': {
     restMapping: {
       method: 'POST',
@@ -839,6 +854,7 @@ const expectedCapabilityMappings = {
 } satisfies Record<DataCapabilityId, unknown>;
 
 const expectedCapabilityScopes = {
+  'data.external.metadata.read': ['data.catalog.read'],
   'data.knowledge.relations.import': [
     'data.catalog.read',
     'data.ingestion.write',
@@ -903,6 +919,10 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.external.metadata.read': {
+    input: 'd57c16966810d2874f059a0ecbb53ac3d07ac4287e6a327bd5ed336feecc48e4',
+    output: 'ca2ba0bd94242c69de6ee1f5cb21d875d499f73671ca0576a1a487fe712f2af5',
+  },
   'data.knowledge.relations.import': {
     input: '73a14c4d050d8b32dac11ca07f17463a1667911d817b355c92d2530e656b7279',
     output: '525aa78f1f6cc1775098c29229281dec8d2c4f01c89493add9592c6ef899dee9',
@@ -1424,6 +1444,7 @@ describe('Data Foundation capability registry', () => {
       'data.knowledge.relations.get',
       'data.knowledge.relations.list',
       'data.knowledge.relations.review',
+      'data.external.metadata.read',
     ]);
     expect(Object.keys(DATA_CAPABILITY_REGISTRY)).toEqual(DATA_CAPABILITY_IDS);
 

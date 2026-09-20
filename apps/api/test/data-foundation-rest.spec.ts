@@ -69,6 +69,13 @@ const point = {
 };
 
 const validInputs = {
+  'data.external.metadata.read': {
+    sourceId: DATA_ITEM_ID,
+    fromYear: 2021,
+    toYear: 2025,
+    offset: 0,
+    limit: 2,
+  },
   'data.knowledge.relations.import': {
     dataItemId: DATA_ITEM_ID,
     versionId: VERSION_ID,
@@ -506,6 +513,9 @@ describe('Data Foundation REST module', () => {
         capabilityId,
         input: request.expectedInput,
         requestContext: context,
+        ...(capabilityId === 'data.external.metadata.read'
+          ? { signal: expect.any(AbortSignal) as unknown }
+          : {}),
         ...(definition.kind === 'command'
           ? { idempotencyKey: IDEMPOTENCY_KEY }
           : {}),

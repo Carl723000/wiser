@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 41 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
+It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 42 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
 
 `apps/api/package.json` and the root lockfile define the exact compatible GraphQL and Mercurius versions, and API typecheck/build verifies that combination. Protocol prose does not duplicate a version inventory that changes during dependency upgrades.
 
@@ -59,22 +59,23 @@ One request may select only one mutation field, so one key maps to one command. 
 
 `dataCatalog(filter: { includeTotal: true })` exposes nullable `totalCount` alongside `nodes` and `pageInfo`. This exact nonnegative integer uses GraphQL Float to avoid the 32-bit Int limit and remains bounded by JavaScript safe integer precision. It counts the full authorized filtered catalog, not the current page; omission of the flag leaves the count null.
 
-| Field                 | Capability                   | Purpose                                           |
-| --------------------- | ---------------------------- | ------------------------------------------------- |
-| `dataCatalog`         | `data.catalog.search`        | Cursor catalog connection                         |
-| `dataItem`            | `data.catalog.get`           | One DataItem and optional version                 |
-| `dataQuery`           | `data.query`                 | Structured field/filter query                     |
-| `dataSearch`          | `data.search.federated`      | Multi-backend RRF search                          |
-| `knowledgeSearch`     | `data.knowledge.search`      | Evidence/knowledge search                         |
-| `graphExpand`         | `data.graph.expand`          | Bounded entity neighborhood                       |
-| `graphFindPath`       | `data.graph.findPath`        | Bounded relation path                             |
-| `geoQuery`            | `data.geo.query`             | Governed spatial predicate                        |
-| `geoIntersect`        | `data.geo.intersect`         | Intersection of two governed geo targets          |
-| `dataOperation`       | `data.operation.get`         | One Operation                                     |
-| `dataItemVersions`    | `data.catalog.versions.list` | Version connection                                |
-| `dataItemVersion`     | `data.catalog.versions.get`  | Exact immutable version                           |
-| `dataIngestion`       | `data.ingestion.get`         | Ingestion plus quality/Agent/projection summaries |
-| `dataOperationEvents` | `data.operation.events`      | Bounded Operation event page as JSON, not SSE     |
+| Field                    | Capability                    | Purpose                                           |
+| ------------------------ | ----------------------------- | ------------------------------------------------- |
+| `externalSourceMetadata` | `data.external.metadata.read` | Bounded authorized external metadata              |
+| `dataCatalog`            | `data.catalog.search`         | Cursor catalog connection                         |
+| `dataItem`               | `data.catalog.get`            | One DataItem and optional version                 |
+| `dataQuery`              | `data.query`                  | Structured field/filter query                     |
+| `dataSearch`             | `data.search.federated`       | Multi-backend RRF search                          |
+| `knowledgeSearch`        | `data.knowledge.search`       | Evidence/knowledge search                         |
+| `graphExpand`            | `data.graph.expand`           | Bounded entity neighborhood                       |
+| `graphFindPath`          | `data.graph.findPath`         | Bounded relation path                             |
+| `geoQuery`               | `data.geo.query`              | Governed spatial predicate                        |
+| `geoIntersect`           | `data.geo.intersect`          | Intersection of two governed geo targets          |
+| `dataOperation`          | `data.operation.get`          | One Operation                                     |
+| `dataItemVersions`       | `data.catalog.versions.list`  | Version connection                                |
+| `dataItemVersion`        | `data.catalog.versions.get`   | Exact immutable version                           |
+| `dataIngestion`          | `data.ingestion.get`          | Ingestion plus quality/Agent/projection summaries |
+| `dataOperationEvents`    | `data.operation.events`       | Bounded Operation event page as JSON, not SSE     |
 
 Connections expose `nodes` and `pageInfo { endCursor hasNextPage }`; other pages retain `nextCursor`. Cursors are opaque and scope-bound. Never copy one from REST, another Tenant/Project, or an old authorization version.
 
@@ -257,3 +258,7 @@ Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQuer
 `businessQuery.schemaVersion: 2` with `status: "APPROVED_AND_PENDING"` selects authorized approved and pending assertions together. This is a query selector, never an authority state or review decision. Each returned assertion retains its real status and revision; rejected/correction-required assertions are excluded. Current-revision selection never lets a pending correction hide an approved assertion. Version 1 keeps its existing single-state behavior.
 
 Relation list 1.6 accepts the selector only with a persisted business `queryId` whose status matches. Inline sources and ordinary non-business queries cannot use it. Existing source authorization, immutable membership, pagination, record evidence and withdrawal checks still apply; any changed assertion revision invalidates replay even when its status remains inside the selected set. Saved-open 1.4 and export 1.3 preserve this scope. Prior query 1.13, saved-open 1.3, export 1.2 and relation-list 1.5 discovery schemas are frozen, including their schema hashes. No authority model or database migration is introduced.
+
+## External metadata
+
+`externalSourceMetadata(input: JSON!): JSON!` maps to `data.external.metadata.read` 1.0. Use the discovered strict input schema with source ID and explicit year range. This field bypasses per-request loader memoization, so even identical aliases recheck source permission. It shares REST output projection and sanitized error codes in `extensions.code`, and all responses are no-store. Transport cancellation reaches the readonly executor. Default runtime registration remains disabled until trusted source permission and provider wiring exist; no observations are ingested. The outer GraphQL deadline returns HTTP 504 with `CAPABILITY_TIMEOUT`; an interrupted client request is `REQUEST_CANCELLED` (499 when a response can still be sent). Capability audit distinguishes these outcomes.

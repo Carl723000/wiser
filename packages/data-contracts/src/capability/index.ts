@@ -1,3 +1,7 @@
+import {
+  ExternalMetadataInputSchema,
+  ExternalMetadataOutputSchema,
+} from '../external-metadata/index.ts';
 import * as ExploreV113 from '../exploration/v113.ts';
 import * as SavedV113 from '../exploration/saved-v113.ts';
 import * as ExploreV112 from '../exploration/v112.ts';
@@ -177,6 +181,7 @@ export const DATA_CAPABILITY_IDS = [
   'data.knowledge.relations.get',
   'data.knowledge.relations.list',
   'data.knowledge.relations.review',
+  'data.external.metadata.read',
 ] as const;
 
 export const DataCapabilityIdSchema = z.enum(DATA_CAPABILITY_IDS);
@@ -1391,6 +1396,27 @@ const capabilityRegistry = {
     graphqlMapping: { operationType: 'mutation', field: 'reviewDataRelation' },
     mcpMapping: { toolName: 'data_knowledge_relations_review' },
     skillMapping: { operation: 'data.knowledge.relations.review' },
+  }),
+  'data.external.metadata.read': defineCapability({
+    id: 'data.external.metadata.read',
+    version: '1.0.0',
+    kind: 'query',
+    inputSchema: ExternalMetadataInputSchema,
+    outputSchema: ExternalMetadataOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'STANDARD',
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/external-sources/:sourceId/metadata/query',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'externalSourceMetadata' },
+    mcpMapping: { toolName: 'data_external_metadata_read' },
+    skillMapping: { operation: 'data.external.metadata.read' },
   }),
 } satisfies Record<DataCapabilityId, Readonly<CapabilityDefinition>>;
 

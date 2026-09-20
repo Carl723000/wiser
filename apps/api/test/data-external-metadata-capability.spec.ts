@@ -1,3 +1,4 @@
+import { request as httpRequest } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
@@ -70,7 +71,7 @@ const apps: FastifyInstance[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
-async function setup(disabled = false) {
+async function setup(disabled = false, queryTimeoutMs = 30000) {
   const { createExternalMetadataExecutor } =
     await import('../src/data-foundation/external-metadata-executor.js');
   const resolve = vi.fn((): Promise<unknown> =>
@@ -119,7 +120,7 @@ async function setup(disabled = false) {
     logger: false,
     modules: [
       createDataFoundationRestModule({ handler, resolver }),
-      createDataFoundationGraphqlModule({ handler, resolver }),
+      createDataFoundationGraphqlModule({ handler, resolver, queryTimeoutMs }),
     ],
   });
   apps.push(app);
@@ -127,6 +128,107 @@ async function setup(disabled = false) {
 }
 
 describe('external metadata through the platform capability boundary', () => {
+  it('reports GraphQL transport timeout distinctly and audits it as timeout', async () => {
+    const { app, readPage, audit } = await setup(false, 40);
+    readPage.mockImplementation(() => new Promise(() => {}));
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers,
+      payload: {
+        query: 'query($input: JSON!) { externalSourceMetadata(input:$input) }',
+        variables: { input },
+      },
+    });
+    expect(response.statusCode).toBe(504);
+    expect(response.json()).toMatchObject({
+      errors: [{ extensions: { code: 'CAPABILITY_TIMEOUT' } }],
+    });
+    await vi.waitFor(() => expect(audit).toHaveLength(1));
+    expect(audit[0]).toMatchObject({
+      decision: 'FAILED',
+      errorCode: 'CAPABILITY_TIMEOUT',
+    });
+  });
+  it('does not present disabled GraphQL metadata as an empty source', async () => {
+    const { app, readPage } = await setup(true);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers,
+      payload: {
+        query: 'query($input: JSON!) { externalSourceMetadata(input:$input) }',
+        variables: { input },
+      },
+    });
+    expect(response.json()).toMatchObject({
+      data: null,
+      errors: [{ extensions: { code: 'EXTERNAL_SOURCE_UNCONFIGURED' } }],
+    });
+    expect(response.body).not.toContain('EMPTY');
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
+  it('aborts external work when a real REST client disconnects', async () => {
+    const { app, readPage, audit } = await setup();
+    let started!: () => void;
+    const reachedProvider = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    readPage.mockImplementation(() => {
+      started();
+      return new Promise(() => {});
+    });
+    const origin = await app.listen({ host: '127.0.0.1', port: 0 });
+    const client = httpRequest(new URL(url, origin), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+    });
+    client.on('error', () => {});
+    client.end(JSON.stringify(payload));
+    await reachedProvider;
+    client.destroy();
+    await vi.waitFor(() => expect(audit).toHaveLength(1));
+    expect(audit[0]).toMatchObject({
+      decision: 'FAILED',
+      errorCode: 'REQUEST_CANCELLED',
+    });
+  });
+  it('returns a safe GraphQL permission failure without metadata', async () => {
+    const { app, resolve } = await setup();
+    resolve.mockResolvedValue(null);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers,
+      payload: {
+        query: 'query($input: JSON!) { externalSourceMetadata(input:$input) }',
+        variables: { input },
+      },
+    });
+    expect(response.json()).toMatchObject({
+      data: null,
+      errors: [{ extensions: { code: 'FORBIDDEN' } }],
+    });
+    expect(response.headers['cache-control']).toContain('no-store');
+    expect(response.body).not.toContain('SYNTHETIC-A');
+  });
+  it('rejects an already cancelled request before permission lookup', async () => {
+    const { handler, resolve, audit } = await setup();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      handler.execute({
+        capabilityId: id,
+        input,
+        requestContext: context,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: 'REQUEST_CANCELLED' });
+    expect(resolve).not.toHaveBeenCalled();
+    expect(audit[0]?.decision).toBe('FAILED');
+  });
+
   it('publishes one strict readonly capability with all four transport mappings', () => {
     expect(DATA_CAPABILITY_REGISTRY[id]).toMatchObject({
       kind: 'query',
@@ -168,8 +270,8 @@ describe('external metadata through the platform capability boundary', () => {
       projectId,
       purpose: 'metadata-read',
       decision: 'SUCCEEDED',
-      inputHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      outputHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      inputHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
+      outputHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
     });
     expect(JSON.stringify(audit)).not.toContain('SYNTHETIC-A');
   });

@@ -1,6 +1,6 @@
 ---
 title: Data MCP 接入
-description: 通过共享 WISER MCP Gateway 调用 33 项 Data Capability 与 5 类受控 Resource。
+description: 通过共享 WISER MCP Gateway 调用 42 项 Data Capability 与 5 类受控 Resource。
 docType: protocol-reference
 scope: data-mcp-adapter
 status: active
@@ -25,7 +25,7 @@ lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
 
 Data MCP 是现有 WISER MCP Gateway 的静态 `WiserMcpModule`，不是第二套业务实现。stdio 与无状态 Streamable HTTP 都调用 `/api/data/v1`，从不连接 data-postgres、SeaweedFS 或任一投影，也不持有 Supabase service-role key。
 
-模块从 `@wiser/data-contracts` 的有序 Registry 注册 36 个 strict Zod Tool。Tool name、输入 schema、query/command 注解和 REST mapping 在运行时来自同一 Capability definition；不存在 AST 扫描、通用 SQL/Cypher/DSL Tool 或自动发现的数据库命令。
+模块从 `@wiser/data-contracts` 的有序 Registry 注册 42 个 strict Zod Tool。Tool name、输入 schema、query/command 注解和 REST mapping 在运行时来自同一 Capability definition；不存在 AST 扫描、通用 SQL/Cypher/DSL Tool 或自动发现的数据库命令。
 
 ## Data API 配置
 
@@ -281,3 +281,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 `businessQuery.schemaVersion: 2` 与 `status: "APPROVED_AND_PENDING"` 同时查询有权读取的已审与待审关系。它只表示查询范围，不是新的审核状态或审核决定；每条关系保留实际状态及修订号，已拒绝与要求更正的关系不包含在内。当前修订筛选不会让待审更正隐藏已审关系；版本1保留原有单状态行为。
 
 关系列表1.6仅允许通过状态一致的业务查询编号使用此范围，内联来源或普通非业务查询不能使用。来源授权、固定成员、分页、记录证据及撤回检查保持有效；即使关系仍处于所选状态集合内，修订变化也会使旧查询失效。保存打开1.4与导出1.3保留该范围；探索1.13、保存打开1.3、导出1.2及关系列表1.5的历史发现契约及哈希保持冻结。不更改权威身份模型或新增数据库迁移。
+
+## 外部元数据
+
+`data_external_metadata_read` 是Registry派生的只读能力 `data.external.metadata.read`，参数仅含来源标识、明确年度范围及有界分页。Gateway沿用既有认证REST客户端，不保存供方凭据，也不授予来源权限。成功页是临时元数据，不是已入库数据集；未经另行许可，不得把字段复制到材料、提示或导出。禁止缓存响应头不能阻止已授权客户端自行复制结果。默认API未启用，错误继续按MCP现有规则脱敏，不能伪装成空结果。

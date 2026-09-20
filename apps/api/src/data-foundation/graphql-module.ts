@@ -22,6 +22,7 @@ import {
   type PlatformRequestContext,
 } from '@wiser/platform-contracts';
 
+import { DataCapabilityHandlerError } from './capability-handler.js';
 import type {
   DataFoundationRequestContextResolver,
   DataFoundationRestCapabilityHandler,
@@ -126,6 +127,7 @@ input ApprovalInput {
 }
 
 type Query {
+  externalSourceMetadata(input: JSON!): JSON!
   dataAssessmentOverview(input: JSON!): JSON!
   dataRelation(input: JSON!): JSON!
   dataRelations(input: JSON!): JSON!
@@ -183,6 +185,7 @@ type Mutation {
 export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   Record<string, DataCapabilityId>
 > = Object.freeze({
+  externalSourceMetadata: 'data.external.metadata.read',
   dataRelation: 'data.knowledge.relations.get',
   dataRelations: 'data.knowledge.relations.list',
   importDataRelations: 'data.knowledge.relations.import',
@@ -307,6 +310,25 @@ class CapabilityLoader {
   load(capabilityId: DataCapabilityId, input: unknown): Promise<unknown> {
     if (this.#signal.aborted)
       return Promise.reject(new GraphQLError('Request timed out.'));
+    if (capabilityId === 'data.external.metadata.read') {
+      return this.#handler
+        .execute({
+          capabilityId,
+          input,
+          requestContext: this.#requestContext,
+          signal: this.#signal,
+        })
+        .catch((caught: unknown) => {
+          throw new GraphQLError('External metadata request failed.', {
+            extensions: {
+              code:
+                caught instanceof DataCapabilityHandlerError
+                  ? caught.code
+                  : 'EXTERNAL_SOURCE_UNAVAILABLE',
+            },
+          });
+        });
+    }
     const key = `${capabilityId}:${JSON.stringify(input)}`;
     const cached = this.#cache.get(key);
     if (cached !== undefined) return cached;
@@ -327,6 +349,7 @@ function complexityRule(maximum: number): ValidationRule {
     return {
       Field(node: FieldNode) {
         const weight = [
+          'externalSourceMetadata',
           'dataQuery',
           'dataExploreViews',
           'dataExploreView',
@@ -520,6 +543,11 @@ function connectionFrom(value: unknown) {
 const resolvers = {
   JSON: JsonScalar,
   Query: {
+    externalSourceMetadata: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) => executeQuery(context, 'data.external.metadata.read', args.input),
     dataRelation: (
       _: unknown,
       args: { input: unknown },
@@ -919,7 +947,18 @@ export function createDataFoundationGraphqlModule(
             ],
           });
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const disconnected = () => {
+          if (!reply.raw.writableFinished) controller.abort();
+        };
+        reply.raw.once('close', disconnected);
+        if (request.raw.aborted || reply.raw.destroyed) controller.abort();
+        const timer = setTimeout(
+          () =>
+            controller.abort(
+              new DOMException('Request timed out.', 'TimeoutError'),
+            ),
+          timeoutMs,
+        );
         timer.unref();
         const graphqlContext: GraphqlContext = {
           requestContext: context,
@@ -957,16 +996,28 @@ export function createDataFoundationGraphqlModule(
             })),
           });
         } catch {
-          return reply.status(400).send({
+          const timedOut =
+            controller.signal.aborted &&
+            controller.signal.reason instanceof DOMException &&
+            controller.signal.reason.name === 'TimeoutError';
+          const cancelled = controller.signal.aborted && !timedOut;
+          return reply.status(timedOut ? 504 : cancelled ? 499 : 400).send({
             errors: [
               {
                 message: 'GraphQL request failed.',
-                extensions: { code: 'GRAPHQL_ERROR' },
+                extensions: {
+                  code: timedOut
+                    ? 'CAPABILITY_TIMEOUT'
+                    : cancelled
+                      ? 'REQUEST_CANCELLED'
+                      : 'GRAPHQL_ERROR',
+                },
               },
             ],
           });
         } finally {
           clearTimeout(timer);
+          reply.raw.removeListener('close', disconnected);
         }
       });
     },

@@ -1,6 +1,6 @@
 ---
 title: Data MCP integration
-description: Invoke 41 Data Capabilities and five governed Resources through the shared WISER MCP Gateway.
+description: Invoke 42 Data Capabilities and five governed Resources through the shared WISER MCP Gateway.
 docType: protocol-reference
 scope: data-mcp-adapter
 status: active
@@ -25,7 +25,7 @@ lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
 
 Data MCP is a static `WiserMcpModule` in the existing WISER MCP Gateway, not another business implementation. Both stdio and stateless Streamable HTTP call `/api/data/v1`; they never connect to data-postgres, SeaweedFS, or a projection and never hold a Supabase service-role key.
 
-The module registers 22 strict Zod Tools from the ordered `@wiser/data-contracts` Registry. Tool names, input schemas, query/command annotations, and REST mappings come from the same Capability definitions at runtime. There is no AST scanning, general SQL/Cypher/DSL Tool, or discovered database command.
+The module registers 42 strict Zod Tools from the ordered `@wiser/data-contracts` Registry. Tool names, input schemas, query/command annotations, and REST mappings come from the same Capability definitions at runtime. There is no AST scanning, general SQL/Cypher/DSL Tool, or discovered database command.
 
 ## Data API configuration
 
@@ -281,3 +281,7 @@ Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQuer
 `businessQuery.schemaVersion: 2` with `status: "APPROVED_AND_PENDING"` selects authorized approved and pending assertions together. This is a query selector, never an authority state or review decision. Each returned assertion retains its real status and revision; rejected/correction-required assertions are excluded. Current-revision selection never lets a pending correction hide an approved assertion. Version 1 keeps its existing single-state behavior.
 
 Relation list 1.6 accepts the selector only with a persisted business `queryId` whose status matches. Inline sources and ordinary non-business queries cannot use it. Existing source authorization, immutable membership, pagination, record evidence and withdrawal checks still apply; any changed assertion revision invalidates replay even when its status remains inside the selected set. Saved-open 1.4 and export 1.3 preserve this scope. Prior query 1.13, saved-open 1.3, export 1.2 and relation-list 1.5 discovery schemas are frozen, including their schema hashes. No authority model or database migration is introduced.
+
+## External metadata
+
+`data_external_metadata_read` is the registry-derived readonly mapping of `data.external.metadata.read`. Supply source ID, explicit year range and bounded pagination only. The Gateway uses the existing authenticated REST client; it neither stores provider credentials nor grants source access. A successful page is ephemeral metadata, not an ingested dataset. Do not copy its fields into artifacts, prompts or exports without separate permission; no-store headers cannot prevent an authorized client from copying a response. Default API wiring is disabled; errors retain the existing MCP sanitization policy, not a fabricated empty result.

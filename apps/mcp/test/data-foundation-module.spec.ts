@@ -67,6 +67,7 @@ const EXPECTED_DATA_TOOLS = [
   'data_knowledge_relations_get',
   'data_knowledge_relations_list',
   'data_knowledge_relations_review',
+  'data_external_metadata_read',
 ] as const;
 
 class StubExconHttpClient implements AgentExconHttpClient {
@@ -136,6 +137,43 @@ describe('Data Foundation MCP module', () => {
     ]) {
       expect(names).not.toContain(forbidden);
     }
+  });
+
+  it('routes bounded external metadata through HTTP without caller credentials or cached results', async () => {
+    const http = new RecordingDataHttpClient();
+    const client = await connect(http);
+    const args = {
+      sourceId: DATA_ITEM_ID,
+      fromYear: 2021,
+      toYear: 2025,
+      limit: 2,
+    };
+    http.next = { status: 'EMPTY', items: [], total: 0 };
+    await client.callTool({
+      name: 'data_external_metadata_read',
+      arguments: args,
+    });
+    await client.callTool({
+      name: 'data_external_metadata_read',
+      arguments: args,
+    });
+    expect(http.requests).toHaveLength(2);
+    expect(http.requests[0]).toEqual({
+      method: 'POST',
+      path: `/external-sources/${DATA_ITEM_ID}/metadata/query`,
+      headers: {
+        'X-Wiser-Tenant-Id': TENANT_ID,
+        'X-Wiser-Project-Id': PROJECT_ID,
+        'X-Wiser-Purpose': 'analysis',
+      },
+      body: { fromYear: 2021, toYear: 2025, offset: 0, limit: 2 },
+    });
+    const denied = await client.callTool({
+      name: 'data_external_metadata_read',
+      arguments: { ...args, token: 'caller-controlled' },
+    });
+    expect(denied.isError).toBe(true);
+    expect(http.requests).toHaveLength(2);
   });
 
   it('maps strict query and versioned command inputs only to the public HTTP API', async () => {
