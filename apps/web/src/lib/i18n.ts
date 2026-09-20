@@ -1069,6 +1069,10 @@ const zhCN = {
       loadingView: '正在加载结果…',
       recordPage: '记录页',
       title: '数据探索',
+      restartProject: '重新打开项目总览',
+      projectTitle: '当前项目 · 业务关系总览',
+      projectDescription:
+        '按当前权限查看资料与业务对象之间的联系，已审与待审关系分别标识。',
       description: '查询已发布的数据，检查来源、版本与可用内容。',
       scope: '当前项目 · 按权限显示',
       queryLabel: '查询数据',
@@ -3416,6 +3420,10 @@ const en: typeof zhCN = {
       loadingView: 'Loading results…',
       recordPage: 'Record page',
       title: 'Data exploration',
+      restartProject: 'Reopen project overview',
+      projectTitle: 'Current project · Business relationships',
+      projectDescription:
+        'Explore permitted sources and business objects, with approved and pending relationships labeled separately.',
       description:
         'Query published data and inspect its sources, versions and available content.',
       scope: 'Current project · Authorized data',

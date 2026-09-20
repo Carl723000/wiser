@@ -841,3 +841,18 @@ it('keeps an expired scope cleared when an earlier query response arrives late',
   expect(screen.queryByRole('button', { name: 'Late source' })).toBeNull();
   expect(fetcher.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
 });
+
+it('offers an explicit project restart after expiry without reusing the expired identifier', () => {
+  render(
+    <DataExplorer
+      locale="zh-CN"
+      initialResult={null}
+      initialFailure="expired"
+      initialText=""
+      initialView="graph"
+    />,
+  );
+  expect(
+    screen.getByRole('link', { name: '重新打开项目总览' }).getAttribute('href'),
+  ).toBe('/zh-CN/data-foundation');
+});

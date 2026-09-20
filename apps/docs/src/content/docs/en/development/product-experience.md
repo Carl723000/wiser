@@ -282,3 +282,5 @@ Invalidating an exploration query also cancels any in-flight replacement and cle
 Readiness statistics refine the active query membership just like business-period controls. A continuation page must contain at least one relation; empty pages with a next cursor fail visibly without following another cursor or presenting a partial graph.
 
 Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.
+
+The normal Data Foundation homepage reuses the exploration workspace rather than a fixed demonstration view. After a successful query, its URL records the authorized query ID and selected graph view through the existing exploration route; refresh and return reopen that scope. Explicit resource searches, fixed-version links and saved topics keep their own scope. A failed project request remains a failure; it never opens a narrower topic as a substitute.

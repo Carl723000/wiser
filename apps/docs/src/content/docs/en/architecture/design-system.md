@@ -217,3 +217,5 @@ Project business graphs use the server-owned assertion membership count as their
 Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
 
 Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.
+
+The normal Data Foundation entry and unfiltered exploration entry open the authorized project business graph. A compact project title distinguishes it from a saved topic or resource search; approved and pending assertions keep their own labels. Saved topics load only when their disclosure is opened. Operational status remains secondary and cannot replace the graph with example data.
