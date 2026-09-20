@@ -484,7 +484,32 @@ export function BusinessSceneMap({
             'business-scene-points',
           ]}
           onClick={(event) => {
-            const ids = spatialHitNodes(anchors, event.features ?? []);
+            // Screen-space tolerance improves thin-line selection only. It
+            // never buffers source geometry or derives geographic relations.
+            const nearby =
+              collection && map.current && event.point
+                ? map.current.queryRenderedFeatures(
+                    [
+                      [event.point.x - 6, event.point.y - 6],
+                      [event.point.x + 6, event.point.y + 6],
+                    ],
+                    {
+                      layers: [
+                        'business-scene-outlines',
+                        'business-scene-points',
+                      ],
+                      filter: [
+                        'in',
+                        ['geometry-type'],
+                        ['literal', ['LineString', 'Point']],
+                      ],
+                    },
+                  )
+                : [];
+            const ids = spatialHitNodes(anchors, [
+              ...(event.features ?? []),
+              ...nearby,
+            ]);
             const active = ids.length === 1 ? ids[0] : null;
             pickObject(active, ids);
           }}

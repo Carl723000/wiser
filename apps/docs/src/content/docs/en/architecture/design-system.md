@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-09-20
-lastReviewedCommit: 4ecc52f
+lastReviewedCommit: 4e83321
 ---
 
 ## Design direction
@@ -215,3 +215,5 @@ The official basemap releases its SDK and observers before navigation detaches i
 Clicking a spatial point, line or area resolves all source-version-record bindings in the current authorized query. Overlapping objects require an explicit choice; repeated layer hits do not merge identities. Related sources are grouped by category and open original relation evidence. One explicitly qualified spatial reference-identity hop may reveal another source area and adjacent evidence, labeled as indirect reference. Selection preserves camera and query conditions; names never imply location bindings.
 
 A chosen map object is retained as a bounded source-qualified navigation identity in the URL, separately from the selected evidence edge. Restoration reopens its related-source panel only after the current authorized map result supplies an exact geometry binding; unavailable targets never fall back to a same-name object. Returning to the unlocated list clears this navigation choice. The URL contains no geometry or source text and grants no access.
+
+Thin lines and points allow a six-screen-pixel click tolerance within the already rendered, authorized geometry layers. Exact area hits remain unchanged; overlapping candidates are all offered, and unknown bindings are discarded. This interaction tolerance does not buffer geographic extents, relocate evidence, create relations or move the camera.
