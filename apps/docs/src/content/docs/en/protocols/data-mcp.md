@@ -17,7 +17,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-20
+lastReviewedAt: 2026-09-21
 lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
 ---
 
@@ -285,3 +285,9 @@ Relation list 1.6 accepts the selector only with a persisted business `queryId` 
 ## External metadata
 
 `data_external_metadata_read` is the registry-derived readonly mapping of `data.external.metadata.read`. Supply source ID, explicit year range and bounded pagination only. The Gateway uses the existing authenticated REST client; it neither stores provider credentials nor grants source access. A successful page is ephemeral metadata, not an ingested dataset. Do not copy its fields into artifacts, prompts or exports without separate permission; no-store headers cannot prevent an authorized client from copying a response. Default API wiring is disabled; errors retain the existing MCP sanitization policy, not a fabricated empty result.
+
+## Bounded project relation pages
+
+Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
+
+Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.

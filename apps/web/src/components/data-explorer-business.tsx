@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  RelationBatchListOutputSchema,
   RelationListOutputSchema,
   type RelationAssertion,
   type BusinessQuery,
@@ -118,6 +119,7 @@ export function DataExplorerBusiness({
   }, [scope.filters]);
   const viewState = useExplorationViewState();
   const membershipLimit = membership?.assertionCount ?? 2000;
+  const projectMembership = membership !== undefined;
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true);
@@ -137,7 +139,8 @@ export function DataExplorerBusiness({
             body: JSON.stringify({
               queryId,
               status: scope.status,
-              first: 100,
+              first: projectMembership ? 500 : 100,
+              ...(projectMembership ? { pageMode: 'BOUNDED_PROJECT' } : {}),
               ...(after ? { after } : {}),
             }),
             cache: 'no-store',
@@ -149,7 +152,11 @@ export function DataExplorerBusiness({
               onInvalidated(queryId, response.status);
             throw Error('Unavailable');
           }
-          const page = RelationListOutputSchema.parse(await response.json());
+          const page = (
+            projectMembership
+              ? RelationBatchListOutputSchema
+              : RelationListOutputSchema
+          ).parse(await response.json());
           if (controller.signal.aborted) return;
           if (total !== undefined && total !== page.totalCount)
             throw Error('Changed scope');
@@ -183,7 +190,14 @@ export function DataExplorerBusiness({
       }
     })();
     return () => controller.abort();
-  }, [queryId, scope.status, onInvalidated, viewState, membershipLimit]);
+  }, [
+    queryId,
+    scope.status,
+    onInvalidated,
+    viewState,
+    membershipLimit,
+    projectMembership,
+  ]);
   const visible = useMemo(
     () =>
       edgeRow

@@ -23,6 +23,8 @@ import {
   RelationListInputSchema,
   RelationListInputV15Schema,
   RelationListOutputSchema,
+  RelationBatchListInputSchema,
+  RelationBatchListOutputSchema,
 } from '../knowledge-relations/index.ts';
 import {
   AssessmentOverviewInputSchema,
@@ -1357,10 +1359,10 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.list': defineCapability({
     id: 'data.knowledge.relations.list',
-    version: '1.6.0',
+    version: '1.7.0',
     kind: 'query',
-    inputSchema: RelationListInputSchema,
-    outputSchema: RelationListOutputSchema,
+    inputSchema: RelationBatchListInputSchema,
+    outputSchema: RelationBatchListOutputSchema,
     requiredScopes: ['data.catalog.read'],
     maxSecurityLevel: 'L3_CONFIDENTIAL',
     executionMode: 'SYNCHRONOUS',
@@ -1495,6 +1497,12 @@ const capabilityArchive = {
       ...capabilityRegistry['data.knowledge.relations.list'],
       version: '1.5.0',
       inputSchema: RelationListInputV15Schema,
+      outputSchema: RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.6.0',
+      inputSchema: RelationListInputSchema,
       outputSchema: RelationListOutputSchema,
     }),
   ]),

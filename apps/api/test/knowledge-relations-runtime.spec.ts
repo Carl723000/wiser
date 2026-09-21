@@ -419,3 +419,100 @@ it('refuses review 101 when RLS hides previous review records', async () => {
     ),
   ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
 });
+
+it('bounds project pages after complete scope checks and rechecks withdrawal between pages', async () => {
+  const f = fixture();
+  await f.call('import', f.input);
+  const template = [...f.rows.values()][0]!;
+  f.rows.clear();
+  for (let index = 0; index < 503; index++) {
+    const id = `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`;
+    f.rows.set(id, { ...template, assertion_id: id });
+  }
+  const original = f.query.getMockImplementation()!;
+  const queryId = randomUUID();
+  let scope: 'project' | undefined = 'project';
+  const business = {
+    schemaVersion: 1,
+    status: 'PENDING_REVIEW',
+    revisionMode: 'all',
+    filters: {
+      kind: 'ALL',
+      timeRole: 'ALL',
+      from: null,
+      to: null,
+      includeUndated: true,
+    },
+  };
+  const pins = [...f.rows.keys()].map((id) => [id, 1]);
+  f.query.mockImplementation(async (sql, values) => {
+    if (sql.includes('from service.exploration_snapshot'))
+      return {
+        rows: [
+          {
+            version_refs: [
+              { dataItemId: f.input.dataItemId, versionId: f.input.versionId },
+            ],
+            spec: scope
+              ? { scope, businessQuery: business }
+              : {
+                  versions: [
+                    {
+                      dataItemId: f.input.dataItemId,
+                      versionId: f.input.versionId,
+                    },
+                  ],
+                  businessQuery: business,
+                },
+            business_pins: pins,
+          },
+        ],
+        rowCount: 1,
+      };
+    if (
+      sql.startsWith('select b.*') &&
+      sql.includes('jsonb_array_elements($1::jsonb) ref')
+    )
+      return { rows: [...f.rows.values()], rowCount: f.rows.size };
+    return original(sql, values);
+  });
+  const request = {
+    queryId,
+    status: 'PENDING_REVIEW',
+    pageMode: 'BOUNDED_PROJECT',
+    first: 500,
+  };
+  const page = (await f.call('list', request)) as {
+    items: { assertionId: string }[];
+    nextCursor: string;
+  };
+  expect(page.items).toHaveLength(500);
+  expect(page.nextCursor).toBe(page.items.at(-1)!.assertionId);
+  expect(
+    await f.call('list', { ...request, after: page.nextCursor }),
+  ).toMatchObject({
+    totalCount: 503,
+    items: [
+      { assertionId: [...f.rows.keys()][500] },
+      { assertionId: [...f.rows.keys()][501] },
+      { assertionId: [...f.rows.keys()][502] },
+    ],
+  });
+  await expect(
+    f.call('list', { ...request, after: randomUUID() }),
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  scope = undefined;
+  await expect(f.call('list', request)).rejects.toMatchObject({
+    code: 'VALIDATION_FAILED',
+  });
+  scope = 'project';
+  f.rows.values().next().value!['row_version'] = 2;
+  await expect(
+    f.call('list', { ...request, after: page.nextCursor }),
+  ).rejects.toMatchObject({ code: 'CONFLICT' });
+  f.rows.values().next().value!['row_version'] = 1;
+  f.withdraw();
+  await expect(
+    f.call('list', { ...request, after: page.nextCursor }),
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+});

@@ -15,7 +15,7 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-20
+lastReviewedAt: 2026-09-21
 lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 ---
 
@@ -262,3 +262,9 @@ Relation list 1.6 accepts the selector only with a persisted business `queryId` 
 ## External metadata
 
 `externalSourceMetadata(input: JSON!): JSON!` maps to `data.external.metadata.read` 1.0. Use the discovered strict input schema with source ID and explicit year range. This field bypasses per-request loader memoization, so even identical aliases recheck source permission. It shares REST output projection and sanitized error codes in `extensions.code`, and all responses are no-store. Transport cancellation reaches the readonly executor. Default runtime registration remains disabled until trusted source permission and provider wiring exist; no observations are ingested. The outer GraphQL deadline returns HTTP 504 with `CAPABILITY_TIMEOUT`; an interrupted client request is `REQUEST_CANCELLED` (499 when a response can still be sent). Capability audit distinguishes these outcomes.
+
+## Bounded project relation pages
+
+Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
+
+Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.

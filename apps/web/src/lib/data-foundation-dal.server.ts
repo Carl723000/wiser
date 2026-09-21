@@ -583,7 +583,7 @@ export function createDataFoundationDal(
       );
     },
 
-    relations: (action, input, idempotencyKey) => {
+    relations: async (action, input, idempotencyKey) => {
       const id: DataCapabilityId = `data.knowledge.relations.${action}`;
       const definition = DATA_CAPABILITY_REGISTRY[id];
       const checked = definition.inputSchema.safeParse(input);
@@ -596,6 +596,23 @@ export function createDataFoundationDal(
       const values = checked.data as Record<string, unknown>;
       let path = definition.restMapping.path;
       const body = { ...values };
+      if (action === 'list' && body['pageMode'] === 'BOUNDED_PROJECT') {
+        // Discover the target capability; never infer support from the web build.
+        // This is request-local metadata, not a cached authorization decision.
+        const registry = await parsed(
+          () => call('/api/data/v1/capabilities'),
+          parseCapabilityRegistry,
+        );
+        const bounded = registry.capabilities.some(
+          (capability) =>
+            capability.id === id && capability.version === '1.7.0',
+        );
+        if (!bounded) {
+          delete body['pageMode'];
+          body['first'] = Math.min(Number(body['first']), 100);
+        }
+      }
+
       if (typeof body['assertionId'] === 'string') {
         path = path.replace(
           ':assertionId',

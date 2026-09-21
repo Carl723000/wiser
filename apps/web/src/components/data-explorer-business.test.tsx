@@ -851,3 +851,44 @@ it.each(['zh-CN', 'en'] as const)(
     ).toBeNull();
   },
 );
+
+it('requests bounded project pages and preserves every identity in responses larger than 100', async () => {
+  const items = Array.from({ length: 503 }, (_, i) => ({
+    ...row,
+    assertionId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(i).padStart(12, '0')}`,
+  }));
+  const fetcher = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: items.slice(0, 500),
+        totalCount: 503,
+        nextCursor: items[499].assertionId,
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ items: items.slice(500), totalCount: 503 }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 503 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  const readBody = (index: number): unknown => {
+    const body = fetcher.mock.calls[index]?.[1]?.body;
+    if (typeof body !== 'string') throw Error('Expected JSON');
+    return JSON.parse(body);
+  };
+  expect(readBody(0)).toMatchObject({
+    first: 500,
+    pageMode: 'BOUNDED_PROJECT',
+  });
+  expect(readBody(1)).toMatchObject({
+    after: items[499].assertionId,
+  });
+  expect(screen.getByText(/503.*503/)).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+});

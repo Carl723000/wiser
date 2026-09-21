@@ -172,7 +172,7 @@ it('accepts mixed review scope only in the new query contract, preserving author
 });
 it('accepts mixed relation paging only by query id and never as an assertion review decision', () => {
   const latest = DATA_CAPABILITY_REGISTRY['data.knowledge.relations.list'];
-  expect(latest.version).toBe('1.6.0');
+  expect(latest.version).toBe('1.7.0');
   expect(
     latest.inputSchema.safeParse({
       queryId: randomUUID(),

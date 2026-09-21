@@ -10,6 +10,8 @@ import {
   CreateExplorationViewOutputSchema,
   OpenExplorationViewOutputSchema,
   RelationListOutputSchema,
+  RelationBatchListOutputSchema,
+  RELATION_BATCH_MAX_BYTES,
 } from '@wiser/data-contracts';
 import { createKnowledgeRelationExecutors } from '../src/data-foundation/knowledge-relations-runtime.js';
 import type { DataCapabilityExecutionContext } from '../src/data-foundation/capability-handler.js';
@@ -282,6 +284,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       expect(initial.spec).not.toHaveProperty('versions');
       expect(initial.spec.businessQuery).not.toHaveProperty('assertionPins');
       const seen = new Set<string>();
+      const originalRows: unknown[] = [];
       let after: string | undefined;
       do {
         const page = RelationListOutputSchema.parse(
@@ -293,6 +296,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           }),
         );
         checkpoint(`page-${seen.size}`);
+        originalRows.push(...page.items);
         expect(page.totalCount).toBe(2033);
         for (const row of page.items) {
           expect(seen.has(row.assertionId)).toBe(false);
@@ -301,6 +305,48 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         after = page.nextCursor;
       } while (after);
       expect(seen.size).toBe(2033);
+      for (const first of [250, 500]) {
+        const collected: unknown[] = [];
+        let cursor: string | undefined;
+        let pages = 0;
+        do {
+          const result = RelationBatchListOutputSchema.parse(
+            await call('list', {
+              queryId: initial.queryId,
+              status: 'PENDING_REVIEW',
+              pageMode: 'BOUNDED_PROJECT',
+              first,
+              ...(cursor ? { after: cursor } : {}),
+            }),
+          );
+          expect(result.totalCount).toBe(2033);
+          expect(
+            Buffer.byteLength(JSON.stringify(result), 'utf8'),
+          ).toBeLessThanOrEqual(RELATION_BATCH_MAX_BYTES);
+          expect(result.items.length).toBeGreaterThan(0);
+          collected.push(...result.items);
+          cursor = result.nextCursor;
+          pages++;
+        } while (cursor);
+        expect(collected).toEqual(originalRows);
+        expect(pages).toBe(Math.ceil(2033 / first));
+      }
+      await expect(
+        call(
+          'list',
+          {
+            queryId: initial.queryId,
+            status: 'PENDING_REVIEW',
+            pageMode: 'BOUNDED_PROJECT',
+            first: 500,
+          },
+          {
+            ...context,
+            principal: { ...context.principal, actorId: randomUUID() },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
       const sourceIds = new Set(initial.resources.map((row) => row.versionId));
       let resourceAfter = initial.nextCursor;
       while (resourceAfter) {
@@ -579,6 +625,15 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       await expect(
         call('list', { queryId: initial.queryId, status: 'PENDING_REVIEW' }),
       ).rejects.toThrow();
+      await expect(
+        call('list', {
+          queryId: initial.queryId,
+          status: 'PENDING_REVIEW',
+          pageMode: 'BOUNDED_PROJECT',
+          first: 500,
+          after: [...seen][499],
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     } finally {
       await client.query('rollback');
       client.release();

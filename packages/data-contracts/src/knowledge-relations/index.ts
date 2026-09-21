@@ -238,6 +238,37 @@ export const RelationListOutputSchema = z.strictObject({
   totalCount: z.number().int().nonnegative(),
   nextCursor: Id.optional(),
 });
+/** Opt-in 1.7 project pages; all unmarked requests retain the 1.6 boundary. */
+export const RelationBatchListInputSchema = z
+  .strictObject({
+    ...RelationListInputSchema.shape,
+    pageMode: z.literal('BOUNDED_PROJECT').optional(),
+    first: z.number().int().min(1).max(500).default(25),
+  })
+  .superRefine(({ pageMode, ...value }, context) => {
+    const legacy = RelationListInputSchema.safeParse({
+      ...value,
+      first: pageMode ? Math.min(value.first, 100) : value.first,
+    });
+    if (!legacy.success)
+      for (const issue of legacy.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    if (pageMode && !value.queryId)
+      context.addIssue({
+        code: 'custom',
+        path: ['queryId'],
+        message: 'Bounded pages require a project business query',
+      });
+  });
+/** Budget applies to the full UTF-8 JSON result, including cursor and total. */
+export const RELATION_BATCH_MAX_BYTES = 1048576;
+export const RelationBatchListOutputSchema = RelationListOutputSchema.extend({
+  items: z.array(RelationAssertionSchema).max(500),
+});
 export type RelationCandidate = z.infer<typeof RelationCandidateSchema>;
 export type RelationAssertion = z.infer<typeof RelationAssertionSchema>;
 

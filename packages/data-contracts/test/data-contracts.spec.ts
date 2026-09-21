@@ -932,8 +932,8 @@ const expectedJsonSchemaHashes = {
     output: '72db7b7c7c1ac7a8b678826b2eb97a13399fdf0a49ae66f128371a31cbbae916',
   },
   'data.knowledge.relations.list': {
-    input: '8e042884dfe7bc7948b27f23280dc3934de8497ff23e0e822f87dd0e2e41cbc0',
-    output: '6cec20d8ba8e5f2209590dcb02ef0909141629123e902f27d52462813be7cab4',
+    input: '426f36063b158642dd5de089a2097dc40f9d9bc36bf409e5d0fe99eec6b9ae58',
+    output: '754ec9f2243cbde89f4bcbb10c7da71ecb6899e7d60d940564f56ec95ff57c89',
   },
   'data.knowledge.relations.review': {
     input: 'b942992c3638c17b7e34d211bc383be46b59383211be1fef3db3c8f14db4fe8b',
@@ -1859,7 +1859,7 @@ it('retains relations 1.0 discovery while advertising typed 1.1', () => {
     const old = DATA_CAPABILITY_ARCHIVE[key]![0]!;
     expect(old.version).toBe('1.0.0');
     expect(DATA_CAPABILITY_REGISTRY[key].version).toBe(
-      key === 'data.knowledge.relations.list' ? '1.6.0' : '1.2.0',
+      key === 'data.knowledge.relations.list' ? '1.7.0' : '1.2.0',
     );
     expect({
       input: jsonSchemaHash(old.inputSchema),
@@ -1882,7 +1882,7 @@ it('archives the 1.1 twelve-source list while publishing the bounded 1.3 list', 
     versionId: VERSION_ID,
     relatedSources: sources,
   };
-  expect(current.version).toBe('1.6.0');
+  expect(current.version).toBe('1.7.0');
   expect(jsonSchemaHash(previous.inputSchema)).toBe(
     '4d7eafcf730e372e4d08e8c57c9cf75e1aa7c9d86fa92368ba5c6499cb47c923',
   );

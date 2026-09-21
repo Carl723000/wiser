@@ -15,7 +15,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-20
+lastReviewedAt: 2026-09-21
 lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 ---
 
@@ -388,3 +388,9 @@ Relation list 1.6 accepts the selector only with a persisted business `queryId` 
 Success returns station code, year and only permitted administrative labels, with `checkedAt`, `timePrecision: "year"`, total and optional next offset. It creates no catalog asset, observation or index. Responses, including errors, are private/no-store. Stable errors distinguish `EXTERNAL_SOURCE_UNCONFIGURED` and `EXTERNAL_SOURCE_UNAVAILABLE` (503), `EXTERNAL_SOURCE_TIMEOUT` (504), `EXTERNAL_SOURCE_ACCESS_DENIED` and `EXTERNAL_AUTHORIZATION_EXPIRED` (403), and `EXTERNAL_METADATA_INVALID` (502). Missing source permission uses the existing forbidden response. Cancellation records `REQUEST_CANCELLED`; a disconnected transport generally receives no response. Source rejection/expired permission are denied audits; network/malformed/cancelled work is failed, never successful empty data.
 
 The default runtime is disabled. A real source needs a trusted adapter and live WISER plus provider permission; shared credentials alone are not a grant. Synthetic HTTP integration tests do not certify any real provider protocol or license.
+
+## Bounded project relation pages
+
+Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
+
+Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.
