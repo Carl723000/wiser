@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
 ---
 
 ## One identity authority
@@ -34,6 +34,16 @@ Fastify exposes the safe `/api/platform/v1/me` projection and delegated command 
 Web uses `@supabase/ssr` Browser/Server clients and Next.js `proxy.ts`. Proxy calls `getClaims()` before producing a response, writes refreshed cookies to both request and response, and sets `private, no-store`. The `/[locale]` Portal, sign-in, and Auth transport routes allow anonymous access. Other localized product routes without verified authenticated claims preserve their destination and redirect to locale sign-in. Bilingual password login, PKCE callback, POST-only local sign-out, and the shared Shell use the same session boundary. Every continuation target is normalized to the active locale and rejected if it leaves the WISER origin or re-enters an Auth endpoint; every Auth response is non-cacheable.
 
 Delegated credentials strictly parse `wdc1.<key-id>.<secret>`, generate independent 128-bit locators and 256-bit secrets with Node's secure random source, and store only a domain-separated HMAC-SHA-256. The JSON key-ring configuration requires canonical unpadded base64url keys of at least 256 bits, names one active key for issuance, retains previous keys for verification during rotation, and fails closed without echoing secret configuration. The default process composes the delegated principal Resolver, single-query PostgreSQL adapter, and transactional create/issue/rotate/revoke service.
+
+## Invited readers and self-password setup
+
+Invitations use the existing Supabase Auth authority. The Web invitation landing page `GET /[locale]/auth/invite?token_hash=...` is read-only: the user explicitly submits its confirmation form to `POST /[locale]/auth/accept`. That handler accepts only an invite OTP, requires the exact same Origin, verifies the new authenticated claims, and redirects without the hash to `/[locale]/account/password`. Merely scanning or opening the landing link does not consume the invite. Expired/replayed links expose a stable recovery message rather than upstream errors.
+
+Configure the Supabase **invite email template**, under the existing administrator's authority, to link to the deployed HTTPS WISER `/zh-CN/auth/invite?token_hash={{ .TokenHash }}` (or `/en/auth/invite`). Do not send the default implicit fragment link to the PKCE-only callback: the inviting administrator and recipient do not share a PKCE verifier. Keep the existing PKCE callback for its existing login flow. Deployment must redact `token_hash` and other authentication query values from access logs, analytics and error reports; never attach real invitation URLs to support tickets. Auth pages set no-referrer and authenticated responses are non-cacheable. The single-use email link remains a credential until consumed or expired.
+
+The signed-in user can open the password page from the account control. `POST /[locale]/auth/password` requires the same Origin, verified claims and a matching live `getUser()` result, validates matching 12–4096 character passwords, and calls only Supabase `updateUser({password})`. Provider password/security requirements still apply. Success signs out the local session and returns to sign-in; this does not claim to revoke other devices. No service-role key, member/role operation, public registration or administrative account-management interface is involved. Password setup never grants a Tenant, Project or data permission. Administrators manage those separately through the existing control plane.
+
+Local acceptance uses disposable synthetic identities with no real invitation mail. Real SMTP delivery, the deployed email template, proxy Origin handling, target memberships and the recipient's own experience require separate authorized deployment checks.
 
 ## Control-plane model
 

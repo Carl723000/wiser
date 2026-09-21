@@ -11,21 +11,25 @@ function client() {
     auth: {
       signInWithPassword: vi.fn(),
       exchangeCodeForSession: vi.fn(),
-      signOut: vi.fn(async () => ({ error: null })),
-      getClaims: vi.fn(async () => ({
-        error: null,
-        data: {
-          claims: {
-            sub: ID,
-            session_id: 'd1000000-0000-4000-8000-000000000002',
-            role: 'authenticated',
-            exp: 2_000_000_000,
+      signOut: vi.fn(() => Promise.resolve({ error: null })),
+      getClaims: vi.fn(() =>
+        Promise.resolve({
+          error: null,
+          data: {
+            claims: {
+              sub: ID,
+              session_id: 'd1000000-0000-4000-8000-000000000002',
+              role: 'authenticated',
+              exp: 2_000_000_000,
+            },
           },
-        },
-      })),
-      getUser: vi.fn(async () => ({ error: null, data: { user: { id: ID } } })),
-      verifyOtp: vi.fn(async () => ({ error: null })),
-      updateUser: vi.fn(async () => ({ error: null })),
+        }),
+      ),
+      getUser: vi.fn(() =>
+        Promise.resolve({ error: null, data: { user: { id: ID } } }),
+      ),
+      verifyOtp: vi.fn(() => Promise.resolve({ error: null })),
+      updateUser: vi.fn(() => Promise.resolve({ error: null })),
     },
   };
 }
@@ -39,14 +43,32 @@ function post(
   return new Request('https://wiser.test/zh-CN/auth/accept', {
     method: 'POST',
     body,
-    headers: origin ? { Origin: origin } : {},
+    headers: origin
+      ? { Origin: origin, Host: 'wiser.test' }
+      : { Host: 'wiser.test' },
   });
 }
 
 describe('invitation acceptance and own password', () => {
+  it('accepts the public Host through an internal reverse-proxy listener', async () => {
+    const c = client();
+    const request = new Request('http://localhost:3000/zh-CN/auth/accept', {
+      method: 'POST',
+      headers: { Host: 'wiser.test', Origin: 'https://wiser.test' },
+      body: new URLSearchParams({ token_hash: HASH }),
+    });
+    const result = await createAccountRouteService({
+      createClient: () => Promise.resolve(c),
+    }).accept(request, 'zh-CN');
+    expect(result.status).toBe(303);
+    expect(result.headers.get('location')).toBe('/zh-CN/account/password');
+  });
+
   it('consumes only an explicitly submitted invite and strips the token from redirects', async () => {
     const c = client();
-    const service = createAccountRouteService({ createClient: async () => c });
+    const service = createAccountRouteService({
+      createClient: () => Promise.resolve(c),
+    });
     const result = await service.accept(
       post({ token_hash: HASH, next: '/zh-CN/data-foundation' }),
       'zh-CN',
@@ -69,7 +91,7 @@ describe('invitation acceptance and own password', () => {
     async (origin) => {
       const c = client();
       const service = createAccountRouteService({
-        createClient: async () => c,
+        createClient: () => Promise.resolve(c),
       });
       expect(
         (await service.accept(post({ token_hash: HASH }, origin), 'zh-CN'))
@@ -90,7 +112,9 @@ describe('invitation acceptance and own password', () => {
 
   it('does not consume an invitation on GET and rejects malformed or ambiguous fields', async () => {
     const c = client();
-    const service = createAccountRouteService({ createClient: async () => c });
+    const service = createAccountRouteService({
+      createClient: () => Promise.resolve(c),
+    });
     expect(
       (
         await service.accept(
@@ -113,7 +137,7 @@ describe('invitation acceptance and own password', () => {
     await service.accept(
       new Request('https://wiser.test/zh-CN/auth/accept', {
         method: 'POST',
-        headers: { Origin: 'https://wiser.test' },
+        headers: { Origin: 'https://wiser.test', Host: 'wiser.test' },
         body,
       }),
       'zh-CN',
@@ -127,7 +151,7 @@ describe('invitation acceptance and own password', () => {
       new Error('private upstream details'),
     );
     const r = await createAccountRouteService({
-      createClient: async () => c,
+      createClient: () => Promise.resolve(c),
     }).accept(post({ token_hash: HASH }), 'en');
     expect(r.headers.get('location')).toBe('/en/auth/invite?reason=invalid');
     expect(await r.text()).not.toContain('private upstream');
@@ -137,7 +161,7 @@ describe('invitation acceptance and own password', () => {
     const c = client();
     c.auth.getClaims.mockRejectedValueOnce(new Error('unavailable'));
     const r = await createAccountRouteService({
-      createClient: async () => c,
+      createClient: () => Promise.resolve(c),
     }).accept(post({ token_hash: HASH }), 'en');
     expect(r.headers.get('location')).toBe('/en/auth/invite?reason=invalid');
     expect(c.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
@@ -146,7 +170,7 @@ describe('invitation acceptance and own password', () => {
   it('updates only the live current user, ignores forged identity/grants, and requires sign-in afterward', async () => {
     const c = client();
     const r = await createAccountRouteService({
-      createClient: async () => c,
+      createClient: () => Promise.resolve(c),
     }).password(
       post({
         password: PASSWORD,
@@ -173,7 +197,7 @@ describe('invitation acceptance and own password', () => {
     async (password, confirmation) => {
       const c = client();
       const r = await createAccountRouteService({
-        createClient: async () => c,
+        createClient: () => Promise.resolve(c),
       }).password(post({ password, confirmation }), 'en');
       expect(c.auth.updateUser).not.toHaveBeenCalled();
       expect(r.headers.get('location')).toBe(
@@ -189,7 +213,7 @@ describe('invitation acceptance and own password', () => {
       data: { user: { id: 'different' } },
     });
     const r = await createAccountRouteService({
-      createClient: async () => c,
+      createClient: () => Promise.resolve(c),
     }).password(post({ password: PASSWORD, confirmation: PASSWORD }), 'en');
     expect(c.auth.updateUser).not.toHaveBeenCalled();
     expect(r.headers.get('location')).toBe('/en/login?reason=session');
@@ -199,7 +223,7 @@ describe('invitation acceptance and own password', () => {
     const c = client();
     c.auth.updateUser.mockRejectedValueOnce(new Error(PASSWORD));
     const r = await createAccountRouteService({
-      createClient: async () => c,
+      createClient: () => Promise.resolve(c),
     }).password(post({ password: PASSWORD, confirmation: PASSWORD }), 'en');
     expect(r.headers.get('location')).toBe(
       '/en/account/password?reason=unavailable',
@@ -207,9 +231,20 @@ describe('invitation acceptance and own password', () => {
     expect(await r.text()).not.toContain(PASSWORD);
   });
 
+  it('reports a saved password separately when local sign-out fails', async () => {
+    const c = client();
+    c.auth.signOut.mockRejectedValueOnce(new Error('unavailable'));
+    const result = await createAccountRouteService({
+      createClient: () => Promise.resolve(c),
+    }).password(post({ password: PASSWORD, confirmation: PASSWORD }), 'en');
+    expect(result.headers.get('location')).toBe(
+      '/en/account/password?reason=signout',
+    );
+  });
+
   it('does not use an administrative fallback when auth is unavailable', async () => {
     const service = createAccountRouteService({
-      createClient: async () => null,
+      createClient: () => Promise.resolve(null),
     });
     expect(
       (await service.accept(post({ token_hash: HASH }), 'en')).headers.get(
