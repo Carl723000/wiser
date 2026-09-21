@@ -196,6 +196,18 @@ function mapError(error: unknown): ErrorMapping {
         return errors.validation;
       case 'IDEMPOTENCY_KEY_REQUIRED':
         return errors.idempotency;
+      case 'EXTERNAL_SOURCE_UNCONFIGURED':
+      case 'EXTERNAL_SOURCE_UNAVAILABLE':
+        return { status: 503, code: error.code, message: error.message };
+      case 'EXTERNAL_SOURCE_TIMEOUT':
+        return { status: 504, code: error.code, message: error.message };
+      case 'EXTERNAL_SOURCE_ACCESS_DENIED':
+      case 'EXTERNAL_AUTHORIZATION_EXPIRED':
+        return { status: 403, code: error.code, message: error.message };
+      case 'EXTERNAL_METADATA_INVALID':
+        return { status: 502, code: error.code, message: error.message };
+      case 'REQUEST_CANCELLED':
+        return { status: 499, code: error.code, message: error.message };
       case 'CAPABILITY_TIMEOUT':
       case 'EXECUTION_FAILED':
         return errors.unavailable;
@@ -599,12 +611,25 @@ export function createDataFoundationRestModule(
               return sendError(request, reply, errors.validation);
             }
 
+            const cancellation =
+              capabilityId === 'data.external.metadata.read'
+                ? new AbortController()
+                : undefined;
+            const disconnected = () => {
+              if (!reply.raw.writableFinished) cancellation?.abort();
+            };
+            if (cancellation) {
+              reply.raw.once('close', disconnected);
+              if (request.raw.aborted || reply.raw.destroyed)
+                cancellation.abort();
+            }
             let output: unknown;
             try {
               output = await options.handler.execute({
                 capabilityId,
                 input,
                 requestContext: resolved.context,
+                ...(cancellation ? { signal: cancellation.signal } : {}),
                 ...(definition.kind === 'command' &&
                 idempotencyKey !== undefined
                   ? { idempotencyKey }
@@ -612,6 +637,8 @@ export function createDataFoundationRestModule(
               });
             } catch (error) {
               return sendError(request, reply, mapError(error));
+            } finally {
+              if (cancellation) reply.raw.removeListener('close', disconnected);
             }
 
             if (definition.restMapping.responseMode === 'SSE') {

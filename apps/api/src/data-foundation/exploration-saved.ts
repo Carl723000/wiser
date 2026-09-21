@@ -1,5 +1,6 @@
 import {
   loadBusinessRelations,
+  storedBusinessMembership,
   bindBusinessRecords,
 } from './business-query-runtime.js';
 import { randomUUID } from 'node:crypto';
@@ -52,6 +53,7 @@ const snapshotSchema = z.object({
   query_id: z.uuid(),
   spec: QuerySpecSchema,
   version_refs: refsSchema,
+  business_pins: z.unknown().optional(),
 });
 const savedSchema = snapshotSchema.extend({
   view_id: z.uuid(),
@@ -121,7 +123,12 @@ async function validateReferences(
   const serialized = JSON.stringify(refs);
   const business = snapshot.spec.businessQuery;
   const relations = business
-    ? await loadBusinessRelations(client, refs, business)
+    ? await loadBusinessRelations(
+        client,
+        refs,
+        business,
+        storedBusinessMembership(snapshot.spec, snapshot.business_pins),
+      )
     : undefined;
   const pins = business
     ? await bindBusinessRecords(
@@ -292,7 +299,7 @@ export function createExplorationSavedExecutors(
                 throw new DataCapabilityHandlerError('VALIDATION_FAILED');
               const viewId = randomUUID();
               const inserted = await client.query(
-                `insert into service.exploration_saved_view(view_id,query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,title,visibility,spec,version_refs,view_spec,created_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14::timestamptz) returning *`,
+                `insert into service.exploration_saved_view(view_id,query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,title,visibility,spec,version_refs,view_spec,created_at,business_pins) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14::timestamptz,$15::jsonb) returning *`,
                 [
                   viewId,
                   input.queryId,
@@ -308,6 +315,9 @@ export function createExplorationSavedExecutors(
                   JSON.stringify(snapshot.version_refs),
                   JSON.stringify(input.viewSpec),
                   timestamp,
+                  snapshot.business_pins == null
+                    ? null
+                    : JSON.stringify(snapshot.business_pins),
                 ],
               );
               const output = {
@@ -399,6 +409,7 @@ export function createExplorationSavedExecutors(
         const restored = await read(context, async (client) => {
           const saved = await readSaved(client, input.viewId);
           await authorized(client, saved.version_refs);
+          await validateReferences(client, saved, saved.view_spec);
           const queryId = randomUUID();
           await client.query(
             'select pg_advisory_xact_lock(hashtextextended($1,0))',
@@ -414,7 +425,7 @@ export function createExplorationSavedExecutors(
             `delete from service.exploration_snapshot where expires_at<=clock_timestamp() or query_id in(select query_id from service.exploration_snapshot order by created_at desc offset 31)`,
           );
           await client.query(
-            `insert into service.exploration_snapshot(query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,spec,version_refs,created_at,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,
+            `insert into service.exploration_snapshot(query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,spec,version_refs,business_pins,created_at,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,
             [
               queryId,
               context.authorization.tenantId,
@@ -425,6 +436,9 @@ export function createExplorationSavedExecutors(
               context.authorization.authzVersion,
               JSON.stringify(saved.spec),
               JSON.stringify(saved.version_refs),
+              saved.business_pins == null
+                ? null
+                : JSON.stringify(saved.business_pins),
             ],
           );
           const viewSpec = rebindExplorationView(

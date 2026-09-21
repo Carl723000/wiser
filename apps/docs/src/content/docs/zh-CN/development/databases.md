@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedAt: 2026-09-20
+lastReviewedCommit: 5afd0a3
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -196,3 +196,7 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 `0028_relation_integrity.sql` 追加在校验和不变的0027之后。内部 `security.relation_entity_definition` 开启RLS，不授予运行角色策略或权限；仅其所有者的SECURITY DEFINER触发器可访问，固定 `pg_catalog` 搜索路径并检查新行范围。运行角色配置在通用授权后再次撤销该表访问。迁移先检查历史身份冲突，再回填。集成测试在回滚事务中验证待应用0028，覆盖隐藏的高安全级别定义、高低权限交替审核100次、第101次拒绝及定义表不可读。不得改名或重新编号已应用迁移。
 
 机制依据：[PostgreSQL RLS完整性边界](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)及[安全的SECURITY DEFINER函数](https://www.postgresql.org/docs/current/sql-createfunction.html)。
+
+### 服务端业务成员清单存储
+
+追加迁移`0029_exploration_membership.sql`在既有查询快照和保存视图中增加可空的`business_pins`，只保存断言UUID与版本对，与有大小限制的客户端条件分开。旧行继续为null，不回填或改写。数据库拒绝格式错误、重复或超限清单（最多100,000对／8 MiB）；这是存储保护上限，不是已验证的查询或绘图能力。整行强制RLS、快照不可改写及保存视图单向撤销约束同样覆盖新列。`packages/data-infra/test/migrations/exploration-membership.spec.ts`在独立合成库验证2,033个成员、六项作用域隔离及修改拒绝。本存储切片本身尚未启用项目全景查询，不修改既有协议上限，不批准知识或导入外部观测；API和网页接续另行验证。

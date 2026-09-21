@@ -321,3 +321,67 @@ it('keeps the persisted business scope and review status for a non-observation r
     expect(input.dataItemId).toBeUndefined();
   }
 });
+
+it('follows a record in a mixed query while rejecting states outside its review scope', async () => {
+  const request = vi.fn<typeof fetch>().mockResolvedValue(
+    Response.json({
+      items: [
+        bound,
+        {
+          ...bound,
+          assertionId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          status: 'PENDING_REVIEW',
+        },
+      ],
+      totalCount: 2,
+    }),
+  );
+  vi.stubGlobal('fetch', request);
+  render(
+    <DataRecordRelations
+      locale="zh-CN"
+      record={record}
+      returnGraph={null}
+      business={{
+        queryId: '11111111-1111-4111-8111-111111111111',
+        status: 'APPROVED_AND_PENDING',
+      }}
+    />,
+  );
+  expect(screen.getByRole('option', { name: '已审与待审' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '查找此记录的业务关系' }));
+  expect(await screen.findByRole('link', { name: '真实波段2' })).toBeTruthy();
+  expect(requestInput(request.mock.calls[0][1]).status).toBe(
+    'APPROVED_AND_PENDING',
+  );
+});
+
+it.each(['REJECTED', 'CORRECTION_REQUIRED'])(
+  'rejects %s in a mixed record scope',
+  async (status) => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ items: [{ ...bound, status }], totalCount: 1 }),
+        ),
+    );
+    render(
+      <DataRecordRelations
+        locale="zh-CN"
+        record={record}
+        returnGraph={null}
+        business={{
+          queryId: '11111111-1111-4111-8111-111111111111',
+          status: 'APPROVED_AND_PENDING',
+        }}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: '查找此记录的业务关系' }),
+    );
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '真实波段2' })).toBeNull();
+  },
+);

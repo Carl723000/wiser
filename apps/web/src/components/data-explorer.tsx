@@ -1,8 +1,15 @@
 'use client';
+import { ContextHelp } from './context-help';
 import {
   relationReturnHref,
   withRelationReturn,
 } from '@/lib/relation-navigation';
+import { DataSavedTopics } from './data-saved-topics';
+import { ExplorationWorkspace } from './exploration-workspace';
+import {
+  resourceSearchMatch,
+  resourceSearchExamples,
+} from '@/lib/resource-search';
 import { DataSpatialSource } from './data-spatial-source';
 import { dataResourceName } from '@/lib/data-foundation-presentation';
 
@@ -13,7 +20,15 @@ import { DataExplorerInspector } from './data-explorer-inspector';
 import { DataExplorerSaved } from './data-explorer-saved';
 import { ExplorationViewContext } from './exploration-view-context';
 import { createExplorationViewState } from '@/lib/exploration-view-state';
+import {
+  capturePresentation,
+  restorePresentation,
+} from '@/lib/exploration-presentation';
 import { withBusinessFocus } from '@/lib/exploration-business-focus';
+import {
+  writeBusinessPeriodUnit,
+  type BusinessPeriodUnit,
+} from '@/lib/business-period';
 import { invalidatesExploration } from '@/lib/exploration-request';
 import {
   explorationHref,
@@ -37,6 +52,7 @@ import {
   useReducer,
   useCallback,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import {
   type OpenExplorationViewOutput,
@@ -94,7 +110,9 @@ function DataExplorerSession({
   initialView = 'resources',
   initialSaved,
   initialFocusedRecord,
+  supplementary,
 }: {
+  readonly supplementary?: ReactNode;
   readonly initialSaved?: OpenExplorationViewOutput;
   readonly initialFocusedRecord?: ExplorationRecord;
   readonly locale: Locale;
@@ -104,7 +122,29 @@ function DataExplorerSession({
   readonly initialView?: ExplorationView;
 }) {
   const copy = getDictionary(locale).dataFoundation.explorer;
+  const [topicsOpen, setTopicsOpen] = useState(false);
   const [result, setResult] = useState(initialResult);
+  useEffect(() => {
+    if (!initialSaved?.viewSpec.presentation) return;
+    const presentation = initialSaved.viewSpec.presentation;
+    // Next installs its History API bridge in the enclosing router's mount effect.
+    // Restore on the next frame so its search-param subscribers receive the change.
+    const frame = window.requestAnimationFrame(() => {
+      const before = new URLSearchParams(window.location.search);
+      const after = restorePresentation(
+        before,
+        initialSaved.savedView.viewId,
+        presentation,
+      );
+      if (after.toString() !== before.toString())
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + '?' + after.toString(),
+        );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialSaved]);
   const [returnGraph, setReturnGraph] = useState<string | null>(null);
   function queryHref(queryId: string, tab: ExplorationView, keepFocus = true) {
     const values = new URLSearchParams(window.location.search).getAll(
@@ -128,6 +168,7 @@ function DataExplorerSession({
       focus,
     );
   }
+  const composing = useRef(false);
   const [text, setText] = useState(initialResult?.spec.text ?? initialText);
   const [quality, setQuality] = useState(
     initialResult?.spec.qualityGrades?.[0] ?? '',
@@ -287,6 +328,9 @@ function DataExplorerSession({
               : {}),
           }
         : undefined,
+      result?.spec.businessQuery
+        ? capturePresentation(new URLSearchParams(window.location.search))
+        : undefined,
     );
   };
   const pending = useRef<AbortController | null>(null);
@@ -296,6 +340,8 @@ function DataExplorerSession({
   const invalidate = useCallback((queryId: string, status = 410) => {
     if (activeQueryId.current !== queryId) return;
     activeQueryId.current = null;
+    pending.current?.abort();
+    setBusy(false);
     setResult(null);
     dispatch({ type: 'query', queryId: null });
     setRecordAssets([]);
@@ -370,6 +416,7 @@ function DataExplorerSession({
     restoreView?: ExplorationView,
     historyAction?: 'pushState' | 'replaceState',
     restoreFocus?: RecordFocus,
+    calendarUnit?: BusinessPeriodUnit,
   ) {
     pending.current?.abort();
     const controller = new AbortController();
@@ -447,14 +494,20 @@ function DataExplorerSession({
       const method =
         historyAction ??
         (reset && restoreView === undefined ? 'pushState' : 'replaceState');
-      window.history[method](
-        window.history.state,
-        '',
+      const nextHref = new URL(
         queryHref(
           next.queryId,
           restoreView ?? (reset ? 'resources' : view),
           !reset || !!restoreFocus,
         ),
+        window.location.origin,
+      );
+      if (calendarUnit !== undefined)
+        writeBusinessPeriodUnit(nextHref.searchParams, calendarUnit);
+      window.history[method](
+        window.history.state,
+        '',
+        nextHref.pathname + nextHref.search,
       );
     } catch {
       if (!controller.signal.aborted) setFailure('unavailable');
@@ -532,6 +585,7 @@ function DataExplorerSession({
   }
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (composing.current) return;
     const spec: QuerySpec = {
       ...(text.trim() ? { text: text.trim() } : {}),
       ...(provider.trim() ? { providers: [provider.trim()] } : {}),
@@ -619,7 +673,8 @@ function DataExplorerSession({
 
   return (
     <ExplorationViewContext.Provider value={viewState}>
-      <main
+      <ExplorationWorkspace
+        locale={locale}
         id="main-content"
         className={`page-main ${styles.explorer}`}
         data-testid="data-explorer"
@@ -635,12 +690,53 @@ function DataExplorerSession({
             <h1>
               {result?.spec.businessQuery && initialSaved
                 ? initialSaved.savedView.title
-                : copy.title}
+                : result?.spec.scope === 'project'
+                  ? copy.projectTitle
+                  : copy.title}
             </h1>
-            <p>{copy.description}</p>
+            <ContextHelp label={copy.title}>
+              {result?.spec.scope === 'project'
+                ? copy.projectDescription
+                : copy.description}
+            </ContextHelp>
           </div>
           <span className={styles.scope}>{copy.scope}</span>
         </header>
+        <details
+          className={styles.searchExamples}
+          onToggle={(event) => setTopicsOpen(event.currentTarget.open)}
+        >
+          <summary>{copy.topics.title}</summary>
+          {topicsOpen ? <DataSavedTopics locale={locale} /> : null}
+        </details>
+        <span id="resource-search-help">
+          <ContextHelp label={copy.searchHelpLabel}>
+            {copy.searchScope}
+          </ContextHelp>
+        </span>
+        {result?.resources.length ? (
+          <details className={styles.searchExamples}>
+            <summary>{copy.searchExamples}</summary>
+            {resourceSearchExamples(result.resources).map((name) => (
+              <button
+                key={name}
+                aria-label={`${copy.searchExampleAction} ${dataResourceName(name)}`}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setText(name);
+                  void query(
+                    { spec: { text: name }, view: 'resources', first: 25 },
+                    0,
+                    true,
+                  );
+                }}
+              >
+                {dataResourceName(name)}
+              </button>
+            ))}
+          </details>
+        ) : null}
         <form className={styles.query} onSubmit={submit}>
           <label className={styles.search}>
             <span className={styles.visuallyHidden}>{copy.queryLabel}</span>
@@ -649,6 +745,20 @@ function DataExplorerSession({
               onChange={(event) => setText(event.target.value)}
               placeholder={copy.placeholder}
               maxLength={512}
+              aria-describedby="resource-search-help"
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={() => {
+                composing.current = false;
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  (composing.current || event.nativeEvent.isComposing)
+                )
+                  event.preventDefault();
+              }}
             />
           </label>
           <label>
@@ -865,17 +975,21 @@ function DataExplorerSession({
         </div>
         {result ? (
           <div className={styles.countScope}>
-            <p>{copy.recordCountScope}</p>
             <dl>
               <dt>{copy.independentObservations}</dt>
               <dd>{copy.observationsUnverified}</dd>
             </dl>
-            <p>{copy.observationVerification}</p>
+            <ContextHelp label={copy.independentObservations}>
+              {copy.recordCountScope} {copy.observationVerification}
+            </ContextHelp>
           </div>
         ) : null}
         {failure === null ? null : (
           <div role="alert" className={styles.failure}>
             {copy[failure]}
+            <Link href={`/${locale}/data-foundation`}>
+              {copy.restartProject}
+            </Link>
           </div>
         )}
         <div
@@ -917,6 +1031,21 @@ function DataExplorerSession({
                             >
                               {dataResourceName(resource.name)}
                             </Link>
+                            {resourceSearchMatch(
+                              resource.name,
+                              result?.spec.text,
+                            ) ? (
+                              <small className={styles.matchReason}>
+                                {
+                                  copy.searchMatches[
+                                    resourceSearchMatch(
+                                      resource.name,
+                                      result?.spec.text,
+                                    )!
+                                  ]
+                                }
+                              </small>
+                            ) : null}
                             <button
                               aria-label={dataResourceName(resource.name)}
                               aria-pressed={
@@ -950,6 +1079,19 @@ function DataExplorerSession({
                   <div className={styles.empty}>
                     <h2>{copy.emptyTitle}</h2>
                     <p>{copy.emptyDescription}</p>
+                    <button
+                      disabled={busy}
+                      onClick={() => {
+                        setText('');
+                        void query(
+                          { spec: {}, view: 'resources', first: 25 },
+                          0,
+                          true,
+                        );
+                      }}
+                    >
+                      {copy.browseResources}
+                    </button>
                   </div>
                 ) : null}
                 <footer className={styles.pagination}>
@@ -1014,6 +1156,7 @@ function DataExplorerSession({
                     setView('resources');
                     void query(
                       {
+                        baseQueryId: result.queryId,
                         spec: { ...result.spec, readiness },
                         view: 'resources',
                         first: 25,
@@ -1029,11 +1172,13 @@ function DataExplorerSession({
                 key={result.queryId}
                 queryId={result.queryId}
                 scope={result.spec.businessQuery}
+                membership={result.membership}
                 locale={locale}
                 onInvalidated={invalidate}
-                onApply={(businessQuery) => {
+                onApply={(businessQuery, periodUnit) => {
                   void query(
                     {
+                      baseQueryId: result.queryId,
                       spec: { ...result.spec, businessQuery },
                       view: 'resources',
                       first: 25,
@@ -1041,6 +1186,9 @@ function DataExplorerSession({
                     0,
                     true,
                     'graph',
+                    undefined,
+                    undefined,
+                    periodUnit,
                   );
                 }}
               />
@@ -1069,6 +1217,7 @@ function DataExplorerSession({
                     locale={locale}
                     queryId={result.queryId}
                     status={result.spec.businessQuery.status}
+                    membership={result.membership}
                     versionId={focusedVersion}
                     onInvalidated={invalidate}
                   />
@@ -1317,7 +1466,8 @@ function DataExplorerSession({
             )}
           </DataExplorerInspector>
         </div>
-      </main>
+        {supplementary}
+      </ExplorationWorkspace>
     </ExplorationViewContext.Provider>
   );
 }

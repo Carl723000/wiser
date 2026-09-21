@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DATA_CAPABILITY_REGISTRY } from '@wiser/data-contracts';
 
 vi.mock('server-only', () => ({}));
 
@@ -849,4 +850,90 @@ it('binds reconciliation reads to the requested batch and sends review precondit
     ),
   ).toThrow(DataFoundationApiError);
   expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+for (const version of ['1.6.0', '1.7.0']) {
+  it(`negotiates bounded project pages against advertised ${version} without changing cursor or scope`, async () => {
+    const fetcher = vi.fn<typeof globalThis.fetch>((input) => {
+      if (typeof input !== 'string') throw Error('Expected URL string');
+      const url = input;
+      if (url.endsWith('/capabilities'))
+        return Promise.resolve(
+          Response.json({
+            registryVersion: '1.0.0',
+            capabilities: [
+              {
+                ...DATA_CAPABILITY_REGISTRY['data.knowledge.relations.list'],
+                version,
+              },
+            ],
+          }),
+        );
+      return Promise.resolve(Response.json({ items: [], totalCount: 0 }));
+    });
+    const dal = createDataFoundationDal({
+      config: {
+        apiOrigin: 'http://api:3001',
+        tenantId: TENANT_ID,
+        projectId: PROJECT_ID,
+        purpose: 'read',
+        requestTimeoutMs: 5000,
+        responseLimitBytes: 1048576,
+      },
+      createAuthClient: () => Promise.resolve(authClient([])),
+      fetch: fetcher,
+    });
+    await dal.relations('list', {
+      queryId: PROJECT_ID,
+      status: 'PENDING_REVIEW',
+      pageMode: 'BOUNDED_PROJECT',
+      first: 500,
+      after: GEO_VERSION_ID,
+    });
+    const requests = fetcher.mock.calls.map((call) => {
+      if (typeof call[0] !== 'string') throw Error('Expected URL');
+      return new URL(call[0]);
+    });
+    expect(requests.some((url) => url.pathname.endsWith('/capabilities'))).toBe(
+      true,
+    );
+    const page = requests.find((url) => url.pathname.endsWith('/relations'))!;
+    expect(page.searchParams.get('first')).toBe(
+      version === '1.7.0' ? '500' : '100',
+    );
+    expect(page.searchParams.get('pageMode')).toBe(
+      version === '1.7.0' ? 'BOUNDED_PROJECT' : null,
+    );
+    expect(page.searchParams.get('queryId')).toBe(PROJECT_ID);
+    expect(page.searchParams.get('after')).toBe(GEO_VERSION_ID);
+    expect(page.searchParams.get('status')).toBe('PENDING_REVIEW');
+  });
+}
+it('does not turn capability authorization failure into a legacy retry', async () => {
+  const fetcher = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(new Response('', { status: 403 }));
+  const dal = createDataFoundationDal({
+    config: {
+      apiOrigin: 'http://api:3001',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'read',
+      requestTimeoutMs: 5000,
+      responseLimitBytes: 1048576,
+    },
+    createAuthClient: () => Promise.resolve(authClient([])),
+    fetch: fetcher,
+  });
+  await expect(
+    dal.relations('list', {
+      queryId: PROJECT_ID,
+      pageMode: 'BOUNDED_PROJECT',
+      first: 500,
+    }),
+  ).rejects.toMatchObject({ status: 403 });
+  expect(fetcher.mock.calls[0]?.[0]).toEqual(
+    expect.stringContaining('/capabilities'),
+  );
+  expect(fetcher).toHaveBeenCalledTimes(1);
 });

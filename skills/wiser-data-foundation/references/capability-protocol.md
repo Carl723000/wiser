@@ -33,15 +33,16 @@ Commands require a UUID `Idempotency-Key`. Versioned commands also require a str
 | `data.operation.cancel`       | `POST /operations/{operationId}/cancel`                     | `data_operation_cancel`        |
 | `data.operation.events`       | `GET /operations/{operationId}/events` (SSE snapshot)       | `data_operation_events`        |
 
-| Capability                 | REST relative to `/api/data/v1`       | MCP tool                   |
-| -------------------------- | ------------------------------------- | -------------------------- |
-| `data.analysis.create`     | `POST /analyses`                      | `data_analysis_create`     |
-| `data.explore.query`       | `POST /explore/query`                 | `data_explore_query`       |
-| `data.explore.view.create` | `POST /explore/views`                 | `data_explore_view_create` |
-| `data.explore.view.list`   | `GET /explore/views`                  | `data_explore_view_list`   |
-| `data.explore.view.open`   | `POST /explore/views/{viewId}/open`   | `data_explore_view_open`   |
-| `data.explore.view.revoke` | `POST /explore/views/{viewId}/revoke` | `data_explore_view_revoke` |
-| `data.explore.export`      | `POST /explore/export`                | `data_explore_export`      |
+| Capability                    | REST relative to `/api/data/v1`                    | MCP tool                      |
+| ----------------------------- | -------------------------------------------------- | ----------------------------- |
+| `data.analysis.create`        | `POST /analyses`                                   | `data_analysis_create`        |
+| `data.explore.query`          | `POST /explore/query`                              | `data_explore_query`          |
+| `data.explore.view.create`    | `POST /explore/views`                              | `data_explore_view_create`    |
+| `data.explore.view.list`      | `GET /explore/views`                               | `data_explore_view_list`      |
+| `data.explore.view.open`      | `POST /explore/views/{viewId}/open`                | `data_explore_view_open`      |
+| `data.explore.view.revoke`    | `POST /explore/views/{viewId}/revoke`              | `data_explore_view_revoke`    |
+| `data.explore.export`         | `POST /explore/export`                             | `data_explore_export`         |
+| `data.external.metadata.read` | `POST /external-sources/{sourceId}/metadata/query` | `data_external_metadata_read` |
 
 The Registry schema is authoritative if this table ever differs from a running server.
 

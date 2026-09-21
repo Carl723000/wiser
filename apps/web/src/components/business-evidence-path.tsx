@@ -1,13 +1,24 @@
 'use client';
 import type { RelationAssertion } from '@wiser/data-contracts';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { getDictionary, type Locale } from '@/lib/i18n';
-import { businessEvidencePath } from '@/lib/business-evidence-path';
+import {
+  businessEvidencePath,
+  type BusinessEvidencePath,
+} from '@/lib/business-evidence-path';
 import { businessObjectSources } from '@/lib/business-object-sources';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 import { KnowledgeGraphCanvas } from './data-foundation-graph';
 import styles from './data-explorer-business.module.css';
+
+type PathReading =
+  | {
+      status: 'found';
+      nodeIds: string[];
+      steps: { assertionId: string; version: number; forward: boolean }[];
+    }
+  | { status: 'missing' | 'changed' };
 
 export function BusinessEvidencePathPanel({
   rows,
@@ -23,7 +34,7 @@ export function BusinessEvidencePathPanel({
     [to, setTo] = useState(''),
     [fromSearch, setFromSearch] = useState(''),
     [toSearch, setToSearch] = useState(''),
-    [applied, setApplied] = useState(false),
+    [reading, setReading] = useState<PathReading | null>(null),
     [selected, setSelected] = useState<string | null>(null);
   const sources = useMemo(() => businessObjectSources(rows), [rows]);
   const nodes = useMemo(
@@ -50,10 +61,21 @@ export function BusinessEvidencePathPanel({
         .sort((a, b) => a.label.localeCompare(b.label, locale)),
     [nodes, sources, copy, locale],
   );
-  const path = useMemo(
-    () => (applied ? businessEvidencePath(rows, from, to) : null),
-    [rows, from, to, applied],
-  );
+  const path = useMemo<BusinessEvidencePath | null>(() => {
+    if (reading?.status !== 'found') return null;
+    const available = new Map(rows.map((row) => [row.assertionId, row]));
+    const steps: BusinessEvidencePath['steps'] = [];
+    for (const selected of reading.steps) {
+      const row = available.get(selected.assertionId);
+      if (!row || row.version !== selected.version) return null;
+      steps.push({ row, forward: selected.forward });
+    }
+    if (reading.nodeIds.some((id) => !nodes.has(id))) return null;
+    return { nodeIds: reading.nodeIds, steps };
+  }, [reading, rows, nodes]);
+  useEffect(() => {
+    if (reading?.status === 'found' && !path) setReading({ status: 'changed' });
+  }, [reading, path]);
   const graph = useMemo(
     () =>
       path
@@ -82,7 +104,21 @@ export function BusinessEvidencePathPanel({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setApplied(true);
+          const next = businessEvidencePath(rows, from, to);
+          // Retain only identities; evidence always comes from currently authorized rows.
+          setReading(
+            next
+              ? {
+                  status: 'found',
+                  nodeIds: next.nodeIds,
+                  steps: next.steps.map(({ row, forward }) => ({
+                    assertionId: row.assertionId,
+                    version: row.version,
+                    forward,
+                  })),
+                }
+              : { status: 'missing' },
+          );
           setSelected(null);
         }}
         className={styles.pathForm}
@@ -122,7 +158,7 @@ export function BusinessEvidencePathPanel({
                 value={field.value}
                 onChange={(e) => {
                   field.set(e.target.value);
-                  setApplied(false);
+                  setReading(null);
                   setSelected(null);
                 }}
               >
@@ -146,12 +182,19 @@ export function BusinessEvidencePathPanel({
             </label>
           </div>
         ))}
-        <button disabled={!from || !to || from === to} type="submit">
+        <button
+          disabled={!nodes.has(from) || !nodes.has(to) || from === to}
+          type="submit"
+        >
           {copy.businessPathFind}
         </button>
       </form>
-      {applied && !path ? (
-        <p role="status">{copy.businessPathMissing}</p>
+      {reading && !path ? (
+        <p role="status">
+          {reading.status === 'missing'
+            ? copy.businessPathMissing
+            : copy.businessPathChanged}
+        </p>
       ) : null}
       {path && graph ? (
         <>

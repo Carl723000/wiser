@@ -101,3 +101,52 @@ it('retains scene, camera and exact edge selection only inside the same reauthor
   expect(withBusinessFocus(href, 'query=other' + fields)).toBe(href);
   expect(withBusinessFocus(href, 'query=next&businessEdge=broken')).toBe(href);
 });
+
+it('retains a validated calendar step only within the same query', () => {
+  const href = '/zh-CN/data-foundation/explore?query=next&view=map';
+  expect(withBusinessFocus(href, '?query=next&businessPeriodUnit=year')).toBe(
+    href + '&businessPeriodUnit=year',
+  );
+  for (const query of [
+    '?query=old&businessPeriodUnit=year',
+    '?query=next&businessPeriodUnit=year&businessPeriodUnit=month',
+    '?query=next&businessPeriodUnit=week',
+  ])
+    expect(withBusinessFocus(href, query)).toBe(href);
+});
+
+it('retains a validated map object independently from its evidence edge only in the same query', () => {
+  const identity = JSON.stringify([
+    '10000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000002',
+    'v1',
+    'river',
+  ]);
+  const href = '/zh-CN/data-foundation/explore?query=next&view=records';
+  const params = new URLSearchParams({
+    query: 'next',
+    businessMapObject: identity,
+  });
+  expect(
+    new URL(
+      withBusinessFocus(href, params.toString()),
+      'http://local',
+    ).searchParams.get('businessMapObject'),
+  ).toBe(identity);
+  params.set('query', 'other');
+  expect(withBusinessFocus(href, params.toString())).toBe(href);
+  for (const raw of ['invalid', identity + 'x']) {
+    expect(
+      withBusinessFocus(
+        href,
+        new URLSearchParams({
+          query: 'next',
+          businessMapObject: raw,
+        }).toString(),
+      ),
+    ).toBe(href);
+  }
+  params.set('query', 'next');
+  params.append('businessMapObject', identity);
+  expect(withBusinessFocus(href, params.toString())).toBe(href);
+});

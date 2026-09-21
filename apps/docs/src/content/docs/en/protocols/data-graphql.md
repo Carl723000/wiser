@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
 ---
 
 ## Endpoint and authority contract
@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 41 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
+It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 42 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
 
 `apps/api/package.json` and the root lockfile define the exact compatible GraphQL and Mercurius versions, and API typecheck/build verifies that combination. Protocol prose does not duplicate a version inventory that changes during dependency upgrades.
 
@@ -59,22 +59,23 @@ One request may select only one mutation field, so one key maps to one command. 
 
 `dataCatalog(filter: { includeTotal: true })` exposes nullable `totalCount` alongside `nodes` and `pageInfo`. This exact nonnegative integer uses GraphQL Float to avoid the 32-bit Int limit and remains bounded by JavaScript safe integer precision. It counts the full authorized filtered catalog, not the current page; omission of the flag leaves the count null.
 
-| Field                 | Capability                   | Purpose                                           |
-| --------------------- | ---------------------------- | ------------------------------------------------- |
-| `dataCatalog`         | `data.catalog.search`        | Cursor catalog connection                         |
-| `dataItem`            | `data.catalog.get`           | One DataItem and optional version                 |
-| `dataQuery`           | `data.query`                 | Structured field/filter query                     |
-| `dataSearch`          | `data.search.federated`      | Multi-backend RRF search                          |
-| `knowledgeSearch`     | `data.knowledge.search`      | Evidence/knowledge search                         |
-| `graphExpand`         | `data.graph.expand`          | Bounded entity neighborhood                       |
-| `graphFindPath`       | `data.graph.findPath`        | Bounded relation path                             |
-| `geoQuery`            | `data.geo.query`             | Governed spatial predicate                        |
-| `geoIntersect`        | `data.geo.intersect`         | Intersection of two governed geo targets          |
-| `dataOperation`       | `data.operation.get`         | One Operation                                     |
-| `dataItemVersions`    | `data.catalog.versions.list` | Version connection                                |
-| `dataItemVersion`     | `data.catalog.versions.get`  | Exact immutable version                           |
-| `dataIngestion`       | `data.ingestion.get`         | Ingestion plus quality/Agent/projection summaries |
-| `dataOperationEvents` | `data.operation.events`      | Bounded Operation event page as JSON, not SSE     |
+| Field                    | Capability                    | Purpose                                           |
+| ------------------------ | ----------------------------- | ------------------------------------------------- |
+| `externalSourceMetadata` | `data.external.metadata.read` | Bounded authorized external metadata              |
+| `dataCatalog`            | `data.catalog.search`         | Cursor catalog connection                         |
+| `dataItem`               | `data.catalog.get`            | One DataItem and optional version                 |
+| `dataQuery`              | `data.query`                  | Structured field/filter query                     |
+| `dataSearch`             | `data.search.federated`       | Multi-backend RRF search                          |
+| `knowledgeSearch`        | `data.knowledge.search`       | Evidence/knowledge search                         |
+| `graphExpand`            | `data.graph.expand`           | Bounded entity neighborhood                       |
+| `graphFindPath`          | `data.graph.findPath`         | Bounded relation path                             |
+| `geoQuery`               | `data.geo.query`              | Governed spatial predicate                        |
+| `geoIntersect`           | `data.geo.intersect`          | Intersection of two governed geo targets          |
+| `dataOperation`          | `data.operation.get`          | One Operation                                     |
+| `dataItemVersions`       | `data.catalog.versions.list`  | Version connection                                |
+| `dataItemVersion`        | `data.catalog.versions.get`   | Exact immutable version                           |
+| `dataIngestion`          | `data.ingestion.get`          | Ingestion plus quality/Agent/projection summaries |
+| `dataOperationEvents`    | `data.operation.events`       | Bounded Operation event page as JSON, not SSE     |
 
 Connections expose `nodes` and `pageInfo { endCursor hasNextPage }`; other pages retain `nextCursor`. Cursors are opaque and scope-bound. Never copy one from REST, another Tenant/Project, or an old authorization version.
 
@@ -210,6 +211,8 @@ Exploration 1.11 adds `graph.detail` (`assets`, `evidence`, `records`) for versi
 
 Saved exploration views use `data.explore.view.create`, `.list`, `.open` and `.revoke`; `data.explore.export` exports one bounded query representation. They require `data.query.execute` and `data.catalog.read`. Create/revoke are synchronous commands with UUID `Idempotency-Key`, atomic audit and command ledger. A saved view keeps the original QuerySpec, version/analysis pins and typed ViewSpec (view requests, page history, selection IDs, map camera/layers), not copied record content. At most 100 active views are kept per owner and project. Private is the default; explicit project sharing still requires authenticated project scope, purpose/security checks and authorization of every pinned member when opening. Listing returns only the caller's saved configurations. Opening reissues an owner-bound 30-minute query and continuation bindings without resolving newer versions or analyses; expiry of the original query does not expire the saved configuration. Revocation is one-way and owner-only. Export reauthorizes the request and returns original values, provenance and explicit returned/total counts with a coverage unit; a later page or truncated representation is never marked complete. No transport drains all pages into SSR/BFF memory.
 
+Saved-view create 1.1 and open 1.2 add optional typed `presentation`: graph view/form/style, bounded cameras and layout, reading mode/page, calendar step unit, and display-only focus references. The existing JSON view payload stores these controls; no new table, source membership, observation or permission is introduced. Focus can highlight only objects returned by the authorized query. Create 1.0 and open 1.0/1.1 discovery schemas stay archived unchanged; saved rows without presentation remain valid. An opened saved link restores the controls once, respects explicit URL overrides, and preserves deliberate resets to defaults on reload. Arbitrary URLs, scripts and unknown fields are rejected.
+
 Saved-view queries are `dataExploreViews(input: JSON!)`, `dataExploreView(input: JSON!)`, `exportDataExplore(input: JSON!)`; mutations are `createDataExploreView(input: JSON!)`, `revokeDataExploreView(input: JSON!)`. All return JSON and use the existing command idempotency header. They receive the elevated query-complexity weight.
 
 ## Observation reconciliation
@@ -243,3 +246,25 @@ Exploration 1.12 adds optional `businessQuery` to an explicit version manifest. 
 Cross-source relation evidence optionally pins `source.dataItemId`, `versionId`, `analysisId`, and `recordId`, alongside the original asset hash. The locator is `record:<recordId>`; a non-null excerpt must occur in that parsed record. Import/get/review 1.2 and list 1.5 keep prior schemas archived. Every read and retry reauthorizes the owner and all evidence sources; withdrawn, inaccessible, or mismatched evidence cannot contribute to a relation or its evidence/search readback. Dates remain source-supported candidates, not professional approval.
 
 `dataAssessments` uses assessment list 1.1: optional `assetId` selects an exact original, and `latestPerAsset: true` returns one newest authorized report per file before bounded pagination. Missing or stale declarations are not replaced with older claims; the default still returns history.
+
+### Project business scope (exploration 1.13)
+
+`scope: "project"` with `businessQuery` requests a server-resolved authorized source manifest; callers cannot supply version or assertion pins in this mode. Source versions, analysis versions and assertion UUID/revisions are fixed in the existing owner-scoped snapshot. Responses expose `membership` counts and a short `queryId`, not the assertion list. Counts describe fixed membership before display filters, not independent observations or the current page. Resource pages and relation pages remain bounded. Exceeding server limits fails without truncation; the storage ceiling is not a rendering performance claim.
+
+Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQueryId` retains existing members and rechecks every original source/assertion before narrowing; it does not absorb later additions. Changing review status requires a fresh query. Missing, withdrawn or changed pins fail the request rather than returning a partial panorama. Exploration 1.12, saved-view open 1.2 and export 1.1 schemas remain immutable archives; explicit-version queries keep their existing limits. Hidden data and undiscoverable metadata are not included. A separately authorized source catalogue is required for discoverable restricted sources. No new GraphQL, REST or MCP route or authority model is introduced.
+
+### Mixed review query scope (exploration 1.14)
+
+`businessQuery.schemaVersion: 2` with `status: "APPROVED_AND_PENDING"` selects authorized approved and pending assertions together. This is a query selector, never an authority state or review decision. Each returned assertion retains its real status and revision; rejected/correction-required assertions are excluded. Current-revision selection never lets a pending correction hide an approved assertion. Version 1 keeps its existing single-state behavior.
+
+Relation list 1.6 accepts the selector only with a persisted business `queryId` whose status matches. Inline sources and ordinary non-business queries cannot use it. Existing source authorization, immutable membership, pagination, record evidence and withdrawal checks still apply; any changed assertion revision invalidates replay even when its status remains inside the selected set. Saved-open 1.4 and export 1.3 preserve this scope. Prior query 1.13, saved-open 1.3, export 1.2 and relation-list 1.5 discovery schemas are frozen, including their schema hashes. No authority model or database migration is introduced.
+
+## External metadata
+
+`externalSourceMetadata(input: JSON!): JSON!` maps to `data.external.metadata.read` 1.0. Use the discovered strict input schema with source ID and explicit year range. This field bypasses per-request loader memoization, so even identical aliases recheck source permission. It shares REST output projection and sanitized error codes in `extensions.code`, and all responses are no-store. Transport cancellation reaches the readonly executor. Default runtime registration remains disabled until trusted source permission and provider wiring exist; no observations are ingested. The outer GraphQL deadline returns HTTP 504 with `CAPABILITY_TIMEOUT`; an interrupted client request is `REQUEST_CANCELLED` (499 when a response can still be sent). Capability audit distinguishes these outcomes.
+
+## Bounded project relation pages
+
+Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
+
+Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.

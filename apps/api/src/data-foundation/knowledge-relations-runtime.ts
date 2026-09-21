@@ -1,4 +1,7 @@
-import { loadBusinessRelations } from './business-query-runtime.js';
+import {
+  loadBusinessRelations,
+  storedBusinessMembership,
+} from './business-query-runtime.js';
 import {
   RELATION_SELECT as SELECT,
   readRelationAssertion as assertion,
@@ -15,7 +18,7 @@ import {
   ImportRelationsOutputSchema,
   RelationGetInputSchema,
   RelationReviewInputSchema,
-  RelationListInputSchema,
+  RelationBatchListInputSchema,
   QuerySpecSchema,
   type RelationAssertion,
   type RelationCandidate,
@@ -36,6 +39,7 @@ import {
   type DataCapabilityExecutor,
 } from './capability-handler.js';
 import { AUTHORIZED } from './exploration-authorization.js';
+import { boundedRelationPage } from './relation-batch-page.js';
 
 type Client = PostgresDataCommandClient;
 const fail = (code: 'NOT_FOUND' | 'STATE_CONFLICT' | 'IDEMPOTENCY_CONFLICT') =>
@@ -333,12 +337,12 @@ export function createKnowledgeRelationExecutors(
       id: 'data.knowledge.relations.list',
       execute: (raw, context) =>
         read(context, async (c) => {
-          const input = RelationListInputSchema.parse(raw);
+          const input = RelationBatchListInputSchema.parse(raw);
           let selectedSources: { dataItemId: string; versionId: string }[];
           if (input.queryId) {
             // Snapshot RLS binds tenant, project and owner. Expiry never becomes an empty success.
             const snapshot = await c.query(
-              'select version_refs,spec from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
+              'select version_refs,spec,business_pins from service.exploration_snapshot where query_id=$1::uuid and actor_id=$2::uuid and expires_at > clock_timestamp()',
               [input.queryId, context.principal.actorId],
             );
             if (!snapshot.rows[0]) throw fail('NOT_FOUND');
@@ -359,6 +363,11 @@ export function createKnowledgeRelationExecutors(
             if (checked.rows[0]?.['total'] !== selectedSources.length)
               throw fail('NOT_FOUND');
             const spec = QuerySpecSchema.parse(snapshot.rows[0]['spec'] ?? {});
+            if (
+              input.pageMode &&
+              (spec.scope !== 'project' || !spec.businessQuery)
+            )
+              throw new DataCapabilityHandlerError('VALIDATION_FAILED');
             if (spec.businessQuery) {
               if (input.status !== spec.businessQuery.status)
                 throw fail('NOT_FOUND');
@@ -366,6 +375,10 @@ export function createKnowledgeRelationExecutors(
                 c,
                 selectedSources,
                 spec.businessQuery,
+                storedBusinessMembership(
+                  spec,
+                  snapshot.rows[0]['business_pins'],
+                ),
               );
               const matched = resolved.items.filter(
                 (row) =>
@@ -405,6 +418,15 @@ export function createKnowledgeRelationExecutors(
                 ? matched.findIndex((row) => row.assertionId === input.after) +
                   1
                 : 0;
+              if (input.pageMode) {
+                try {
+                  return boundedRelationPage(matched, offset, input.first);
+                } catch (error) {
+                  if (error instanceof RangeError)
+                    throw new DataCapabilityHandlerError('VALIDATION_FAILED');
+                  throw error;
+                }
+              }
               const items = matched.slice(offset, offset + input.first);
               return {
                 items,
@@ -422,6 +444,8 @@ export function createKnowledgeRelationExecutors(
             // Reject conflicting ownership before deduplication, preserving legacy behavior.
             for (const source of selectedSources) await authorize(c, source);
           }
+          if (input.status === 'APPROVED_AND_PENDING')
+            throw new DataCapabilityHandlerError('VALIDATION_FAILED');
           const sources = [
             ...new Map(
               selectedSources.map((source) => [source.versionId, source]),

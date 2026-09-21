@@ -6,7 +6,19 @@ import { useEffect, useMemo, useRef, useState, useId } from 'react';
 import type { FeatureCollection } from 'geojson';
 import { ExplorationResultSchema } from '@wiser/data-contracts';
 import { loadBusinessMap, businessMapBounds } from '@/lib/business-map';
-import { spatialSceneAnchors } from '@/lib/business-scene-spatial';
+import {
+  spatialSceneAnchors,
+  spatialHitNodes,
+  spatialObjectRelations,
+  relatedSpatialReferences,
+  spatialSceneCoverage,
+} from '@/lib/business-scene-spatial';
+import {
+  nodeFamilies,
+  edgeFamilies,
+  familyColor,
+} from '@/lib/business-scene-style';
+import { BusinessSceneGlyph } from './business-scene-glyph';
 import type { BusinessScene } from '@/lib/business-scene';
 import type { SceneView } from '@/lib/business-scene-view';
 import { getDictionary, type Locale } from '@/lib/i18n';
@@ -15,6 +27,9 @@ import {
   type InvalidateExploration,
 } from '@/lib/exploration-request';
 import { AmapBasemap, type AmapBasemapHandle } from './amap-basemap';
+import { ContextHelp } from './context-help';
+import { WorkspaceExpandButton } from './exploration-workspace';
+import { SpatialAttribution } from './spatial-attribution';
 import styles from './business-scene-canvas.module.css';
 maplibre.setWorkerUrl('/vendor/maplibre/6.8.0/maplibre-gl-worker.mjs');
 const mapStyle: maplibre.StyleSpecification = {
@@ -34,6 +49,8 @@ export function BusinessSceneMap({
   onSelect,
   onEdge,
   selectedId,
+  mapObject = null,
+  onMapObject,
 }: {
   scene: BusinessScene;
   queryId: string;
@@ -46,6 +63,8 @@ export function BusinessSceneMap({
   onSelect: (id: string) => void;
   onEdge: (id: string) => void;
   selectedId: string | null;
+  mapObject?: string | null;
+  onMapObject?: (id: string | null) => void;
 }) {
   const dictionary = getDictionary(locale).knowledgeRelations;
   const copy = dictionary.scene;
@@ -82,6 +101,7 @@ export function BusinessSceneMap({
     setFailed(false);
     fitted.current = false;
     const request = async (after?: string) => {
+      controller.signal.throwIfAborted();
       const response = await fetch('/api/data-foundation/explore', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -94,12 +114,15 @@ export function BusinessSceneMap({
         signal: controller.signal,
         cache: 'no-store',
       });
+      controller.signal.throwIfAborted();
       if (!response.ok) {
         if (invalidatesExploration(response.status))
           onInvalidated(queryId, response.status);
         throw Error('Unavailable');
       }
-      const value = ExplorationResultSchema.parse(await response.json());
+      const body: unknown = await response.json();
+      controller.signal.throwIfAborted();
+      const value = ExplorationResultSchema.parse(body);
       if (value.queryId !== queryId || value.view !== 'map')
         throw Error('Wrong scope');
       return value;
@@ -128,13 +151,63 @@ export function BusinessSceneMap({
   const anchoredGeometry = useMemo<FeatureCollection>(
     () => ({
       type: 'FeatureCollection',
-      features: [
-        ...new globalThis.Map(
-          [...anchors.values()].map((a) => [a.feature.id, a.feature]),
-        ).values(),
-      ],
+      features: [...new Set([...anchors.values()].map((a) => a.feature))],
     }),
     [anchors],
+  );
+  const [mapPick, setMapPick] = useState<{
+    queryId: string;
+    ids: string[];
+    active: string | null;
+  } | null>(null);
+  useEffect(() => {
+    setMapPick((current) => (current?.active === mapObject ? current : null));
+  }, [mapObject]);
+  const pickedIds =
+    mapPick?.queryId === queryId && collection
+      ? mapPick.ids.filter((id) => anchors.has(id))
+      : collection && mapObject && anchors.has(mapObject)
+        ? [mapObject]
+        : [];
+  const activePick = mapPick?.queryId === queryId ? mapPick.active : mapObject;
+  const pickedId =
+    activePick && pickedIds.includes(activePick) ? activePick : null;
+  const pickObject = (id: string | null, ids: string[] = id ? [id] : []) => {
+    setMapPick({ queryId, ids, active: id });
+    onMapObject?.(id);
+    if (id) onSelect(id);
+  };
+  const mapRelations = useMemo(() => {
+    const rows = pickedId ? spatialObjectRelations(scene, pickedId) : [];
+    const groups = new globalThis.Map<string, typeof rows>();
+    for (const row of rows) {
+      const group = dictionary.kinds[row.node.kind];
+      const members = groups.get(group) ?? [];
+      members.push(row);
+      groups.set(group, members);
+    }
+    return [...groups];
+  }, [scene, pickedId, dictionary]);
+  const coverage = useMemo(
+    () => spatialSceneCoverage(scene, anchors),
+    [scene, anchors],
+  );
+  const referenceGeometry = useMemo<FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: [
+        ...new Set(
+          [
+            ...relatedSpatialReferences(scene, anchors, selectedId).values(),
+          ].map((a) => a.feature),
+        ),
+      ],
+    }),
+    [scene, anchors, selectedId],
+  );
+  const referenceBounds = useMemo(
+    () => businessMapBounds(referenceGeometry),
+    [referenceGeometry],
   );
   const bounds = useMemo(
     () => businessMapBounds(anchoredGeometry),
@@ -188,26 +261,52 @@ export function BusinessSceneMap({
     settings.mapLat,
     settings.mapZoom,
   ]);
+  const [listSearch, setListSearch] = useState('');
+  const [listKind, setListKind] = useState('');
+  const [listPage, setListPage] = useState(0);
+  const [allEdges, setAllEdges] = useState(false);
+  const unlocatedNodes = useMemo(
+    () =>
+      scene.nodes
+        .filter((n) => !anchors.has(n.id))
+        .sort(
+          (a, b) =>
+            a.label.localeCompare(b.label, locale) ||
+            (a.sourceTitle ?? '').localeCompare(b.sourceTitle ?? '', locale) ||
+            a.id.localeCompare(b.id),
+        ),
+    [scene, anchors, locale],
+  );
+  const matchingNodes = useMemo(() => {
+    const query = listSearch.trim().toLocaleLowerCase();
+    return unlocatedNodes.filter(
+      (n) =>
+        (!listKind || n.kind === listKind) &&
+        (!query ||
+          `${n.label} ${n.sourceTitle ?? ''}`
+            .toLocaleLowerCase()
+            .includes(query)),
+    );
+  }, [unlocatedNodes, listSearch, listKind]);
+  const pageSize = 6;
+  const pageIndex = Math.min(
+    listPage,
+    Math.max(0, Math.ceil(matchingNodes.length / pageSize) - 1),
+  );
+  const visibleNodes = matchingNodes.slice(
+    pageIndex * pageSize,
+    (pageIndex + 1) * pageSize,
+  );
+  useEffect(() => {
+    setListSearch('');
+    setListKind('');
+    setListPage(0);
+    setAllEdges(false);
+  }, [queryId]);
   const positions = useMemo(() => {
-    const result = new globalThis.Map<string, [number, number]>();
-    const local = scene.nodes.filter((n) => !anchors.has(n.id));
-    const grouped = new globalThis.Map<string, typeof local>();
-    for (const node of local) {
-      const group = grouped.get(node.group) ?? [];
-      group.push(node);
-      grouped.set(node.group, group);
-    }
-    const groupList = [...grouped].sort(([a], [b]) => a.localeCompare(b, 'en'));
-    for (const [i, [, nodes]] of groupList.entries()) {
-      const x = width * 0.68 + (i % 2) * width * 0.2,
-        y = 75 + Math.floor(i / 2) * 61;
-      const radius = Math.min(width * 0.075, 23);
-      nodes.forEach((n, j) => {
-        const angle = j * 2.399963229728653,
-          r = radius * Math.sqrt((j + 1) / nodes.length);
-        result.set(n.id, [x + Math.cos(angle) * r, y + Math.sin(angle) * r]);
-      });
-    }
+    const result = new globalThis.Map<string, [number, number]>(
+      visibleNodes.map((n, i) => [n.id, [width * 0.57 + 12, 164 + i * 72]]),
+    );
     const located = [...anchors];
     for (const [i, [id, anchor]] of located.entries()) {
       const p = map.current?.project(anchor.labelPoint);
@@ -220,7 +319,7 @@ export function BusinessSceneMap({
       }
     }
     return result;
-  }, [scene, anchors, width, revision]);
+  }, [matchingNodes, pageIndex, anchors, width, revision]);
   const saveCamera = () => {
     const m = map.current;
     if (m)
@@ -247,6 +346,7 @@ export function BusinessSceneMap({
       data-anchor-count={anchors.size}
     >
       <div className={styles.toolbar}>
+        <WorkspaceExpandButton locale={locale} />
         <button onClick={() => map.current?.zoomIn({ duration: 0 })}>
           {copy.zoomIn}
         </button>
@@ -271,16 +371,75 @@ export function BusinessSceneMap({
           disabled={!selectedId || !anchors.has(selectedId)}
           onClick={() => {
             const a = anchors.get(selectedId!);
-            if (a)
+            if (!a) return;
+            pickObject(selectedId);
+            const extent = businessMapBounds({
+              type: 'FeatureCollection',
+              features: [a.feature],
+            });
+            if (
+              extent &&
+              (extent[0] !== extent[2] || extent[1] !== extent[3])
+            ) {
+              map.current?.fitBounds(
+                [
+                  [extent[0], extent[1]],
+                  [extent[2], extent[3]],
+                ],
+                {
+                  padding: {
+                    left: 35,
+                    right: Math.round(width * 0.45),
+                    top: 60,
+                    bottom: 60,
+                  },
+                  maxZoom: 11,
+                  duration: 0,
+                },
+              );
+            } else {
               map.current?.jumpTo({
                 center: a.labelPoint,
                 zoom: Math.max(map.current.getZoom(), 10),
               });
+            }
           }}
         >
           {copy.locate}
         </button>
+        {referenceBounds && (
+          <button
+            onClick={() =>
+              map.current?.fitBounds(
+                [
+                  [referenceBounds[0], referenceBounds[1]],
+                  [referenceBounds[2], referenceBounds[3]],
+                ],
+                {
+                  padding: {
+                    left: 35,
+                    right: Math.round(width * 0.45),
+                    top: 60,
+                    bottom: 60,
+                  },
+                  maxZoom: 11,
+                  duration: 0,
+                },
+              )
+            }
+          >
+            {copy.relatedReference.replace(
+              '{count}',
+              String(referenceGeometry.features.length),
+            )}
+          </button>
+        )}
       </div>
+      {referenceBounds && (
+        <ContextHelp label={copy.spatialHelp}>
+          {copy.relatedReferenceHint}
+        </ContextHelp>
+      )}
       {failed ? (
         <p role="alert">
           {copy.mapFailed}{' '}
@@ -323,6 +482,41 @@ export function BusinessSceneMap({
             sync();
           }}
           onMoveEnd={saveCamera}
+          interactiveLayerIds={[
+            'business-scene-areas',
+            'business-scene-outlines',
+            'business-scene-points',
+          ]}
+          onClick={(event) => {
+            // Screen-space tolerance improves thin-line selection only. It
+            // never buffers source geometry or derives geographic relations.
+            const nearby =
+              collection && map.current && event.point
+                ? map.current.queryRenderedFeatures(
+                    [
+                      [event.point.x - 6, event.point.y - 6],
+                      [event.point.x + 6, event.point.y + 6],
+                    ],
+                    {
+                      layers: [
+                        'business-scene-outlines',
+                        'business-scene-points',
+                      ],
+                      filter: [
+                        'in',
+                        ['geometry-type'],
+                        ['literal', ['LineString', 'Point']],
+                      ],
+                    },
+                  )
+                : [];
+            const ids = spatialHitNodes(anchors, [
+              ...(event.features ?? []),
+              ...nearby,
+            ]);
+            const active = ids.length === 1 ? ids[0] : null;
+            pickObject(active, ids);
+          }}
         >
           {collection && palette.accent ? (
             <Source
@@ -361,29 +555,21 @@ export function BusinessSceneMap({
             aria-label={copy.forms.space}
           >
             <defs>
-              <marker
-                id={marker}
-                viewBox="0 0 8 8"
-                refX="8"
-                refY="4"
-                markerWidth="4"
-                markerHeight="4"
-                orient="auto"
-              >
-                <path d="M0 0 L8 4 L0 8" fill="var(--accent)" />
-              </marker>
+              {[...new Set(Object.values(edgeFamilies))].map((family) => (
+                <marker
+                  key={family}
+                  id={`${marker}-${family}`}
+                  viewBox="0 0 8 8"
+                  refX="8"
+                  refY="4"
+                  markerWidth="4"
+                  markerHeight="4"
+                  orient="auto"
+                >
+                  <path d="M0 0 L8 4 L0 8" fill={familyColor(family)} />
+                </marker>
+              ))}
             </defs>
-            <rect
-              x={width * 0.57}
-              y={0}
-              width={width * 0.43}
-              height={650}
-              fill="var(--surface)"
-              opacity={0.96}
-            />
-            <text x={width * 0.6} y={28} className={styles.groupLabel}>
-              {copy.unlocated}
-            </text>
             {[...anchors].map(([id, a]) => {
               const origin = map.current?.project(a.labelPoint),
                 position = positions.get(id);
@@ -400,51 +586,108 @@ export function BusinessSceneMap({
               ) : null;
             })}
             {scene.edges.map((e) => {
+              if (!allEdges && !focus.edges.has(e.id)) return null;
               const a = positions.get(e.from),
                 b = positions.get(e.to);
               if (!a || !b) return null;
               const active = focus.edges.has(e.id);
+              const family = edgeFamilies[e.row.candidate.predicate];
+              const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+              const inset = Math.min(
+                e.to === selectedId ? 11 : anchors.has(e.to) ? 8 : 4,
+                length / 3,
+              );
+              const end = length
+                ? [
+                    b[0] - ((b[0] - a[0]) * inset) / length,
+                    b[1] - ((b[1] - a[1]) * inset) / length,
+                  ]
+                : b;
               return (
-                <line
+                <g
                   key={e.id}
                   data-edge-id={e.id}
+                  data-family={family}
                   data-highlighted={active}
-                  x1={a[0]}
-                  y1={a[1]}
-                  x2={b[0]}
-                  y2={b[1]}
-                  stroke={active ? 'var(--warning-bright)' : 'var(--accent)'}
-                  strokeWidth={active ? 2.5 : 1}
-                  opacity={hasFocus ? (active ? 1 : 0.12) : 0.3}
-                  markerEnd={`url(#${marker})`}
-                  onClick={() => onEdge(e.id)}
-                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                />
+                  opacity={hasFocus ? (active ? 1 : 0.08) : 0.24}
+                >
+                  {active ? (
+                    <line
+                      x1={a[0]}
+                      y1={a[1]}
+                      x2={b[0]}
+                      y2={b[1]}
+                      stroke="var(--warning-bright)"
+                      strokeWidth={5}
+                      opacity={0.55}
+                    />
+                  ) : null}
+                  <line
+                    data-relation-line
+                    x1={a[0]}
+                    y1={a[1]}
+                    x2={end[0]}
+                    y2={end[1]}
+                    stroke={familyColor(family)}
+                    strokeWidth={1.2}
+                    strokeDasharray={
+                      e.row.status === 'PENDING_REVIEW' ? '5 3' : undefined
+                    }
+                    markerEnd={
+                      e.row.candidate.predicate === 'IDENTITY_MATCH'
+                        ? undefined
+                        : `url(#${marker}-${family})`
+                    }
+                  />
+                  <line
+                    x1={a[0]}
+                    y1={a[1]}
+                    x2={b[0]}
+                    y2={b[1]}
+                    stroke="transparent"
+                    strokeWidth={9}
+                    onClick={() => onEdge(e.id)}
+                    style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  >
+                    <title>
+                      {e.row.candidate.subject.label} →{' '}
+                      {dictionary.predicates[e.row.candidate.predicate]} →{' '}
+                      {e.row.candidate.object.label}
+                    </title>
+                  </line>
+                </g>
               );
             })}
             {scene.nodes.map((n) => {
               const p = positions.get(n.id);
-              if (!p) return null;
+              if (!p || !anchors.has(n.id)) return null;
               const anchored = anchors.has(n.id),
                 active = focus.nodes.has(n.id);
               return (
                 <g
                   key={n.id}
                   data-node-id={n.id}
+                  data-family={nodeFamilies[n.kind]}
                   data-anchored={anchored}
                   onClick={() => onSelect(n.id)}
                   opacity={hasFocus ? (active ? 1 : 0.25) : 1}
                   style={{ pointerEvents: 'all', cursor: 'pointer' }}
                 >
-                  <circle
-                    cx={p[0]}
-                    cy={p[1]}
-                    r={anchored ? 7 : 3}
-                    fill={
-                      n.id === selectedId
-                        ? 'var(--warning-bright)'
-                        : 'var(--accent)'
-                    }
+                  {n.id === selectedId ? (
+                    <circle
+                      cx={p[0]}
+                      cy={p[1]}
+                      r={10}
+                      fill="none"
+                      stroke="var(--warning-bright)"
+                      strokeWidth={2}
+                    />
+                  ) : null}
+                  <BusinessSceneGlyph
+                    family={nodeFamilies[n.kind]}
+                    x={p[0]}
+                    y={p[1]}
+                    size={n.id === selectedId ? 7 : 6}
                   />
                   <title>
                     {n.label} · {anchored ? copy.located : copy.unlocated}
@@ -462,37 +705,224 @@ export function BusinessSceneMap({
                   ) : null}
                 </g>
               );
-            })}{' '}
-            {[
-              ...new Set(
-                scene.nodes
-                  .filter((n) => !anchors.has(n.id))
-                  .map((n) => n.group),
-              ),
-            ]
-              .sort()
-              .map((key, i) => {
-                const title =
-                  (copy.groups as Record<string, string>)[key] ??
-                  (dictionary.kinds as Record<string, string>)[key] ??
-                  copy.unclassified;
-                return (
-                  <text
-                    key={key}
-                    x={width * 0.6 + (i % 2) * width * 0.2}
-                    y={42 + Math.floor(i / 2) * 61}
-                    className={styles.spatialGroupLabel}
-                  >
-                    {title}
-                  </text>
-                );
-              })}
+            })}
           </svg>
         ) : null}
+        {pickedIds.length > 0 ? (
+          <section
+            className={styles.unlocatedBrowser}
+            aria-label={copy.mapSources}
+          >
+            <strong>{copy.mapSources}</strong>
+            <small>
+              {copy.mapPickCount.replace('{count}', String(pickedIds.length))}
+            </small>
+            <div className={styles.mapRelatedRows}>
+              {pickedIds.map((id) => {
+                const node = scene.nodes.find((n) => n.id === id)!;
+                return (
+                  <button
+                    key={id}
+                    aria-pressed={pickedId === id}
+                    onClick={() => {
+                      pickObject(id, pickedIds);
+                    }}
+                  >
+                    {node.label} ·{' '}
+                    {node.sourceTitle ?? dictionary.kinds[node.kind]}
+                  </button>
+                );
+              })}
+            </div>
+            {pickedId && (
+              <>
+                <ContextHelp label={copy.mapSources}>
+                  {copy.mapRelationsScope}
+                </ContextHelp>
+                {mapRelations.map(([kind, rows]) => (
+                  <details key={kind} open>
+                    <summary>
+                      {kind} · {rows.length}
+                    </summary>
+                    <div className={styles.mapRelatedRows}>
+                      {rows.map(({ node, edge, via }) => (
+                        <button key={edge.id} onClick={() => onEdge(edge.id)}>
+                          <span>
+                            {node.label} ·{' '}
+                            {node.sourceTitle ?? dictionary.kinds[node.kind]}
+                          </span>
+                          <small>
+                            {
+                              dictionary.predicates[
+                                edge.row.candidate.predicate
+                              ]
+                            }{' '}
+                            · {dictionary.statuses[edge.row.status]}
+                          </small>
+                          {via && (
+                            <small>
+                              {copy.mapRelatedVia.replace('{name}', via.label)}
+                            </small>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+                {!mapRelations.length && (
+                  <p role="status">{copy.mapSourcesEmpty}</p>
+                )}
+              </>
+            )}
+            <button onClick={() => pickObject(null)}>
+              {copy.mapSourcesBack}
+            </button>
+          </section>
+        ) : (
+          collection && (
+            <section
+              className={styles.unlocatedBrowser}
+              aria-label={copy.unlocated}
+            >
+              <strong>{copy.unlocated}</strong>
+              <label>
+                <span>{copy.unlocatedSearch}</span>
+                <input
+                  type="search"
+                  value={listSearch}
+                  onChange={(e) => {
+                    setListSearch(e.target.value);
+                    setListPage(0);
+                  }}
+                />
+              </label>
+              <select
+                aria-label={copy.unlocatedKind}
+                value={listKind}
+                onChange={(e) => {
+                  setListKind(e.target.value);
+                  setListPage(0);
+                }}
+              >
+                <option value="">{copy.unlocatedAll}</option>
+                {[...new Set(unlocatedNodes.map((n) => n.kind))]
+                  .sort()
+                  .map((kind) => (
+                    <option key={kind} value={kind}>
+                      {dictionary.kinds[kind]}
+                    </option>
+                  ))}
+              </select>
+              <div className={styles.unlocatedRows}>
+                {visibleNodes.map((n) => (
+                  <button
+                    key={n.id}
+                    data-node-id={n.id}
+                    data-anchored="false"
+                    data-family={nodeFamilies[n.kind]}
+                    aria-pressed={selectedId === n.id}
+                    onClick={() => onSelect(n.id)}
+                    title={`${n.label} · ${n.sourceTitle ?? dictionary.kinds[n.kind]}`}
+                  >
+                    <span>
+                      <svg width="16" height="16" aria-hidden="true">
+                        <BusinessSceneGlyph
+                          family={nodeFamilies[n.kind]}
+                          x={8}
+                          y={8}
+                          size={5}
+                        />
+                      </svg>{' '}
+                      {n.label}
+                    </span>
+                    <small>
+                      {dictionary.kinds[n.kind]} ·{' '}
+                      {n.sourceTitle ?? copy.unclassified}
+                    </small>
+                  </button>
+                ))}
+                {!matchingNodes.length && (
+                  <p role="status">{copy.unlocatedEmpty}</p>
+                )}
+              </div>
+              <div className={styles.unlocatedPaging}>
+                <button
+                  disabled={pageIndex === 0}
+                  onClick={() => setListPage(pageIndex - 1)}
+                >
+                  {copy.unlocatedPrevious}
+                </button>
+                <button
+                  disabled={(pageIndex + 1) * pageSize >= matchingNodes.length}
+                  onClick={() => setListPage(pageIndex + 1)}
+                >
+                  {copy.unlocatedNext}
+                </button>
+              </div>
+              <small aria-live="polite">
+                {copy.unlocatedPage
+                  .replace(
+                    '{start}',
+                    String(matchingNodes.length ? pageIndex * pageSize + 1 : 0),
+                  )
+                  .replace(
+                    '{end}',
+                    String(
+                      Math.min(
+                        (pageIndex + 1) * pageSize,
+                        matchingNodes.length,
+                      ),
+                    ),
+                  )
+                  .replace('{total}', String(matchingNodes.length))}
+              </small>
+              {(listSearch || listKind) && (
+                <button
+                  onClick={() => {
+                    setListSearch('');
+                    setListKind('');
+                    setListPage(0);
+                  }}
+                >
+                  {copy.unlocatedClear}
+                </button>
+              )}
+            </section>
+          )
+        )}
       </div>
-      <p className={styles.hint}>
-        {copy.located} · {anchors.size} / {scene.nodes.length} · {copy.mapHint}
-      </p>
+      <SpatialAttribution collection={anchoredGeometry} />
+      {collection ? (
+        <div className={styles.hint} data-testid="spatial-coverage">
+          <p>
+            {copy.located} · {coverage.boundObjects} / {scene.nodes.length}
+          </p>
+          <p>
+            {copy.geometryCounts
+              .replace('{point}', String(coverage.geometries.point))
+              .replace('{line}', String(coverage.geometries.line))
+              .replace('{area}', String(coverage.geometries.area))
+              .replace('{mixed}', String(coverage.geometries.mixed))}
+          </p>
+          <p>
+            {copy.namedUnboundCount.replace(
+              '{count}',
+              String(coverage.namedUnboundObjects),
+            )}
+          </p>
+        </div>
+      ) : null}
+      <label className={styles.mapEdgeToggle}>
+        <input
+          type="checkbox"
+          checked={allEdges}
+          onChange={(e) => setAllEdges(e.target.checked)}
+        />
+        {copy.allMapEdges}
+      </label>
+      <ContextHelp label={copy.spatialHelp}>
+        {copy.unlocatedHelp} {copy.coverageBasis} {copy.mapHint}
+      </ContextHelp>
       {collection && !anchors.size ? <p>{copy.mapEmpty}</p> : null}
     </div>
   );

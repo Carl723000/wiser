@@ -15,8 +15,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: 5e30f7f2f342f16c958938d6778cbcc8960bdffb
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 08e8c2045f1d56dbdf1aadc1ec360213027008ad
 ---
 
 ## What this guide governs
@@ -242,3 +242,61 @@ Business problem graphs keep the full authorized relation set across five readin
 The business scene uses deterministic category positions and SVG projection; ordinary provenance and optional six-assertion reading retain G6. Layer titles occupy a separate caption gutter with connector lines. Continuous pointer/pinch/keyboard zoom changes the camera without recomputing positions or dropping edges. Labels appear progressively; selected nodes/edges and their evidence remain inspectable in a keyboard-accessible list. Hover previews direct connections; selection pins evidence and dims the full-network background. Crossing-edge hit testing offers the actual candidate assertions. Evidence includes original polarity, exact source version, table/paragraph locator, limitations, review state and preceding-assertion links.
 
 Spatial presentation uses the existing complete, bounded HTTP map query and exact data-item/version/record bindings. It keeps original point/line/area geometry, converts display coordinates through the existing map adapter, and retains unlocated knowledge separately with its original relations. Dashed connectors place document labels around a geometry's display center; neither labels nor their centers become new point features or business relations. Geometry lookup rejects changed scope, incomplete pagination and denied access. Map movement does not change the business question. Location precision and knowledge review remain separate. No source acquisition, parser rerun, migration or business-data write is performed by scene controls.
+
+### Continuous exploration reading
+
+Resource search matches the registered resource name or source organization, not document bodies or natural-language questions. Examples reuse current authorized names and start an explicit new resource scope. Match explanations refer to applied conditions; a displayed provider alias need not be the registered organization. Chinese composition must finish before submission, and empty results offer a fresh authorized resource query.
+
+Expanding the workspace keeps its existing graph/map children mounted. Escape exits expansion before graph-local Escape clears selection; focus returns to the expansion control and background interaction is disabled only while expanded. Month/year controls prepare inclusive calendar bounds and require explicit application to all views. They preserve the chosen time role and unknown-period policy and never resample annual observations.
+
+Selecting a relation explains its controlled predicate before displaying context and original evidence. Mention, attribution, citation, candidate identity and candidate receiving-water links must retain their distinct meaning and review state.
+
+Business graph panning retains rendered nodes, edges and keyboard lists and translates the viewport. Zoom, focus and grouping still update the original members. Overlap hit testing compensates for the translated camera; performance must be measured on the same real case and browser rather than improved by dropping members.
+
+The Data homepage lists authorized saved topics with a title filter scoped only to that bounded list (up to 100). It does not claim a complete project panorama or source-content search. Opening reuses saved-view reauthorization; refresh failure, revoked entries and late responses cannot retain a previous topic list. Identical titles include visibility and creation time, and clearing the filter restores input focus. This entry changes neither query contracts nor existing saved configurations.
+
+Calendar stepping remembers an explicit year/month choice in bounded URL presentation state. Applying business dates carries only that choice into the new query; ordinary unrelated queries do not inherit it. Tabs and refresh retain it within the same query. Changing the step never changes the applied bounds until Apply and does not change sampling frequency. Invalid or repeated unit parameters fall back to month.
+
+Business map views retain a visible, linked OSM/ODbL notice when displayed geometry carries that exact source declaration. Attribution is outside the zooming graph and independent of selection. This is a reviewed provider mapping, not license inference; other providers require their own declaration mapping before display.
+
+Saved business topics restore presentation controls with their authorized query. Explicit URL overrides affect reading only. Full-screen remains a user action and is not restored automatically.
+
+Spatial coverage separates source-scoped objects with an exact record binding from unique point, line, area and mixed geometries. Multiple graph objects bound to the same record count once as geometry; multipart geometry remains one feature. Named place/reach/basin/station objects without a binding are counted separately and retain their identity. Counts appear only after the complete authorized map result loads, never as zero while loading or denied. These counts do not measure extraction recall, distinct real-world locations or professional validation.
+
+Panning uses a CSS transform on the retained SVG group, with an equivalent SVG attribute fallback; it does not recreate or remove members. Wheel motion and active dragging suspend incidental hover previews as geometry passes under the pointer. The pinned selection and its evidence remain intact; deliberate hover resumes after the wheel becomes idle. Verify visual hit targets after translation in both planar and layered views. These local changes do not imply that zooming or large-graph performance has met its target; record each interaction separately.
+
+Selecting an object or relation flushes the pending wheel/pan camera into URL state before selection. Immediate selection must not discard the latest viewport or allow a delayed camera write to overwrite the selection.
+
+Business graph pagination checks cancellation after both the response and decoded body arrive. A replaced query must not invalidate the current view or dispatch another page. An active query denied on a later page still invalidates its result and never exposes a partial graph.
+
+Spatial reading offers a separate related-reference-extent action. It follows only loaded, authorized source-reference mentions and spatial identity-candidate links, at most two edges, and fits their existing geometries without assigning coordinates to the selected source. Rejected/correction-required links, observations, same-name guesses and unavailable geometries do not provide this action. Multiple linked areas remain visible together; a reference extent is not a precise source location or historical boundary. The action preserves selection, query, review status and geometry counts.
+
+The official basemap releases its SDK and observers before navigation detaches its sized container. Source-document round trips must restore the selected relation and camera without map rendering errors; teardown does not alter geometry or authorization.
+
+Evidence-path reading retains the explicitly chosen assertion IDs and versions until a new search. A changed or unavailable path clears its graph and excerpts and asks the reader to search again; it never substitutes an alternative or newly shorter route silently. Missing endpoints disable search. Evidence is read only from the current authorized relation rows, not retained in path state.
+
+Project business graphs use the server-owned assertion membership count as their paging bound, while legacy inline-pin queries retain their existing bound. A filtered result may contain fewer relations than the fixed membership; inconsistent totals, duplicate relations and incomplete pages never produce a partial panorama. Applying a business period refines the original query ID, so later sources or assertions do not silently enter the graph, records or map.
+
+Invalidating an exploration query also cancels any in-flight replacement and clears its busy state. A late successful response cannot restore data after expiry or authorization failure; a new explicit query is required.
+
+Readiness statistics refine the active query membership just like business-period controls. A continuation page must contain at least one relation; empty pages with a next cursor fail visibly without following another cursor or presenting a partial graph.
+
+Mixed review exploration labels its query as “Approved and pending”; individual relationships retain their own authority badges and pending warning. Mixed scope is not an approval action. Record-to-graph navigation preserves the same authorized query instead of switching to an approved-only list.
+
+The normal Data Foundation homepage reuses the exploration workspace rather than a fixed demonstration view. After a successful query, its URL records the authorized query ID and selected graph view through the existing exploration route; refresh and return reopen that scope. Explicit resource searches, fixed-version links and saved topics keep their own scope. A failed project request remains a failure; it never opens a narrower topic as a substitute.
+
+Unlocated spatial objects use a named, source-distinct searchable list with category filters and bounded pages. Paging affects only this reading list; the full query identity set remains available. Spatial lines show the current focus by default, with an explicit option for connections between currently visible objects. Full-network reading remains a separate existing presentation. The graph toolbar reuses workspace expansion without unmounting the map. Optional explanatory text uses pointer- and keyboard/touch-operable question-mark help; permission, partial-scope and review states remain visible.
+
+Clicking a spatial point, line or area resolves all source-version-record bindings in the current authorized query. Overlapping objects require an explicit choice; repeated layer hits do not merge identities. Related sources are grouped by category and open original relation evidence. One explicitly qualified spatial reference-identity hop may reveal another source area and adjacent evidence, labeled as indirect reference. Selection preserves camera and query conditions; names never imply location bindings.
+
+A chosen map object is retained as a bounded source-qualified navigation identity in the URL, separately from the selected evidence edge. Restoration reopens its related-source panel only after the current authorized map result supplies an exact geometry binding; unavailable targets never fall back to a same-name object. Returning to the unlocated list clears this navigation choice. The URL contains no geometry or source text and grants no access.
+
+Thin lines and points allow a six-screen-pixel click tolerance within the already rendered, authorized geometry layers. Exact area hits remain unchanged; overlapping candidates are all offered, and unknown bindings are discarded. This interaction tolerance does not buffer geographic extents, relocate evidence, create relations or move the camera.
+
+The business record directory uses the same server membership bound as the graph, including queries above the legacy 2,000-assertion limit. It publishes record links only after complete pagination, rejecting oversized totals, empty continuation pages, inconsistent counts and duplicate assertions. Replaced queries stop after either response or body completion; they cannot dispatch another page or invalidate the current query. Source/version/record bindings remain exact.
+
+Exploration keeps repeated introductions, graph-scope explanations, style semantics and map-reference guidance in the existing circular question-mark help. Hover opens it; click/keyboard activation pins it and Escape dismisses it. Query counts, review/permission/failure states and source-specific evidence remain visible at their relevant surfaces. Optional help is not a substitute for a current warning, and the original explanation remains available in both locales.
+
+In an expanded workspace, Escape on an open question-mark help closes that help first; a subsequent Escape retains the normal workspace exit behavior without clearing graph selection.
+
+Explicitly mapped external-source details offer a year-range station-directory query, without fetching on entry. Registration, loading, empty, unconfigured, denied, expired and unavailable states remain distinct. Each bounded page replaces the previous one; failures, cancellation, source/range changes and page hiding clear retained rows. Only permitted station identifiers, years and administrative labels appear; results are neither ingested nor mapped automatically. Optional guidance uses the shared question-mark help component with keyboard/touch access. This panel does not grant provider access or establish live-provider acceptance.

@@ -1,5 +1,6 @@
 import {
   loadBusinessRelations,
+  storedBusinessMembership,
   bindBusinessRecords,
 } from './business-query-runtime.js';
 import { spatialMembers } from './exploration-spatial.js';
@@ -69,6 +70,7 @@ const StoredSnapshot = z.object({
   query_id: z.string().uuid(),
   spec: QuerySpecSchema,
   version_refs: z.array(StoredRef).max(10000),
+  business_pins: z.unknown().optional(),
   created_at: z.coerce.date(),
   expires_at: z.coerce.date(),
 });
@@ -143,6 +145,19 @@ export class PostgresExplorationExecutor {
       if (selected.rows[0] === undefined)
         throw new DataCapabilityHandlerError('NOT_FOUND');
       const snapshot = StoredSnapshot.parse(selected.rows[0]);
+      const membership = storedBusinessMembership(
+        snapshot.spec,
+        snapshot.business_pins,
+      );
+      const membershipResult = membership
+        ? {
+            membership: {
+              complete: true,
+              versionCount: snapshot.version_refs.length,
+              assertionCount: membership.pins.length,
+            },
+          }
+        : {};
       const pinned = JSON.stringify(snapshot.version_refs);
       const count = await client.query(
         `${AUTHORIZED} select count(*)::int as total from authorized`,
@@ -160,6 +175,7 @@ export class PostgresExplorationExecutor {
             client,
             snapshot.version_refs,
             snapshot.spec.businessQuery,
+            membership,
           )
         : undefined;
       const businessPins =
@@ -182,6 +198,7 @@ export class PostgresExplorationExecutor {
         const result = ExplorationResultSchema.parse({
           queryId,
           spec: snapshot.spec,
+          ...membershipResult,
           createdAt: snapshot.created_at.toISOString(),
           expiresAt: snapshot.expires_at.toISOString(),
           ...(await (input.view === 'aggregate'
@@ -279,6 +296,7 @@ export class PostgresExplorationExecutor {
       const result = ExplorationResultSchema.parse({
         queryId,
         spec: snapshot.spec,
+        ...membershipResult,
         createdAt: snapshot.created_at.toISOString(),
         expiresAt: snapshot.expires_at.toISOString(),
         view: 'resources',
@@ -333,6 +351,21 @@ export class PostgresExplorationExecutor {
       );
       if (authorized.rows[0]?.['total'] !== base.version_refs.length)
         throw new DataCapabilityHandlerError('CONFLICT');
+    }
+    let baseRelations:
+      Awaited<ReturnType<typeof loadBusinessRelations>> | undefined;
+    if (spec.scope === 'project' && base) {
+      if (
+        !base.spec.businessQuery ||
+        base.spec.businessQuery.status !== spec.businessQuery?.status
+      )
+        throw new DataCapabilityHandlerError('VALIDATION_FAILED');
+      baseRelations = await loadBusinessRelations(
+        client,
+        base.version_refs,
+        base.spec.businessQuery,
+        storedBusinessMembership(base.spec, base.business_pins),
+      );
     }
     const scope = [
       context.authorization.tenantId,
@@ -411,11 +444,17 @@ export class PostgresExplorationExecutor {
       if (requested.some((field) => !fields.has(field)))
         throw new DataCapabilityHandlerError('VALIDATION_FAILED');
     }
+    let serverPins: [string, number][] | null = null;
     if (spec.businessQuery) {
+      const selectedVersions = new Set(refs.map((ref) => ref.versionId));
+      const inheritedPins: [string, number][] | undefined = baseRelations?.all
+        .filter((row) => selectedVersions.has(row.versionId))
+        .map((row) => [row.assertionId, row.version]);
       const relations = await loadBusinessRelations(
         client,
         refs,
         spec.businessQuery,
+        spec.scope === 'project' ? { pins: inheritedPins } : undefined,
       );
       if (
         spec.businessQuery.tableSelections?.some(
@@ -439,22 +478,25 @@ export class PostgresExplorationExecutor {
         relations.items,
         relations.all,
       );
-      spec = {
-        ...spec,
-        businessQuery: {
-          ...spec.businessQuery,
-          assertionPins: relations.all.map((row) => [
-            row.assertionId,
-            row.version,
-          ]),
-        },
-      };
+      if (spec.scope === 'project') {
+        serverPins = relations.all.map((row) => [row.assertionId, row.version]);
+      } else
+        spec = {
+          ...spec,
+          businessQuery: {
+            ...spec.businessQuery,
+            assertionPins: relations.all.map((row) => [
+              row.assertionId,
+              row.version,
+            ]),
+          },
+        };
     }
     if (Buffer.byteLength(JSON.stringify(spec), 'utf8') > 120000)
       throw new DataCapabilityHandlerError('VALIDATION_FAILED');
     const id = randomUUID();
     await client.query(
-      `insert into service.exploration_snapshot(query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,spec,version_refs,created_at,expires_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,
+      `insert into service.exploration_snapshot(query_id,tenant_id,project_id,actor_id,purpose,security_level,policy_version,spec,version_refs,business_pins,created_at,expires_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,statement_timestamp(),statement_timestamp()+interval '30 minutes')`,
       [
         id,
         ...scope,
@@ -463,6 +505,7 @@ export class PostgresExplorationExecutor {
         context.authorization.authzVersion,
         JSON.stringify(spec),
         JSON.stringify(refs),
+        serverPins === null ? null : JSON.stringify(serverPins),
       ],
     );
     return id;

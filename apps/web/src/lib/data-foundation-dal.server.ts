@@ -2,6 +2,9 @@ import 'server-only';
 
 import { connection } from 'next/server';
 import {
+  ExternalMetadataInputSchema,
+  ExternalMetadataOutputSchema,
+  type ExternalMetadataOutput,
   DATA_CAPABILITY_REGISTRY,
   type DataCapabilityId,
   CreateExplorationViewInputSchema,
@@ -45,6 +48,10 @@ import {
   type SearchPageDto,
   type StacFeatureCollectionDto,
 } from './data-foundation';
+import {
+  externalMetadataFailureCode,
+  type ExternalMetadataFailureCode,
+} from './external-metadata-state';
 import { createWiserServerSupabaseClient } from './supabase/server';
 import {
   verifiedSessionAccessToken,
@@ -92,6 +99,7 @@ export class DataFoundationApiError extends Error {
   constructor(
     readonly kind: DataFoundationApiErrorKind,
     readonly status: number,
+    readonly code?: ExternalMetadataFailureCode,
   ) {
     super(`Data Foundation request failed: ${kind}.`);
     this.name = 'DataFoundationApiError';
@@ -99,6 +107,10 @@ export class DataFoundationApiError extends Error {
 }
 
 export interface DataFoundationDal {
+  externalMetadata(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<ExternalMetadataOutput>;
   relations(
     action: 'import' | 'get' | 'list' | 'review',
     input: unknown,
@@ -253,21 +265,33 @@ function classifyStatus(status: number): DataFoundationApiError {
   return new DataFoundationApiError('unavailable', status);
 }
 
-async function boundedText(response: Response, limit: number): Promise<string> {
+async function boundedText(
+  response: Response,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  signal?.throwIfAborted();
   const declared = response.headers.get('content-length');
   if (declared !== null) {
     const parsed = Number(declared);
     if (Number.isFinite(parsed) && parsed > limit) {
+      void response.body?.cancel().catch(() => {});
       throw new DataFoundationApiError('contract', 502);
     }
   }
   if (response.body === null) return '';
   const reader = response.body.getReader();
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener('abort', abort, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     while (true) {
+      signal?.throwIfAborted();
       const { done, value } = await reader.read();
+      signal?.throwIfAborted();
       if (done) break;
       total += value.byteLength;
       if (total > limit) {
@@ -277,6 +301,7 @@ async function boundedText(response: Response, limit: number): Promise<string> {
       chunks.push(value);
     }
   } finally {
+    signal?.removeEventListener('abort', abort);
     reader.releaseLock();
   }
   const bytes = new Uint8Array(total);
@@ -400,6 +425,128 @@ export function createDataFoundationDal(
   }
 
   const dal: DataFoundationDal = {
+    async externalMetadata(input, callerSignal) {
+      const checked = ExternalMetadataInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const timeout = new AbortController();
+      const timer = setTimeout(
+        () => timeout.abort(),
+        options.config.requestTimeoutMs,
+      );
+      const signal = AbortSignal.any([
+        timeout.signal,
+        ...(callerSignal ? [callerSignal] : []),
+      ]);
+      const abortError = () =>
+        callerSignal?.aborted
+          ? new DataFoundationApiError('unavailable', 499, 'REQUEST_CANCELLED')
+          : new DataFoundationApiError(
+              'unavailable',
+              504,
+              'EXTERNAL_SOURCE_TIMEOUT',
+            );
+      let onAbort: (() => void) | undefined;
+      try {
+        if (signal.aborted) throw abortError();
+        const aborted = new Promise<never>((_, reject) => {
+          onAbort = () => reject(abortError());
+          signal.addEventListener('abort', onAbort, { once: true });
+        });
+        const work = async () => {
+          const accessToken = await token();
+          signal.throwIfAborted();
+          const { sourceId, ...body } = checked.data;
+          const path = DATA_CAPABILITY_REGISTRY[
+            'data.external.metadata.read'
+          ].restMapping.path.replace(':sourceId', encodeURIComponent(sourceId));
+          const response = await request(`${options.config.apiOrigin}${path}`, {
+            method: 'POST',
+            cache: 'no-store',
+            redirect: 'error',
+            signal,
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+              'X-WISER-Tenant-ID': options.config.tenantId,
+              'X-WISER-Project-ID': options.config.projectId,
+              'X-WISER-Purpose': options.config.purpose,
+            },
+            body: JSON.stringify(body),
+          });
+          if (signal.aborted) {
+            void response.body?.cancel().catch(() => {});
+            throw abortError();
+          }
+          if (
+            !(response.headers.get('content-type') ?? '').includes(
+              'application/json',
+            )
+          ) {
+            void response.body?.cancel().catch(() => {});
+            throw response.ok
+              ? new DataFoundationApiError('contract', 502)
+              : classifyStatus(response.status);
+          }
+          const value = json(
+            await boundedText(
+              response,
+              options.config.responseLimitBytes,
+              signal,
+            ),
+          );
+          signal.throwIfAborted();
+          if (!response.ok) {
+            const error = classifyStatus(response.status);
+            const code = externalMetadataFailureCode(
+              value && typeof value === 'object' && 'code' in value
+                ? value.code
+                : undefined,
+              response.status,
+            );
+            throw new DataFoundationApiError(error.kind, error.status, code);
+          }
+          const parsed = ExternalMetadataOutputSchema.safeParse(value);
+          if (!parsed.success)
+            throw new DataFoundationApiError('contract', 502);
+          const page = parsed.data,
+            end = body.offset + page.items.length;
+          const keys = new Set(
+            page.items.map((row) =>
+              JSON.stringify([row.stationCode, row.year]),
+            ),
+          );
+          if (
+            page.sourceId !== sourceId ||
+            page.items.length > body.limit ||
+            keys.size !== page.items.length ||
+            page.total < end ||
+            page.status !== (page.items.length ? 'AVAILABLE' : 'EMPTY') ||
+            (!page.items.length && page.total !== body.offset) ||
+            page.nextOffset !== (end < page.total ? end : undefined) ||
+            page.items.some(
+              (row) => row.year < body.fromYear || row.year > body.toYear,
+            )
+          ) {
+            throw new DataFoundationApiError('contract', 502);
+          }
+          return page;
+        };
+        return await Promise.race([work(), aborted]);
+      } catch (error) {
+        if (signal.aborted) throw abortError();
+        if (error instanceof DataFoundationApiError) throw error;
+        throw new DataFoundationApiError(
+          'unavailable',
+          503,
+          'EXTERNAL_SOURCE_UNAVAILABLE',
+        );
+      } finally {
+        clearTimeout(timer);
+        if (onAbort) signal.removeEventListener('abort', onAbort);
+      }
+    },
     assess: (action, input, idempotencyKey) => {
       const id: DataCapabilityId = `data.assessment.${action}`;
       const definition = DATA_CAPABILITY_REGISTRY[id];
@@ -436,7 +583,7 @@ export function createDataFoundationDal(
       );
     },
 
-    relations: (action, input, idempotencyKey) => {
+    relations: async (action, input, idempotencyKey) => {
       const id: DataCapabilityId = `data.knowledge.relations.${action}`;
       const definition = DATA_CAPABILITY_REGISTRY[id];
       const checked = definition.inputSchema.safeParse(input);
@@ -449,6 +596,23 @@ export function createDataFoundationDal(
       const values = checked.data as Record<string, unknown>;
       let path = definition.restMapping.path;
       const body = { ...values };
+      if (action === 'list' && body['pageMode'] === 'BOUNDED_PROJECT') {
+        // Discover the target capability; never infer support from the web build.
+        // This is request-local metadata, not a cached authorization decision.
+        const registry = await parsed(
+          () => call('/api/data/v1/capabilities'),
+          parseCapabilityRegistry,
+        );
+        const bounded = registry.capabilities.some(
+          (capability) =>
+            capability.id === id && capability.version === '1.7.0',
+        );
+        if (!bounded) {
+          delete body['pageMode'];
+          body['first'] = Math.min(Number(body['first']), 100);
+        }
+      }
+
       if (typeof body['assertionId'] === 'string') {
         path = path.replace(
           ':assertionId',

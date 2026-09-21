@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,11 +8,13 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 import {
   BusinessQuerySchema,
   type RelationAssertion,
 } from '@wiser/data-contracts';
 import { DataExplorerBusiness } from './data-explorer-business';
+import { getDictionary } from '@/lib/i18n';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 const nav = vi.hoisted(() => ({
   search: new URLSearchParams('saved=case'),
@@ -38,14 +41,19 @@ vi.mock('./data-foundation-graph', () => ({
 vi.mock('./business-scene-canvas', () => ({
   BusinessSceneCanvas: ({
     scene,
+    evidence,
   }: {
     scene: { nodes: { id: string; label: string }[] };
+    evidence?: ReactNode;
   }) => (
-    <ul aria-label="test graph">
-      {scene.nodes.map((n) => (
-        <li key={n.id}>{n.label}</li>
-      ))}
-    </ul>
+    <>
+      <ul aria-label="test graph">
+        {scene.nodes.map((n) => (
+          <li key={n.id}>{n.label}</li>
+        ))}
+      </ul>
+      {evidence}
+    </>
   ),
 }));
 const originalHistory = window.history.replaceState.bind(window.history);
@@ -136,6 +144,26 @@ afterEach(() => {
   vi.restoreAllMocks();
   nav.search = new URLSearchParams('saved=case');
   nav.replace.mockReset();
+});
+it('preserves a camera already flushed to history when the search snapshot is still stale', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '政策' });
+  // The scene saves its pending viewport before the parent receives new search params.
+  window.history.replaceState(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?saved=case&businessZoom=1.1052&businessPanX=17.2',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '政策' }));
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get('saved')).toBe('case');
+  expect(params.get('businessKind')).toBe('POLICY');
+  expect(params.get('businessZoom')).toBe('1.1052');
+  expect(params.get('businessPanX')).toBe('17.2');
 });
 it('preserves the saved query while selecting a category and restores selection from URL changes', async () => {
   vi.stubGlobal(
@@ -287,6 +315,11 @@ it('keeps same-source duplicates distinct and labels missing document titles wit
 
 it('keeps expanded observations after a saved view remount and restores overview explicitly', async () => {
   nav.search = new URLSearchParams('saved=case&businessPresentation=reading');
+  originalHistory(
+    null,
+    '',
+    '/zh-CN/data-foundation/explore?saved=case&businessPresentation=reading',
+  );
   vi.stubGlobal(
     'fetch',
     vi
@@ -438,4 +471,424 @@ it('defaults to all relations and retains the complete network while inspecting 
   });
   view.rerender(<DataExplorerBusiness {...props} />);
   expect(nodes()).toHaveLength(3);
+});
+
+it('hides prior-query relationships while the replacement loads and recovers from an earlier failure', async () => {
+  let release!: (response: Response) => void;
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ items: [row], totalCount: 1 }))
+    .mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(new Response('', { status: 503 }))
+    .mockResolvedValueOnce(Response.json({ items: [row], totalCount: 1 }));
+  vi.stubGlobal('fetch', fetcher);
+  const view = render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('button', { name: '政策' });
+  view.rerender(<DataExplorerBusiness {...props} queryId="replacement" />);
+  expect(screen.queryByRole('button', { name: '政策' })).toBeNull();
+  release(Response.json({ items: [], totalCount: 0 }));
+  await screen.findByText(/已加载的关系中没有匹配项/);
+  view.rerender(<DataExplorerBusiness {...props} queryId="failed" />);
+  await screen.findByRole('alert');
+  view.rerender(<DataExplorerBusiness {...props} queryId="recovered" />);
+  await screen.findByRole('button', { name: '政策' });
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('ignores a late permission failure from a cancelled graph query', async () => {
+  let release!: (response: Response) => void;
+  const onInvalidated = vi.fn();
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  const view = render(
+    <DataExplorerBusiness {...props} onInvalidated={onInvalidated} />,
+  );
+  view.rerender(
+    <DataExplorerBusiness
+      {...props}
+      queryId="replacement"
+      onInvalidated={onInvalidated}
+    />,
+  );
+  await screen.findByRole('button', { name: '政策' });
+  await act(async () => {
+    release(new Response(null, { status: 403 }));
+    await Promise.resolve();
+  });
+  expect(onInvalidated).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: '政策' })).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it.each(['response', 'body'])(
+  'stops continuation pages when cancelled during the %s wait',
+  async (phase) => {
+    let release!: () => void;
+    const page = { items: [row], totalCount: 2, nextCursor: row.assertionId };
+    const fetcher = vi.fn<typeof fetch>().mockImplementationOnce(() => {
+      if (phase === 'response')
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(Response.json(page));
+        });
+      const response = Response.json(page);
+      vi.spyOn(response, 'json').mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(page);
+          }),
+      );
+      return Promise.resolve(response);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const view = render(<DataExplorerBusiness {...props} />);
+    await act(async () => {});
+    view.unmount();
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  },
+);
+
+it('invalidates an active query denied on a later page and never displays a partial graph', async () => {
+  const onInvalidated = vi.fn();
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [row],
+        totalCount: 2,
+        nextCursor: row.assertionId,
+      }),
+    )
+    .mockResolvedValueOnce(new Response(null, { status: 403 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataExplorerBusiness {...props} onInvalidated={onInvalidated} />);
+  await screen.findByRole('alert');
+  expect(onInvalidated).toHaveBeenCalledWith('query', 403);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('button', { name: '政策' })).toBeNull();
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
+
+it('steps a calendar period as a draft and only applies the shared condition explicitly', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [], totalCount: 0 })),
+  );
+  const onApply = vi.fn();
+  const dated = {
+    ...scope,
+    filters: {
+      ...scope.filters,
+      timeRole: 'OBSERVATION_TIME' as const,
+      from: '2024-01-01',
+      to: '2024-01-31',
+    },
+  };
+  render(<DataExplorerBusiness {...props} scope={dated} onApply={onApply} />);
+  await screen.findByText(/已加载的关系中没有匹配项/);
+  fireEvent.click(screen.getByRole('button', { name: '下一时段' }));
+  expect(screen.getByLabelText<HTMLInputElement>('筛选开始日期').value).toBe(
+    '2024-02-01',
+  );
+  expect(screen.getByLabelText<HTMLInputElement>('筛选结束日期').value).toBe(
+    '2024-02-29',
+  );
+  expect(onApply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '应用到所有视图' }));
+  expect(onApply).toHaveBeenCalledWith(
+    {
+      ...dated,
+      filters: { ...dated.filters, from: '2024-02-01', to: '2024-02-29' },
+    },
+    'month',
+  );
+});
+
+it('restores the newly applied query dates instead of reusing a previous draft', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(Response.json({ items: [], totalCount: 0 })),
+      ),
+  );
+  const view = render(<DataExplorerBusiness {...props} />);
+  await screen.findByText(/已加载的关系中没有匹配项/);
+  fireEvent.change(screen.getByLabelText('筛选开始日期'), {
+    target: { value: '2024-06-01' },
+  });
+  view.rerender(
+    <DataExplorerBusiness
+      {...props}
+      queryId="new-period"
+      scope={{
+        ...scope,
+        filters: { ...scope.filters, from: '2025-01-01', to: '2025-12-31' },
+      }}
+    />,
+  );
+  expect(screen.getByLabelText<HTMLInputElement>('筛选开始日期').value).toBe(
+    '2025-01-01',
+  );
+});
+
+it('explains a mentioned object before evidence without claiming causality', async () => {
+  nav.search = new URLSearchParams({ businessEdge: row.assertionId });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(<DataExplorerBusiness {...props} />);
+  await screen.findByText(
+    '这份资料或陈述涉及该对象；提及本身不证明因果或治理成效。',
+  );
+  expect(
+    within(screen.getByRole('region', { name: '已选关系' })).getByText(
+      '原文内容',
+    ),
+  ).toBeTruthy();
+});
+
+it('restores an explicitly selected annual step after remount without reinterpreting dates', async () => {
+  nav.search = new URLSearchParams('query=annual&businessPeriodUnit=year');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [], totalCount: 0 })),
+  );
+  const onApply = vi.fn();
+  const dated = {
+    ...scope,
+    filters: {
+      ...scope.filters,
+      timeRole: 'OBSERVATION_TIME' as const,
+      from: '2024-01-01',
+      to: '2024-12-31',
+    },
+  };
+  render(<DataExplorerBusiness {...props} scope={dated} onApply={onApply} />);
+  await screen.findByText(/已加载的关系中没有匹配项/);
+  expect(screen.getByLabelText<HTMLSelectElement>('浏览时段').value).toBe(
+    'year',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '下一时段' }));
+  expect(screen.getByLabelText<HTMLInputElement>('筛选开始日期').value).toBe(
+    '2025-01-01',
+  );
+  expect(screen.getByLabelText<HTMLInputElement>('筛选结束日期').value).toBe(
+    '2025-12-31',
+  );
+  expect(onApply).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '应用到所有视图' }));
+  expect(onApply).toHaveBeenCalledWith(
+    {
+      ...dated,
+      filters: { ...dated.filters, from: '2025-01-01', to: '2025-12-31' },
+    },
+    'year',
+  );
+});
+
+it('loads every page beyond the legacy bound for a server-owned project membership', async () => {
+  const items = Array.from({ length: 2033 }, (_, index) => ({
+    ...row,
+    assertionId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+  }));
+  let offset = 0;
+  const fetcher = vi.fn().mockImplementation(() => {
+    const page = items.slice(offset, offset + 100);
+    offset += page.length;
+    return Promise.resolve(
+      Response.json({
+        items: page,
+        totalCount: items.length,
+        ...(offset < items.length
+          ? { nextCursor: page.at(-1)!.assertionId }
+          : {}),
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2033 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  expect(fetcher).toHaveBeenCalledTimes(21);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText(/2033.*2033/)).toBeTruthy();
+});
+
+it('rejects a page total above the server membership before requesting more pages', async () => {
+  const fetcher = vi.fn().mockResolvedValue(
+    Response.json({
+      items: [row],
+      totalCount: 3,
+      nextCursor: row.assertionId,
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2 }}
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
+
+it('allows a filtered graph smaller than its immutable project membership', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+  );
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 2033 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('stops an empty continuation page before following a fresh cursor', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json({ items: [], totalCount: 1, nextCursor: row.assertionId }),
+    )
+    .mockResolvedValue(Response.json({ items: [row], totalCount: 1 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<DataExplorerBusiness {...props} />);
+  await screen.findByRole('alert');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('list', { name: 'test graph' })).toBeNull();
+});
+
+it('labels a mixed query without promoting its pending relationships', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        items: [
+          row,
+          {
+            ...row,
+            assertionId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            status: 'APPROVED',
+          },
+        ],
+        totalCount: 2,
+      }),
+    ),
+  );
+  render(
+    <DataExplorerBusiness
+      {...props}
+      scope={BusinessQuerySchema.parse({
+        ...props.scope,
+        schemaVersion: 2,
+        status: 'APPROVED_AND_PENDING',
+      })}
+    />,
+  );
+  await screen.findByText(/已审与待审/);
+  expect(
+    screen.getByText('待审核关系保留候选标识，不代表已经确认。'),
+  ).toBeTruthy();
+});
+it.each(['zh-CN', 'en'] as const)(
+  'keeps guidance on demand and review status visible in %s',
+  async (locale) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ items: [row], totalCount: 1 })),
+    );
+    render(<DataExplorerBusiness {...props} locale={locale} />);
+    const copy = getDictionary(locale).knowledgeRelations;
+    await screen.findByRole('button', { name: copy.kinds.POLICY });
+    const hint = screen.getByText(copy.businessHint);
+    expect(hint.closest('[hidden]')).not.toBeNull();
+    const help = screen.getByRole('button', { name: copy.businessTitle });
+    fireEvent.pointerEnter(help.parentElement!);
+    expect(
+      screen.getByRole('note', { name: copy.businessTitle }).textContent,
+    ).toContain(copy.businessHint);
+    expect(
+      screen.getByRole('note', { name: copy.businessTitle }).textContent,
+    ).toContain(copy.recordRelationPending);
+    fireEvent.pointerLeave(help.parentElement!);
+    expect(screen.queryByRole('note', { name: copy.businessTitle })).toBeNull();
+    const frame = screen.getByRole('region', { name: copy.businessTitle });
+    expect(
+      within(frame)
+        .getByText(new RegExp(copy.statuses.PENDING_REVIEW))
+        .closest('[hidden]'),
+    ).toBeNull();
+  },
+);
+
+it('requests bounded project pages and preserves every identity in responses larger than 100', async () => {
+  const items = Array.from({ length: 503 }, (_, i) => ({
+    ...row,
+    assertionId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(i).padStart(12, '0')}`,
+  }));
+  const fetcher = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: items.slice(0, 500),
+        totalCount: 503,
+        nextCursor: items[499].assertionId,
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ items: items.slice(500), totalCount: 503 }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <DataExplorerBusiness
+      {...props}
+      membership={{ complete: true, versionCount: 1, assertionCount: 503 }}
+    />,
+  );
+  await screen.findByRole('list', { name: 'test graph' });
+  const readBody = (index: number): unknown => {
+    const body = fetcher.mock.calls[index]?.[1]?.body;
+    if (typeof body !== 'string') throw Error('Expected JSON');
+    return JSON.parse(body);
+  };
+  expect(readBody(0)).toMatchObject({
+    first: 500,
+    pageMode: 'BOUNDED_PROJECT',
+  });
+  expect(readBody(1)).toMatchObject({
+    after: items[499].assertionId,
+  });
+  expect(screen.getByText(/503.*503/)).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
 });

@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedAt: 2026-09-20
+lastReviewedCommit: 5afd0a3
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -196,3 +196,7 @@ Migrations `0025_knowledge_relations.sql` and `0026_business_projection_cursor.s
 `0028_relation_integrity.sql` follows the unchanged 0027 checksum. Its private `security.relation_entity_definition` has RLS enabled and no runtime policy or grants; only its owning SECURITY DEFINER trigger accesses it, with a fixed `pg_catalog` search path and a check of the incoming row's scope. Runtime provisioning explicitly revokes registry access after common grants. The migration rejects conflicting existing identities before backfill. The integration test applies pending 0028 within a rollback transaction, tests hidden high-security definitions, alternating-ceiling reviews up to 100, rejection of review 101, and denied registry access. Do not renumber already applied migration files.
 
 See PostgreSQL's [RLS integrity boundary](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) and [safe SECURITY DEFINER functions](https://www.postgresql.org/docs/current/sql-createfunction.html).
+
+### Server-owned business membership storage
+
+Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the existing owner-scoped exploration snapshot and saved-view tables. It stores only assertion UUID/version pairs, separately from the bounded client specification. Existing rows remain null and unchanged. The database rejects malformed, duplicate or oversized memberships (100,000 pairs / 8 MiB maximum); this is a storage guard, not a claimed query/render capacity. Forced RLS, immutable snapshot contents and saved-view one-way revocation continue to apply to the whole row. `packages/data-infra/test/migrations/exploration-membership.spec.ts` exercises 2,033 synthetic members, six scope boundaries and mutation rejection in a disposable database. This storage slice alone does not enable project-wide business queries, change existing capability limits, approve knowledge or load external observations. API use and client integration require separate verification.

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { RelationAssertion } from '@wiser/data-contracts';
 import { DataExplorerRecordSources } from './data-explorer-record-sources';
@@ -172,3 +178,112 @@ it('lets the user find a matching record by name', async () => {
   });
   expect(screen.getByRole('link', { name: '六月水质原表' })).toBeTruthy();
 });
+
+it('reads a complete server membership above the legacy 2000 relation bound', async () => {
+  const items = Array.from({ length: 2033 }, (_, index) =>
+    bound(`aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`),
+  );
+  let offset = 0;
+  const fetch = vi.fn().mockImplementation(() => {
+    const page = items.slice(offset, offset + 100);
+    offset += page.length;
+    return Promise.resolve(
+      Response.json({
+        items: page,
+        totalCount: items.length,
+        ...(offset < items.length
+          ? { nextCursor: page.at(-1)!.assertionId }
+          : {}),
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetch);
+  render(
+    <DataExplorerRecordSources
+      {...props}
+      {...{
+        membership: {
+          complete: true,
+          versionCount: 1,
+          assertionCount: items.length,
+        },
+      }}
+    />,
+  );
+  expect(
+    await screen.findByRole('link', { name: '六月水质原表' }),
+  ).toBeTruthy();
+  expect(fetch).toHaveBeenCalledTimes(21);
+});
+it('rejects totals outside the server membership before following a cursor', async () => {
+  const fetch = vi.fn().mockResolvedValue(
+    Response.json({
+      items: [bound()],
+      totalCount: 2,
+      nextCursor: '66666666-6666-4666-8666-666666666666',
+    }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  render(
+    <DataExplorerRecordSources
+      {...props}
+      {...{
+        membership: { complete: true, versionCount: 1, assertionCount: 1 },
+      }}
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+it('rejects an empty continuation instead of chasing more pages', async () => {
+  const fetch = vi.fn().mockResolvedValue(
+    Response.json({
+      items: [],
+      totalCount: 2,
+      nextCursor: '66666666-6666-4666-8666-666666666666',
+    }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  render(<DataExplorerRecordSources {...props} />);
+  await screen.findByRole('alert');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+it.each(['response', 'body'])(
+  'does not follow a late %s from a replaced query',
+  async (stage) => {
+    let finish!: (value: unknown) => void;
+    const delayed = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const part = {
+      items: [bound()],
+      totalCount: 2,
+      nextCursor: '66666666-6666-4666-8666-666666666666',
+    };
+    const json = vi.fn(() => delayed);
+    const fetch = vi
+      .fn()
+      .mockImplementationOnce(() =>
+        stage === 'response' ? delayed : Promise.resolve({ ok: true, json }),
+      )
+      .mockResolvedValue(Response.json({ items: [], totalCount: 0 }));
+    vi.stubGlobal('fetch', fetch);
+    const rendered = render(<DataExplorerRecordSources {...props} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rendered.rerender(
+      <DataExplorerRecordSources
+        {...props}
+        queryId="55555555-5555-4555-8555-555555555555"
+      />,
+    );
+    await screen.findByText(/当前条件下尚无明确绑定的记录/);
+    await act(async () => {
+      finish(stage === 'response' ? Response.json(part) : part);
+      await Promise.resolve();
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(props.onInvalidated).not.toHaveBeenCalled();
+  },
+);

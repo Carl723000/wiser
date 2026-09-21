@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: b959e86221e2aaebae9deb4f4d0f41ee5e1a2641
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 02345029
 ---
 
 ## Two frontend applications
@@ -232,3 +232,15 @@ Business problem graphs keep the full authorized relation set across five readin
 The business scene uses deterministic category positions and SVG projection; ordinary provenance and optional six-assertion reading retain G6. Layer titles occupy a separate caption gutter with connector lines. Continuous pointer/pinch/keyboard zoom changes the camera without recomputing positions or dropping edges. Labels appear progressively; selected nodes/edges and their evidence remain inspectable in a keyboard-accessible list. Hover previews direct connections; selection pins evidence and dims the full-network background. Crossing-edge hit testing offers the actual candidate assertions. Evidence includes original polarity, exact source version, table/paragraph locator, limitations, review state and preceding-assertion links.
 
 Spatial presentation uses the existing complete, bounded HTTP map query and exact data-item/version/record bindings. It keeps original point/line/area geometry, converts display coordinates through the existing map adapter, and retains unlocated knowledge separately with its original relations. Dashed connectors place document labels around a geometry's display center; neither labels nor their centers become new point features or business relations. Geometry lookup rejects changed scope, incomplete pagination and denied access. Map movement does not change the business question. Location precision and knowledge review remain separate. No source acquisition, parser rerun, migration or business-data write is performed by scene controls.
+
+Spatial scene requests check cancellation before dispatch and after response/body completion. Abandoned requests cannot invalidate the active scene or continue pagination; partial page failures never expose an incomplete geometry set, and retry rechecks the same scoped query.
+
+BusinessQuery v2 selects approved and pending rows together without changing assertion states. The business heading and record relationship selector use a distinct mixed-scope label; reverse record lookup validates each returned state against the query scope and retains the same query ID. Historical single-state links remain valid.
+
+`load-exploration.server.ts` shares default project creation and explicit query/saved/fixed-version restoration across the home and exploration pages. The homepage passes its operational/status section as a streamed server component beneath the same client workspace; status failure does not suppress an available query. Client navigation canonicalizes a successful default entry to the existing exploration URL. Saved-topic requests are deferred until the topic disclosure opens.
+
+Both entry routes retain the streamed operational/status section after URL normalization and refresh. Query failures offer an explicit project-overview restart; empty resource filters are treated as an unfiltered entry, while malformed text is rejected rather than discarded.
+
+Reference Web browser tests wait for the Data Foundation workspace to respond before starting UI interactions. This compiles the graph workspace during server readiness, rather than consuming the existing navigation timeout with on-demand development compilation. The readiness budget is 120 seconds; navigation, locale, theme and content assertions remain unchanged. Reference runs retain `next dev`: production mode forbids the reference suite’s disabled-auth configuration. This does not establish live API or deployed-environment acceptance.
+
+The root unit/coverage runner defaults to two workers to bound DOM and coverage contention on development hosts with preview services. Test deadlines, assertions and coverage thresholds are unchanged. Use an explicit Vitest `--maxWorkers` value for a measured concurrency experiment; a focused pass does not replace full verification.

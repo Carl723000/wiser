@@ -177,7 +177,7 @@ export const RelationListInputV13Schema = Source.extend({
   after: Id.optional(),
 });
 /** A persisted exploration scope keeps large source manifests out of GET URLs. */
-export const RelationListInputSchema = z
+export const RelationListInputV15Schema = z
   .strictObject({
     ...RelationListInputV13Schema.shape,
     dataItemId: Id.optional(),
@@ -197,6 +197,34 @@ export const RelationListInputSchema = z
           'Supply an exploration query or an inline source scope, never both',
       });
   });
+/** Mixed state selection is valid only within a persisted business query. */
+export const RelationListInputSchema = z
+  .strictObject({
+    ...RelationListInputV15Schema.shape,
+    status: z
+      .union([RelationStatusSchema, z.literal('APPROVED_AND_PENDING')])
+      .default('APPROVED'),
+  })
+  .superRefine((value, context) => {
+    const legacy = RelationListInputV15Schema.safeParse({
+      ...value,
+      status:
+        value.status === 'APPROVED_AND_PENDING' ? 'APPROVED' : value.status,
+    });
+    if (!legacy.success)
+      for (const issue of legacy.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    if (value.status === 'APPROVED_AND_PENDING' && !value.queryId)
+      context.addIssue({
+        code: 'custom',
+        path: ['queryId'],
+        message: 'Mixed review scope requires a business query',
+      });
+  });
 // Retain published discovery bounds unchanged.
 
 export const RelationListInputV12Schema = RelationListInputV13Schema.extend({
@@ -209,6 +237,37 @@ export const RelationListOutputSchema = z.strictObject({
   items: z.array(RelationAssertionSchema).max(100),
   totalCount: z.number().int().nonnegative(),
   nextCursor: Id.optional(),
+});
+/** Opt-in 1.7 project pages; all unmarked requests retain the 1.6 boundary. */
+export const RelationBatchListInputSchema = z
+  .strictObject({
+    ...RelationListInputSchema.shape,
+    pageMode: z.literal('BOUNDED_PROJECT').optional(),
+    first: z.number().int().min(1).max(500).default(25),
+  })
+  .superRefine(({ pageMode, ...value }, context) => {
+    const legacy = RelationListInputSchema.safeParse({
+      ...value,
+      first: pageMode ? Math.min(value.first, 100) : value.first,
+    });
+    if (!legacy.success)
+      for (const issue of legacy.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    if (pageMode && !value.queryId)
+      context.addIssue({
+        code: 'custom',
+        path: ['queryId'],
+        message: 'Bounded pages require a project business query',
+      });
+  });
+/** Budget applies to the full UTF-8 JSON result, including cursor and total. */
+export const RELATION_BATCH_MAX_BYTES = 1048576;
+export const RelationBatchListOutputSchema = RelationListOutputSchema.extend({
+  items: z.array(RelationAssertionSchema).max(500),
 });
 export type RelationCandidate = z.infer<typeof RelationCandidateSchema>;
 export type RelationAssertion = z.infer<typeof RelationAssertionSchema>;

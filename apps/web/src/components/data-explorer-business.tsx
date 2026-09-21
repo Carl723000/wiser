@@ -1,13 +1,22 @@
 'use client';
+import { ContextHelp } from './context-help';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  RelationBatchListOutputSchema,
   RelationListOutputSchema,
   type RelationAssertion,
   type BusinessQuery,
+  type ExplorationResult,
 } from '@wiser/data-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import {
+  businessPeriod,
+  readBusinessPeriodUnit,
+  writeBusinessPeriodUnit,
+  type BusinessPeriodUnit,
+} from '@/lib/business-period';
 import { businessGraphRows, businessRecordFocus } from '@/lib/business-graph';
 import { relationNodeIdentity } from '@/lib/relation-graph';
 import {
@@ -16,7 +25,10 @@ import {
   type GraphLayoutSettings,
 } from '@/lib/graph-layout-settings';
 import { readBusinessReading, readingPage } from '@/lib/business-reading';
-import { withBusinessFocus } from '@/lib/exploration-business-focus';
+import {
+  withBusinessFocus,
+  readMapObject,
+} from '@/lib/exploration-business-focus';
 import { businessObjectSources } from '@/lib/business-object-sources';
 import { withRecordFocus } from '@/lib/exploration-record-focus';
 import { explorationHref } from '@/lib/exploration-navigation';
@@ -44,12 +56,17 @@ export function DataExplorerBusiness({
   locale,
   onInvalidated,
   onApply,
+  membership,
 }: {
   readonly queryId: string;
   readonly scope: BusinessQuery;
+  readonly membership?: ExplorationResult['membership'];
   readonly locale: Locale;
   readonly onInvalidated: InvalidateExploration;
-  readonly onApply: (scope: BusinessQuery) => void;
+  readonly onApply: (
+    scope: BusinessQuery,
+    periodUnit: BusinessPeriodUnit,
+  ) => void;
 }) {
   const copy = getDictionary(locale).knowledgeRelations;
   const search = useSearchParams(),
@@ -68,6 +85,13 @@ export function DataExplorerBusiness({
   const layoutSettings = readGraphLayoutSettings(search);
   const selected = search.get('businessEntity');
   const selectedEdge = search.get('businessEdge');
+  const mapObject = readMapObject(search);
+  const changeMapObject = (id: string | null) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('businessMapObject');
+    if (id) params.set('businessMapObject', id);
+    window.history.replaceState(null, '', pathname + '?' + params.toString());
+  };
   const scene = useMemo(() => businessScene(rows), [rows]);
   const sceneSettings = readSceneView(search);
   const changeScene = (value: SceneView) => {
@@ -86,9 +110,22 @@ export function DataExplorerBusiness({
   };
   const edgeRow = rows.find((r) => r.assertionId === selectedEdge);
   const [draft, setDraft] = useState(scope.filters);
+  const urlPeriodUnit = readBusinessPeriodUnit(search);
+  const [periodUnit, setPeriodUnit] =
+    useState<BusinessPeriodUnit>(urlPeriodUnit);
+  useEffect(() => setPeriodUnit(urlPeriodUnit), [urlPeriodUnit]);
+  useEffect(() => {
+    setDraft(scope.filters);
+  }, [scope.filters]);
   const viewState = useExplorationViewState();
+  const membershipLimit = membership?.assertionCount ?? 2000;
+  const projectMembership = membership !== undefined;
   useEffect(() => {
     const controller = new AbortController();
+    setBusy(true);
+    setFailed(false);
+    setLoaded(0);
+    setRows([]);
     viewState?.report('graph', null);
     void (async () => {
       try {
@@ -102,26 +139,36 @@ export function DataExplorerBusiness({
             body: JSON.stringify({
               queryId,
               status: scope.status,
-              first: 100,
+              first: projectMembership ? 500 : 100,
+              ...(projectMembership ? { pageMode: 'BOUNDED_PROJECT' } : {}),
               ...(after ? { after } : {}),
             }),
             cache: 'no-store',
             signal: controller.signal,
           });
+          if (controller.signal.aborted) return;
           if (!response.ok) {
             if (invalidatesExploration(response.status))
               onInvalidated(queryId, response.status);
             throw Error('Unavailable');
           }
-          const page = RelationListOutputSchema.parse(await response.json());
+          const page = (
+            projectMembership
+              ? RelationBatchListOutputSchema
+              : RelationListOutputSchema
+          ).parse(await response.json());
+          if (controller.signal.aborted) return;
           if (total !== undefined && total !== page.totalCount)
             throw Error('Changed scope');
           total = page.totalCount;
+          if (total > membershipLimit) throw Error('Scope too large');
+          if (page.nextCursor && page.items.length === 0)
+            throw Error('Empty continuation page');
           items.push(...page.items);
+          if (items.length > total) throw Error('Changed scope');
           after = page.nextCursor;
           if (after && cursors.has(after)) throw Error('Repeated cursor');
           if (after) cursors.add(after);
-          if (items.length > 2000) throw Error('Scope too large');
           if (!controller.signal.aborted) setLoaded(items.length);
         } while (after);
         if (
@@ -143,7 +190,14 @@ export function DataExplorerBusiness({
       }
     })();
     return () => controller.abort();
-  }, [queryId, scope.status, onInvalidated, viewState]);
+  }, [
+    queryId,
+    scope.status,
+    onInvalidated,
+    viewState,
+    membershipLimit,
+    projectMembership,
+  ]);
   const visible = useMemo(
     () =>
       edgeRow
@@ -291,7 +345,8 @@ export function DataExplorerBusiness({
     nextKind: Kind | null = kind,
     nextMode: 'overview' | 'all' = mode,
   ) => {
-    const params = new URLSearchParams(search.toString());
+    // The scene may have just flushed its camera before Next updates this snapshot.
+    const params = new URLSearchParams(window.location.search);
     params.delete('businessPage');
     params.delete('businessEdge');
     if (id) params.set('businessEntity', id);
@@ -309,17 +364,27 @@ export function DataExplorerBusiness({
     >
       <header className={businessStyles.heading}>
         <div>
-          <h2>{copy.businessTitle}</h2>
-          <p>{copy.businessHint}</p>
+          <h2 aria-label={copy.businessTitle}>
+            {copy.businessTitle}{' '}
+            <ContextHelp label={copy.businessTitle}>
+              <span>{copy.businessHint}</span>
+              {scope.status === 'PENDING_REVIEW' ? (
+                <span> {copy.recordRelationPending}</span>
+              ) : null}
+            </ContextHelp>
+          </h2>
         </div>
         <p className={businessStyles.authority}>
-          {copy.statuses[scope.status]} · {copy.pageCount}
+          {scope.status === 'APPROVED_AND_PENDING'
+            ? copy.mixedReviewScope
+            : copy.statuses[scope.status]}{' '}
+          · {copy.pageCount}
           {loaded}
           {busy ? ' · ' + copy.businessLoading : ''}
         </p>
       </header>
-      {scope.status === 'PENDING_REVIEW' ? (
-        <p>{copy.recordRelationPending}</p>
+      {scope.status === 'APPROVED_AND_PENDING' ? (
+        <p>{copy.mixedReviewHint}</p>
       ) : null}
       <details>
         <summary>
@@ -329,7 +394,7 @@ export function DataExplorerBusiness({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            onApply({ ...scope, filters: draft });
+            onApply({ ...scope, filters: draft }, periodUnit);
           }}
         >
           <fieldset className={businessStyles.timeFilters}>
@@ -373,6 +438,44 @@ export function DataExplorerBusiness({
                 }
               />
             </label>
+            <label>
+              {copy.periodUnit}
+              <select
+                value={periodUnit}
+                onChange={(event) => {
+                  const unit = event.target.value as BusinessPeriodUnit;
+                  setPeriodUnit(unit);
+                  const params = new URLSearchParams(window.location.search);
+                  writeBusinessPeriodUnit(params, unit);
+                  window.history.replaceState(
+                    window.history.state,
+                    '',
+                    pathname + '?' + params.toString(),
+                  );
+                }}
+              >
+                <option value="month">{copy.periodMonth}</option>
+                <option value="year">{copy.periodYear}</option>
+              </select>
+            </label>
+            {([-1, 0, 1] as const).map((offset) => {
+              const period = businessPeriod(draft.from, periodUnit, offset);
+              return (
+                <button
+                  key={offset}
+                  type="button"
+                  disabled={busy || !period || draft.timeRole === 'ALL'}
+                  onClick={() => period && setDraft({ ...draft, ...period })}
+                >
+                  {offset === -1
+                    ? copy.periodPrevious
+                    : offset === 1
+                      ? copy.periodNext
+                      : copy.periodCurrent}
+                </button>
+              );
+            })}
+            <ContextHelp label={copy.periodHelp}>{copy.periodHint}</ContextHelp>
             <label className={styles.check}>
               <input
                 type="checkbox"
@@ -439,14 +542,18 @@ export function DataExplorerBusiness({
             ))}
           </div>
           {kind && presentation === 'reading' ? (
-            <p>{copy.businessCategoryHint}</p>
+            <ContextHelp label={copy.businessCategories}>
+              {copy.businessCategoryHint}
+            </ContextHelp>
           ) : null}
           <p>
             {copy.businessVisible}
-            {graphRows.length} / {rows.length} ·{' '}
-            {presentation === 'network'
-              ? copy.businessGlobalHint
-              : copy.businessOverviewHint}
+            {graphRows.length} / {rows.length}{' '}
+            <ContextHelp label={copy.businessVisible}>
+              {presentation === 'network'
+                ? copy.businessGlobalHint
+                : copy.businessOverviewHint}
+            </ContextHelp>
           </p>
           {selectedSource ? (
             <section
@@ -482,13 +589,13 @@ export function DataExplorerBusiness({
             </div>
             {presentation === 'reading' ? pagination : null}
           </div>
-          <p className={businessStyles.readingHint}>
+          <ContextHelp label={copy.scene.readingHelp}>
             {presentation === 'reading'
               ? copy.businessReadingHint
                   .replace('{count}', String(page.rows.length))
                   .replace('{total}', String(visible.length))
               : copy.businessNetworkHint}
-          </p>
+          </ContextHelp>
           {graphRows.length ? (
             presentation === 'network' ? (
               <BusinessSceneCanvas
@@ -497,6 +604,8 @@ export function DataExplorerBusiness({
                 scene={scene}
                 settings={sceneSettings}
                 onSettings={changeScene}
+                mapObject={mapObject}
+                onMapObject={changeMapObject}
                 selectedId={selected}
                 selectedEdge={selectedEdge}
                 selectedKind={kind}

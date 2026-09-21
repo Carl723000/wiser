@@ -1,4 +1,13 @@
+import {
+  ExternalMetadataInputSchema,
+  ExternalMetadataOutputSchema,
+} from '../external-metadata/index.ts';
+import * as ExploreV113 from '../exploration/v113.ts';
+import * as SavedV113 from '../exploration/saved-v113.ts';
+import * as ExploreV112 from '../exploration/v112.ts';
+import * as SavedV112 from '../exploration/saved-v112.ts';
 import * as RelationsV11 from '../knowledge-relations/v11.ts';
+import * as SavedV11 from '../exploration/saved-v11.ts';
 import * as SavedV1 from '../exploration/saved-v1.ts';
 import {
   ExplorationQueryInputV111Schema,
@@ -12,7 +21,10 @@ import {
   RelationOutputSchema,
   RelationReviewInputSchema,
   RelationListInputSchema,
+  RelationListInputV15Schema,
   RelationListOutputSchema,
+  RelationBatchListInputSchema,
+  RelationBatchListOutputSchema,
 } from '../knowledge-relations/index.ts';
 import {
   AssessmentOverviewInputSchema,
@@ -171,6 +183,7 @@ export const DATA_CAPABILITY_IDS = [
   'data.knowledge.relations.get',
   'data.knowledge.relations.list',
   'data.knowledge.relations.review',
+  'data.external.metadata.read',
 ] as const;
 
 export const DataCapabilityIdSchema = z.enum(DATA_CAPABILITY_IDS);
@@ -970,7 +983,7 @@ const capabilityRegistry = {
   }),
   'data.explore.view.create': defineCapability({
     id: 'data.explore.view.create',
-    version: '1.0.0',
+    version: '1.1.0',
     kind: 'command',
     inputSchema: CreateExplorationViewInputSchema,
     outputSchema: CreateExplorationViewOutputSchema,
@@ -1015,7 +1028,7 @@ const capabilityRegistry = {
   }),
   'data.explore.view.open': defineCapability({
     id: 'data.explore.view.open',
-    version: '1.1.0',
+    version: '1.4.0',
     kind: 'query',
     inputSchema: OpenExplorationViewInputSchema,
     outputSchema: OpenExplorationViewOutputSchema,
@@ -1060,7 +1073,7 @@ const capabilityRegistry = {
   }),
   'data.explore.export': defineCapability({
     id: 'data.explore.export',
-    version: '1.1.0',
+    version: '1.3.0',
     kind: 'query',
     inputSchema: ExportExplorationInputSchema,
     outputSchema: ExportExplorationOutputSchema,
@@ -1081,7 +1094,7 @@ const capabilityRegistry = {
   }),
   'data.explore.query': defineCapability({
     id: 'data.explore.query',
-    version: '1.12.0',
+    version: '1.14.0',
     kind: 'query',
     inputSchema: ExplorationQueryInputSchema,
     outputSchema: ExplorationResultSchema,
@@ -1346,10 +1359,10 @@ const capabilityRegistry = {
   }),
   'data.knowledge.relations.list': defineCapability({
     id: 'data.knowledge.relations.list',
-    version: '1.5.0',
+    version: '1.7.0',
     kind: 'query',
-    inputSchema: RelationListInputSchema,
-    outputSchema: RelationListOutputSchema,
+    inputSchema: RelationBatchListInputSchema,
+    outputSchema: RelationBatchListOutputSchema,
     requiredScopes: ['data.catalog.read'],
     maxSecurityLevel: 'L3_CONFIDENTIAL',
     executionMode: 'SYNCHRONOUS',
@@ -1385,6 +1398,27 @@ const capabilityRegistry = {
     graphqlMapping: { operationType: 'mutation', field: 'reviewDataRelation' },
     mcpMapping: { toolName: 'data_knowledge_relations_review' },
     skillMapping: { operation: 'data.knowledge.relations.review' },
+  }),
+  'data.external.metadata.read': defineCapability({
+    id: 'data.external.metadata.read',
+    version: '1.0.0',
+    kind: 'query',
+    inputSchema: ExternalMetadataInputSchema,
+    outputSchema: ExternalMetadataOutputSchema,
+    requiredScopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30000,
+    idempotent: true,
+    auditLevel: 'STANDARD',
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/external-sources/:sourceId/metadata/query',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'externalSourceMetadata' },
+    mcpMapping: { toolName: 'data_external_metadata_read' },
+    skillMapping: { operation: 'data.external.metadata.read' },
   }),
 } satisfies Record<DataCapabilityId, Readonly<CapabilityDefinition>>;
 
@@ -1459,6 +1493,18 @@ const capabilityArchive = {
       inputSchema: RelationsV11.RelationListInputSchema,
       outputSchema: RelationsV11.RelationListOutputSchema,
     }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.5.0',
+      inputSchema: RelationListInputV15Schema,
+      outputSchema: RelationListOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.knowledge.relations.list'],
+      version: '1.6.0',
+      inputSchema: RelationListInputSchema,
+      outputSchema: RelationListOutputSchema,
+    }),
   ]),
   'data.knowledge.relations.review': Object.freeze([
     defineCapability({
@@ -1474,12 +1520,38 @@ const capabilityArchive = {
       outputSchema: RelationsV11.RelationOutputSchema,
     }),
   ]),
+  'data.explore.view.create': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.create'],
+      version: '1.0.0',
+      inputSchema: SavedV11.CreateExplorationViewInputSchema,
+      outputSchema: SavedV11.CreateExplorationViewOutputSchema,
+    }),
+  ]),
   'data.explore.view.open': Object.freeze([
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.open'],
+      version: '1.1.0',
+      inputSchema: SavedV11.OpenExplorationViewInputSchema,
+      outputSchema: SavedV11.OpenExplorationViewOutputSchema,
+    }),
     defineCapability({
       ...capabilityRegistry['data.explore.view.open'],
       version: '1.0.0',
       inputSchema: SavedV1.OpenExplorationViewInputSchema,
       outputSchema: SavedV1.OpenExplorationViewOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.open'],
+      version: '1.2.0',
+      inputSchema: SavedV112.OpenExplorationViewInputSchema,
+      outputSchema: SavedV112.OpenExplorationViewOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.view.open'],
+      version: '1.3.0',
+      inputSchema: SavedV113.OpenExplorationViewInputSchema,
+      outputSchema: SavedV113.OpenExplorationViewOutputSchema,
     }),
   ]),
   'data.explore.export': Object.freeze([
@@ -1488,6 +1560,18 @@ const capabilityArchive = {
       version: '1.0.0',
       inputSchema: SavedV1.ExportExplorationInputSchema,
       outputSchema: SavedV1.ExportExplorationOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.export'],
+      version: '1.1.0',
+      inputSchema: SavedV112.ExportExplorationInputSchema,
+      outputSchema: SavedV112.ExportExplorationOutputSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.export'],
+      version: '1.2.0',
+      inputSchema: SavedV113.ExportExplorationInputSchema,
+      outputSchema: SavedV113.ExportExplorationOutputSchema,
     }),
   ]),
   'data.explore.query': Object.freeze([
@@ -1562,6 +1646,18 @@ const capabilityArchive = {
       version: '1.11.0',
       inputSchema: ExplorationQueryInputV111Schema,
       outputSchema: ExplorationResultV111Schema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.query'],
+      version: '1.12.0',
+      inputSchema: ExploreV112.ExplorationQueryInputSchema,
+      outputSchema: ExploreV112.ExplorationResultSchema,
+    }),
+    defineCapability({
+      ...capabilityRegistry['data.explore.query'],
+      version: '1.13.0',
+      inputSchema: ExploreV113.ExplorationQueryInputSchema,
+      outputSchema: ExploreV113.ExplorationResultSchema,
     }),
   ]),
   'data.catalog.search': Object.freeze([

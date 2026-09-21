@@ -227,6 +227,9 @@ describe('authorized exploration result sets in PostgreSQL', () => {
           `grant execute on all functions in schema security to ${role}`,
         );
         await client.query(
+          `grant execute on function service.valid_exploration_business_pins(jsonb) to ${role}`,
+        );
+        await client.query(
           `grant select on all tables in schema catalog, knowledge, service to ${role}`,
         );
         await client.query(

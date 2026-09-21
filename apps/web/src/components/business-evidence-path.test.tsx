@@ -100,3 +100,81 @@ it('opens evidence from the pinned external version while keeping the owner rela
     screen.getByRole('link', { name: 'page:4' }).getAttribute('href'),
   ).toBe('/api/data-foundation/assets/metadata-version/file');
 });
+
+function chooseOriginalPath() {
+  fireEvent.click(screen.getByText('查看对象之间的联系'));
+  fireEvent.change(screen.getByLabelText('起点'), {
+    target: { value: relationNodeIdentity(rows[0], rows[0].candidate.subject) },
+  });
+  fireEvent.change(screen.getByLabelText('终点'), {
+    target: { value: relationNodeIdentity(rows[1], rows[1].candidate.subject) },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '显示联系路径' }));
+}
+const replacement = {
+  ...rows[1],
+  assertionId: 'replacement',
+  candidate: {
+    ...rows[1].candidate,
+    predicate: 'DERIVED_FROM',
+    object: rows[0].candidate.subject,
+  },
+} as RelationAssertion;
+
+it('clears an invalidated path instead of silently substituting another connection', () => {
+  const view = render(<BusinessEvidencePathPanel rows={rows} locale="zh-CN" />);
+  chooseOriginalPath();
+  expect(screen.getByTestId('path-canvas').textContent).toBe('2');
+  view.rerender(
+    <BusinessEvidencePathPanel rows={[rows[0], replacement]} locale="zh-CN" />,
+  );
+  expect(screen.queryByTestId('path-canvas')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('重新查找');
+  expect(screen.queryByText('原文具体证据')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '显示联系路径' }));
+  expect(screen.getByTestId('path-canvas').textContent).toBe('1');
+});
+
+it('keeps the chosen evidence path when an unrelated shorter route arrives', () => {
+  const view = render(<BusinessEvidencePathPanel rows={rows} locale="zh-CN" />);
+  chooseOriginalPath();
+  view.rerender(
+    <BusinessEvidencePathPanel
+      rows={[...structuredClone(rows), replacement]}
+      locale="zh-CN"
+    />,
+  );
+  expect(screen.getByTestId('path-canvas').textContent).toBe('2');
+  fireEvent.click(screen.getByRole('button', { name: '显示联系路径' }));
+  expect(screen.getByTestId('path-canvas').textContent).toBe('1');
+});
+
+it('requires an explicit new search when a selected assertion version changes', () => {
+  const original = rows.map((row) => ({ ...row, version: 1 }));
+  const view = render(
+    <BusinessEvidencePathPanel rows={original} locale="zh-CN" />,
+  );
+  chooseOriginalPath();
+  view.rerender(
+    <BusinessEvidencePathPanel
+      rows={[{ ...original[0], version: 2 }, original[1]]}
+      locale="zh-CN"
+    />,
+  );
+  expect(screen.queryByTestId('path-canvas')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('重新查找');
+});
+
+it('removes inaccessible path evidence and disables search for missing endpoints in English', () => {
+  const view = render(<BusinessEvidencePathPanel rows={rows} locale="zh-CN" />);
+  chooseOriginalPath();
+  view.rerender(<BusinessEvidencePathPanel rows={[]} locale="en" />);
+  expect(screen.queryByTestId('path-canvas')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('Search again');
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Show connection path',
+    }).disabled,
+  ).toBe(true);
+  expect(screen.queryByText('原文具体证据')).toBeNull();
+});

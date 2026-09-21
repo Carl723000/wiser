@@ -19,9 +19,17 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: b959e86221e2aaebae9deb4f4d0f41ee5e1a2641
+lastReviewedAt: 2026-09-21
+lastReviewedCommit: 02345029
 ---
+
+## External metadata reader boundary
+
+The external metadata reader is exposed through the registered readonly `data.external.metadata.read` Capability. It accepts only a source identifier, explicit year range and bounded numeric pagination. A trusted host port must resolve live WISER membership and provider-specific permission; request JSON cannot supply a grant, token, field list or URL. The reader checks subject, delegation, tenant, project, purpose, authorization version, security ceiling, granted years, fields and expiry before and after fetching. In-flight changes or cancellation discard the page. Only station code, year and permitted administrative labels can be returned; coordinates and observations are excluded. Invalid pages and provider failures are not empty results.
+
+This component creates no assets, indexes or stored observations. A host-configured HTTP provider requests one normalized metadata page from a fixed endpoint, never follows redirects, and keeps credentials in headers. HTTPS is required, with explicit literal-loopback HTTP opt-in only for isolated tests. The deadline covers both headers and body (10 seconds by default, at most 30); decoded response bytes are bounded (256 KiB by default, at most 1 MiB), including compressed responses. Provider rejection, timeout, malformed content and caller cancellation have stable, sanitized errors, never a zero-row success. Pages are not cached; no provider body is logged or persisted. This transport is not a provider-specific protocol implementation or permission grant.
+
+REST, GraphQL and registry-driven MCP route through the same identity, strict validation and hash-only audit boundary. REST and GraphQL responses are no-store; GraphQL metadata aliases deliberately skip request-level memoization. Client disconnects cancel external reads; commands retain their existing lifecycle. The default runtime registers a disabled executor (`EXTERNAL_SOURCE_UNCONFIGURED`) until a trusted host supplies a reader with live source-specific permission. Registration does not enable a real source or grant metadata access. Actual provider configuration, client states and live source acceptance remain separate work.
 
 ## Authority boundary
 
@@ -32,7 +40,7 @@ The default Data runtime composes:
 ```text
 Supabase principal + Tenant/Project/Purpose
   → Fastify REST / schema-first GraphQL
-  → one DataCapabilityHandler (24 static executors)
+  → one DataCapabilityHandler (42 static executors)
   → data-postgres RLS transaction / SeaweedFS S3
   → PostgreSQL durable job + Transactional Outbox
   → Data Worker
@@ -47,7 +55,7 @@ GeoServer, TiTiler, and Martin run as Compose-internal GIS services in the same 
 
 | Module                                      | Responsibility                                                                      |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `@wiser/data-contracts`                     | Strict Zod DTOs, 41 Capabilities, four transport mappings                           |
+| `@wiser/data-contracts`                     | Strict Zod DTOs, 42 Capabilities, four transport mappings                           |
 | `@wiser/data-core`                          | Pure ingestion/Operation state, quality, security inheritance, publication gates    |
 | `@wiser/data-infra`                         | Checksum migration, PostgreSQL/S3, jobs/Outbox, projections, search, fake embedding |
 | `@wiser/data-worker`                        | Concrete ingestion Handler, Scheduler, projection consumer, health and metrics      |
@@ -177,9 +185,9 @@ The graph workspace lazily loads G6 5.1.1 on the client and renders only the bou
 
 The Data overview reads the scoped catalog total with `includeTotal=true`; its metric is independent of the preview page size. Catalog count and page use one short repeatable-read authority transaction. Counts describe registered objects, not analytically validated records.
 
-- REST: `/api/data/v1` discovery, 41 Capabilities, Operation SSE, Evidence/STAC Resources, authorized asset redirects, and the sole external OGC/STAC/vector/raster GIS proxy. Fastify OpenAPI projects all 41 Capabilities directly from the Zod 4 Registry and documents GIS GETs with explicit safe route Schemas under the shared **WISER Platform API** title; see [Data REST](/en/protocols/data-rest/).
-- GraphQL: `POST /graphql`, 24 schema-first fields sharing the same Handler; see [Data GraphQL](/en/protocols/data-graphql/).
-- MCP: stdio/stateless Streamable HTTP, 33 Tools and governed Resources that call HTTP only; see [Data MCP](/en/protocols/data-mcp/).
+- REST: `/api/data/v1` discovery, 42 Capabilities, Operation SSE, Evidence/STAC Resources, authorized asset redirects, and the sole external OGC/STAC/vector/raster GIS proxy. Fastify OpenAPI projects all 42 Capabilities directly from the Zod 4 Registry and documents GIS GETs with explicit safe route Schemas under the shared **WISER Platform API** title; see [Data REST](/en/protocols/data-rest/).
+- GraphQL: `POST /graphql`, registry-mapped schema-first fields sharing the same Handler; see [Data GraphQL](/en/protocols/data-graphql/).
+- MCP: stdio/stateless Streamable HTTP, registry-mapped Tools and governed Resources that call HTTP only; see [Data MCP](/en/protocols/data-mcp/).
 - Skill: `skills/wiser-data-foundation` documents discovery, query, upload, ingestion, Operation, and security workflows.
 - Web: 14 Data routes in the existing Next.js app with server-only DAL, real Supabase session, both locales/themes, immutable-version selection, an official AMap JS API 2.0 basemap with synchronized transparent MapLibre overlays: PostGIS authority GeoJSON, STAC extents, governed vector MVT, and raster.
 
@@ -278,6 +286,8 @@ Exploration 1.10 adds immutable `spec.spatialBounds` in WGS84 west/south/east/no
 Exploration 1.11 adds `graph.detail` (`assets`, `evidence`, `records`) for version-bound neighbor pages; record expansion also requires a source asset. `graph.grain` identifies the unit of `totalCount`. Continuation binds focus, detail and relation filters; records retain shared predicates, pinned analyses and the byte budget. `graph.relations` selects containment/provenance edge types. Optional `graph.path` finds a directed shortest path of at most eight edges within this returned page only, after relation filtering; missing endpoints fail without disclosing outside nodes. No path means no path in this page, not in the complete knowledge base. The 1.10 schemas remain immutable.
 
 Saved exploration views use `data.explore.view.create`, `.list`, `.open` and `.revoke`; `data.explore.export` exports one bounded query representation. They require `data.query.execute` and `data.catalog.read`. Create/revoke are synchronous commands with UUID `Idempotency-Key`, atomic audit and command ledger. A saved view keeps the original QuerySpec, version/analysis pins and typed ViewSpec (view requests, page history, selection IDs, map camera/layers), not copied record content. At most 100 active views are kept per owner and project. Private is the default; explicit project sharing still requires authenticated project scope, purpose/security checks and authorization of every pinned member when opening. Listing returns only the caller's saved configurations. Opening reissues an owner-bound 30-minute query and continuation bindings without resolving newer versions or analyses; expiry of the original query does not expire the saved configuration. Revocation is one-way and owner-only. Export reauthorizes the request and returns original values, provenance and explicit returned/total counts with a coverage unit; a later page or truncated representation is never marked complete. No transport drains all pages into SSR/BFF memory.
+
+Saved-view create 1.1 and open 1.2 add optional typed `presentation`: graph view/form/style, bounded cameras and layout, reading mode/page, calendar step unit, and display-only focus references. The existing JSON view payload stores these controls; no new table, source membership, observation or permission is introduced. Focus can highlight only objects returned by the authorized query. Create 1.0 and open 1.0/1.1 discovery schemas stay archived unchanged; saved rows without presentation remain valid. An opened saved link restores the controls once, respects explicit URL overrides, and preserves deliberate resets to defaults on reload. Arbitrary URLs, scripts and unknown fields are rejected.
 
 The exploration workspace saves a named private view by default, with explicit project sharing, an opaque durable link and owner revocation. Saved links restore the authorized pinned query, record/graph pagination, selected source, map layers/camera and applied aggregation. Opening a saved link always creates a newly authorized query. Export downloads one bounded JSON page with original source values, exact returned/total counts and a complete/partial label; the initial map record page does not represent all loaded tiles. Draft conditions that have not been applied are not saved.
 
@@ -384,3 +394,35 @@ Business problem graphs keep the full authorized relation set across five readin
 The business scene uses deterministic category positions and SVG projection; ordinary provenance and optional six-assertion reading retain G6. Layer titles occupy a separate caption gutter with connector lines. Continuous pointer/pinch/keyboard zoom changes the camera without recomputing positions or dropping edges. Labels appear progressively; selected nodes/edges and their evidence remain inspectable in a keyboard-accessible list. Hover previews direct connections; selection pins evidence and dims the full-network background. Crossing-edge hit testing offers the actual candidate assertions. Evidence includes original polarity, exact source version, table/paragraph locator, limitations, review state and preceding-assertion links.
 
 Spatial presentation uses the existing complete, bounded HTTP map query and exact data-item/version/record bindings. It keeps original point/line/area geometry, converts display coordinates through the existing map adapter, and retains unlocated knowledge separately with its original relations. Dashed connectors place document labels around a geometry's display center; neither labels nor their centers become new point features or business relations. Geometry lookup rejects changed scope, incomplete pagination and denied access. Map movement does not change the business question. Location precision and knowledge review remain separate. No source acquisition, parser rerun, migration or business-data write is performed by scene controls.
+
+### Server-owned business membership storage
+
+Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the existing owner-scoped exploration snapshot and saved-view tables. It stores only assertion UUID/version pairs, separately from the bounded client specification. Existing rows remain null and unchanged. The database rejects malformed, duplicate or oversized memberships (100,000 pairs / 8 MiB maximum); this is a storage guard, not a claimed query/render capacity. Forced RLS, immutable snapshot contents and saved-view one-way revocation continue to apply to the whole row. `packages/data-infra/test/migrations/exploration-membership.spec.ts` exercises 2,033 synthetic members, six scope boundaries and mutation rejection in a disposable database. This storage slice alone does not enable project-wide business queries, change existing capability limits, approve knowledge or load external observations. API use and client integration require separate verification.
+
+### Project business scope (exploration 1.13)
+
+`scope: "project"` with `businessQuery` requests a server-resolved authorized source manifest; callers cannot supply version or assertion pins in this mode. Source versions, analysis versions and assertion UUID/revisions are fixed in the existing owner-scoped snapshot. Responses expose `membership` counts and a short `queryId`, not the assertion list. Counts describe fixed membership before display filters, not independent observations or the current page. Resource pages and relation pages remain bounded. Exceeding server limits fails without truncation; the storage ceiling is not a rendering performance claim.
+
+Saved-view open 1.3 and export 1.2 retain this scope. Refining through `baseQueryId` retains existing members and rechecks every original source/assertion before narrowing; it does not absorb later additions. Changing review status requires a fresh query. Missing, withdrawn or changed pins fail the request rather than returning a partial panorama. Exploration 1.12, saved-view open 1.2 and export 1.1 schemas remain immutable archives; explicit-version queries keep their existing limits. Hidden data and undiscoverable metadata are not included. A separately authorized source catalogue is required for discoverable restricted sources. No new GraphQL, REST or MCP route or authority model is introduced.
+
+### Mixed review query scope (exploration 1.14)
+
+`businessQuery.schemaVersion: 2` with `status: "APPROVED_AND_PENDING"` selects authorized approved and pending assertions together. This is a query selector, never an authority state or review decision. Each returned assertion retains its real status and revision; rejected/correction-required assertions are excluded. Current-revision selection never lets a pending correction hide an approved assertion. Version 1 keeps its existing single-state behavior.
+
+Relation list 1.6 accepts the selector only with a persisted business `queryId` whose status matches. Inline sources and ordinary non-business queries cannot use it. Existing source authorization, immutable membership, pagination, record evidence and withdrawal checks still apply; any changed assertion revision invalidates replay even when its status remains inside the selected set. Saved-open 1.4 and export 1.3 preserve this scope. Prior query 1.13, saved-open 1.3, export 1.2 and relation-list 1.5 discovery schemas are frozen, including their schema hashes. No authority model or database migration is introduced.
+
+The Web default entry uses project scope, business query v2, mixed approved/pending status and current revisions, without source, kind or time restrictions. The shared server loader serves both `/[locale]/data-foundation` and `/explore`; explicit query IDs and saved views resume their existing membership. Resources are read 25 per page and business relations retain the query-owned membership checks. The ordinary homepage does not register, approve or fetch external observations.
+
+Web metadata reads must use the verified session and same-origin transport, preserve only allowlisted source-access states, and bound request/response sizes and cancellation. A readable catalog does not grant provider access; production source readers remain disabled until trusted source-specific permission is wired.
+
+The same-origin `POST /api/data-foundation/external-metadata` accepts only the strict source/year/page contract, with a 4 KiB request-body limit and a five-second upload bound. It forwards browser cancellation to the session-verified DAL, which uses the fixed capability route, a shared header/body deadline and bounded decoded response. Source, year, allowed fields and page consistency are checked. All outcomes are private/no-store; only status-matched public error codes cross the web boundary. Provider permission configuration and source-catalog association remain separate prerequisites; this route does not enable the production provider.
+
+An authorized catalog detail can expose an external station-directory panel through an explicit host-owned `WISER_EXTERNAL_METADATA_BINDINGS` JSON array. Each mapping contains exactly `tenantId`, `projectId`, `dataItemId` and `sourceId`; invalid, duplicate, oversized or unmatched configurations expose no panel. The configuration is navigation metadata, never a provider grant, and is evaluated only after the existing catalog read succeeds. It is not inferred from names or documents, creates no database record and includes no provider URL or credentials. The reader remains disabled by default until live source permission is supplied.
+
+## Bounded project relation pages
+
+Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
+
+Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.
+
+The project graph requests bounded pages through the session-verified Web DAL. Each request discovers the target relation-list capability; exact 1.7 support uses the bounded mode, otherwise the same query and cursor use at most 100 items. Discovery failures propagate rather than retrying around authorization. Fixed-source queries retain the 100-item path. The browser rejects incomplete totals, duplicate identities, empty continuation pages and repeated cursors before displaying the graph.

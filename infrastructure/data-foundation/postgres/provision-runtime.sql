@@ -176,6 +176,9 @@ do $$ begin
     revoke update,delete on service.exploration_saved_view from wiser_data_runtime;
     grant update(revoked_at) on service.exploration_saved_view to wiser_data_runtime;
   end if;
+  if to_regprocedure('service.valid_exploration_business_pins(jsonb)') is not null then
+    grant execute on function service.valid_exploration_business_pins(jsonb) to wiser_data_runtime;
+  end if;
   if to_regclass('service.exploration_snapshot') is not null then
     grant select, insert, delete on service.exploration_snapshot to wiser_data_runtime;
     revoke update on service.exploration_snapshot from wiser_data_runtime;
