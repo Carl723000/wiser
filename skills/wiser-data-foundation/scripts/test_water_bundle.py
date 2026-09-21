@@ -23,7 +23,7 @@ class InventoryTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.write(".env", b'PROVIDER_TOKEN="private-token-never-upload-this"\n')
         self.write("output/downloads/DS-0001_sample.bin", b"partial bytes")
         self.write("downloads/unlisted.csv", b"station,value\r\nA,1\r\n")

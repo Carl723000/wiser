@@ -119,6 +119,8 @@ pnpm test:coverage
 
 这些数字只衡量 Vitest manifest。Playwright、pgTAP、真实 PostgreSQL integration、运维 smoke 与浏览器可见的 Next.js 页面仍是独立证明层，不会合并进 unit 百分比。不得为了容纳未测试代码而下调阈值，也不能把全局数字解释成产品级覆盖率。
 
+该套件在 Vitest 5 中显式声明 `{ concurrent: false }`，不再使用已移除的 `describe.sequential`。升级测试框架时保留全部七个数据库用例及清理逻辑；仅收集到用例不能作为数据库执行通过的证据。
+
 ## Supabase 与 Data Foundation
 
 Supabase schema、RLS、seed 或平台/EXCON 数据库逻辑变化时：

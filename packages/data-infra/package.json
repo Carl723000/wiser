@@ -27,8 +27,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1118.0",
-    "@aws-sdk/s3-request-presigner": "3.1118.0",
+    "@aws-sdk/client-s3": "3.1136.0",
+    "@aws-sdk/s3-request-presigner": "3.1136.0",
     "@wiser/data-contracts": "workspace:*",
     "csv-parse": "7.0.2",
     "pg": "8.23.0"
@@ -36,9 +36,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/pg": "8.23.1",
-    "tsx": "4.23.12",
+    "tsx": "4.23.13",
     "typescript": "catalog:",
-    "vitest": "4.1.11"
+    "vitest": "5.0.1"
   },
   "engines": {
     "node": ">=24.18.0 <25"
