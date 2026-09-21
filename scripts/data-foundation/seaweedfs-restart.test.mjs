@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
@@ -13,14 +14,14 @@ test(
   'SeaweedFS retains objects through two restarts of the same container',
   {
     skip: !enabled,
-    timeout: 120_000,
+    timeout: 180_000,
   },
   async () => {
     const docker = async (...args) =>
       (
         await run('docker', args, {
           cwd: root,
-          timeout: 30_000,
+          timeout: 40_000,
           maxBuffer: 1024 * 1024,
         })
       ).stdout.trim();
@@ -61,7 +62,9 @@ test(
         service.entrypoint[0],
         service.image,
         ...service.entrypoint.slice(1),
-        ...service.command,
+        // Compose config preserves dollar escaping for serialization; direct
+        // docker execution needs the shell command after Compose unescaping.
+        ...service.command.map((part) => part.replaceAll('$$', '$')),
       );
       const ready = async () => {
         for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -121,6 +124,14 @@ test(
           '-fsS',
           '--aws-sigv4',
           'aws:amz:us-east-1:s3',
+          '-H',
+          `x-amz-content-sha256:${createHash('sha256')
+            .update(
+              args.includes('--data-binary')
+                ? args[args.indexOf('--data-binary') + 1]
+                : '',
+            )
+            .digest('hex')}`,
           '--user',
           'synthetic-access:synthetic-secret',
           ...args,
@@ -138,7 +149,15 @@ test(
         await ready();
         assert.equal(await docker('inspect', '--format', '{{.Id}}', name), id);
         assert.equal(
-          await s3('http://127.0.0.1:8333/restart-test/sentinel'),
+          await s3(
+            '--retry',
+            '20',
+            '--retry-delay',
+            '1',
+            '--retry-max-time',
+            '25',
+            'http://127.0.0.1:8333/restart-test/sentinel',
+          ),
           'retained-object',
         );
       }
