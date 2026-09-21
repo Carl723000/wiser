@@ -119,6 +119,8 @@ The verified coverage ratchet enforces global floors of 73% statements, 67% bran
 
 These figures measure only the Vitest manifest. Playwright, pgTAP, real PostgreSQL integration, operations smoke, and browser-visible Next.js pages remain separate proof layers and are not merged into the unit percentage. Do not lower a threshold merely to accommodate untested code or interpret the global number as product-level coverage.
 
+The suite declares `{ concurrent: false }` explicitly for Vitest 5; the removed `describe.sequential` API must not be used. Keep all seven database cases and their cleanup intact when changing the test runner. Collection-only checks are not database execution evidence.
+
 ## Supabase and Data Foundation
 
 For Supabase schema, RLS, seed, or platform/EXCON database logic changes:
