@@ -17,7 +17,7 @@ function source() {
 describe('authorized asset stream', () => {
   it('preserves bytes and rechecks before each released chunk', async () => {
     const { body } = source();
-    const authorize = vi.fn(async () => true);
+    const authorize = vi.fn(() => Promise.resolve(true));
     const bytes: number[] = [];
     for await (const chunk of authorizedAssetStream(body, authorize))
       bytes.push(...chunk);
@@ -27,7 +27,7 @@ describe('authorized asset stream', () => {
   });
   it('cancels the upstream and withholds the next chunk after revocation', async () => {
     const { body, cancel } = source();
-    const authorize = vi.fn(async () => true);
+    const authorize = vi.fn(() => Promise.resolve(true));
     const stream = authorizedAssetStream(body, authorize);
     expect((await stream.next()).value).toEqual(Uint8Array.of(1));
     authorize.mockResolvedValue(false);
@@ -37,15 +37,15 @@ describe('authorized asset stream', () => {
   });
   it('does not leak internal authorization errors', async () => {
     const { body, cancel } = source();
-    const stream = authorizedAssetStream(body, async () => {
-      throw new Error('internal authority details');
-    });
+    const stream = authorizedAssetStream(body, () =>
+      Promise.reject(new Error('internal authority details')),
+    );
     await expect(stream.next()).rejects.toThrow(/^Asset delivery unavailable$/);
     expect(cancel).toHaveBeenCalledOnce();
   });
   it('cancels on downstream termination', async () => {
     const { body, cancel } = source();
-    const stream = authorizedAssetStream(body, async () => true);
+    const stream = authorizedAssetStream(body, () => Promise.resolve(true));
     await stream.next();
     await stream.return();
     expect(cancel).toHaveBeenCalledOnce();

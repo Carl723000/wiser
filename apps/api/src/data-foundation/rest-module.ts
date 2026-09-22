@@ -1,7 +1,7 @@
 import { sameDeliveryAuthority } from './authority-delivery.js';
+import { authorizedAssetStream } from './authorized-asset-stream.js';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -709,9 +709,12 @@ export function createDataFoundationRestModule(
               ) {
                 return sendError(request, reply, errors.forbidden);
               }
+              const proxyDelivery =
+                delivery === 'content' ||
+                resolved.context.authorization.resourceAccess !== undefined;
               const range = request.headers.range;
               if (
-                delivery === 'content' &&
+                proxyDelivery &&
                 (Object.keys(record(request.query) ?? {}).length > 0 ||
                   (range !== undefined &&
                     !/^bytes=(?:[0-9]{1,15}-[0-9]{0,15}|-[0-9]{1,15})$/.test(
@@ -728,7 +731,7 @@ export function createDataFoundationRestModule(
                   context: resolved.context,
                   versionId,
                   ...(assetId === 'source' ? {} : { assetId }),
-                  ...(delivery === 'content' ? { internal: true } : {}),
+                  ...(proxyDelivery ? { internal: true } : {}),
                 });
                 const url = new URL(download.url);
                 if (
@@ -747,7 +750,7 @@ export function createDataFoundationRestModule(
                 return sendError(request, reply, fresh.error);
               if (!sameDeliveryAuthority(resolved.context, fresh.context))
                 return sendError(request, reply, errors.forbidden);
-              if (delivery === 'content') {
+              if (proxyDelivery) {
                 const controller = new AbortController();
                 const close = () => controller.abort();
                 reply.raw.once('close', close);
@@ -823,8 +826,21 @@ export function createDataFoundationRestModule(
                   if (!upstream.body)
                     return sendError(request, reply, errors.unavailable);
                   return reply.send(
-                    Readable.fromWeb(
-                      upstream.body as NodeReadableStream<Uint8Array>,
+                    Readable.from(
+                      authorizedAssetStream(upstream.body, async () => {
+                        const current = await resolveContext(
+                          request,
+                          options.resolver,
+                        );
+                        return (
+                          !('error' in current) &&
+                          sameDeliveryAuthority(
+                            resolved.context,
+                            current.context,
+                          )
+                        );
+                      }),
+                      { objectMode: false },
                     ),
                   );
                 } catch {
