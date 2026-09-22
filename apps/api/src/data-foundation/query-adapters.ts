@@ -1,12 +1,14 @@
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { Buffer } from 'node:buffer';
 import { z } from 'zod';
+import { ResourceAccessContextSchema } from '@wiser/platform-contracts';
 import { relationFragmentVisibleSql } from '@wiser/data-infra';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import type {
   ProjectionReadAuthority,
+  ProjectionEvidenceReference,
   DataStructuredQueryPort,
   GeoQueryPort,
   GraphQueryPort,
@@ -707,13 +709,15 @@ WHERE all(node IN nodes(graph) WHERE node.tenantId = $tenantId
   AND node.securityLevel IN $allowedSecurityLevels
   AND node.policyVersion <= $maximumPolicyVersion
   AND node.publicationStatus = 'PUBLISHED'
-  AND node.acceptanceStatus IN ['PASSED', 'CONDITIONALLY_PASSED'])
+  AND node.acceptanceStatus IN ['PASSED', 'CONDITIONALLY_PASSED']
+  AND (NOT $resourceRestricted OR any(resource IN $resourceVersions WHERE node.dataItemId = resource.dataItemId AND node.versionId = resource.versionId)))
   AND all(edge IN relationships(graph) WHERE edge.tenantId = $tenantId
     AND edge.projectId = $projectId
     AND edge.securityLevel IN $allowedSecurityLevels
     AND edge.policyVersion <= $maximumPolicyVersion
     AND edge.publicationStatus = 'PUBLISHED'
     AND edge.acceptanceStatus IN ['PASSED', 'CONDITIONALLY_PASSED']
+    AND (NOT $resourceRestricted OR any(resource IN $resourceVersions WHERE edge.dataItemId = resource.dataItemId AND edge.versionId = resource.versionId))
     AND (size($relationTypes) = 0 OR type(edge) IN $relationTypes))
 RETURN {nodes: [node IN nodes(graph) | {
     entityId: node.entityId, label: coalesce(node.label, node.name),
@@ -798,8 +802,31 @@ export class Neo4jGraphQueryPort implements GraphQueryPort {
       request.input['relationTypes'] === undefined
         ? []
         : strings(request.input['relationTypes'], 64);
+    let resourceVersions: { dataItemId: string; versionId: string }[] = [];
+    const resourceRestricted = request.scope.resourceAccess !== undefined;
+    if (resourceRestricted) {
+      const authority = ResourceAccessContextSchema.safeParse(
+        request.scope.resourceAccess,
+      );
+      if (
+        !authority.success ||
+        authority.data.scope.mode !== 'managed' ||
+        (authority.data.scope.validUntil !== null &&
+          Date.parse(authority.data.scope.validUntil) <= Date.now())
+      )
+        throw adapterError('INVALID_QUERY');
+      resourceVersions = authority.data.scope.permissions['content.read']
+        .filter((ref) => ref.kind === 'version')
+        .map(({ dataItemId, versionId }) => ({ dataItemId, versionId }));
+      if (resourceVersions.length === 0) return { nodes: [], edges: [] };
+    }
     const parameters = {
-      ...request.scope,
+      tenantId: request.scope.tenantId,
+      projectId: request.scope.projectId,
+      maxSecurityLevel: request.scope.maxSecurityLevel,
+      maximumPolicyVersion: request.scope.maximumPolicyVersion,
+      resourceRestricted,
+      resourceVersions,
       allowedSecurityLevels: SECURITY_LEVELS.slice(0, rank + 1),
       relationTypes,
       limit: boundedInteger(request.input['first'], 100, this.#maximumNodes),
@@ -1132,21 +1159,22 @@ export class PostgresProjectionReadAuthority implements ProjectionReadAuthority 
   }
   async assertVisible(
     request: ScopedSpecialQueryRequest,
-    references: readonly {
-      readonly dataItemId: string;
-      readonly versionId: string;
-      readonly evidenceId: string;
-    }[],
+    references: readonly ProjectionEvidenceReference[],
   ): Promise<void> {
     const validated = z
       .array(
-        z.strictObject({
-          dataItemId: z.uuid(),
-          versionId: z.uuid(),
-          evidenceId: z.uuid(),
-        }),
+        z
+          .strictObject({
+            dataItemId: z.uuid().optional(),
+            versionId: z.uuid().optional(),
+            evidenceId: z.uuid(),
+          })
+          .refine(
+            (ref) =>
+              (ref.dataItemId === undefined) === (ref.versionId === undefined),
+          ),
       )
-      .max(10000)
+      .max(30000)
       .safeParse(references);
     if (!validated.success) throw adapterError('INVALID_BACKEND_RESULT');
     const pins = validated.data;
@@ -1160,7 +1188,7 @@ export class PostgresProjectionReadAuthority implements ProjectionReadAuthority 
           select 1 from knowledge.evidence_fragment fragment
           join catalog.data_item_version v using(tenant_id,project_id,version_id,data_item_id)
           join catalog.data_item i using(tenant_id,project_id,data_item_id)
-          where fragment.data_item_id=r.data_item_id and fragment.version_id=r.version_id and fragment.evidence_fragment_id=r.evidence_id
+          where (r.data_item_id is null or fragment.data_item_id=r.data_item_id) and (r.version_id is null or fragment.version_id=r.version_id) and fragment.evidence_fragment_id=r.evidence_id
           and v.committed_at is not null and v.publication_status='PUBLISHED' and i.publication_status='PUBLISHED'
           and v.acceptance_status in ('PASSED','CONDITIONALLY_PASSED') and i.acceptance_status in ('PASSED','CONDITIONALLY_PASSED')
           and ${relationFragmentVisibleSql('fragment')}

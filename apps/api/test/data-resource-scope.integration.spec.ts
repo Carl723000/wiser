@@ -168,6 +168,22 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });
       await expect(
         projectionAuthority.assertVisible(projectionRequest, [
+          { evidenceId: first.evidenceId },
+        ]),
+      ).resolves.toBeUndefined();
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
+          { evidenceId: second.evidenceId },
+        ]),
+      ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
+          { evidenceId: first.evidenceId, dataItemId: first.dataItemId },
+        ]),
+      ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });
+
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
           { ...reference(first), evidenceId: second.evidenceId },
         ]),
       ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });

@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: c786ce05cdfef2d9b3a208ffa665a8f6a9c7ba82
+lastReviewedCommit: 815a6c63f44e26688b2d7954338b440dbcc96ff2
 ---
 
 ## 入口与权威契约
@@ -274,3 +274,5 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 可信 SQL 适配器保留既有公开输入和未启用项目的事务行为，接收服务内部编译的授权范围，在计数和分页前执行限制。目录游标绑定资源授权指纹，范围变化后的旧游标报 INVALID_DATA_CURSOR。既有探索清单只要有固定成员失去访问权限，仍按原契约报 CONFLICT；缺少所需交集的导出同样拒绝。内部导出动作不能由请求 JSON 指定。这些适配器验证不代表投影、传输前重新授权及下载撤销已全部验收，运行时启用仍待接续。
 
 受管项目的联合／语义检索向各后端传递最多1000个获准内容版本；仅有来源发现权限时不返回正文命中。搜索游标绑定资源权限指纹，结果发布前按资料、版本和证据的精确组合回查Data PostgreSQL行级权限、发布状态及跨来源依据可见性；缺少权威回验适配器时拒绝返回。全局启用仍待图投影保护、交付前权限重查及下载处理完成。
+
+受管图扩展及路径查询对每个节点和关系应用内容版本范围，不向Neo4j传递完整授权快照，并在返回图谱前回查Data PostgreSQL中的节点与原文依据。端点可读不代表关系证据可读；内容权限为空时不查询投影。全局启用前仍需完成响应交付前的实时权限重验及受控下载处理。

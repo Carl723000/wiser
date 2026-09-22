@@ -69,14 +69,15 @@ export interface SpecialSearchOrchestrator {
   search(request: unknown): Promise<unknown>;
 }
 
+export type ProjectionEvidenceReference = {
+  readonly evidenceId: string;
+  readonly dataItemId?: string;
+  readonly versionId?: string;
+};
 export interface ProjectionReadAuthority {
   assertVisible(
     request: ScopedSpecialQueryRequest,
-    references: readonly {
-      readonly dataItemId: string;
-      readonly versionId: string;
-      readonly evidenceId: string;
-    }[],
+    references: readonly ProjectionEvidenceReference[],
   ): Promise<void>;
 }
 
@@ -113,7 +114,18 @@ export class SpecialQueryExecutorError extends Error {
 }
 
 interface ValidatedGraphOutput {
-  readonly nodes: readonly { readonly securityLevel: SecurityLevel }[];
+  readonly nodes: readonly {
+    readonly entityId: string;
+    readonly dataItemId: string;
+    readonly versionId: string;
+    readonly evidenceId: string;
+    readonly securityLevel: SecurityLevel;
+  }[];
+  readonly edges: readonly {
+    readonly evidenceId: string;
+    readonly fromEntityId: string;
+    readonly toEntityId: string;
+  }[];
 }
 
 interface ValidatedSearchPage {
@@ -253,7 +265,10 @@ function request(
   });
 }
 
-function validateGraphSecurity(output: unknown, maximum: SecurityLevel): void {
+function validateGraphSecurity(
+  output: unknown,
+  maximum: SecurityLevel,
+): ValidatedGraphOutput {
   const parsed =
     DATA_CAPABILITY_REGISTRY['data.graph.expand'].outputSchema.safeParse(
       output,
@@ -267,6 +282,57 @@ function validateGraphSecurity(output: unknown, maximum: SecurityLevel): void {
   ) {
     throw executorError('UNAUTHORIZED_BACKEND_RESULT');
   }
+  return graph;
+}
+
+async function authorizedGraph(
+  options: SpecialQueryExecutorOptions,
+  input: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+  path: boolean,
+): Promise<unknown> {
+  const pins = managedSearchPins(context);
+  if (pins?.length === 0) return { nodes: [], edges: [] };
+  if (pins && !options.projectionAuthority)
+    throw executorError('BACKEND_UNAVAILABLE');
+  const query = request(input, context);
+  const output = path
+    ? await options.graph.findPath(query)
+    : await options.graph.expand(query);
+  const graph = validateGraphSecurity(
+    output,
+    context.effectiveMaxSecurityLevel,
+  );
+  if (pins) {
+    if (
+      graph.nodes.some(
+        (node) =>
+          !pins.some(
+            (pin) =>
+              pin.dataItemId === node.dataItemId &&
+              pin.versionId === node.versionId,
+          ),
+      )
+    )
+      throw executorError('UNAUTHORIZED_BACKEND_RESULT');
+    const nodeIds = new Set(graph.nodes.map((node) => node.entityId));
+    if (
+      graph.edges.some(
+        (edge) =>
+          !nodeIds.has(edge.fromEntityId) || !nodeIds.has(edge.toEntityId),
+      )
+    )
+      throw executorError('INVALID_BACKEND_RESULT');
+    await options.projectionAuthority!.assertVisible(query, [
+      ...graph.nodes.map(({ dataItemId, versionId, evidenceId }) => ({
+        dataItemId,
+        versionId,
+        evidenceId,
+      })),
+      ...graph.edges.map(({ evidenceId }) => ({ evidenceId })),
+    ]);
+  }
+  return output;
 }
 
 function define(
@@ -355,16 +421,12 @@ export function createSpecialQueryExecutors(
           : { nextCursor: validatedPage.nextCursor }),
       };
     }),
-    define('data.graph.expand', async (input, context) => {
-      const output = await options.graph.expand(request(input, context));
-      validateGraphSecurity(output, context.effectiveMaxSecurityLevel);
-      return output;
-    }),
-    define('data.graph.findPath', async (input, context) => {
-      const output = await options.graph.findPath(request(input, context));
-      validateGraphSecurity(output, context.effectiveMaxSecurityLevel);
-      return output;
-    }),
+    define('data.graph.expand', (input, context) =>
+      authorizedGraph(options, input, context, false),
+    ),
+    define('data.graph.findPath', (input, context) =>
+      authorizedGraph(options, input, context, true),
+    ),
     define('data.geo.query', (input, context) =>
       options.geo.query(request(input, context)),
     ),
