@@ -2,6 +2,8 @@ import {
   PlatformUuidSchema,
   ProjectAccessPageSchema,
   ProjectAccessGrantSchema,
+  ProjectAccessInviteSchema,
+  ProjectAccessInvitationDeliverySchema,
   ProjectAccessRevokeSchema,
 } from '@wiser/platform-contracts';
 import {
@@ -29,14 +31,14 @@ export async function GET(
   context: Context,
 ): Promise<Response> {
   const { action } = await context.params;
-  if (action !== 'projects' && action !== 'members')
+  if (action !== 'projects' && action !== 'members' && action !== 'invitations')
     return fail(404, 'NOT_FOUND');
   const query = Object.fromEntries(new URL(request.url).searchParams);
   const { projectId, ...pageInput } = query;
   const page = ProjectAccessPageSchema.safeParse(pageInput);
   if (
     !page.success ||
-    (action === 'members' &&
+    (action !== 'projects' &&
       !PlatformUuidSchema.safeParse(projectId).success) ||
     (action === 'projects' && projectId !== undefined)
   )
@@ -46,7 +48,9 @@ export async function GET(
     return Response.json(
       action === 'projects'
         ? await client.projects(page.data)
-        : await client.members(projectId, page.data),
+        : action === 'members'
+          ? await client.members(projectId, page.data)
+          : await client.invitations(projectId, page.data),
       { headers },
     );
   } catch (error) {
@@ -59,7 +63,13 @@ export async function POST(
 ): Promise<Response> {
   if (!isSameOriginRequest(request)) return fail(403, 'NOT_AUTHORIZED');
   const { action } = await context.params;
-  if (action !== 'grant' && action !== 'revoke') return fail(404, 'NOT_FOUND');
+  if (
+    action !== 'grant' &&
+    action !== 'revoke' &&
+    action !== 'invite' &&
+    action !== 'deliver-invitation'
+  )
+    return fail(404, 'NOT_FOUND');
   if (!request.headers.get('content-type')?.startsWith('application/json'))
     return fail(400, 'VALIDATION_FAILED');
   const reader = request.body?.getReader();
@@ -105,6 +115,21 @@ export async function POST(
   if (!key.success) return fail(400, 'VALIDATION_FAILED');
   try {
     const client = getProjectAccessClient();
+    if (action === 'invite') {
+      const command = ProjectAccessInviteSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.invite(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'deliver-invitation') {
+      const command = ProjectAccessInvitationDeliverySchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.deliverInvitation(command.data, key.data),
+        { headers },
+      );
+    }
     if (action === 'grant') {
       const command = ProjectAccessGrantSchema.safeParse(body);
       if (!command.success) return fail(400, 'VALIDATION_FAILED');

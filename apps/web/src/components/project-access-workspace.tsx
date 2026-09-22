@@ -8,6 +8,7 @@ import {
 } from '@wiser/platform-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './project-access-workspace.module.css';
+import { ProjectInvitations } from './project-invitations';
 type Props = {
   locale: Locale;
   initial: { items: readonly ProjectAccessProjectView[]; hasMore: boolean };
@@ -543,6 +544,13 @@ export function ProjectAccessWorkspace({
                       }}
                     />
                   ) : null}
+                  <ProjectInvitations
+                    key={project.projectId}
+                    locale={locale}
+                    projectId={project.projectId}
+                    roles={project.assignableRoles}
+                    onChanged={() => setRevision((x) => x + 1)}
+                  />
                 </>
               )}
             </>

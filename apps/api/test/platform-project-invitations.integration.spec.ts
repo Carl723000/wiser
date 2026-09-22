@@ -98,11 +98,11 @@ describe.skipIf(!url)('isolated project invitation delivery', () => {
     });
     expect(again.status).toBe('granted');
     expect(deliver).toHaveBeenCalledTimes(1);
-    const grants = await pool.query(
+    const grants = await pool.query<{ count: string }>(
       "select count(*) from platform_private.project_access_events where subject_id=$1 and action='grant'",
       [result.actorId],
     );
-    expect(Number(grants.rows[0].count)).toBe(1);
+    expect(Number(grants.rows[0]?.count)).toBe(1);
   });
   it('retains a failed delivery without granting and recovers only through an explicit retry', async () => {
     deliver.mockRejectedValueOnce(new Error('private provider detail'));
@@ -151,5 +151,140 @@ describe.skipIf(!url)('isolated project invitation delivery', () => {
         command: { ...command(), roleKey: 'platform-owner' },
       }),
     ).rejects.toMatchObject({ code: 'ROLE_NOT_ASSIGNABLE' });
+  });
+  it('reuses a confirmed Auth identity without sending another invitation', async () => {
+    deliver.mockClear();
+    const cmd = command(),
+      actorId = randomUUID();
+    await pool.query(
+      'insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())',
+      [actorId, cmd.email],
+    );
+    const invitation = await service.invite({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: cmd,
+    });
+    expect(invitation).toMatchObject({ actorId, deliveryMode: 'existing' });
+    const result = await service.deliverInvitation({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        invitationId: invitation.id,
+        expectedVersion: invitation.version,
+      },
+    });
+    expect(result.status).toBe('granted');
+    expect(deliver).not.toHaveBeenCalled();
+  });
+  it('serializes concurrent retry keys and dispatches only once', async () => {
+    deliver.mockClear();
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    deliver.mockImplementationOnce(async (email) => {
+      started();
+      await gate;
+      const actorId = randomUUID();
+      await pool.query('insert into auth.users(id,email) values($1,$2)', [
+        actorId,
+        email,
+      ]);
+      return { actorId };
+    });
+    const invitation = await service.invite({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: command(),
+    });
+    const input = {
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        invitationId: invitation.id,
+        expectedVersion: invitation.version,
+      },
+    };
+    const first = service.deliverInvitation(input);
+    await waiting;
+    try {
+      expect((await service.deliverInvitation(input)).status).toBe('sending');
+      await expect(
+        service.deliverInvitation({
+          ...input,
+          idempotencyKey: randomUUID(),
+          command: {
+            ...input.command,
+            expectedVersion: invitation.version + 1,
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'DELIVERY_IN_PROGRESS' });
+    } finally {
+      release();
+    }
+    expect((await first).status).toBe('granted');
+    expect(deliver).toHaveBeenCalledTimes(1);
+  });
+  it('rechecks the initiating session after external delivery before granting', async () => {
+    const temporarySession = randomUUID();
+    await pool.query('insert into auth.sessions(id,user_id) values($1,$2)', [
+      temporarySession,
+      owner,
+    ]);
+    let recipient: string | undefined;
+    const changing = new PostgresProjectAccessService({
+      pool: transactionPool,
+      verifyHuman: () =>
+        Promise.resolve({ userId: owner, sessionId: temporarySession }),
+      inviteUser: async (email) => {
+        recipient = randomUUID();
+        await pool.query('insert into auth.users(id,email) values($1,$2)', [
+          recipient,
+          email,
+        ]);
+        await pool.query('delete from auth.sessions where id=$1', [
+          temporarySession,
+        ]);
+        return { actorId: recipient };
+      },
+    });
+    const invitation = await changing.invite({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: command(),
+    });
+    await expect(
+      changing.deliverInvitation({
+        token: 'owner',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId: project,
+          invitationId: invitation.id,
+          expectedVersion: invitation.version,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_AUTHENTICATED' });
+    expect(
+      (
+        await pool.query(
+          'select actor_id from platform.project_memberships where project_id=$1 and actor_id=$2',
+          [project, recipient],
+        )
+      ).rowCount,
+    ).toBe(0);
+    expect(
+      (
+        await pool.query<{ status: string }>(
+          'select status from platform_private.project_access_invitations where id=$1',
+          [invitation.id],
+        )
+      ).rows[0]?.status,
+    ).toBe('sending');
   });
 });

@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(10);
 select has_table('platform_private', 'project_access_settings', 'project discovery is explicitly configured');
 select has_table('platform_private', 'project_access_roles', 'assignable roles are explicitly configured');
 select has_table('platform_private', 'project_access_invitations', 'invitation delivery has its own lifecycle');
@@ -12,5 +12,6 @@ select is((select count(*) from information_schema.role_table_grants where table
  and table_name like 'project_access_%' and grantee in ('anon','authenticated','PUBLIC')),0::bigint,'browser roles cannot directly administer members');
 select has_trigger('platform_private','project_access_events','project_access_events_immutable','audit is append-only');
 select is((select count(*) from platform.role_scopes where scope in ('platform.membership.manage','platform.access.approve')), 2::bigint, 'local owner seed explicitly has separate management and approval scopes');
+select has_column('platform_private','project_access_invitations','delivery_mode','email delivery remains distinct from existing-account reuse');
 select * from finish();
 rollback;

@@ -4,6 +4,10 @@ import {
 } from '@wiser/platform-auth';
 import {
   ProjectAccessGrantSchema,
+  ProjectAccessInviteSchema,
+  ProjectAccessInvitationDeliverySchema,
+  ProjectAccessInvitationViewSchema,
+  ProjectAccessInvitationsPageSchema,
   ProjectAccessMemberViewSchema,
   ProjectAccessMembersPageSchema,
   ProjectAccessProjectsPageSchema,
@@ -17,7 +21,13 @@ import type { WiserApiModule } from './modules.js';
 
 export type ProjectAccessHttpService = Pick<
   PostgresProjectAccessService,
-  'projects' | 'members' | 'grant' | 'revoke'
+  | 'projects'
+  | 'members'
+  | 'grant'
+  | 'revoke'
+  | 'invite'
+  | 'invitations'
+  | 'deliverInvitation'
 >;
 const Params = z.strictObject({ projectId: PlatformUuidSchema });
 function fail(reply: FastifyReply, status: number, code: string) {
@@ -48,7 +58,8 @@ async function guarded(
               error.code === 'INVALID_EXPIRY'
             ? 400
             : error.code === 'VERSION_CONFLICT' ||
-                error.code === 'IDEMPOTENCY_CONFLICT'
+                error.code === 'IDEMPOTENCY_CONFLICT' ||
+                error.code === 'DELIVERY_IN_PROGRESS'
               ? 409
               : 403;
       return fail(reply, status, error.code);
@@ -81,6 +92,49 @@ export function createProjectAccessModule(
                 token,
                 projectId: Params.parse(request.params).projectId,
                 page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/invitations',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessInvitationsPageSchema.parse(
+              await service.invitations({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.post('/api/platform/v1/access/invitations', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessInvitationViewSchema.parse(
+            await service.invite({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessInviteSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post(
+        '/api/platform/v1/access/invitation-deliveries',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessInvitationViewSchema.parse(
+              await service.deliverInvitation({
+                token,
+                idempotencyKey: PlatformUuidSchema.parse(
+                  request.headers['idempotency-key'],
+                ),
+                command: ProjectAccessInvitationDeliverySchema.parse(
+                  request.body,
+                ),
               }),
             ),
           ),

@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   ProjectAccessGrantSchema,
+  ProjectAccessInviteSchema,
+  ProjectAccessInvitationDeliverySchema,
+  type ProjectAccessInvite,
+  type ProjectAccessInvitationDelivery,
+  type ProjectAccessInvitationView,
   ProjectAccessPageSchema,
   ProjectAccessRevokeSchema,
   type ProjectAccessGrant,
@@ -34,7 +39,9 @@ export type ProjectAccessErrorCode =
   | 'VALIDATION_FAILED'
   | 'VERSION_CONFLICT'
   | 'IDEMPOTENCY_CONFLICT'
-  | 'MEMBER_UNAVAILABLE';
+  | 'MEMBER_UNAVAILABLE'
+  | 'INVITATION_UNAVAILABLE'
+  | 'DELIVERY_IN_PROGRESS';
 export class ProjectAccessError extends Error {
   constructor(readonly code: ProjectAccessErrorCode) {
     super(code);
@@ -44,6 +51,7 @@ export class ProjectAccessError extends Error {
 export interface ProjectAccessServiceOptions {
   readonly pool: PlatformDelegationTransactionPool;
   readonly verifyHuman: SupabaseJwtClaimsVerifier;
+  readonly inviteUser?: (email: string) => Promise<{ actorId: string }>;
 }
 interface SessionInput {
   readonly token: string;
@@ -60,6 +68,35 @@ interface ProjectRow {
   requests_enabled: boolean;
   now: Date;
 }
+interface InvitationRow {
+  id: string;
+  email: string;
+  role_key: string;
+  expires_at: Date;
+  status: ProjectAccessInvitationView['status'];
+  actor_id: string | null;
+  version: number;
+  delivery_mode: 'email' | 'existing';
+  last_error_code: 'DELIVERY_UNAVAILABLE' | 'GRANT_UNAVAILABLE' | null;
+  accepted_at: Date | null;
+  reason: string;
+  updated_at: Date;
+}
+function invitationView(row: InvitationRow): ProjectAccessInvitationView {
+  return {
+    id: row.id,
+    email: row.email,
+    roleKey: row.role_key,
+    expiresAt: row.expires_at.toISOString(),
+    status: row.status,
+    actorId: row.actor_id,
+    version: Number(row.version),
+    deliveryMode: row.delivery_mode,
+    lastErrorCode: row.last_error_code,
+    acceptedAt: row.accepted_at?.toISOString() ?? null,
+  };
+}
+const INVITATION_SELECT = `select i.*,r.role_key,u.email_confirmed_at accepted_at from platform_private.project_access_invitations i join platform.roles r on r.id=i.role_id left join auth.users u on u.id=i.actor_id`;
 interface MemberRow {
   actor_id: string;
   display_name: string;
@@ -315,6 +352,263 @@ export class PostgresProjectAccessService {
     );
     return result;
   }
+  async #invitation(client: Client, projectId: string, id: string) {
+    const rows = await client.query<InvitationRow>(
+      INVITATION_SELECT + ' where i.project_id=$1 and i.id=$2 for update of i',
+      [projectId, id],
+    );
+    if (!rows.rows[0]) throw new ProjectAccessError('INVITATION_UNAVAILABLE');
+    return rows.rows[0];
+  }
+  async invitations(
+    input: SessionInput & { projectId: string; page: ProjectAccessPage },
+  ) {
+    const page = ProjectAccessPageSchema.parse(input.page);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, input.projectId);
+      await this.#manager(client, human, project);
+      const rows = await client.query<InvitationRow>(
+        INVITATION_SELECT +
+          ' where i.project_id=$1 and i.email ilike $2 order by i.created_at desc,i.id limit $3 offset $4',
+        [project.id, '%' + page.search + '%', page.limit + 1, page.offset],
+      );
+      return {
+        items: rows.rows.slice(0, page.limit).map(invitationView),
+        hasMore: rows.rows.length > page.limit,
+      };
+    });
+  }
+  async invite(
+    input: WriteInput<ProjectAccessInvite>,
+  ): Promise<ProjectAccessInvitationView> {
+    const command = ProjectAccessInviteSchema.parse(input.command);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, command.projectId),
+        context = await this.#manager(client, human, project);
+      return this.#write(
+        client,
+        human,
+        project,
+        input.idempotencyKey,
+        'invite',
+        command,
+        async () => {
+          const existing = await client.query<{
+            id: string;
+            email_confirmed_at: Date | null;
+          }>(
+            'select id,email_confirmed_at from auth.users where lower(email)=lower($1)',
+            [command.email],
+          );
+          const person = existing.rows[0];
+          const role = await this.#grantRole(client, human, project, context, {
+            ...command,
+            actorId: person?.id ?? 'prospective-invitee',
+          });
+          if (person && (await this.#member(client, project.id, person.id)))
+            throw new ProjectAccessError('VERSION_CONFLICT');
+          const id = randomUUID(),
+            linked = person?.email_confirmed_at ? person.id : null;
+          await client.query(
+            `insert into platform_private.project_access_invitations(id,project_id,created_by_actor_id,email,role_id,expires_at,reason,actor_id,delivery_mode) values($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [
+              id,
+              project.id,
+              human.userId,
+              command.email.toLowerCase(),
+              role.id,
+              command.expiresAt,
+              command.reason,
+              linked,
+              linked ? 'existing' : 'email',
+            ],
+          );
+          const view = invitationView(
+            await this.#invitation(client, project.id, id),
+          );
+          await this.#audit(
+            client,
+            human,
+            project,
+            id,
+            'invite',
+            command.reason,
+            null,
+            view,
+          );
+          return view;
+        },
+      );
+    });
+  }
+  async deliverInvitation(
+    input: WriteInput<ProjectAccessInvitationDelivery>,
+  ): Promise<ProjectAccessInvitationView> {
+    const command = ProjectAccessInvitationDeliverySchema.parse(input.command);
+    let fresh = false;
+    const claimed = await this.#transaction(
+      input.token,
+      async (client, human) => {
+        const project = await this.#project(client, command.projectId),
+          context = await this.#manager(client, human, project);
+        await this.#write(
+          client,
+          human,
+          project,
+          input.idempotencyKey,
+          'deliver-invitation',
+          command,
+          async () => {
+            const row = await this.#invitation(
+              client,
+              project.id,
+              command.invitationId,
+            );
+            if (row.status === 'granted') return { id: row.id };
+            if (Number(row.version) !== command.expectedVersion)
+              throw new ProjectAccessError('VERSION_CONFLICT');
+            if (
+              row.status === 'sending' &&
+              project.now.getTime() - row.updated_at.getTime() < 60000
+            )
+              throw new ProjectAccessError('DELIVERY_IN_PROGRESS');
+            await this.#grantRole(client, human, project, context, {
+              actorId: row.actor_id ?? 'prospective-invitee',
+              roleKey: row.role_key,
+              expiresAt: row.expires_at.toISOString(),
+            });
+            await client.query(
+              `update platform_private.project_access_invitations set status='sending',last_error_code=null,version=version+1,updated_at=statement_timestamp() where id=$1`,
+              [row.id],
+            );
+            fresh = true;
+            return { id: row.id };
+          },
+        );
+        return await this.#invitation(client, project.id, command.invitationId);
+      },
+    );
+    if (!fresh) return invitationView(claimed);
+    let actorId = claimed.actor_id;
+    try {
+      if (actorId === null) {
+        if (!this.#options.inviteUser) throw new Error('Delivery unavailable');
+        actorId = (await this.#options.inviteUser(claimed.email)).actorId;
+        uuid(actorId);
+      }
+    } catch {
+      return this.#finishInvitationFailure(
+        input.token,
+        command,
+        Number(claimed.version),
+        'DELIVERY_UNAVAILABLE',
+      );
+    }
+    try {
+      return await this.#transaction(input.token, async (client, human) => {
+        const project = await this.#project(client, command.projectId),
+          context = await this.#manager(client, human, project);
+        const current = await this.#invitation(
+          client,
+          project.id,
+          command.invitationId,
+        );
+        if (
+          current.status !== 'sending' ||
+          Number(current.version) !== Number(claimed.version)
+        )
+          throw new ProjectAccessError('VERSION_CONFLICT');
+        const match = await client.query(
+          'select id from auth.users where id=$1 and lower(email)=lower($2)',
+          [actorId, claimed.email],
+        );
+        if (!match.rows[0]) throw new ProjectAccessError('MEMBER_UNAVAILABLE');
+        await this.#grantMember(client, human, project, context, {
+          projectId: project.id,
+          actorId,
+          roleKey: current.role_key,
+          expiresAt: current.expires_at.toISOString(),
+          reason: current.reason,
+          expectedVersion: 0,
+        });
+        await client.query(
+          `update platform_private.project_access_invitations set actor_id=$2,status='granted',last_error_code=null,version=version+1,updated_at=statement_timestamp() where id=$1`,
+          [current.id, actorId],
+        );
+        const result = invitationView(
+          await this.#invitation(client, project.id, current.id),
+        );
+        await this.#audit(
+          client,
+          human,
+          project,
+          current.id,
+          'delivery',
+          current.reason,
+          invitationView(current),
+          result,
+        );
+        return result;
+      });
+    } catch (error) {
+      if (
+        error instanceof ProjectAccessError &&
+        (error.code === 'NOT_AUTHENTICATED' || error.code === 'NOT_AUTHORIZED')
+      )
+        throw error;
+      return this.#finishInvitationFailure(
+        input.token,
+        command,
+        Number(claimed.version),
+        'GRANT_UNAVAILABLE',
+        actorId,
+      );
+    }
+  }
+  async #finishInvitationFailure(
+    token: string,
+    command: ProjectAccessInvitationDelivery,
+    version: number,
+    code: 'DELIVERY_UNAVAILABLE' | 'GRANT_UNAVAILABLE',
+    actorId: string | null = null,
+  ) {
+    return this.#transaction(token, async (client, human) => {
+      const project = await this.#project(client, command.projectId);
+      await this.#manager(client, human, project);
+      const current = await this.#invitation(
+        client,
+        project.id,
+        command.invitationId,
+      );
+      if (current.status !== 'sending' || Number(current.version) !== version)
+        throw new ProjectAccessError('VERSION_CONFLICT');
+      // Retain only an Auth-confirmed email binding after partial delivery; never a provider's arbitrary UUID.
+      const match = actorId
+        ? await client.query(
+            'select id from auth.users where id=$1 and lower(email)=lower($2)',
+            [actorId, current.email],
+          )
+        : null;
+      await client.query(
+        `update platform_private.project_access_invitations set status='failed',actor_id=coalesce($2,actor_id),last_error_code=$3,version=version+1,updated_at=statement_timestamp() where id=$1`,
+        [current.id, match?.rows.length ? actorId : null, code],
+      );
+      const result = invitationView(
+        await this.#invitation(client, project.id, current.id),
+      );
+      await this.#audit(
+        client,
+        human,
+        project,
+        current.id,
+        'delivery-failed',
+        current.reason,
+        invitationView(current),
+        result,
+      );
+      return result;
+    });
+  }
   async grant(
     input: WriteInput<ProjectAccessGrant>,
   ): Promise<ProjectAccessMemberView> {
@@ -330,143 +624,159 @@ export class PostgresProjectAccessService {
         'grant',
         command,
         async () => {
-          const roleResult = await client.query<{
-            id: string;
-            role_key: string;
-            max_security_level: AuthorizedContext['maxSecurityLevel'];
-            scopes: string[];
-            max_days: number;
-          }>(
-            `select r.id,r.role_key,r.max_security_level,ar.max_days,
+          return this.#grantMember(client, human, project, context, command);
+        },
+      );
+    });
+  }
+  async #grantRole(
+    client: Client,
+    human: VerifiedSupabaseJwtClaims,
+    project: ProjectRow,
+    context: AuthorizedContext,
+    command: Pick<ProjectAccessGrant, 'actorId' | 'roleKey' | 'expiresAt'>,
+  ) {
+    const roleResult = await client.query<{
+      id: string;
+      role_key: string;
+      max_security_level: AuthorizedContext['maxSecurityLevel'];
+      scopes: string[];
+      max_days: number;
+    }>(
+      `select r.id,r.role_key,r.max_security_level,ar.max_days,
      coalesce(array_agg(rs.scope) filter(where rs.scope is not null),'{}') scopes
      from platform_private.project_access_roles ar join platform.roles r on r.id=ar.role_id
      left join platform.role_scopes rs on rs.role_id=r.id
      where ar.project_id=$1 and r.role_key=$2 and r.status='active' group by r.id,ar.max_days`,
-            [project.id, command.roleKey],
-          );
-          const role = roleResult.rows[0];
-          if (!role) throw new ProjectAccessError('ROLE_NOT_ASSIGNABLE');
-          const bound = await client.query<{ expiry: Date | null }>(
-            `select min(expiry) expiry from (
+      [project.id, command.roleKey],
+    );
+    const role = roleResult.rows[0];
+    if (!role) throw new ProjectAccessError('ROLE_NOT_ASSIGNABLE');
+    const bound = await client.query<{ expiry: Date | null }>(
+      `select min(expiry) expiry from (
      select expires_at expiry from platform.tenant_memberships where tenant_id=$1 and actor_id=$3
      union all select expires_at from platform.project_memberships where project_id=$2 and actor_id=$3
      union all select expires_at from platform.role_bindings where actor_id=$3 and tenant_id=$1 and (project_id is null or project_id=$2)
       and status='active' and effective_at<=statement_timestamp() and (expires_at is null or expires_at>statement_timestamp())) x`,
-            [project.tenant_id, project.id, human.userId],
-          );
-          const error = checkProjectGrant({
-            actorId: human.userId,
-            targetActorId: command.actorId,
-            action: 'manage',
-            scopes: context.scopes,
-            role: {
-              key: role.role_key,
-              active: true,
-              scopes: role.scopes,
-              securityLevel: role.max_security_level,
-            },
-            policy: { roleKey: role.role_key, maxDays: role.max_days },
-            managerSecurityLevel: context.maxSecurityLevel,
-            managerExpiresAt: bound.rows[0]?.expiry?.toISOString() ?? null,
-            expiresAt: command.expiresAt,
-            now: project.now.getTime(),
-          });
-          if (error) throw new ProjectAccessError(error);
-          const previous = await this.#member(
-            client,
-            project.id,
-            command.actorId,
-          );
-          if ((previous?.version ?? 0) !== command.expectedVersion)
-            throw new ProjectAccessError('VERSION_CONFLICT');
-          const privilegedTarget = await client.query(
-            `select 1 from platform.role_bindings b join platform.roles r on r.id=b.role_id
+      [project.tenant_id, project.id, human.userId],
+    );
+    const error = checkProjectGrant({
+      actorId: human.userId,
+      targetActorId: command.actorId,
+      action: 'manage',
+      scopes: context.scopes,
+      role: {
+        key: role.role_key,
+        active: true,
+        scopes: role.scopes,
+        securityLevel: role.max_security_level,
+      },
+      policy: { roleKey: role.role_key, maxDays: role.max_days },
+      managerSecurityLevel: context.maxSecurityLevel,
+      managerExpiresAt: bound.rows[0]?.expiry?.toISOString() ?? null,
+      expiresAt: command.expiresAt,
+      now: project.now.getTime(),
+    });
+    if (error) throw new ProjectAccessError(error);
+    return role;
+  }
+  async #grantMember(
+    client: Client,
+    human: VerifiedSupabaseJwtClaims,
+    project: ProjectRow,
+    context: AuthorizedContext,
+    command: ProjectAccessGrant,
+  ) {
+    const role = await this.#grantRole(
+      client,
+      human,
+      project,
+      context,
+      command,
+    );
+    const previous = await this.#member(client, project.id, command.actorId);
+    if ((previous?.version ?? 0) !== command.expectedVersion)
+      throw new ProjectAccessError('VERSION_CONFLICT');
+    const privilegedTarget = await client.query(
+      `select 1 from platform.role_bindings b join platform.roles r on r.id=b.role_id
              join platform.role_scopes s on s.role_id=r.id
              where b.actor_id=$1 and b.tenant_id=$2 and (b.project_id is null or b.project_id=$3)
              and b.status='active' and r.status='active' and s.scope like 'platform.%'
              and b.effective_at<=statement_timestamp()
              and (b.expires_at is null or b.expires_at>statement_timestamp()) limit 1`,
-            [command.actorId, project.tenant_id, project.id],
-          );
-          if (previous?.protected || privilegedTarget.rows.length > 0)
-            throw new ProjectAccessError('PROTECTED_MEMBER');
-          const actor = await client.query(
-            `select id from platform.actors where id=$1 and actor_type='human' and status='active' for share`,
-            [command.actorId],
-          );
-          if (!actor.rows[0])
-            throw new ProjectAccessError('MEMBER_UNAVAILABLE');
-          const tenantMember = await client.query<{
-            status: string;
-            effective_at: Date;
-            expires_at: Date | null;
-          }>(
-            `select status,effective_at,expires_at from platform.tenant_memberships where tenant_id=$1 and actor_id=$2 for update`,
-            [project.tenant_id, command.actorId],
-          );
-          const tm = tenantMember.rows[0];
-          if (
-            tm &&
-            (tm.status !== 'active' ||
-              tm.effective_at > project.now ||
-              (tm.expires_at !== null && tm.expires_at <= project.now))
-          )
-            throw new ProjectAccessError('MEMBER_UNAVAILABLE');
-          if (tm?.expires_at && tm.expires_at < new Date(command.expiresAt))
-            throw new ProjectAccessError('INVALID_EXPIRY');
-          await client.query(
-            `insert into platform.tenant_memberships(tenant_id,actor_id) values($1,$2) on conflict do nothing`,
-            [project.tenant_id, command.actorId],
-          );
-          // Reactivation must not revive other old project grants.
-          if (previous && previous.status !== 'active')
-            await client.query(
-              `update platform.role_bindings set status='revoked',updated_at=statement_timestamp() where project_id=$1 and actor_id=$2 and status<>'revoked'`,
-              [project.id, command.actorId],
-            );
-          await client.query(
-            `insert into platform.project_memberships(project_id,tenant_id,actor_id,expires_at) values($1,$2,$3,$4)
+      [command.actorId, project.tenant_id, project.id],
+    );
+    if (previous?.protected || privilegedTarget.rows.length > 0)
+      throw new ProjectAccessError('PROTECTED_MEMBER');
+    const actor = await client.query(
+      `select id from platform.actors where id=$1 and actor_type='human' and status='active' for share`,
+      [command.actorId],
+    );
+    if (!actor.rows[0]) throw new ProjectAccessError('MEMBER_UNAVAILABLE');
+    const tenantMember = await client.query<{
+      status: string;
+      effective_at: Date;
+      expires_at: Date | null;
+    }>(
+      `select status,effective_at,expires_at from platform.tenant_memberships where tenant_id=$1 and actor_id=$2 for update`,
+      [project.tenant_id, command.actorId],
+    );
+    const tm = tenantMember.rows[0];
+    if (
+      tm &&
+      (tm.status !== 'active' ||
+        tm.effective_at > project.now ||
+        (tm.expires_at !== null && tm.expires_at <= project.now))
+    )
+      throw new ProjectAccessError('MEMBER_UNAVAILABLE');
+    if (tm?.expires_at && tm.expires_at < new Date(command.expiresAt))
+      throw new ProjectAccessError('INVALID_EXPIRY');
+    await client.query(
+      `insert into platform.tenant_memberships(tenant_id,actor_id) values($1,$2) on conflict do nothing`,
+      [project.tenant_id, command.actorId],
+    );
+    // Reactivation must not revive other old project grants.
+    if (previous && previous.status !== 'active')
+      await client.query(
+        `update platform.role_bindings set status='revoked',updated_at=statement_timestamp() where project_id=$1 and actor_id=$2 and status<>'revoked'`,
+        [project.id, command.actorId],
+      );
+    await client.query(
+      `insert into platform.project_memberships(project_id,tenant_id,actor_id,expires_at) values($1,$2,$3,$4)
      on conflict(project_id,actor_id) do update set status='active',effective_at=statement_timestamp(),expires_at=excluded.expires_at,
       membership_version=platform.project_memberships.membership_version+1,updated_at=statement_timestamp()`,
-            [project.id, project.tenant_id, command.actorId, command.expiresAt],
-          );
-          await client.query(
-            `update platform.role_bindings set status='revoked',updated_at=statement_timestamp() where project_id=$1 and actor_id=$2 and role_id=$3 and status<>'revoked'`,
-            [project.id, command.actorId, role.id],
-          );
-          await client.query(
-            `insert into platform.role_bindings(id,actor_id,tenant_id,project_id,role_id,expires_at,created_by_actor_id) values($1,$2,$3,$4,$5,$6,$7)`,
-            [
-              randomUUID(),
-              command.actorId,
-              project.tenant_id,
-              project.id,
-              role.id,
-              command.expiresAt,
-              human.userId,
-            ],
-          );
-          await this.#advanceAuthorization(client, project, command.actorId);
-          const result = await this.#member(
-            client,
-            project.id,
-            command.actorId,
-          );
-          if (!result) throw new ProjectAccessError('MEMBER_UNAVAILABLE');
-          await this.#audit(
-            client,
-            human,
-            project,
-            command.actorId,
-            'grant',
-            command.reason,
-            previous,
-            result,
-          );
-          return result;
-        },
-      );
-    });
+      [project.id, project.tenant_id, command.actorId, command.expiresAt],
+    );
+    await client.query(
+      `update platform.role_bindings set status='revoked',updated_at=statement_timestamp() where project_id=$1 and actor_id=$2 and role_id=$3 and status<>'revoked'`,
+      [project.id, command.actorId, role.id],
+    );
+    await client.query(
+      `insert into platform.role_bindings(id,actor_id,tenant_id,project_id,role_id,expires_at,created_by_actor_id) values($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        randomUUID(),
+        command.actorId,
+        project.tenant_id,
+        project.id,
+        role.id,
+        command.expiresAt,
+        human.userId,
+      ],
+    );
+    await this.#advanceAuthorization(client, project, command.actorId);
+    const result = await this.#member(client, project.id, command.actorId);
+    if (!result) throw new ProjectAccessError('MEMBER_UNAVAILABLE');
+    await this.#audit(
+      client,
+      human,
+      project,
+      command.actorId,
+      'grant',
+      command.reason,
+      previous,
+      result,
+    );
+    return result;
   }
   async #audit(
     client: Client,

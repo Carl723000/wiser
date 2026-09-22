@@ -9,7 +9,7 @@ import styles from '../../login/page.module.css';
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
-  referrer: 'no-referrer',
+  referrer: 'strict-origin',
 };
 export default async function PasswordPage({
   params,

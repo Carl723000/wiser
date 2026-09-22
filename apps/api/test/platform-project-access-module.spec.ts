@@ -23,6 +23,9 @@ const member = {
 };
 function fixture() {
   const service = {
+    invitations: vi.fn(() => Promise.resolve({ items: [], hasMore: false })),
+    invite: vi.fn(() => Promise.reject(new Error('Not used'))),
+    deliverInvitation: vi.fn(() => Promise.reject(new Error('Not used'))),
     projects: vi.fn(() => Promise.resolve({ items: [], hasMore: false })),
     members: vi.fn(() => Promise.resolve({ items: [member], hasMore: false })),
     grant: vi.fn(() => Promise.resolve(member)),

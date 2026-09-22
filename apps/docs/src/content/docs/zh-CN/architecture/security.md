@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
+lastReviewedCommit: d99f4419798d4a88aa2717ad7346d9dec9601ef0
 ---
 
 ## 四类数据必须分开

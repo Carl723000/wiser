@@ -62,7 +62,11 @@ it('loads the selected project members and clears them when authorization is wit
     .mockResolvedValueOnce(
       Response.json({ code: 'NOT_AUTHORIZED' }, { status: 403 }),
     );
-  vi.stubGlobal('fetch', fetch);
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+    typeof input === 'string' && input.includes('/invitations?')
+      ? Promise.resolve(Response.json({ items: [], hasMore: false }))
+      : fetch(input, init),
+  );
   render(
     <ProjectAccessWorkspace
       locale="en"

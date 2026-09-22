@@ -3,6 +3,12 @@ import {
   PlatformUuidSchema,
   ProjectAccessPageSchema,
   ProjectAccessGrantSchema,
+  ProjectAccessInviteSchema,
+  ProjectAccessInvitationDeliverySchema,
+  ProjectAccessInvitationViewSchema,
+  ProjectAccessInvitationsPageSchema,
+  type ProjectAccessInvite,
+  type ProjectAccessInvitationDelivery,
   ProjectAccessRevokeSchema,
   ProjectAccessProjectsPageSchema,
   ProjectAccessMembersPageSchema,
@@ -24,6 +30,8 @@ const errorCodes = new Set([
   'ROLE_NOT_ASSIGNABLE',
   'PROTECTED_MEMBER',
   'MEMBER_UNAVAILABLE',
+  'INVITATION_UNAVAILABLE',
+  'DELIVERY_IN_PROGRESS',
   'VALIDATION_FAILED',
 ]);
 export class ProjectAccessWebError extends Error {
@@ -147,6 +155,29 @@ export function createProjectAccessClient(options: {
       return await call(
         `projects/${id}/members?${pageQuery(page)}`,
         ProjectAccessMembersPageSchema,
+      );
+    },
+    invitations(id: string, page: ProjectAccessPage) {
+      PlatformUuidSchema.parse(id);
+      return call(
+        `projects/${id}/invitations?${pageQuery(page)}`,
+        ProjectAccessInvitationsPageSchema,
+      );
+    },
+    invite(command: ProjectAccessInvite, key: string) {
+      return call(
+        'invitations',
+        ProjectAccessInvitationViewSchema,
+        ProjectAccessInviteSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    deliverInvitation(command: ProjectAccessInvitationDelivery, key: string) {
+      return call(
+        'invitation-deliveries',
+        ProjectAccessInvitationViewSchema,
+        ProjectAccessInvitationDeliverySchema.parse(command),
+        PlatformUuidSchema.parse(key),
       );
     },
     grant(command: ProjectAccessGrant, key: string) {

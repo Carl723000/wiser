@@ -30,6 +30,14 @@ export const ProjectAccessInviteSchema = z.strictObject({
   expiresAt: Timestamp,
   reason: Reason,
 });
+export const ProjectAccessInvitationDeliverySchema = z.strictObject({
+  projectId: Id,
+  invitationId: Id,
+  expectedVersion: z.number().int().positive(),
+});
+export type ProjectAccessInvitationDelivery = z.infer<
+  typeof ProjectAccessInvitationDeliverySchema
+>;
 export const ProjectAccessPageSchema = z.strictObject({
   offset: z.coerce.number().int().min(0).max(100000).default(0),
   limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -77,7 +85,10 @@ export interface ProjectAccessInvitationView {
   readonly email: string;
   readonly roleKey: string;
   readonly expiresAt: string;
-  readonly status: 'pending' | 'delivered' | 'failed' | 'granted';
+  readonly status: 'pending' | 'sending' | 'delivered' | 'failed' | 'granted';
+  readonly deliveryMode: 'email' | 'existing';
+  readonly lastErrorCode: 'DELIVERY_UNAVAILABLE' | 'GRANT_UNAVAILABLE' | null;
+  readonly acceptedAt: string | null;
   readonly actorId: string | null;
   readonly version: number;
 }
@@ -128,5 +139,24 @@ export const ProjectAccessMembersPageSchema = z.object({
 });
 export const ProjectAccessProjectsPageSchema = z.object({
   items: z.array(ProjectAccessProjectViewSchema).max(50),
+  hasMore: z.boolean(),
+});
+
+export const ProjectAccessInvitationViewSchema = z.object({
+  id: Id,
+  email: z.string().email(),
+  roleKey: RoleKey,
+  expiresAt: Timestamp,
+  status: z.enum(['pending', 'sending', 'delivered', 'failed', 'granted']),
+  actorId: Id.nullable(),
+  version: z.number().int().positive(),
+  deliveryMode: z.enum(['email', 'existing']),
+  lastErrorCode: z
+    .enum(['DELIVERY_UNAVAILABLE', 'GRANT_UNAVAILABLE'])
+    .nullable(),
+  acceptedAt: Timestamp.nullable(),
+});
+export const ProjectAccessInvitationsPageSchema = z.object({
+  items: z.array(ProjectAccessInvitationViewSchema).max(50),
   hasMore: z.boolean(),
 });
