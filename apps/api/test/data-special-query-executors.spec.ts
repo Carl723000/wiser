@@ -453,3 +453,136 @@ describe('managed projection search', () => {
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED_BACKEND_RESULT' });
   });
 });
+
+describe('managed graph projections', () => {
+  it.each(['data.graph.expand', 'data.graph.findPath'] as const)(
+    'revalidates every %s source before returning a graph',
+    async (id) => {
+      const ports = setup();
+      const assertVisible = vi.fn(
+        (_request: ScopedSpecialQueryRequest, _refs: readonly unknown[]) =>
+          Promise.resolve(),
+      );
+      const executors = createSpecialQueryExecutors({
+        ...ports,
+        projectionAuthority: { assertVisible },
+      });
+      const input =
+        id === 'data.graph.expand'
+          ? { entityId: 'station:lugouqiao', maxDepth: 1 }
+          : {
+              fromEntityId: 'station:lugouqiao',
+              toEntityId: 'station:other',
+              maxDepth: 2,
+            };
+      await executor(executors, id).execute(input, managedContext());
+      expect(assertVisible).toHaveBeenCalledOnce();
+      expect(assertVisible.mock.calls[0]?.[1]).toEqual([
+        { dataItemId, versionId, evidenceId },
+      ]);
+    },
+  );
+  it('does not query graph indexes for discovery-only authorization', async () => {
+    const ports = setup(),
+      ctx = managedContext();
+    if (ctx.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw Error('test');
+    ctx.authorization.resourceAccess.scope.permissions['content.read'] = [];
+    await expect(
+      executor(ports.executors, 'data.graph.expand').execute(
+        { entityId: 'station:lugouqiao', maxDepth: 1 },
+        ctx,
+      ),
+    ).resolves.toEqual({ nodes: [], edges: [] });
+    expect(ports.graph.expandRequests).toHaveLength(0);
+  });
+  it('fails closed when graph authority is unavailable', async () => {
+    const ports = setup();
+    await expect(
+      executor(ports.executors, 'data.graph.expand').execute(
+        { entityId: 'station:lugouqiao', maxDepth: 1 },
+        managedContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'BACKEND_UNAVAILABLE' });
+    expect(ports.graph.expandRequests).toHaveLength(0);
+  });
+  it('rejects ungranted graph node versions rather than leaking labels or counts', async () => {
+    const ports = setup(),
+      ctx = managedContext();
+    if (ctx.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw Error('test');
+    ctx.authorization.resourceAccess.scope.permissions['content.read'] = [
+      { kind: 'version', dataItemId, versionId: evidenceId },
+    ];
+    const executors = createSpecialQueryExecutors({
+      ...ports,
+      projectionAuthority: { assertVisible: () => Promise.resolve() },
+    });
+    await expect(
+      executor(executors, 'data.graph.expand').execute(
+        { entityId: 'station:lugouqiao', maxDepth: 1 },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED_BACKEND_RESULT' });
+  });
+  it('checks relationship evidence even when both endpoint nodes are readable', async () => {
+    const ports = setup();
+    const graph = {
+      nodes: [
+        {
+          entityId: 'one',
+          label: 'One',
+          dataItemId,
+          versionId,
+          evidenceId,
+          securityLevel: 'L1_INTERNAL',
+          qualityGrade: 'A',
+          confidence: 0.5,
+        },
+        {
+          entityId: 'two',
+          label: 'Two',
+          dataItemId,
+          versionId,
+          evidenceId,
+          securityLevel: 'L1_INTERNAL',
+          qualityGrade: 'A',
+          confidence: 0.5,
+        },
+      ],
+      edges: [
+        {
+          edgeId: 'edge',
+          fromEntityId: 'one',
+          toEntityId: 'two',
+          relationType: 'related',
+          evidenceId: '66666666-6666-4666-8666-666666666666',
+          confidence: 0.5,
+        },
+      ],
+    };
+    const assertVisible = vi.fn(
+      (
+        _request: ScopedSpecialQueryRequest,
+        refs: readonly { evidenceId: string }[],
+      ) =>
+        refs.some((ref) => ref.evidenceId !== evidenceId)
+          ? Promise.reject(Error('unreadable edge'))
+          : Promise.resolve(),
+    );
+    const executors = createSpecialQueryExecutors({
+      ...ports,
+      graph: {
+        expand: () => Promise.resolve(graph),
+        findPath: () => Promise.resolve(graph),
+      },
+      projectionAuthority: { assertVisible },
+    });
+    await expect(
+      executor(executors, 'data.graph.expand').execute(
+        { entityId: 'one', maxDepth: 1 },
+        managedContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'BACKEND_UNAVAILABLE' });
+  });
+});
