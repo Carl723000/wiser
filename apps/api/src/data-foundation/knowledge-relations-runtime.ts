@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import {
   loadBusinessRelations,
   storedBusinessMembership,
@@ -125,6 +126,11 @@ export function createKnowledgeRelationExecutors(
           context.principal.actorId,
           context.authorization.purpose,
         ],
+      );
+      await applyResourceReadScope(
+        c,
+        context.authorization,
+        context.resourceReadAction,
       );
       const result = await work(c);
       if (context.signal.aborted)

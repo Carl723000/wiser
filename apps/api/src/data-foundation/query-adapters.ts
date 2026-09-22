@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
@@ -383,6 +384,7 @@ async function transaction<T>(
     await client.query('begin');
     began = true;
     await client.query(SET_SCOPE_SQL, scopeValues(request));
+    await applyResourceReadScope(client, request.scope);
     aborted(request.signal);
     const output = await work(client);
     aborted(request.signal);
@@ -476,6 +478,9 @@ function queryFingerprint(
         projectId: request.scope.projectId,
         maxSecurityLevel: request.scope.maxSecurityLevel,
         maximumPolicyVersion: request.scope.maximumPolicyVersion,
+        ...(request.scope.resourceAccess
+          ? { resourceFingerprint: request.scope.resourceAccess.fingerprint }
+          : {}),
         input,
       }),
     )

@@ -91,6 +91,9 @@ export class DataCapabilityHandlerError extends Error {
 }
 
 export interface DataCapabilityExecutionContext {
+  /** Trusted internal operation, never read from capability input. */
+  readonly resourceReadAction?:
+    'content.read' | 'original.read' | 'result.export';
   readonly principal: PlatformPrincipal;
   readonly authorization: AuthorizedContext;
   readonly effectiveMaxSecurityLevel: SecurityLevel;

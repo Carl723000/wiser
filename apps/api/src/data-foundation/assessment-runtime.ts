@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { assessmentOverview } from './assessment-overview.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -88,6 +89,11 @@ export function createAssessmentExecutors(
           String(context.authorization.authzVersion),
           String(context.timeoutMs),
         ],
+      );
+      await applyResourceReadScope(
+        client,
+        context.authorization,
+        context.resourceReadAction,
       );
       const result = await work(client);
       if (context.signal.aborted)

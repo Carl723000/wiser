@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { relationFragmentVisibleSql } from '@wiser/data-infra';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -460,6 +461,7 @@ export class PostgresDataFoundationResourcePort implements DataFoundationResourc
       context.authorization.maxSecurityLevel,
       String(context.authorization.authzVersion),
     ]);
+    await applyResourceReadScope(client, context.authorization);
   }
 
   async #audit(

@@ -41,22 +41,29 @@ describe('trusted resource read scope', () => {
   it.each(['content.read', 'original.read', 'result.export'] as const)(
     'installs bounded %s scope only in the current transaction',
     async (action) => {
-      const query = vi.fn(async () => ({ rows: [] }));
+      const query = vi.fn((_sql: string, _values?: readonly unknown[]) =>
+        Promise.resolve({ rows: [] }),
+      );
       await applyResourceReadScope({ query }, authorization, action);
       expect(query).toHaveBeenCalledOnce();
-      expect(query.mock.calls[0]).toEqual([
-        expect.stringContaining("set_config('wiser.resource_scope',$1,true)"),
-        [JSON.stringify(access.scope), action],
-      ]);
+      const call = query.mock.calls[0]!;
+      expect(call[0]).toContain("set_config('wiser.resource_scope',$1,true)");
+      expect(JSON.parse(String(call[1]?.[0])) as unknown).toEqual(access.scope);
+      expect(call[1]?.[1]).toBe(action);
+      expect(call[1]).toHaveLength(2);
     },
   );
   it('keeps an unconfigured legacy transaction unchanged', async () => {
-    const query = vi.fn(async () => ({ rows: [] }));
+    const query = vi.fn((_sql: string, _values?: readonly unknown[]) =>
+      Promise.resolve({ rows: [] }),
+    );
     await applyResourceReadScope({ query }, {});
     expect(query).not.toHaveBeenCalled();
   });
   it('rejects malformed managed authority rather than silently using legacy reads', async () => {
-    const query = vi.fn(async () => ({ rows: [] }));
+    const query = vi.fn((_sql: string, _values?: readonly unknown[]) =>
+      Promise.resolve({ rows: [] }),
+    );
     for (const invalid of [
       null,
       {},
@@ -73,7 +80,9 @@ describe('trusted resource read scope', () => {
     expect(query).not.toHaveBeenCalled();
   });
   it('rejects an expired compiled scope before any data query', async () => {
-    const query = vi.fn(async () => ({ rows: [] }));
+    const query = vi.fn((_sql: string, _values?: readonly unknown[]) =>
+      Promise.resolve({ rows: [] }),
+    );
     await expect(
       applyResourceReadScope(
         { query },
@@ -98,14 +107,15 @@ describe('trusted resource read scope', () => {
   it('propagates the authority scope through the real catalog executor', async () => {
     const calls: { sql: string; values: readonly unknown[] | undefined }[] = [];
     const client = {
-      query: async (sql: string, values?: readonly unknown[]) => {
+      query: (sql: string, values?: readonly unknown[]) => {
         calls.push({ sql, values });
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       },
       release: vi.fn(),
     };
     const runtime = createPostgresDataReadRuntime({
-      connect: async () => client,
+      connect: () => Promise.resolve(client),
+      end: () => Promise.resolve(),
     });
     const context: DataCapabilityExecutionContext = {
       principal: {
@@ -127,10 +137,10 @@ describe('trusted resource read scope', () => {
       c.sql.includes('wiser.resource_scope'),
     );
     expect(scopeIndex).toBeGreaterThan(0);
-    expect(calls[scopeIndex]?.values).toEqual([
-      JSON.stringify(access.scope),
-      'content.read',
-    ]);
+    expect(
+      JSON.parse(String(calls[scopeIndex]?.values?.[0])) as unknown,
+    ).toEqual(access.scope);
+    expect(calls[scopeIndex]?.values?.[1]).toBe('content.read');
     expect(
       calls.slice(0, scopeIndex).some((c) => c.sql.includes('from catalog.')),
     ).toBe(false);

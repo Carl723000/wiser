@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: fbff05b6d19fb9c5a315782041142efe8de8d53f
+lastReviewedCommit: 60bdbba09a24e0cf0ff6104ef88cd5e57635f419
 ---
 
 ## Protocol boundary
@@ -394,3 +394,7 @@ The default runtime is disabled. A real source needs a trusted adapter and live 
 Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
 
 Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.
+
+## Resource scope adapter boundary
+
+Trusted SQL adapters preserve existing public inputs and legacy transactions while accepting an internal compiled authority scope. Resource restrictions apply before result counts and pagination. Catalog continuation binds the resource fingerprint; changed-scope continuation is INVALID_DATA_CURSOR. Existing fixed exploration manifests still fail with CONFLICT when any pinned member becomes inaccessible, including export without the required intersection. An internal export action cannot be supplied through JSON. These adapter tests do not establish complete projection, transport revalidation or download-revocation acceptance; runtime activation remains pending.

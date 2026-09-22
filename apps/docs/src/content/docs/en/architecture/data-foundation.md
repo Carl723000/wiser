@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: fbff05b6d19fb9c5a315782041142efe8de8d53f
+lastReviewedCommit: 60bdbba09a24e0cf0ff6104ef88cd5e57635f419
 ---
 
 ## External metadata reader boundary
@@ -433,4 +433,4 @@ The permission workspace reuses authorized exploration resources and whole-query
 
 ## Resource read scope foundation
 
-Append-only migration `0030_resource_read_scope.sql` intersects existing forced tenant/project/security RLS with exact immutable resource membership. A trusted API transaction may install `wiser.resource_scope` and `wiser.resource_action`; unconfigured transactions retain existing behavior. Managed metadata, versions, assets, evidence, analyses, records, geometry and lineage reads use authorized version membership before counts or pagination. Original access is independent; result export also requires content access. Discovery permission never exposes raw catalog metadata. Invalid, empty or expired managed scopes fail closed. Grants remain in the control database; no grant is copied to Data authority. This foundation does not yet wire runtime scope propagation, projection reauthorization, download revocation or source-card discovery; managed project activation must wait for those acceptance gates.
+Append-only migration `0030_resource_read_scope.sql` intersects existing forced tenant/project/security RLS with exact immutable resource membership. A trusted API transaction may install `wiser.resource_scope` and `wiser.resource_action`; unconfigured transactions retain existing behavior. Managed metadata, versions, assets, evidence, analyses, records, geometry and lineage reads use authorized version membership before counts or pagination. Original access is independent; result export also requires content access. Discovery permission never exposes raw catalog metadata. Invalid, empty or expired managed scopes fail closed. Grants remain in the control database; no grant is copied to Data authority. SQL transaction adapters now install the compiled scope before catalog, exploration, evidence, geo authority, analysis, relation and command-source reads; original delivery uses its independent action and exploration export uses content/export intersection. Catalog and structured/geo cursors, plus command replay hashes, bind the authority fingerprint. A real executor/database test rejects old exploration manifests and export replay after scope loss. Principal-runtime activation, external projection enforcement, in-flight reauthorization, revocable download delivery and source-card discovery remain acceptance gates; no managed project is activated yet.

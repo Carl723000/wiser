@@ -1,3 +1,4 @@
+import type { ResourceAccessContext } from '@wiser/platform-contracts';
 import {
   DATA_CAPABILITY_REGISTRY,
   type DataCapabilityId,
@@ -34,6 +35,7 @@ const SECURITY_RANK: Readonly<Record<SecurityLevel, number>> = {
 };
 
 export interface SpecialQueryScope {
+  readonly resourceAccess?: ResourceAccessContext;
   readonly tenantId: string;
   readonly projectId: string;
   readonly maxSecurityLevel: SecurityLevel;
@@ -138,6 +140,9 @@ function scope(context: DataCapabilityExecutionContext): SpecialQueryScope {
     projectId: context.authorization.projectId,
     maxSecurityLevel: context.effectiveMaxSecurityLevel,
     maximumPolicyVersion: context.authorization.authzVersion,
+    ...(context.authorization.resourceAccess
+      ? { resourceAccess: context.authorization.resourceAccess }
+      : {}),
   });
 }
 

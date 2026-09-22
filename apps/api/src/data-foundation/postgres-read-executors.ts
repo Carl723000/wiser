@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { createHash } from 'node:crypto';
 
 import {
@@ -355,6 +356,7 @@ export class PostgresDataReadCursorError extends PostgresDataReadError {
 }
 
 interface CursorScope {
+  readonly resourceFingerprint?: string;
   readonly capabilityId: DataCapabilityId;
   readonly tenantId: string;
   readonly projectId: string;
@@ -395,6 +397,11 @@ function cursorScope(
     securityLevel: context.effectiveMaxSecurityLevel,
     policyVersion: context.authorization.authzVersion,
     queryHash: queryHash(input),
+    ...(context.authorization.resourceAccess
+      ? {
+          resourceFingerprint: context.authorization.resourceAccess.fingerprint,
+        }
+      : {}),
   };
 }
 
@@ -436,6 +443,7 @@ function decodeCursor(
       parsed.projectId !== scope.projectId ||
       parsed.securityLevel !== scope.securityLevel ||
       parsed.policyVersion !== scope.policyVersion ||
+      parsed.resourceFingerprint !== scope.resourceFingerprint ||
       parsed.queryHash !== scope.queryHash ||
       !Array.isArray(parsed.position) ||
       parsed.position.some(
@@ -838,6 +846,11 @@ class ReadTransactions {
         context.effectiveMaxSecurityLevel,
         String(context.authorization.authzVersion),
       ]);
+      await applyResourceReadScope(
+        client,
+        context.authorization,
+        context.resourceReadAction,
+      );
       const result = await work(client);
       await client.query('COMMIT');
       return result;
