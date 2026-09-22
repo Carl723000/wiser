@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 9220c16900f6eb9e94a981944e4e085772a01eca
+lastReviewedCommit: 9fe0237c905c6232f4541ceac6cfa31fd96f0743
 ---
 
 ## 单一身份源

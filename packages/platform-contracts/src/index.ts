@@ -210,3 +210,5 @@ export type PlatformAgentExchangeView = z.infer<
 export * from './project-access.ts';
 
 export * from './resource-access.ts';
+
+export * from './resource-administration.ts';

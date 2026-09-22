@@ -22,7 +22,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 190926c21359ccd9cc14b2097c90f0b16e846013
+lastReviewedCommit: 9fe0237c905c6232f4541ceac6cfa31fd96f0743
 ---
 
 ## 后端拓扑
