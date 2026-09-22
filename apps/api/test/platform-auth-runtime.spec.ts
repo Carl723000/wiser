@@ -264,6 +264,98 @@ describe('WISER platform auth runtime', () => {
     });
   });
 
+  it('loads resource authority on every verified resolution and fails closed on authority loss', async () => {
+    const snapshot = {
+      mode: 'managed',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      actorId: USER_ID,
+      purpose: 'operate',
+      now: '2026-09-23T00:00:00Z',
+      revision: 3,
+      grants: [],
+    };
+    const resourceAuthorityQuery = vi.fn(
+      (): Promise<{ rows: { snapshot: unknown }[] }> =>
+        Promise.resolve({ rows: [{ snapshot }] }),
+    );
+    const factories = {
+      createClaimsClient: () => ({
+        getClaims: () =>
+          Promise.resolve({
+            data: {
+              claims: {
+                sub: USER_ID,
+                session_id: SESSION_ID,
+                role: 'authenticated',
+                exp: 1_800_000_000,
+              },
+            },
+            error: null,
+          }),
+      }),
+      createAuthorizationDatabase: () => ({
+        query: () =>
+          Promise.resolve({
+            rows: [
+              {
+                tenant_id: TENANT_ID,
+                project_id: PROJECT_ID,
+                roles: ['data-reader'],
+                scopes: ['data.catalog.read'],
+                max_security_level: 'L1_INTERNAL',
+                authz_version: 2,
+              },
+            ],
+          }),
+        delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
+        resourceAuthorityQuery,
+        transactionPool: {
+          connect: () => Promise.reject(new Error('No transaction expected')),
+        },
+        close: () => Promise.resolve(),
+      }),
+    };
+    const runtime = createPlatformAuthRuntimeFromEnvironment(
+      {
+        WISER_AUTH_MODE: 'supabase',
+        SUPABASE_URL: 'http://127.0.0.1:56521',
+        SUPABASE_PUBLISHABLE_KEY: 'publishable-test-key-long-enough',
+        DATABASE_URL: 'postgresql://test:test@127.0.0.1:56522/postgres',
+        WISER_DELEGATED_CREDENTIAL_HMAC_KEYS: JSON.stringify({
+          activeKeyId: 'test',
+          keys: { test: Buffer.alloc(32, 7).toString('base64url') },
+        }),
+      },
+      factories,
+    );
+    const input = {
+      token: 'verified-token',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'operate',
+      traceId: 'f'.repeat(32),
+    };
+    const first = await runtime.resolver!.resolve(input);
+    expect(first?.authorization.resourceAccess).toMatchObject({
+      revision: 3,
+      scope: { mode: 'managed', permissions: { 'content.read': [] } },
+    });
+    resourceAuthorityQuery.mockResolvedValue({
+      rows: [{ snapshot: { ...snapshot, revision: 4 } }],
+    });
+    const next = await runtime.resolver!.resolve(input);
+    expect(next?.authorization.resourceAccess?.revision).toBe(4);
+    expect(next?.authorization.resourceAccess?.fingerprint).not.toBe(
+      first?.authorization.resourceAccess?.fingerprint,
+    );
+    resourceAuthorityQuery.mockRejectedValue(
+      new Error('private database details'),
+    );
+    await expect(runtime.resolver!.resolve(input)).resolves.toBeNull();
+    expect(resourceAuthorityQuery).toHaveBeenCalledTimes(3);
+  });
+
   it('wires verified claims membership lookup and pool shutdown', async () => {
     const claimsClient: SupabaseClaimsClient = {
       getClaims: vi.fn(() =>

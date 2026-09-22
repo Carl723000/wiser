@@ -400,3 +400,67 @@ describe('external metadata through the platform capability boundary', () => {
     });
   });
 });
+
+function resourceContext(allowed: boolean, expires = '2099-01-01T00:00:00Z') {
+  const copy = structuredClone(context);
+  copy.authorization.resourceAccess = {
+    revision: 1,
+    fingerprint: 'a'.repeat(64),
+    scope: {
+      mode: 'managed',
+      validUntil: expires,
+      permissions: {
+        'content.read': [],
+        'original.read': [],
+        'result.export': [],
+        'source.discover': [{ kind: 'external-source', sourceId }],
+        'external.directory': allowed
+          ? [{ kind: 'external-source', sourceId }]
+          : [],
+      },
+    },
+  };
+  return copy;
+}
+it.each(['missing-action', 'wrong-source', 'expired'] as const)(
+  'rejects managed external %s despite valid provider permission',
+  async (scenario) => {
+    const { app, resolver, readPage } = await setup();
+    const managed = resourceContext(
+      scenario !== 'missing-action',
+      scenario === 'expired' ? '2000-01-01T00:00:00Z' : undefined,
+    );
+    if (
+      scenario === 'wrong-source' &&
+      managed.authorization.resourceAccess?.scope.mode === 'managed'
+    )
+      managed.authorization.resourceAccess.scope.permissions[
+        'external.directory'
+      ] = [{ kind: 'external-source', sourceId: actorId }];
+    resolver.resolve.mockResolvedValue(managed);
+    const response = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(readPage).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('SYNTHETIC-A');
+  },
+);
+it('requires both managed source action and provider permission', async () => {
+  const { app, resolver, resolve, readPage } = await setup();
+  resolver.resolve.mockResolvedValue(resourceContext(true));
+  const response = await app.inject({ method: 'POST', url, headers, payload });
+  expect(response.statusCode).toBe(200);
+  expect(response.json().items).toEqual([
+    { stationCode: 'SYNTHETIC-A', year: 2024 },
+  ]);
+  resolve.mockResolvedValue(null);
+  readPage.mockClear();
+  expect(
+    (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
+  ).toBe(403);
+  expect(readPage).not.toHaveBeenCalled();
+});
