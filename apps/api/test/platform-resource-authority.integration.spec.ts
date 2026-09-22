@@ -141,5 +141,13 @@ describe.skipIf(!url)(
         ).rowCount,
       ).toBe(1);
     });
+
+    it('fails closed if the live grant set exceeds the bounded authority snapshot', async () => {
+      await client.query(
+        "insert into platform_private.resource_grants(project_id,actor_id,package_id,package_version,preset_id,preset_version,purpose,starts_at,expires_at,created_by,approved_by,reason) select $1,$2,$3,1,$4,1,'research',now(),now()+interval '1 day',$5,$5,'Synthetic bounded grant check' from generate_series(1,1001)",
+        [project, reader, packageId, presetId, owner],
+      );
+      expect(await load(context)).toBeNull();
+    });
   },
 );

@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 746869d15ead6517557d4a93595a76853bf75737
+lastReviewedCommit: 9220c16900f6eb9e94a981944e4e085772a01eca
 ---
 
 ## One identity authority
@@ -219,3 +219,5 @@ The evaluator is a building block, not an enabled runtime policy. Until persiste
 The pure resource scope compiler groups immutable references by action, bounds each result, and intersects delegated resource grants with the delegator. Its next revalidation boundary includes future activation and expiry; malformed authority snapshots fail closed. This foundation alone does not activate runtime resource policies.
 
 A resource-scoped resolver can attach a fresh control-plane scope to a verified session. It binds the snapshot to the exact subject, project and purpose, requires the verified delegator, and fingerprints the effective scope for cache separation. It does not cache grant reads or fall back on authority failure. Runtime wiring and outlet enforcement are separate requirements before activating a managed project.
+
+The PostgreSQL resource authority loader reads project settings, exact package/preset versions, revocations and database time in one statement. It selects only the verified subject and any verified delegator, within the exact project and purpose, and rejects an oversized live grant set rather than truncating rights. The isolated integration suite checks legacy compatibility, immutable package references, purpose/subject separation and immediate revocation. This reader is not yet wired to Data outlets.
