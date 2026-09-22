@@ -214,3 +214,5 @@ export * from './resource-access.ts';
 export * from './resource-administration.ts';
 
 export * from './resource-batch.ts';
+
+export * from './resource-grants.ts';

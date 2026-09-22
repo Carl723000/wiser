@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  type ResourceGrantsQuery,
+  type ResourceGrantsPage,
+  type ResourceGrantRevokeCommand,
+  type ResourceGrantRevokeReceipt,
+  type ResourceGrantRenewCommand,
+  type ResourceGrantRenewReceipt,
   ResourceBatchesQuerySchema,
   type ResourceBatchesQuery,
   type ResourceBatchesPage,
@@ -75,6 +81,27 @@ export class PostgresResourceAdministrationService {
   readonly #options: ResourceAdministrationOptions;
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
+  }
+  grants(_input: {
+    token: string;
+    projectId: string;
+    page: ResourceGrantsQuery;
+  }): Promise<ResourceGrantsPage> {
+    fail('NOT_IMPLEMENTED');
+  }
+  revokeGrant(_input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourceGrantRevokeCommand;
+  }): Promise<ResourceGrantRevokeReceipt> {
+    fail('NOT_IMPLEMENTED');
+  }
+  renewGrant(_input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourceGrantRenewCommand;
+  }): Promise<ResourceGrantRenewReceipt> {
+    fail('NOT_IMPLEMENTED');
   }
   batches(input: {
     token: string;

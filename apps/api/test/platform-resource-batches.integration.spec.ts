@@ -754,6 +754,124 @@ describe.skipIf(!url)(
         await client.query('rollback to savepoint changed_grant_case');
       }
     });
+    it('lists only own grants without management authority and revokes one immutable grant without touching another', async () => {
+      await client.query('savepoint lifecycle_case');
+      try {
+        const own = await service.grants({
+          token: 'reader',
+          projectId: project,
+          page: { offset: 0, limit: 1 },
+        });
+        expect(own.items).toHaveLength(1);
+        expect(own.hasMore).toBe(true);
+        expect(own.items[0]!.actorId).toBe(reader);
+        await expect(
+          service.grants({
+            token: 'reader',
+            projectId: project,
+            page: { actorId: second, offset: 0, limit: 20 },
+          }),
+        ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+        const input = {
+          token: 'owner',
+          idempotencyKey: randomUUID(),
+          command: {
+            projectId: project,
+            grantId: own.items[0]!.id,
+            reason: 'End this specific research authorization',
+          },
+        };
+        await expect(
+          service.revokeGrant({ ...input, token: 'reader' }),
+        ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+        const receipt = await service.revokeGrant(input);
+        expect(receipt.alreadyRevoked).toBe(false);
+        expect(receipt.otherActiveGrantCount).toBeGreaterThanOrEqual(0);
+        expect(await service.revokeGrant(input)).toEqual(receipt);
+        expect(
+          await service.revokeGrant({ ...input, idempotencyKey: randomUUID() }),
+        ).toMatchObject({ alreadyRevoked: true });
+        const all = await service.grants({
+          token: 'owner',
+          projectId: project,
+          page: { actorId: reader, offset: 0, limit: 20 },
+        });
+        expect(
+          all.items.find((x) => x.id === input.command.grantId)?.status,
+        ).toBe('revoked');
+        expect(
+          all.items.some(
+            (x) => x.id !== input.command.grantId && x.status !== 'revoked',
+          ),
+        ).toBe(true);
+        await expect(
+          service.revokeGrant({
+            ...input,
+            idempotencyKey: randomUUID(),
+            command: { ...input.command, projectId: randomUUID() },
+          }),
+        ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      } finally {
+        await client.query('rollback to savepoint lifecycle_case');
+      }
+    });
+    it('renews by a separately approved future batch without changing the original expiry', async () => {
+      await client.query('savepoint renewal_case');
+      try {
+        const completed = await service.executeBatch(
+          execution(await approvedBatch()),
+        );
+        const grantId = completed.members[0]!.grantId!;
+        const prior = (
+          await client.query<{ expires_at: Date }>(
+            'select expires_at from platform_private.resource_grants where id=$1',
+            [grantId],
+          )
+        ).rows[0]!.expires_at;
+        const command = {
+          projectId: project,
+          grantId,
+          expiresAt: new Date(prior.getTime() + 86400000).toISOString(),
+          reason: 'Extend approved research collaboration',
+        };
+        await expect(
+          service.renewGrant({
+            token: 'reader',
+            command,
+            idempotencyKey: randomUUID(),
+          }),
+        ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+        const input = { token: 'owner', command, idempotencyKey: randomUUID() },
+          renewal = await service.renewGrant(input);
+        expect(await service.renewGrant(input)).toEqual(renewal);
+        expect(renewal.previousGrantId).toBe(grantId);
+        expect(renewal.batch.status).toBe('pending');
+        expect(renewal.batch.startsAt).toBe(prior.toISOString());
+        expect(renewal.batch.members[0]!.grantId).toBeNull();
+        expect(
+          (
+            await client.query<{ expires_at: Date }>(
+              'select expires_at from platform_private.resource_grants where id=$1',
+              [grantId],
+            )
+          ).rows[0]!.expires_at,
+        ).toEqual(prior);
+        await service.revokeGrant({
+          token: 'owner',
+          command: {
+            projectId: project,
+            grantId,
+            reason: 'Withdraw old permission before renewal',
+          },
+          idempotencyKey: randomUUID(),
+        });
+        await expect(
+          service.renewGrant({ ...input, idempotencyKey: randomUUID() }),
+        ).rejects.toMatchObject({ code: 'REQUEST_STATE_CONFLICT' });
+      } finally {
+        await client.query('rollback to savepoint renewal_case');
+      }
+    });
     it('roundtrips preview and withdrawal through the HTTP module and actual control storage', async () => {
       const app = Fastify({ logger: false });
       await createResourceAdministrationModule(service).register(app);
