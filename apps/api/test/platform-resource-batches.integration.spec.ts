@@ -575,5 +575,65 @@ describe.skipIf(!url)(
         }),
       ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
     });
+    it('lists bounded project batches for managers and approval-only reviewers, isolated by project', async () => {
+      const a = await service.batches({
+        token: 'owner',
+        projectId: project,
+        page: { offset: 0, limit: 1 },
+      });
+      expect(a.items).toHaveLength(1);
+      expect(a.hasMore).toBe(true);
+      const review = await service.batches({
+        token: 'approver',
+        projectId: project,
+        page: { offset: 0, limit: 20, status: 'pending' },
+      });
+      expect(review.items.length).toBeGreaterThan(0);
+      expect(
+        review.items.every(
+          (x) => x.status === 'pending' && x.projectId === project,
+        ),
+      ).toBe(true);
+      await expect(
+        service.batches({
+          token: 'reader',
+          projectId: project,
+          page: { offset: 0, limit: 20 },
+        }),
+      ).resolves.toBeDefined();
+      await expect(
+        service.batches({
+          token: 'owner',
+          projectId: randomUUID(),
+          page: { offset: 0, limit: 20 },
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+    });
+    it('withdraws only an own pending batch, idempotently, without granting or deleting its history', async () => {
+      const pending = await service.previewBatch({
+        token: 'owner',
+        command: { ...preview, packageVersion: 2 },
+        idempotencyKey: randomUUID(),
+      });
+      const input = {
+        token: 'owner',
+        command: {
+          projectId: project,
+          batchId: pending.id,
+          expectedVersion: 1,
+          reason: 'Withdraw obsolete application',
+        },
+        idempotencyKey: randomUUID(),
+      };
+      await expect(
+        service.withdrawBatch({ ...input, token: 'approver' }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      const done = await service.withdrawBatch(input);
+      expect(done.status).toBe('withdrawn');
+      expect(await service.withdrawBatch(input)).toEqual(done);
+      await expect(service.executeBatch(execution(done))).rejects.toMatchObject(
+        { code: 'REQUEST_STATE_CONFLICT' },
+      );
+    });
   },
 );

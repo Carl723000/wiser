@@ -94,3 +94,20 @@ export type ResourceBatchPreviewCommand = z.infer<
 export type ResourceBatchAction = z.infer<typeof ResourceBatchActionSchema>;
 export type ResourceBatchDecision = z.infer<typeof ResourceBatchDecisionSchema>;
 export type ResourceBatchView = z.infer<typeof ResourceBatchViewSchema>;
+
+export const ResourceBatchesQuerySchema = z.strictObject({
+  offset: z.coerce.number().int().min(0).max(10000).default(0),
+  limit: z.coerce.number().int().min(1).max(20).default(20),
+  status: z
+    .enum([
+      'pending',
+      'approved',
+      'rejected',
+      'withdrawn',
+      'partial',
+      'executed',
+    ])
+    .optional(),
+});
+export type ResourceBatchesQuery = z.infer<typeof ResourceBatchesQuerySchema>;
+export type ResourceBatchesPage = z.infer<typeof ResourceBatchesPageSchema>;

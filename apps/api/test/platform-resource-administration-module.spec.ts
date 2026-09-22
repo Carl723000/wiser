@@ -21,7 +21,47 @@ const command = {
   reason: 'Permitted research reading',
 };
 function fixture() {
+  const batch = {
+    id: randomUUID(),
+    projectId: project,
+    version: 1,
+    status: 'pending' as const,
+    packageId: randomUUID(),
+    packageVersion: 1,
+    packageName: 'Research resources',
+    presetId: command.presetId,
+    presetVersion: 1,
+    presetName: command.name,
+    resourceCount: 1,
+    actions: ['content.read' as const],
+    approvalLevel: 'ordinary' as const,
+    purpose: 'web-console' as const,
+    startsAt: '2026-09-23T00:00:00Z',
+    expiresAt: '2026-09-24T00:00:00Z',
+    validUntil: '2026-09-23T00:15:00Z',
+    applicantId: randomUUID(),
+    decidedBy: null,
+    reason: command.reason,
+    decisionReason: null,
+    members: [
+      {
+        actorId: randomUUID(),
+        displayName: 'Reader',
+        membershipVersion: 1,
+        existingGrantCount: 0,
+        status: 'pending' as const,
+        grantId: null,
+        code: null,
+        attempts: 0,
+      },
+    ],
+  };
   const service = {
+    batches: vi.fn(() => Promise.resolve({ items: [batch], hasMore: false })),
+    previewBatch: vi.fn(() => Promise.resolve(batch)),
+    decideBatch: vi.fn(() => Promise.resolve(batch)),
+    executeBatch: vi.fn(() => Promise.resolve(batch)),
+    withdrawBatch: vi.fn(() => Promise.resolve(batch)),
     definitions: vi.fn(() =>
       Promise.resolve({
         items: [],
@@ -49,7 +89,7 @@ function fixture() {
   const app = Fastify({ logger: false });
   void createResourceAdministrationModule(service).register(app);
   apps.push(app);
-  return { app, service };
+  return { app, service, batch };
 }
 describe('resource administration HTTP boundary', () => {
   it('requires a bearer token and bounds definition listings', async () => {
@@ -126,4 +166,95 @@ describe('resource administration HTTP boundary', () => {
     expect(response.statusCode).toBe(503);
     expect(response.body).not.toContain('private-secret');
   });
+  it('lists bounded batch previews with no-store and no client-selected actor authority', async () => {
+    const { app, service } = fixture();
+    const url = `/api/platform/v1/access/projects/${project}/resource-batches`;
+    expect((await app.inject({ url })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ url: url + '?limit=21', headers: auth })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          url: url + '?actorId=' + randomUUID(),
+          headers: auth,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(service.batches).not.toHaveBeenCalled();
+    const result = await app.inject({ url, headers: auth });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['cache-control']).toBe('private, no-store');
+  });
+  it.each(['preview', 'decide', 'execute', 'withdraw'] as const)(
+    'validates the %s batch action and retains safe failure codes',
+    async (action) => {
+      const { app, service, batch } = fixture();
+      const payload =
+        action === 'preview'
+          ? {
+              projectId: project,
+              packageId: batch.packageId,
+              packageVersion: 1,
+              presetId: batch.presetId,
+              presetVersion: 1,
+              actorIds: batch.members.map((m) => m.actorId),
+              purpose: 'web-console',
+              startsAt: batch.startsAt,
+              expiresAt: batch.expiresAt,
+              reason: command.reason,
+            }
+          : {
+              projectId: project,
+              batchId: batch.id,
+              expectedVersion: 1,
+              reason: command.reason,
+              ...(action === 'decide' ? { decision: 'approve' } : {}),
+            };
+      const url = '/api/platform/v1/access/resource-batches/' + action;
+      const headers = { ...auth, 'idempotency-key': randomUUID() };
+      expect(
+        (await app.inject({ method: 'POST', url, headers: auth, payload }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url,
+            headers,
+            payload: { ...payload, approvedBy: randomUUID() },
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(
+        (await app.inject({ method: 'POST', url, headers, payload }))
+          .statusCode,
+      ).toBe(200);
+      const method =
+        action === 'preview'
+          ? service.previewBatch
+          : action === 'decide'
+            ? service.decideBatch
+            : action === 'execute'
+              ? service.executeBatch
+              : service.withdrawBatch;
+      expect(method).toHaveBeenCalledWith({
+        token: 'verified-human',
+        idempotencyKey: headers['idempotency-key'],
+        command: payload,
+      });
+      method.mockRejectedValueOnce(
+        new ResourceAdministrationError('PREVIEW_EXPIRED'),
+      );
+      const expired = await app.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload,
+      });
+      expect(expired.statusCode).toBe(409);
+      expect(expired.json()).toEqual({ code: 'PREVIEW_EXPIRED' });
+    },
+  );
 });
