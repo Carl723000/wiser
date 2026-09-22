@@ -1,3 +1,4 @@
+import { sameDeliveryAuthority } from './authority-delivery.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
@@ -1143,6 +1144,17 @@ export function createDataFoundationGeoProxyModule(
         context: resolved.context,
       });
     }
+    const fresh = await resolveContext(request, options.resolver);
+    if (
+      'error' in fresh ||
+      !sameDeliveryAuthority(resolved.context, fresh.context)
+    )
+      return deny(
+        request,
+        reply,
+        'error' in fresh ? fresh.error : errors.forbidden,
+        { target: proxyRequest.target, context: resolved.context },
+      );
     if (
       !(await audit(request, {
         decision: 'ALLOWED',

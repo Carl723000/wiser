@@ -1,3 +1,4 @@
+import { sameDeliveryAuthority } from './authority-delivery.js';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
@@ -641,6 +642,10 @@ export function createDataFoundationRestModule(
               if (cancellation) reply.raw.removeListener('close', disconnected);
             }
 
+            const fresh = await resolveContext(request, options.resolver);
+            if ('error' in fresh) return sendError(request, reply, fresh.error);
+            if (!sameDeliveryAuthority(resolved.context, fresh.context))
+              return sendError(request, reply, errors.forbidden);
             if (definition.restMapping.responseMode === 'SSE') {
               const snapshot = sseSnapshot(output);
               if (snapshot === null) {
@@ -737,6 +742,11 @@ export function createDataFoundationRestModule(
               } catch (error) {
                 return sendError(request, reply, mapError(error));
               }
+              const fresh = await resolveContext(request, options.resolver);
+              if ('error' in fresh)
+                return sendError(request, reply, fresh.error);
+              if (!sameDeliveryAuthority(resolved.context, fresh.context))
+                return sendError(request, reply, errors.forbidden);
               if (delivery === 'content') {
                 const controller = new AbortController();
                 const close = () => controller.abort();
@@ -756,6 +766,26 @@ export function createDataFoundationRestModule(
                   if (![200, 206, 416].includes(upstream.status)) {
                     await upstream.body?.cancel();
                     return sendError(request, reply, errors.unavailable);
+                  }
+                  const beforeBytes = await resolveContext(
+                    request,
+                    options.resolver,
+                  );
+                  if (
+                    'error' in beforeBytes ||
+                    !sameDeliveryAuthority(
+                      resolved.context,
+                      beforeBytes.context,
+                    )
+                  ) {
+                    await upstream.body?.cancel();
+                    return sendError(
+                      request,
+                      reply,
+                      'error' in beforeBytes
+                        ? beforeBytes.error
+                        : errors.forbidden,
+                    );
                   }
                   const type =
                     upstream.headers.get('content-type') ??

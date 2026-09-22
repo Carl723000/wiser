@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 815a6c63f44e26688b2d7954338b440dbcc96ff2
+lastReviewedCommit: 04335bd10449d3e1d5b33bd7c090ce2e45de110d
 ---
 
 ## Endpoint and authority contract
@@ -271,8 +271,10 @@ Requests without this mode retain the 100-item limit and existing behavior. The 
 
 ## Resource scope adapter boundary
 
-Trusted SQL adapters preserve existing public inputs and legacy transactions while accepting an internal compiled authority scope. Resource restrictions apply before result counts and pagination. Catalog continuation binds the resource fingerprint; changed-scope continuation is INVALID_DATA_CURSOR. Existing fixed exploration manifests still fail with CONFLICT when any pinned member becomes inaccessible, including export without the required intersection. An internal export action cannot be supplied through JSON. These adapter tests do not establish complete projection, transport revalidation or download-revocation acceptance; runtime activation remains pending.
+Trusted SQL adapters preserve existing public inputs and legacy transactions while accepting an internal compiled authority scope. Resource restrictions apply before result counts and pagination. Catalog continuation binds the resource fingerprint; changed-scope continuation is INVALID_DATA_CURSOR. Existing fixed exploration manifests still fail with CONFLICT when any pinned member becomes inaccessible, including export without the required intersection. An internal export action cannot be supplied through JSON. Runtime activation and controlled download acceptance remain pending.
 
-Managed federated/semantic search sends at most 1000 trusted content-version pins to each backend; discovery-only scope returns no content hits. Search cursors include the resource fingerprint. Exact item/version/evidence references are checked against Data PostgreSQL RLS, publication and cross-source evidence visibility before releasing a page; missing authority adapters fail closed. Global activation still awaits graph projection protection, fresh authority revalidation at delivery and download handling.
+Managed federated/semantic search sends at most 1000 trusted content-version pins to each backend; discovery-only scope returns no content hits. Search cursors include the resource fingerprint. Exact item/version/evidence references are checked against Data PostgreSQL RLS, publication and cross-source evidence visibility before releasing a page; missing authority adapters fail closed.
 
-Managed graph expansion/path queries constrain every node and relationship to the content-version pins, omit the full authority snapshot from Neo4j parameters, and revalidate node/evidence references against Data PostgreSQL before returning the graph. Readable endpoints never substitute for readable relationship evidence. Empty content scope avoids querying the projection. Transport-time fresh authority revalidation and controlled download handling remain pending before global activation.
+Managed graph expansion/path queries constrain every node and relationship to the content-version pins, omit the full authority snapshot from Neo4j parameters, and revalidate node/evidence references against Data PostgreSQL before returning the graph. Readable endpoints never substitute for readable relationship evidence. Empty content scope avoids querying the projection.
+
+REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. These checks do not yet revoke a signed storage URL or an already-started download stream.

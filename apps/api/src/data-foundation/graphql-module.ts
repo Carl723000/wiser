@@ -1,3 +1,4 @@
+import { sameDeliveryAuthority } from './authority-delivery.js';
 import { createHash } from 'node:crypto';
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -477,7 +478,8 @@ async function resolveRequestContext(
     const parsed = PlatformRequestContextSchema.safeParse(context);
     return parsed.success &&
       parsed.data.authorization.tenantId === tenantId &&
-      parsed.data.authorization.projectId === projectId
+      parsed.data.authorization.projectId === projectId &&
+      parsed.data.authorization.purpose === purpose
       ? parsed.data
       : null;
   } catch {
@@ -982,6 +984,16 @@ export function createDataFoundationGraphqlModule(
               ),
             ),
           ]);
+          const fresh = await resolveRequestContext(request, options.resolver);
+          if (!sameDeliveryAuthority(context, fresh))
+            return reply.status(403).send({
+              errors: [
+                {
+                  message: 'Authorization changed. Repeat the request.',
+                  extensions: { code: 'FORBIDDEN' },
+                },
+              ],
+            });
           if (result.errors === undefined) return reply.send(result);
           return reply.send({
             data: result.data ?? null,
