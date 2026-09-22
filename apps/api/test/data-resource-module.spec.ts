@@ -212,3 +212,27 @@ describe('Data Foundation governed resource routes', () => {
     expect(tooLarge.body).not.toContain('xxxxx');
   });
 });
+
+it.each(['evidence', 'stac'] as const)(
+  'withholds %s resource content after an in-flight revocation',
+  async (kind) => {
+    const changed = structuredClone(context),
+      fixture = appWith({ resolved: changed });
+    const method =
+      kind === 'evidence'
+        ? fixture.resources.readEvidence
+        : fixture.resources.readStacItem;
+    const original = method.getMockImplementation()!;
+    method.mockImplementationOnce(() => {
+      changed.authorization.authzVersion++;
+      return original();
+    });
+    const url =
+      kind === 'evidence'
+        ? `/api/data/v1/evidence/fragments/${EVIDENCE_ID}`
+        : `/api/data/v1/stac/collections/${COLLECTION_ID}/items/${ITEM_ID}`;
+    const response = await fixture.app.inject({ method: 'GET', url, headers });
+    expect(response.statusCode).toBe(403);
+    expect(response.body).not.toContain(EVIDENCE_ID);
+  },
+);

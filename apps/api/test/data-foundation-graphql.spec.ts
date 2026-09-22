@@ -429,3 +429,36 @@ describe('Data Foundation schema-first GraphQL transport', () => {
     }
   });
 });
+
+it('withholds GraphQL data after authorization changes during query execution', async () => {
+  const fixture = appWith({
+    handler: {
+      execute: () => {
+        fixture.resolver.resolve.mockResolvedValue({
+          ...requestContext,
+          authorization: { ...requestContext.authorization, authzVersion: 8 },
+        });
+        return Promise.resolve({
+          items: [
+            {
+              dataItemId: DATA_ITEM_ID,
+              name: 'not-to-release',
+              securityLevel: 'L1_INTERNAL',
+            },
+          ],
+        });
+      },
+    },
+  });
+  const response = await fixture.app.inject({
+    method: 'POST',
+    url: '/graphql',
+    headers: headers(),
+    payload: {
+      query: 'query { dataCatalog(first: 1) { nodes { dataItemId name } } }',
+    },
+  });
+  expect(response.statusCode).toBe(403);
+  expect(response.body).not.toContain('not-to-release');
+  expect(fixture.resolver.resolve).toHaveBeenCalledTimes(2);
+});

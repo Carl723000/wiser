@@ -476,3 +476,26 @@ describe('Data Foundation governed GIS proxy', () => {
     expect(unavailable.body).not.toContain('password');
   });
 });
+
+it('withholds fetched map bytes after the project authorization is revoked', async () => {
+  const changed = structuredClone(context);
+  const fixture = appWith({
+    resolved: changed,
+    response: () => {
+      changed.authorization.authzVersion++;
+      return {
+        status: 200,
+        contentType: 'application/vnd.mapbox-vector-tile',
+        body: new TextEncoder().encode('not-to-release'),
+      };
+    },
+  });
+  const response = await fixture.app.inject({
+    method: 'GET',
+    url: `/api/data/v1/geo/tiles/vector/versions/${VERSION_ID}/3/4/2.pbf`,
+    headers,
+  });
+  expect(response.statusCode).toBe(403);
+  expect(response.body).not.toContain('not-to-release');
+  expect(fixture.audits.at(-1)?.decision).toBe('DENIED');
+});
