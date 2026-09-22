@@ -1,4 +1,7 @@
-import type { ResourceAccessContext } from '@wiser/platform-contracts';
+import {
+  ResourceAccessContextSchema,
+  type ResourceAccessContext,
+} from '@wiser/platform-contracts';
 import {
   DATA_CAPABILITY_REGISTRY,
   type DataCapabilityId,
@@ -116,10 +119,84 @@ interface ValidatedGraphOutput {
 interface ValidatedSearchPage {
   readonly items: readonly {
     readonly dataItemId: string;
+    readonly versionId: string;
+    readonly evidenceId: string;
     readonly score: number;
     readonly securityLevel: SecurityLevel;
   }[];
   readonly nextCursor?: string;
+}
+
+function managedSearchPins(context: DataCapabilityExecutionContext) {
+  if (context.authorization.resourceAccess === undefined) return undefined;
+  const parsed = ResourceAccessContextSchema.safeParse(
+    context.authorization.resourceAccess,
+  );
+  if (
+    !parsed.success ||
+    parsed.data.scope.mode !== 'managed' ||
+    (parsed.data.scope.validUntil !== null &&
+      Date.parse(parsed.data.scope.validUntil) <= Date.now())
+  )
+    throw executorError('UNAUTHORIZED_BACKEND_RESULT');
+  return parsed.data.scope.permissions['content.read'].filter(
+    (ref) => ref.kind === 'version',
+  );
+}
+
+async function authorizedSearch(
+  options: SpecialQueryExecutorOptions,
+  input: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+): Promise<ValidatedSearchPage> {
+  const pins = managedSearchPins(context);
+  // An empty version filter means unrestricted to legacy search backends.
+  if (pins?.length === 0) return { items: [] };
+  if (pins && !options.projectionAuthority)
+    throw executorError('BACKEND_UNAVAILABLE');
+  const output = await options.search.search({
+    tenantId: context.authorization.tenantId,
+    projectId: context.authorization.projectId,
+    query: input.query,
+    maxSecurityLevel: context.effectiveMaxSecurityLevel,
+    policyVersion: context.authorization.authzVersion,
+    businessDomains: input.businessDomains,
+    securityLevels: input.securityLevels,
+    sources: input.sources,
+    allowedExcerptFields: EXCERPT_FIELDS,
+    first: input.first,
+    after: input.after,
+    ...(pins
+      ? {
+          versionIds: [...new Set(pins.map((pin) => pin.versionId))],
+          resourceFingerprint:
+            context.authorization.resourceAccess!.fingerprint,
+        }
+      : {}),
+  });
+  const page = validatedSearchPage(output, context.effectiveMaxSecurityLevel);
+  if (pins) {
+    if (
+      page.items.some(
+        (item) =>
+          !pins.some(
+            (pin) =>
+              pin.versionId === item.versionId &&
+              pin.dataItemId === item.dataItemId,
+          ),
+      )
+    )
+      throw executorError('UNAUTHORIZED_BACKEND_RESULT');
+    await options.projectionAuthority!.assertVisible(
+      request(input, context),
+      page.items.map(({ dataItemId, versionId, evidenceId }) => ({
+        dataItemId,
+        versionId,
+        evidenceId,
+      })),
+    );
+  }
+  return page;
 }
 
 function executorError(code: SpecialQueryExecutorErrorCode) {
@@ -249,38 +326,14 @@ export function createSpecialQueryExecutors(
     define('data.query', (input, context) =>
       options.data.query(request(input, context)),
     ),
-    define('data.search.federated', async (input, context) => {
-      const output = await options.search.search({
-        tenantId: context.authorization.tenantId,
-        projectId: context.authorization.projectId,
-        query: input.query,
-        maxSecurityLevel: context.effectiveMaxSecurityLevel,
-        policyVersion: context.authorization.authzVersion,
-        businessDomains: input.businessDomains,
-        securityLevels: input.securityLevels,
-        sources: input.sources,
-        allowedExcerptFields: EXCERPT_FIELDS,
-        first: input.first,
-        after: input.after,
-      });
-      validatedSearchPage(output, context.effectiveMaxSecurityLevel);
-      return output;
-    }),
+    define('data.search.federated', (input, context) =>
+      authorizedSearch(options, input, context),
+    ),
     define('data.knowledge.search', async (input, context) => {
-      const raw = await options.search.search({
-        tenantId: context.authorization.tenantId,
-        projectId: context.authorization.projectId,
-        query: input.query,
-        maxSecurityLevel: context.effectiveMaxSecurityLevel,
-        policyVersion: context.authorization.authzVersion,
-        sources: ['semantic'],
-        allowedExcerptFields: EXCERPT_FIELDS,
-        first: input.first,
-        after: input.after,
-      });
-      const validatedPage = validatedSearchPage(
-        raw,
-        context.effectiveMaxSecurityLevel,
+      const validatedPage = await authorizedSearch(
+        options,
+        { ...input, sources: ['semantic'] },
+        context,
       );
       const dataItemIds = new Set(
         Array.isArray(input.dataItemIds)

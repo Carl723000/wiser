@@ -366,7 +366,10 @@ describe('managed projection search', () => {
     'bounds %s by trusted versions and checks authority before release',
     async (id) => {
       const ports = setup();
-      const assertVisible = vi.fn(() => Promise.resolve());
+      const assertVisible = vi.fn(
+        (_request: ScopedSpecialQueryRequest, _refs: readonly unknown[]) =>
+          Promise.resolve(),
+      );
       const executors = createSpecialQueryExecutors({
         ...ports,
         projectionAuthority: { assertVisible },
@@ -380,11 +383,11 @@ describe('managed projection search', () => {
         resourceFingerprint: 'a'.repeat(64),
       });
       expect(assertVisible).toHaveBeenCalledOnce();
-      expect(assertVisible.mock.calls[0]).toEqual([
-        expect.objectContaining({
-          scope: expect.objectContaining({ resourceAccess: expect.anything() }),
-        }),
-        [{ dataItemId, versionId, evidenceId }],
+      expect(assertVisible.mock.calls[0]?.[0].scope.resourceAccess).toEqual(
+        managedContext().authorization.resourceAccess,
+      );
+      expect(assertVisible.mock.calls[0]?.[1]).toEqual([
+        { dataItemId, versionId, evidenceId },
       ]);
     },
   );

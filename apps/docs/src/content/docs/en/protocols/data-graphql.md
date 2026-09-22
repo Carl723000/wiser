@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: e7033c567ee6a26159d1b225da268685fc730d7d
+lastReviewedCommit: c786ce05cdfef2d9b3a208ffa665a8f6a9c7ba82
 ---
 
 ## Endpoint and authority contract
@@ -272,3 +272,5 @@ Requests without this mode retain the 100-item limit and existing behavior. The 
 ## Resource scope adapter boundary
 
 Trusted SQL adapters preserve existing public inputs and legacy transactions while accepting an internal compiled authority scope. Resource restrictions apply before result counts and pagination. Catalog continuation binds the resource fingerprint; changed-scope continuation is INVALID_DATA_CURSOR. Existing fixed exploration manifests still fail with CONFLICT when any pinned member becomes inaccessible, including export without the required intersection. An internal export action cannot be supplied through JSON. These adapter tests do not establish complete projection, transport revalidation or download-revocation acceptance; runtime activation remains pending.
+
+Managed federated/semantic search sends at most 1000 trusted content-version pins to each backend; discovery-only scope returns no content hits. Search cursors include the resource fingerprint. Exact item/version/evidence references are checked against Data PostgreSQL RLS, publication and cross-source evidence visibility before releasing a page; missing authority adapters fail closed. Global activation still awaits graph projection protection, fresh authority revalidation at delivery and download handling.

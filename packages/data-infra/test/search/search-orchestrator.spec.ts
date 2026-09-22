@@ -390,7 +390,7 @@ it('accepts all 1000 bounded authority version pins without truncation', async (
   await orchestrator({ openSearch: port }).search(
     input({ versionIds: versions }),
   );
-  expect(port.search).toHaveBeenCalledWith(
-    expect.objectContaining({ versionIds: expect.arrayContaining(versions) }),
+  expect(vi.mocked(port.search).mock.calls[0]?.[0].versionIds).toEqual(
+    versions,
   );
 });

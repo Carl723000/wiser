@@ -1,9 +1,12 @@
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { Buffer } from 'node:buffer';
+import { z } from 'zod';
+import { relationFragmentVisibleSql } from '@wiser/data-infra';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import type {
+  ProjectionReadAuthority,
   DataStructuredQueryPort,
   GeoQueryPort,
   GraphQueryPort,
@@ -1117,6 +1120,63 @@ export class PostgisGeoQueryPort implements GeoQueryPort {
         first + 1,
       ]);
       return geoPage(result.rows, first, fingerprint);
+    });
+  }
+}
+
+/** Projection hits are only candidates. Validate exact evidence pins in authoritative RLS before release. */
+export class PostgresProjectionReadAuthority implements ProjectionReadAuthority {
+  readonly #pool: QueryAdapterPgPool;
+  constructor(options: { readonly pool: QueryAdapterPgPool }) {
+    this.#pool = options.pool;
+  }
+  async assertVisible(
+    request: ScopedSpecialQueryRequest,
+    references: readonly {
+      readonly dataItemId: string;
+      readonly versionId: string;
+      readonly evidenceId: string;
+    }[],
+  ): Promise<void> {
+    const validated = z
+      .array(
+        z.strictObject({
+          dataItemId: z.uuid(),
+          versionId: z.uuid(),
+          evidenceId: z.uuid(),
+        }),
+      )
+      .max(10000)
+      .safeParse(references);
+    if (!validated.success) throw adapterError('INVALID_BACKEND_RESULT');
+    const pins = validated.data;
+    if (pins.length === 0) return;
+    await transaction(this.#pool, request, async (client) => {
+      await client.query("select set_config('statement_timeout','5000',true)");
+      const result = await client.query(
+        `/* data.projection.authority */
+        with requested as (select distinct (ref->>'dataItemId')::uuid data_item_id,(ref->>'versionId')::uuid version_id,(ref->>'evidenceId')::uuid evidence_id from jsonb_array_elements($1::jsonb) ref)
+        select count(*)::int denied from requested r where not exists (
+          select 1 from knowledge.evidence_fragment fragment
+          join catalog.data_item_version v using(tenant_id,project_id,version_id,data_item_id)
+          join catalog.data_item i using(tenant_id,project_id,data_item_id)
+          where fragment.data_item_id=r.data_item_id and fragment.version_id=r.version_id and fragment.evidence_fragment_id=r.evidence_id
+          and v.committed_at is not null and v.publication_status='PUBLISHED' and i.publication_status='PUBLISHED'
+          and v.acceptance_status in ('PASSED','CONDITIONALLY_PASSED') and i.acceptance_status in ('PASSED','CONDITIONALLY_PASSED')
+          and ${relationFragmentVisibleSql('fragment')}
+        )`,
+        [
+          JSON.stringify(
+            pins.map(({ dataItemId, versionId, evidenceId }) => ({
+              dataItemId,
+              versionId,
+              evidenceId,
+            })),
+          ),
+        ],
+      );
+      if (result.rows.length !== 1 || result.rows[0]?.['denied'] !== 0)
+        throw adapterError('INVALID_BACKEND_RESULT');
     });
   }
 }

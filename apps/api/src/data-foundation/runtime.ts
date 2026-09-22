@@ -45,6 +45,7 @@ import {
   Neo4jGraphQueryPort,
   PostgisGeoQueryPort,
   PostgresStructuredDataQueryPort,
+  PostgresProjectionReadAuthority,
   type QueryAdapterHttpClient,
 } from './query-adapters.js';
 import {
@@ -240,6 +241,7 @@ const defaultFactories: DataFoundationRuntimeFactories = {
     return [
       ...createSpecialQueryExecutors({
         search,
+        projectionAuthority: new PostgresProjectionReadAuthority({ pool: pg }),
         data: new PostgresStructuredDataQueryPort({ pool: pg }),
         graph: new Neo4jGraphQueryPort({
           baseUrl: config.neo4j.url,

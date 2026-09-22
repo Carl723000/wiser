@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PostgresProjectionReadAuthority } from '../src/data-foundation/query-adapters.js';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { expect, it } from 'vitest';
@@ -21,6 +22,8 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
     const sources = Array.from({ length: 2 }, () => ({
       dataItemId: randomUUID(),
       versionId: randomUUID(),
+      assetId: randomUUID(),
+      evidenceId: randomUUID(),
     }));
     const first = sources[0]!,
       second = sources[1]!;
@@ -47,7 +50,13 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
             mode: 'managed',
             validUntil: '2099-01-01T00:00:00Z',
             permissions: {
-              'content.read': [{ kind: 'version', ...first }],
+              'content.read': [
+                {
+                  kind: 'version',
+                  dataItemId: first.dataItemId,
+                  versionId: first.versionId,
+                },
+              ],
               'source.discover': [],
               'original.read': [],
               'result.export': [],
@@ -114,7 +123,70 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           `insert into catalog.data_item_version(version_id,tenant_id,project_id,data_item_id,version_number,asset_manifest,source_hash,metadata_hash,processing_stage,generation_method,quality_grade,acceptance_status,publication_status,security_level,committed_at) values($1,$2,$3,$4,1,'{}',decode(repeat('ab',32),'hex'),decode(repeat('cd',32),'hex'),'RAW','SYNTHETIC','A','PASSED','PUBLISHED','L1_INTERNAL',now())`,
           [s.versionId, tenant, project, s.dataItemId],
         );
+        await client.query(
+          `insert into catalog.content_blob(content_blob_id,tenant_id,project_id,content_hash,byte_size,raw_storage_key,lifecycle_state,security_level) values($1::uuid,$2,$3,digest($1::text,'sha256'),1,$1::text,'RAW','L1_INTERNAL')`,
+          [s.assetId, tenant, project],
+        );
+        await client.query(
+          `insert into catalog.asset(asset_id,tenant_id,project_id,version_id,storage_key,content_hash,media_type,byte_size,security_level,content_blob_id,lifecycle_state) values($1::uuid,$2,$3,$4,$1::text,digest($1::text,'sha256'),'text/plain',1,'L1_INTERNAL',$1::uuid,'RAW')`,
+          [s.assetId, tenant, project, s.versionId],
+        );
+        await client.query(
+          `insert into knowledge.evidence_fragment(evidence_fragment_id,tenant_id,project_id,data_item_id,version_id,asset_id,locator,content_hash,excerpt,security_level) values($1,$2,$3,$4,$5,$6,'{}',decode(repeat('ab',32),'hex'),'Synthetic evidence','L1_INTERNAL')`,
+          [s.evidenceId, tenant, project, s.dataItemId, s.versionId, s.assetId],
+        );
       }
+      await client.query(`set local role ${role}`);
+      const projectionAuthority = new PostgresProjectionReadAuthority({
+        pool: runtimePool,
+      });
+      const projectionRequest = {
+        scope: {
+          tenantId: tenant,
+          projectId: project,
+          maxSecurityLevel: context.effectiveMaxSecurityLevel,
+          maximumPolicyVersion: 1,
+          resourceAccess: context.authorization.resourceAccess!,
+        },
+        input: {},
+        signal: context.signal,
+      };
+      const reference = (s: typeof first) => ({
+        dataItemId: s.dataItemId,
+        versionId: s.versionId,
+        evidenceId: s.evidenceId,
+      });
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
+          reference(first),
+        ]),
+      ).resolves.toBeUndefined();
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
+          reference(second),
+        ]),
+      ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
+          { ...reference(first), evidenceId: second.evidenceId },
+        ]),
+      ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });
+      await client.query('reset role');
+      await client.query(
+        "update catalog.data_item set publication_status='WITHDRAWN' where data_item_id=$1",
+        [first.dataItemId],
+      );
+      await client.query(`set local role ${role}`);
+      await expect(
+        projectionAuthority.assertVisible(projectionRequest, [
+          reference(first),
+        ]),
+      ).rejects.toMatchObject({ code: 'INVALID_BACKEND_RESULT' });
+      await client.query('reset role');
+      await client.query(
+        "update catalog.data_item set publication_status='PUBLISHED' where data_item_id=$1",
+        [first.dataItemId],
+      );
       await client.query(`set local role ${role}`);
       const catalog = createPostgresDataReadRuntime(runtimePool).executors.find(
         (e) => e.id === 'data.catalog.search',
@@ -150,7 +222,11 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       if (wider.resourceAccess?.scope.mode !== 'managed')
         throw Error('Invalid test context');
       wider.resourceAccess.scope.permissions['content.read'] = sources.map(
-        (source) => ({ kind: 'version', ...source }),
+        (source) => ({
+          kind: 'version',
+          dataItemId: source.dataItemId,
+          versionId: source.versionId,
+        }),
       );
       wider.resourceAccess.fingerprint = 'c'.repeat(64);
       const page = z
@@ -176,7 +252,11 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       if (changed.resourceAccess?.scope.mode !== 'managed')
         throw Error('Invalid test context');
       changed.resourceAccess.scope.permissions['content.read'] = [
-        { kind: 'version', ...second },
+        {
+          kind: 'version',
+          dataItemId: second.dataItemId,
+          versionId: second.versionId,
+        },
       ];
       changed.resourceAccess.fingerprint = 'b'.repeat(64);
       changed.resourceAccess.revision = 2;
