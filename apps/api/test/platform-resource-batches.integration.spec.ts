@@ -856,6 +856,39 @@ describe.skipIf(!url)(
             )
           ).rows[0]!.expires_at,
         ).toEqual(prior);
+        const approved = await service.decideBatch({
+          token: 'approver',
+          idempotencyKey: randomUUID(),
+          command: {
+            projectId: project,
+            batchId: renewal.batch.id,
+            expectedVersion: renewal.batch.version,
+            decision: 'approve',
+            reason: 'Independent review of extended period',
+          },
+        });
+        const executed = await service.executeBatch(execution(approved));
+        expect(executed.status).toBe('executed');
+        const newGrantId = executed.members[0]!.grantId!;
+        expect(newGrantId).not.toBe(grantId);
+        const grants = await service.grants({
+          token: 'reader',
+          projectId: project,
+          page: { offset: 0, limit: 20, status: 'scheduled' },
+        });
+        expect(grants.items.find((x) => x.id === newGrantId)?.startsAt).toBe(
+          prior.toISOString(),
+        );
+        const provenance = (
+          await client.query<{ before_state: unknown }>(
+            "select before_state from platform_private.resource_access_events where subject_id=$1 and action='preview'",
+            [renewal.batch.id],
+          )
+        ).rows[0]!.before_state;
+        expect(provenance).toMatchObject({
+          renewalOf: grantId,
+          previousExpiresAt: prior.toISOString(),
+        });
         await service.revokeGrant({
           token: 'owner',
           command: {

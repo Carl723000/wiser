@@ -373,6 +373,7 @@ export class ResourceBatchStore {
   }
   async preview(
     command: ResourceBatchPreviewCommand,
+    provenance?: { renewalOf: string; previousExpiresAt: string },
   ): Promise<ResourceBatchView> {
     const d = await this.#definitions(command);
     this.#current(d);
@@ -427,7 +428,7 @@ export class ResourceBatchStore {
       );
     }
     const result = await this.#view(id);
-    await this.#audit('preview', id, command.reason, {}, result);
+    await this.#audit('preview', id, command.reason, provenance ?? {}, result);
     return result;
   }
   async #important(actorId: string, level: Definitions['approval_level']) {

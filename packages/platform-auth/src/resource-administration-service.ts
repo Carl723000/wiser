@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  ResourceGrantsQuerySchema,
+  ResourceGrantRevokeCommandSchema,
+  ResourceGrantRenewCommandSchema,
   type ResourceGrantsQuery,
   type ResourceGrantsPage,
   type ResourceGrantRevokeCommand,
@@ -59,6 +62,7 @@ import {
   resourceAdministrationFailure as fail,
 } from './resource-administration-error.js';
 import { ResourceBatchStore } from './resource-batch-service.js';
+import { ResourceGrantStore } from './resource-grant-service.js';
 function uuid(value: string) {
   if (
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -82,26 +86,62 @@ export class PostgresResourceAdministrationService {
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
   }
-  grants(_input: {
+  grants(input: {
     token: string;
     projectId: string;
     page: ResourceGrantsQuery;
   }): Promise<ResourceGrantsPage> {
-    fail('NOT_IMPLEMENTED');
+    const page = ResourceGrantsQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      (session) =>
+        new ResourceGrantStore(session, this.#options.validatePackage).list(
+          page.data,
+        ),
+      'self',
+    );
   }
-  revokeGrant(_input: {
+  revokeGrant(input: {
     token: string;
     idempotencyKey: string;
     command: ResourceGrantRevokeCommand;
   }): Promise<ResourceGrantRevokeReceipt> {
-    fail('NOT_IMPLEMENTED');
+    const command = ResourceGrantRevokeCommandSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(input.token, command.data.projectId, (session) =>
+      this.#write(
+        session,
+        input.idempotencyKey,
+        'grant.revoke',
+        command.data,
+        () =>
+          new ResourceGrantStore(session, this.#options.validatePackage).revoke(
+            command.data,
+          ),
+      ),
+    );
   }
-  renewGrant(_input: {
+  renewGrant(input: {
     token: string;
     idempotencyKey: string;
     command: ResourceGrantRenewCommand;
   }): Promise<ResourceGrantRenewReceipt> {
-    fail('NOT_IMPLEMENTED');
+    const command = ResourceGrantRenewCommandSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(input.token, command.data.projectId, (session) =>
+      this.#write(
+        session,
+        input.idempotencyKey,
+        'grant.renew',
+        command.data,
+        () =>
+          new ResourceGrantStore(session, this.#options.validatePackage).renew(
+            command.data,
+          ),
+      ),
+    );
   }
   batches(input: {
     token: string;
@@ -274,6 +314,7 @@ export class PostgresResourceAdministrationService {
     projectId: string,
     work: (session: Session) => Promise<T>,
     requiredScope:
+      | 'self'
       | 'platform.membership.manage'
       | 'platform.access.approve'
       | readonly (
@@ -314,9 +355,10 @@ export class PostgresResourceAdministrationService {
       });
       if (
         !authorization ||
-        !(
-          typeof requiredScope === 'string' ? [requiredScope] : requiredScope
-        ).some((scope) => authorization.scopes.includes(scope))
+        (requiredScope !== 'self' &&
+          !(
+            typeof requiredScope === 'string' ? [requiredScope] : requiredScope
+          ).some((scope) => authorization.scopes.includes(scope)))
       )
         fail('NOT_AUTHORIZED');
       const settings = await client.query(
