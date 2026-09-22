@@ -1,0 +1,13 @@
+begin;
+select plan(9);
+select has_table('platform_private','resource_batches','Batch snapshots are durable');
+select has_table('platform_private','resource_batch_members','Explicit recipients are durable');
+select has_table('platform_private','resource_batch_attempts','Per-member attempts are append-only');
+select has_table('platform_private','resource_approval_roles','Important approvals have explicit role policy');
+select ok((select count(*)=4 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='platform_private' and c.relname in ('resource_batches','resource_batch_members','resource_batch_attempts','resource_approval_roles') and c.relrowsecurity and c.relforcerowsecurity),'All batch tables force RLS');
+select ok(not has_table_privilege('authenticated','platform_private.resource_batches','SELECT'),'Browser cannot enumerate batches');
+select ok(not has_table_privilege('service_role','platform_private.resource_batch_attempts','INSERT'),'Generic service role cannot forge execution');
+select is((select count(*)::integer from platform_private.resource_approval_roles),0,'Migration does not designate real approvers');
+select is((select count(*)::integer from platform_private.resource_batches),0,'Migration does not issue requests');
+select * from finish();
+rollback;
