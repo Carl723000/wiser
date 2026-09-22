@@ -58,6 +58,24 @@ function fixture() {
     ],
   };
   const service = {
+    grants: vi.fn(() =>
+      Promise.resolve({
+        items: [],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+      }),
+    ),
+    revokeGrant: vi.fn(() =>
+      Promise.resolve({
+        grantId: project,
+        revokedAt: '2026-09-23T00:00:00Z',
+        alreadyRevoked: false,
+        otherActiveGrantCount: 1,
+      }),
+    ),
+    renewGrant: vi.fn(() =>
+      Promise.resolve({ previousGrantId: project, batch }),
+    ),
     batches: vi.fn(() => Promise.resolve({ items: [batch], hasMore: false })),
     previewBatch: vi.fn(() => Promise.resolve(batch)),
     decideBatch: vi.fn(() => Promise.resolve(batch)),
@@ -258,4 +276,53 @@ describe('resource administration HTTP boundary', () => {
       expect(expired.json()).toEqual({ code: 'PREVIEW_EXPIRED' });
     },
   );
+});
+
+it('serves own grant records and validates lifecycle commands with non-cacheable receipts', async () => {
+  const { app, service } = fixture();
+  const url = `/api/platform/v1/access/projects/${project}/resource-grants?limit=20`;
+  expect((await app.inject({ url })).statusCode).toBe(401);
+  const listed = await app.inject({ url, headers: auth });
+  expect(listed.statusCode).toBe(200);
+  expect(listed.headers['cache-control']).toContain('no-store');
+  expect(service.grants).toHaveBeenCalledWith({
+    token: 'verified-human',
+    projectId: project,
+    page: { offset: 0, limit: 20 },
+  });
+  expect(
+    (await app.inject({ url: url + '&actorId=bad', headers: auth })).statusCode,
+  ).toBe(400);
+  for (const action of ['revoke', 'renew']) {
+    const body = {
+      projectId: project,
+      grantId: project,
+      reason: 'Scoped permission change',
+      ...(action === 'renew' ? { expiresAt: '2026-10-01T00:00:00Z' } : {}),
+    };
+    const target = '/api/platform/v1/access/resource-grants/' + action;
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: target,
+          headers: auth,
+          payload: body,
+        })
+      ).statusCode,
+    ).toBe(400);
+    const receipt = await app.inject({
+      method: 'POST',
+      url: target,
+      headers: { ...auth, 'idempotency-key': project },
+      payload: body,
+    });
+    expect(receipt.statusCode).toBe(200);
+    expect(receipt.headers['cache-control']).toContain('no-store');
+    expect(
+      action === 'renew'
+        ? receipt.json().batch.status
+        : receipt.json().otherActiveGrantCount,
+    ).toBe(action === 'renew' ? 'pending' : 1);
+  }
 });
