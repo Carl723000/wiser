@@ -1,3 +1,4 @@
+import { admitsManagedCapability } from './managed-capability-policy.js';
 import { createHash } from 'node:crypto';
 
 import {
@@ -309,6 +310,8 @@ export class DataCapabilityHandler {
       return this.#deny(auditBase, 'VALIDATION_FAILED');
     }
     if (
+      (requestContext.authorization.resourceAccess !== undefined &&
+        !admitsManagedCapability(definition.id)) ||
       definition.requiredScopes.some(
         (scope) => !requestContext.authorization.scopes.includes(scope),
       )

@@ -454,9 +454,9 @@ it('requires both managed source action and provider permission', async () => {
   resolver.resolve.mockResolvedValue(resourceContext(true));
   const response = await app.inject({ method: 'POST', url, headers, payload });
   expect(response.statusCode).toBe(200);
-  expect(response.json().items).toEqual([
-    { stationCode: 'SYNTHETIC-A', year: 2024 },
-  ]);
+  expect(response.json<unknown>()).toMatchObject({
+    items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
+  });
   resolve.mockResolvedValue(null);
   readPage.mockClear();
   expect(

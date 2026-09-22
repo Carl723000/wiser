@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type {
   AuthorizationQuery,
+  ResourceAuthorityQuery,
   DelegatedCredentialAuthorizationQuery,
   PlatformDelegationTransactionPool,
   SupabaseClaimsClient,
@@ -22,6 +23,24 @@ const USER_ID = 'f1000000-0000-4000-8000-000000000001';
 const SESSION_ID = 'f1000000-0000-4000-8000-000000000002';
 const TENANT_ID = 'f1000000-0000-4000-8000-000000000003';
 const PROJECT_ID = 'f1000000-0000-4000-8000-000000000004';
+
+const legacyResourceAuthority: ResourceAuthorityQuery = (_sql, values) =>
+  Promise.resolve({
+    rows: [
+      {
+        snapshot: {
+          mode: 'legacy',
+          tenantId: values[0],
+          projectId: values[1],
+          actorId: values[2],
+          purpose: values[3],
+          now: '2026-09-23T00:00:00Z',
+          revision: 0,
+          grants: [],
+        },
+      },
+    ],
+  });
 
 const openApps: FastifyInstance[] = [];
 
@@ -46,6 +65,7 @@ describe('WISER platform auth runtime', () => {
         getClaims: () => Promise.resolve({ data: null, error: null }),
       }),
       createAuthorizationDatabase: () => ({
+        resourceAuthorityQuery: legacyResourceAuthority,
         query: () => Promise.resolve({ rows: [] }),
         delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
         transactionPool: {
@@ -95,6 +115,7 @@ describe('WISER platform auth runtime', () => {
           getClaims: () => Promise.resolve({ data: null, error: null }),
         }),
         createAuthorizationDatabase: () => ({
+          resourceAuthorityQuery: legacyResourceAuthority,
           query: () => Promise.resolve({ rows: [] }),
           delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
           transactionPool: {
@@ -217,6 +238,7 @@ describe('WISER platform auth runtime', () => {
     const factories: PlatformAuthRuntimeFactories = {
       createClaimsClient: vi.fn(() => claimsClient),
       createAuthorizationDatabase: vi.fn(() => ({
+        resourceAuthorityQuery: legacyResourceAuthority,
         query,
         delegatedCredentialQuery: vi.fn(() => Promise.resolve({ rows: [] })),
         transactionPool: {
@@ -397,6 +419,7 @@ describe('WISER platform auth runtime', () => {
     const factories: PlatformAuthRuntimeFactories = {
       createClaimsClient: vi.fn(() => claimsClient),
       createAuthorizationDatabase: vi.fn(() => ({
+        resourceAuthorityQuery: legacyResourceAuthority,
         query,
         delegatedCredentialQuery,
         transactionPool,

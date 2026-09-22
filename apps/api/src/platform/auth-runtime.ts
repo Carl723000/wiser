@@ -11,6 +11,8 @@ import {
   PostgresProjectAccessService,
   DelegatedCredentialPrincipalResolver,
   PlatformCredentialPrincipalResolver,
+  ResourceScopedPrincipalResolver,
+  createPostgresResourceAuthorityLoader,
   PostgresPlatformDelegationService,
   SupabaseJwtPrincipalResolver,
   createPostgresAuthorizationContextLoader,
@@ -19,6 +21,7 @@ import {
   createSupabaseAgentClaimsVerifier,
   parseDelegatedCredentialHmacKeyRing,
   type AuthorizationQuery,
+  type ResourceAuthorityQuery,
   type AuthorizationRow,
   type DelegatedCredentialAuthorizationQuery,
   type DelegatedCredentialAuthorizationRow,
@@ -57,6 +60,7 @@ export type PlatformAuthRuntimeConfig =
 
 export interface AuthorizationDatabase {
   readonly query: AuthorizationQuery;
+  readonly resourceAuthorityQuery: ResourceAuthorityQuery;
   readonly delegatedCredentialQuery: DelegatedCredentialAuthorizationQuery;
   readonly transactionPool: PlatformDelegationTransactionPool;
   close(): Promise<void>;
@@ -258,6 +262,12 @@ const defaultFactories: PlatformAuthRuntimeFactories = {
         >(text, [...values]);
         return { rows: result.rows };
       },
+      async resourceAuthorityQuery(text, values) {
+        const result = await pool.query<{ snapshot: unknown }>(text, [
+          ...values,
+        ]);
+        return { rows: result.rows };
+      },
       transactionPool: {
         async connect() {
           return delegationClient(await pool.connect());
@@ -304,9 +314,14 @@ export function createPlatformAuthRuntimeFromEnvironment(
       database.delegatedCredentialQuery,
     ),
   });
-  const resolver = new PlatformCredentialPrincipalResolver({
-    jwt: jwtResolver,
-    delegated: delegatedResolver,
+  const resolver = new ResourceScopedPrincipalResolver({
+    base: new PlatformCredentialPrincipalResolver({
+      jwt: jwtResolver,
+      delegated: delegatedResolver,
+    }),
+    load: createPostgresResourceAuthorityLoader(
+      database.resourceAuthorityQuery,
+    ),
   });
   const identityModule = createPlatformIdentityModule(resolver);
   const agentModule =
