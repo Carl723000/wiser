@@ -1,6 +1,9 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 const client = {
+  grants: vi.fn(),
+  revokeGrant: vi.fn(),
+  renewGrant: vi.fn(),
   batches: vi.fn(),
   previewBatch: vi.fn(),
   projects: vi.fn(),
@@ -175,4 +178,66 @@ it('forwards bounded batch browsing and preview only through the verified server
   );
   expect((await POST(req, context('resource-batch-preview'))).status).toBe(200);
   expect(client.previewBatch).toHaveBeenCalledWith(command, projectId);
+});
+
+it('bounds resource grant queries and protects revocation and renewal from cross-origin or forged bodies', async () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  client.grants.mockResolvedValue({
+    items: [],
+    hasMore: false,
+    checkedAt: '2026-09-23T00:00:00Z',
+  });
+  const url = `http://wiser.test/api/platform/access/resource-grants?projectId=${projectId}`;
+  expect((await GET(new Request(url), context('resource-grants'))).status).toBe(
+    200,
+  );
+  expect(client.grants).toHaveBeenCalledWith(projectId, {
+    offset: 0,
+    limit: 20,
+  });
+  expect(
+    (await GET(new Request(url + '&limit=21'), context('resource-grants')))
+      .status,
+  ).toBe(400);
+  for (const action of ['revoke', 'renew']) {
+    const target = 'resource-grant-' + action,
+      command = {
+        projectId,
+        grantId: projectId,
+        reason: 'End scoped grant',
+        ...(action === 'renew' ? { expiresAt: '2026-10-01T00:00:00Z' } : {}),
+      };
+    const request = (origin: string, body: unknown) =>
+      new Request('http://wiser.test/api/platform/access/' + target, {
+        method: 'POST',
+        headers: {
+          origin,
+          host: 'wiser.test',
+          'content-type': 'application/json',
+          'idempotency-key': projectId,
+        },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (await POST(request('https://other.test', command), context(target)))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await POST(
+          request('http://wiser.test', { ...command, approvedBy: projectId }),
+          context(target),
+        )
+      ).status,
+    ).toBe(400);
+    const method = action === 'revoke' ? client.revokeGrant : client.renewGrant;
+    method.mockResolvedValue({ recorded: true });
+    const response = await POST(
+      request('http://wiser.test', command),
+      context(target),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(method).toHaveBeenCalledWith(command, projectId);
+  }
 });

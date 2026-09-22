@@ -3,6 +3,12 @@ import {
   type PostgresResourceAdministrationService,
 } from '@wiser/platform-auth';
 import {
+  ResourceGrantsQuerySchema,
+  ResourceGrantsPageSchema,
+  ResourceGrantRevokeCommandSchema,
+  ResourceGrantRenewCommandSchema,
+  ResourceGrantRevokeReceiptSchema,
+  ResourceGrantRenewReceiptSchema,
   PlatformUuidSchema,
   ResourceBatchPreviewCommandSchema,
   ResourceBatchDecisionSchema,
@@ -21,6 +27,9 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { WiserApiModule } from './modules.js';
 export type ResourceAdministrationHttpService = Pick<
   PostgresResourceAdministrationService,
+  | 'grants'
+  | 'revokeGrant'
+  | 'renewGrant'
   | 'definitions'
   | 'savePackage'
   | 'savePreset'
@@ -92,6 +101,50 @@ export function createResourceAdministrationModule(
   return {
     id: 'platform.resource-administration',
     register(app) {
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/resource-grants',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ResourceGrantsPageSchema.parse(
+              await service.grants({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ResourceGrantsQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      for (const action of ['revoke', 'renew'] as const)
+        app.post(
+          '/api/platform/v1/access/resource-grants/' + action,
+          { bodyLimit: 16384 },
+          (request, reply) =>
+            guarded(request, reply, async (token) => {
+              const shared = {
+                token,
+                idempotencyKey: PlatformUuidSchema.parse(
+                  request.headers['idempotency-key'],
+                ),
+              };
+              return action === 'revoke'
+                ? ResourceGrantRevokeReceiptSchema.parse(
+                    await service.revokeGrant({
+                      ...shared,
+                      command: ResourceGrantRevokeCommandSchema.parse(
+                        request.body,
+                      ),
+                    }),
+                  )
+                : ResourceGrantRenewReceiptSchema.parse(
+                    await service.renewGrant({
+                      ...shared,
+                      command: ResourceGrantRenewCommandSchema.parse(
+                        request.body,
+                      ),
+                    }),
+                  );
+            }),
+        );
       app.get(
         '/api/platform/v1/access/projects/:projectId/resource-batches',
         (request, reply) =>

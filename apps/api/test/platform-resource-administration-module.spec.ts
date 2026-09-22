@@ -321,8 +321,9 @@ it('serves own grant records and validates lifecycle commands with non-cacheable
     expect(receipt.headers['cache-control']).toContain('no-store');
     expect(
       action === 'renew'
-        ? receipt.json().batch.status
-        : receipt.json().otherActiveGrantCount,
+        ? receipt.json<{ batch: { status: string } }>().batch.status
+        : receipt.json<{ otherActiveGrantCount: number }>()
+            .otherActiveGrantCount,
     ).toBe(action === 'renew' ? 'pending' : 1);
   }
 });

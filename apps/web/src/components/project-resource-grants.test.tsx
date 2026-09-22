@@ -68,7 +68,9 @@ it('shows own records without management controls and labels stored state separa
     />,
   );
   await screen.findByText('水文资料');
-  expect(screen.getByText('有效期内')).toBeDefined();
+  expect(
+    screen.getByText('有效期内', { selector: '[data-status]' }),
+  ).toBeDefined();
   expect(screen.queryByRole('button', { name: '撤销本项授权' })).toBeNull();
   expect(screen.queryByRole('button', { name: '申请续期' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '授权记录说明' }));
@@ -92,7 +94,11 @@ it('retries an uncertain selective revocation with the same key and reports rema
               }),
         );
       }
-      return Promise.resolve(page());
+      return Promise.resolve(
+        _url.includes('/members?')
+          ? Response.json({ items: [], hasMore: false })
+          : page(),
+      );
     }),
   );
   render(
@@ -110,7 +116,9 @@ it('retries an uncertain selective revocation with the same key and reports rema
   expect(new Headers(calls[0]?.headers).get('idempotency-key')).toBe(
     new Headers(calls[1]?.headers).get('idempotency-key'),
   );
-  expect(JSON.parse(String(calls[1]?.body))).toMatchObject({
+  expect(
+    JSON.parse(typeof calls[1]?.body === 'string' ? calls[1].body : ''),
+  ).toMatchObject({
     projectId: id(1),
     grantId: grant.id,
   });
@@ -146,4 +154,235 @@ it('discards a previous project response after switching projects', async () => 
   await screen.findByText('暂无符合条件的授权记录。');
   resolve?.(page());
   await waitFor(() => expect(screen.queryByText('水文资料')).toBeNull());
+});
+it('creates a pending renewal without changing the original grant and supports cancellation', async () => {
+  const calls: RequestInit[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        calls.push(init);
+        return Promise.resolve(
+          Response.json({
+            previousGrantId: grant.id,
+            batch: {
+              id: id(10),
+              projectId: id(1),
+              version: 1,
+              status: 'pending',
+              packageId: grant.packageId,
+              packageVersion: 1,
+              packageName: grant.packageName,
+              presetId: grant.presetId,
+              presetVersion: 1,
+              presetName: grant.presetName,
+              resourceCount: 2,
+              actions: grant.actions,
+              approvalLevel: 'ordinary',
+              purpose: 'web-console',
+              startsAt: grant.expiresAt,
+              expiresAt: '2026-10-05T00:00:00Z',
+              validUntil: '2026-09-23T00:15:00Z',
+              applicantId: id(7),
+              decidedBy: null,
+              reason: '延长课题研究资料使用期限',
+              decisionReason: null,
+              members: [
+                {
+                  actorId: id(4),
+                  displayName: '研究成员',
+                  membershipVersion: 1,
+                  existingGrantCount: 1,
+                  diff: null,
+                  status: 'pending',
+                  grantId: null,
+                  code: null,
+                  attempts: 0,
+                },
+              ],
+            },
+          }),
+        );
+      }
+      return Promise.resolve(
+        _url.includes('/members?')
+          ? Response.json({ items: [], hasMore: false })
+          : page(),
+      );
+    }),
+  );
+  render(
+    <ProjectResourceGrants project={project} viewerId={id(4)} locale="zh-CN" />,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: '申请续期' }));
+  fireEvent.click(screen.getByRole('button', { name: '取消办理' }));
+  expect(screen.queryByLabelText('新的到期时间')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '申请续期' }));
+  fireEvent.change(screen.getByLabelText('办理原因'), {
+    target: { value: '延长课题研究资料使用期限' },
+  });
+  fireEvent.change(screen.getByLabelText('新的到期时间'), {
+    target: { value: '2026-09-25T08:00' },
+  });
+  fireEvent.submit(
+    screen.getByRole('button', { name: '生成续期申请' }).closest('form')!,
+  );
+  await screen.findByText('请填写办理原因，并核对新的到期时间。');
+  expect(calls).toHaveLength(0);
+  fireEvent.change(screen.getByLabelText('新的到期时间'), {
+    target: { value: '2099-10-05T08:00' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '生成续期申请' }));
+  await screen.findByText('续期申请待审批');
+  expect(calls).toHaveLength(1);
+  expect(
+    JSON.parse(typeof calls[0]?.body === 'string' ? calls[0].body : ''),
+  ).toMatchObject({
+    grantId: grant.id,
+    projectId: project.projectId,
+  });
+  expect(
+    await screen.findByText('有效期内', { selector: '[data-status]' }),
+  ).toBeDefined();
+});
+it('selects members using bounded pages, resets grant paging on status changes and refreshes records', async () => {
+  const urls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      urls.push(url);
+      if (url.includes('/members?'))
+        return Promise.resolve(
+          Response.json({
+            items: [
+              {
+                actorId: id(9),
+                displayName: '另一位研究成员',
+                email: 'reader@example.test',
+                status: 'active',
+                version: 1,
+                expiresAt: null,
+                protected: false,
+                roles: [],
+              },
+            ],
+            hasMore: !url.includes('offset=20'),
+          }),
+        );
+      return Promise.resolve(
+        Response.json({
+          items: url.includes('offset=20') ? [] : [grant],
+          hasMore: !url.includes('offset=20'),
+          checkedAt: '2026-09-23T00:00:00Z',
+        }),
+      );
+    }),
+  );
+  render(
+    <ProjectResourceGrants project={project} viewerId={id(4)} locale="en" />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: '另一位研究成员' }),
+  );
+  await waitFor(() =>
+    expect(
+      urls.some(
+        (u) => u.includes('resource-grants?') && u.includes('actorId=' + id(9)),
+      ),
+    ).toBe(true),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'My grants' }));
+  fireEvent.change(screen.getByLabelText('Member name or email'), {
+    target: { value: '研究' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Find members' }));
+  await waitFor(() =>
+    expect(urls.some((u) => u.includes('search=%E7%A0%94%E7%A9%B6'))).toBe(
+      true,
+    ),
+  );
+  fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1)!);
+  await screen.findByText('No matching grant records.');
+  fireEvent.click(screen.getAllByRole('button', { name: 'Previous' }).at(-1)!);
+  await screen.findByText('水文资料');
+  fireEvent.change(screen.getByLabelText('Grant status'), {
+    target: { value: 'expired' },
+  });
+  await waitFor(() =>
+    expect(
+      urls.some((u) => u.includes('status=expired') && u.includes('offset=0')),
+    ).toBe(true),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh records' }));
+  await screen.findByText('水文资料');
+});
+it.each(['NOT_AUTHORIZED', 'REQUEST_STATE_CONFLICT', 'VALIDATION_FAILED'])(
+  'shows safe action failures for %s without exposing server details',
+  async (code) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) =>
+        Promise.resolve(
+          init?.method === 'POST'
+            ? Response.json(
+                { code, detail: 'internal-secret' },
+                { status: 403 },
+              )
+            : page(),
+        ),
+      ),
+    );
+    render(
+      <ProjectResourceGrants
+        project={project}
+        viewerId={id(4)}
+        locale="zh-CN"
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: '撤销本项授权' }),
+    );
+    fireEvent.change(screen.getByLabelText('办理原因'), {
+      target: { value: '结束此项授权' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '确认撤销' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByText(/internal-secret/)).toBeNull();
+  },
+);
+
+it('keeps members without a display name selectable by their permitted email', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes('/members?')
+          ? Response.json({
+              items: [
+                {
+                  actorId: id(9),
+                  displayName: '',
+                  email: 'unnamed@example.test',
+                  status: 'active',
+                  version: 1,
+                  expiresAt: null,
+                  protected: false,
+                  roles: [],
+                },
+              ],
+              hasMore: false,
+            })
+          : page(),
+      ),
+    ),
+  );
+  render(
+    <ProjectResourceGrants project={project} viewerId={id(4)} locale="en" />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'unnamed@example.test' }),
+  );
+  expect(
+    screen.getByText('Grant recipient · unnamed@example.test'),
+  ).toBeDefined();
 });

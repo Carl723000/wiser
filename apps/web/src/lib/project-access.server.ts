@@ -1,5 +1,14 @@
 import 'server-only';
 import {
+  ResourceGrantsQuerySchema,
+  ResourceGrantsPageSchema,
+  ResourceGrantRevokeCommandSchema,
+  ResourceGrantRenewCommandSchema,
+  ResourceGrantRevokeReceiptSchema,
+  ResourceGrantRenewReceiptSchema,
+  type ResourceGrantsQuery,
+  type ResourceGrantRevokeCommand,
+  type ResourceGrantRenewCommand,
   ResourceBatchesQuerySchema,
   ResourceBatchesPageSchema,
   ResourceBatchPreviewCommandSchema,
@@ -185,6 +194,36 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    grants(id: string, input: ResourceGrantsQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourceGrantsQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        ...(p.actorId ? { actorId: p.actorId } : {}),
+        ...(p.status ? { status: p.status } : {}),
+      });
+      return call(
+        `projects/${id}/resource-grants?${query}`,
+        ResourceGrantsPageSchema,
+      );
+    },
+    revokeGrant(command: ResourceGrantRevokeCommand, key: string) {
+      return call(
+        'resource-grants/revoke',
+        ResourceGrantRevokeReceiptSchema,
+        ResourceGrantRevokeCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    renewGrant(command: ResourceGrantRenewCommand, key: string) {
+      return call(
+        'resource-grants/renew',
+        ResourceGrantRenewReceiptSchema,
+        ResourceGrantRenewCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     batches(id: string, input: ResourceBatchesQuery) {
       PlatformUuidSchema.parse(id);
       const p = ResourceBatchesQuerySchema.parse(input);

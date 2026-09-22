@@ -223,3 +223,66 @@ it('sends bounded batch actions to their exact authenticated routes and preserve
       headers: { Authorization: 'Bearer verified' },
     });
 });
+
+it('routes resource lifecycle commands with the session identity, exact grant ID and idempotency key', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        grantId: id,
+        revokedAt: '2026-09-23T00:00:00Z',
+        alreadyRevoked: false,
+        otherActiveGrantCount: 1,
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ code: 'REQUEST_STATE_CONFLICT' }, { status: 409 }),
+    );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('verified-session'),
+    fetch,
+  });
+  await client.grants(id, {
+    actorId: id,
+    offset: 20,
+    limit: 20,
+    status: 'active',
+  });
+  expect(address(fetch.mock.calls[0][0])).toContain(
+    `projects/${id}/resource-grants?offset=20&limit=20&actorId=${id}&status=active`,
+  );
+  const command = {
+    projectId: id,
+    grantId: id,
+    reason: 'End scoped resource access',
+  };
+  await client.revokeGrant(command, id);
+  await expect(
+    client.renewGrant({ ...command, expiresAt: '2026-10-01T00:00:00Z' }, id),
+  ).rejects.toMatchObject({ code: 'REQUEST_STATE_CONFLICT' });
+  for (const [i, action] of [
+    [1, 'revoke'],
+    [2, 'renew'],
+  ] as const) {
+    expect(address(fetch.mock.calls[i][0])).toBe(
+      `${origin}/api/platform/v1/access/resource-grants/${action}`,
+    );
+    expect(fetch.mock.calls[i][1]).toMatchObject({
+      cache: 'no-store',
+      redirect: 'error',
+      headers: {
+        Authorization: 'Bearer verified-session',
+        'Idempotency-Key': id,
+      },
+    });
+  }
+});
