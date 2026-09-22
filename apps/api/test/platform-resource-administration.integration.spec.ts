@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
-import { PostgresResourceAdministrationService } from '../../../packages/platform-auth/src/resource-administration-service.js';
+import { PostgresResourceAdministrationService } from '@wiser/platform-auth';
 import type { PlatformDelegationTransactionPool } from '@wiser/platform-auth';
 const url = process.env['WISER_RESOURCE_TEST_DATABASE_URL'];
 const project = 'b2000000-0000-4000-8000-000000000001';
