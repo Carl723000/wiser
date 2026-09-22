@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 58ae8aebcbaf285693c74460d59f48d9d4985a49
+lastReviewedCommit: e4dc9c0ece4f3db01ae78959d0ca1e25b159aaed
 ---
 
 ## One identity authority
@@ -233,3 +233,5 @@ The resource-administration HTTP module provides bounded latest-version listings
 Resource administration is composed only when project access is enabled and the Data runtime supplies its trusted package-validation port. This port checks all fixed versions in one bounded SQL query under current tenant, project, security and resource RLS, including publication and acceptance. An absent source authorization statement fails validation. The entered license basis remains a manager declaration for independent review; it is not automatically established legal permission. External-source definitions fail closed until the separate permitted-source registry port is available. No control-plane/Data database join or browser-provided authority snapshot is used.
 
 Resource batches preserve an explicit list of at most 50 current human project members and immutable package/preset versions. Preview expires after at most 15 minutes and creates no grants. Approval requires a different actor with current `platform.access.approve`, excludes applicants and recipients, and requires a configured role for important actions. Execution rechecks the recorded approving session, current authority, definition versions, Data validation, and separate project-membership, tenant-membership and actor authority versions. It records each recipient attempt, uses a savepoint for a temporary grant failure, and skips successful recipients on retry. Idempotency is actor scoped; reusing a key with different input fails. The authenticated HTTP module exposes bounded batch lists and preview, decision, execution and withdrawal actions. Managers and approval-only reviewers may read the project list; ordinary members cannot inspect other recipients. Only the applicant may withdraw a pending request. Every command requires a caller-scoped idempotency key and preserves audit history. UI acceptance remains separate.
+
+Batch previews now store per-member differences over the entire proposed interval. Counts are resource-version/action pairs: new, extended interval, already covered, and zero removals for additive grants. Adjacent overlapping grants are unioned without covering temporal gaps. A fingerprint of relevant immutable grants must still match at approval and before each execution; changed authority requires a new preview. Historical previews without a difference snapshot remain unknown and cannot be approved or executed. These record differences do not establish source/provider permission.

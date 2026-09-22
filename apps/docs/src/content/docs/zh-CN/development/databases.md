@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: ff303fb36182516c345d72e9cd245b7d0b50a27d
+lastReviewedCommit: e4dc9c0ece4f3db01ae78959d0ca1e25b159aaed
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -218,3 +218,5 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 迁移`20260922214718_resource_batch_member_versions.sql`为成员快照补充独立的租户成员版本与主体授权版本。历史空值要求重新预览，不以当前权限推算旧批准范围。
 
 `20260922220953_resource_batch_withdrawal_audit.sql`补充明确的撤回审计动作，申请快照和既有事件保持不可变。
+
+`20260922225842_resource_batch_diff.sql`为成员预览增加不可变授权差异及指纹，历史空值不从当前权限回填。

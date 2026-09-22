@@ -76,6 +76,11 @@ function fixture() {
       rows = [{ id: batch.id }, { id: randomUUID() }];
     else if (sql.includes('select statement_timestamp() now')) rows = [{ now }];
     else if (sql.startsWith('select p.package_id')) rows = [definition];
+    else if (sql.startsWith('select g.id,p.resources')) rows = [];
+    else if (
+      sql.startsWith('select * from platform_private.resource_batch_members')
+    )
+      rows = members;
     else if (sql.includes('from platform.project_memberships')) rows = members;
     else if (sql.startsWith('select * from platform_private.resource_batches'))
       rows = [batch];

@@ -32,6 +32,27 @@ export const ResourceBatchActionSchema = z.strictObject({
 export const ResourceBatchDecisionSchema = ResourceBatchActionSchema.extend({
   decision: z.enum(['approve', 'reject']),
 });
+const DifferenceCount = z.number().int().min(0).max(5000);
+export const ResourceGrantDifferenceSchema = z.object({
+  added: DifferenceCount,
+  extended: DifferenceCount,
+  retained: DifferenceCount,
+  removed: z.literal(0),
+  byAction: z
+    .array(
+      z.object({
+        action: ResourceAccessActionSchema,
+        added: DifferenceCount,
+        extended: DifferenceCount,
+        retained: DifferenceCount,
+      }),
+    )
+    .min(1)
+    .max(5),
+});
+export type ResourceGrantDifference = z.infer<
+  typeof ResourceGrantDifferenceSchema
+>;
 export const ResourceBatchViewSchema = z.object({
   id: Id,
   projectId: Id,
@@ -68,11 +89,13 @@ export const ResourceBatchViewSchema = z.object({
         displayName: z.string().max(320),
         membershipVersion: z.number().int().positive(),
         existingGrantCount: z.number().int().nonnegative(),
+        diff: ResourceGrantDifferenceSchema.nullable().default(null),
         status: z.enum(['pending', 'granted', 'failed']),
         grantId: Id.nullable(),
         code: z
           .enum([
             'MEMBERSHIP_CHANGED',
+            'ACCESS_CHANGED',
             'RESOURCE_UNAVAILABLE',
             'AUTHORITY_CHANGED',
             'EXECUTION_FAILED',

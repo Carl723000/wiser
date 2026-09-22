@@ -70,6 +70,16 @@ const zhCN = {
     detail: '成员办理明细',
     attempts: '办理次数',
     existing: '已有授权项数',
+    diff: '授权差异',
+    added: '新增权限',
+    extended: '扩展时段',
+    retained: '全时段已有',
+    removed: '撤销权限',
+    byAction: '按操作查看',
+    diffUnknown: '历史预览未记录差异，需重新申请。',
+    accessChanged: '成员的资料授权已变化，请重新生成预览并审批。',
+    diffHelp:
+      '按资料版本与操作的组合计数。扩展时段表示本次覆盖原授权尚未覆盖的时间；全时段已有表示整个申请时段已有授权。本次新增授权不撤销其他授权。这里记录预览时的授权差异，实际访问还需满足成员资格及资料许可。',
     help: '批量办理说明',
     helpText:
       '先固定成员、资源版本与权限预设，再由独立审批人审核。批准后需执行才产生授权；办理历史不等于当前有效权限。单批最多50人，翻页不会自动选择其他成员。',
@@ -2699,6 +2709,18 @@ const en: typeof zhCN = {
     detail: 'Recipient outcomes',
     attempts: 'Attempts',
     existing: 'Existing grants',
+    diff: 'Grant difference',
+    added: 'New permissions',
+    extended: 'Extended interval',
+    retained: 'Already covered',
+    removed: 'Revoked permissions',
+    byAction: 'By action',
+    diffUnknown:
+      'This historical preview has no difference snapshot. Submit a new request.',
+    accessChanged:
+      'The member’s resource grants changed. Generate a new preview for approval.',
+    diffHelp:
+      'Counts resource-version/action pairs over the requested interval. Extended interval includes time not covered by previous grants; already covered means the entire interval is covered. This additive request revokes no other grant. The snapshot compares grant records; actual access also requires current membership and source permission.',
     help: 'Batch processing help',
     helpText:
       'Fix the recipients, resource versions and permission preset before independent review. Approval creates no grants until execution. Processing history is separate from current effective access. Batches contain at most 50 people; paging never selects unseen members.',

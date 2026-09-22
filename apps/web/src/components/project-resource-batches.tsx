@@ -55,31 +55,33 @@ function useRemote<T>(
 }
 function message(code: string, locale: Locale) {
   const t = getDictionary(locale).resourceBatches;
-  return code === 'PREVIEW_EXPIRED'
-    ? t.expired
-    : code === 'MEMBERSHIP_CHANGED'
-      ? t.membershipChanged
-      : code === 'AUTHORITY_CHANGED'
-        ? t.authorityChanged
-        : code === 'IMPORTANT_APPROVAL_REQUIRED'
-          ? t.important
-          : code === 'RESOURCE_UNAVAILABLE'
-            ? t.resourceUnavailable
-            : [
-                  'NOT_AUTHENTICATED',
-                  'NOT_AUTHORIZED',
-                  'SELF_CHANGE_FORBIDDEN',
-                ].includes(code)
-              ? t.denied
+  return code === 'PREVIEW_CHANGED' || code === 'ACCESS_CHANGED'
+    ? t.accessChanged
+    : code === 'PREVIEW_EXPIRED'
+      ? t.expired
+      : code === 'MEMBERSHIP_CHANGED'
+        ? t.membershipChanged
+        : code === 'AUTHORITY_CHANGED'
+          ? t.authorityChanged
+          : code === 'IMPORTANT_APPROVAL_REQUIRED'
+            ? t.important
+            : code === 'RESOURCE_UNAVAILABLE'
+              ? t.resourceUnavailable
               : [
-                    'VERSION_CONFLICT',
-                    'IDEMPOTENCY_CONFLICT',
-                    'REQUEST_STATE_CONFLICT',
+                    'NOT_AUTHENTICATED',
+                    'NOT_AUTHORIZED',
+                    'SELF_CHANGE_FORBIDDEN',
                   ].includes(code)
-                ? t.conflict
-                : code === 'VALIDATION_FAILED'
-                  ? t.invalid
-                  : t.unavailable;
+                ? t.denied
+                : [
+                      'VERSION_CONFLICT',
+                      'IDEMPOTENCY_CONFLICT',
+                      'REQUEST_STATE_CONFLICT',
+                    ].includes(code)
+                  ? t.conflict
+                  : code === 'VALIDATION_FAILED'
+                    ? t.invalid
+                    : t.unavailable;
 }
 function field(form: FormData, name: string) {
   const v = form.get(name);
@@ -425,6 +427,7 @@ function BatchDetails({
         <summary>
           {t.detail} · {batch.members.length}
         </summary>
+        <ContextHelp label={t.diff}>{t.diffHelp}</ContextHelp>
         <div className={styles.table}>
           <table>
             <thead>
@@ -432,6 +435,7 @@ function BatchDetails({
                 <th>{t.members}</th>
                 <th>{t.status}</th>
                 <th>{t.existing}</th>
+                <th>{t.diff}</th>
                 <th>{t.attempts}</th>
               </tr>
             </thead>
@@ -444,6 +448,36 @@ function BatchDetails({
                     {m.code ? <p>{message(m.code, locale)}</p> : null}
                   </td>
                   <td>{m.existingGrantCount}</td>
+                  <td>
+                    {m.diff ? (
+                      <>
+                        <p>
+                          {t.added} · {m.diff.added}
+                        </p>
+                        <p>
+                          {t.extended} · {m.diff.extended}
+                        </p>
+                        <p>
+                          {t.retained} · {m.diff.retained}
+                        </p>
+                        <p>
+                          {t.removed} · {m.diff.removed}
+                        </p>
+                        <details>
+                          <summary>{t.byAction}</summary>
+                          {m.diff.byAction.map((row) => (
+                            <p key={row.action}>
+                              {d[row.action]} · {t.added} {row.added} ·{' '}
+                              {t.extended} {row.extended} · {t.retained}{' '}
+                              {row.retained}
+                            </p>
+                          ))}
+                        </details>
+                      </>
+                    ) : (
+                      t.diffUnknown
+                    )}
+                  </td>
                   <td>{m.attempts}</td>
                 </tr>
               ))}

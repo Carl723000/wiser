@@ -40,6 +40,7 @@ const publicErrors = new Set([
   'RESOURCE_POLICY_NOT_ENABLED',
   'RESOURCE_UNAVAILABLE',
   'PREVIEW_EXPIRED',
+  'PREVIEW_CHANGED',
   'REQUEST_UNAVAILABLE',
   'REQUEST_STATE_CONFLICT',
   'MEMBERSHIP_CHANGED',
@@ -74,6 +75,7 @@ async function guarded(
             : error.code === 'VERSION_CONFLICT' ||
                 error.code === 'IDEMPOTENCY_CONFLICT' ||
                 error.code === 'PREVIEW_EXPIRED' ||
+                error.code === 'PREVIEW_CHANGED' ||
                 error.code === 'REQUEST_STATE_CONFLICT' ||
                 error.code === 'MEMBERSHIP_CHANGED' ||
                 error.code === 'AUTHORITY_CHANGED'

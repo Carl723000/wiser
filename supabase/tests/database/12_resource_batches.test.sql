@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(23);
 select has_table('platform_private','resource_batches','Batch snapshots are durable');
 select has_table('platform_private','resource_batch_members','Explicit recipients are durable');
 select has_table('platform_private','resource_batch_attempts','Per-member attempts are append-only');
@@ -28,5 +28,8 @@ select throws_ok($$update platform_private.resource_batch_members set membership
 select throws_ok($$delete from platform_private.resource_batches$$,'22023',null,'Batch history cannot be deleted');
 select lives_ok($$insert into platform_private.resource_batch_attempts(batch_id,project_id,actor_id,attempt,executed_by,error_code) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000005','MEMBERSHIP_CHANGED')$$,'A failed recipient retains a bounded auditable result');
 
+select ok((select grant_snapshot_hash is null and grant_diff is null from platform_private.resource_batch_members where batch_id='f5000000-0000-4000-8000-000000000001'),'Historical previews stay unknown rather than being recomputed');
+select throws_ok($$update platform_private.resource_batch_members set grant_snapshot_hash=repeat('a',64),grant_diff='{}'$$,'22023',null,'Differences remain part of the immutable preview');
+select lives_ok($$insert into platform_private.resource_batch_attempts(batch_id,project_id,actor_id,attempt,executed_by,error_code) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',2,'10000000-0000-4000-8000-000000000005','ACCESS_CHANGED')$$,'Changed authority has its own bounded failure reason');
 select * from finish();
 rollback;

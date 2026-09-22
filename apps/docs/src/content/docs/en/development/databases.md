@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: ff303fb36182516c345d72e9cd245b7d0b50a27d
+lastReviewedCommit: e4dc9c0ece4f3db01ae78959d0ca1e25b159aaed
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -218,3 +218,5 @@ Resource batch migration `20260922213413_resource_batches.sql` + `20260922214035
 Migration `20260922214718_resource_batch_member_versions.sql` stores separate tenant-membership and actor authority versions alongside the project-member snapshot. Null historical values require a new preview; they are not backfilled from current permissions.
 
 `20260922220953_resource_batch_withdrawal_audit.sql` adds an explicit withdrawal audit action; request snapshots and earlier events remain immutable.
+
+Migration `20260922225842_resource_batch_diff.sql` adds immutable recipient grant-difference snapshots and fingerprints. Null historical snapshots are intentionally not backfilled.

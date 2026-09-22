@@ -135,3 +135,10 @@ create index resource_batch_attempts_executor_idx on platform_private.resource_b
 -- Null historical snapshots are rejected at execution; never infer old authority from current membership.
 alter table platform_private.resource_batch_members add column tenant_membership_version bigint check(tenant_membership_version>0);
 alter table platform_private.resource_batch_members add column actor_authz_version bigint check(actor_authz_version>0);
+-- Preserve historical previews as unknown; require a fresh snapshot for approval/execution.
+alter table platform_private.resource_batch_members
+ add column grant_snapshot_hash text check(grant_snapshot_hash~'^[0-9a-f]{64}$'),
+ add column grant_diff jsonb check(jsonb_typeof(grant_diff)='object' and octet_length(grant_diff::text)<=8192);
+alter table platform_private.resource_batch_attempts drop constraint resource_batch_attempts_error_code_check;
+alter table platform_private.resource_batch_attempts add constraint resource_batch_attempts_error_code_check
+ check(error_code in ('MEMBERSHIP_CHANGED','RESOURCE_UNAVAILABLE','AUTHORITY_CHANGED','EXECUTION_FAILED','ACCESS_CHANGED'));

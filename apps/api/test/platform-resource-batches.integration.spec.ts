@@ -717,6 +717,43 @@ describe.skipIf(!url)(
         await client.query('rollback to savepoint diff_case');
       }
     });
+    it('fails only a recipient whose overlapping authority changed after approval', async () => {
+      await client.query('savepoint changed_grant_case');
+      try {
+        const approved = await approvedBatch([reader, second]);
+        const old = (
+          await client.query<{ id: string }>(
+            'select id from platform_private.resource_grants g where project_id=$1 and actor_id=$2 and package_id=$3 and not exists(select 1 from platform_private.resource_revocations r where r.grant_id=g.id) limit 1',
+            [project, reader, pack.packageId],
+          )
+        ).rows[0]!;
+        await client.query(
+          "insert into platform_private.resource_revocations(grant_id,project_id,revoked_by,reason) values($1,$2,$3,'Synthetic intervening revocation')",
+          [old.id, project, owner],
+        );
+        const result = await service.executeBatch(execution(approved));
+        expect(result.status).toBe('partial');
+        expect(result.members.find((x) => x.actorId === reader)).toMatchObject({
+          status: 'failed',
+          code: 'ACCESS_CHANGED',
+          grantId: null,
+        });
+        expect(result.members.find((x) => x.actorId === second)).toMatchObject({
+          status: 'granted',
+          attempts: 1,
+        });
+        expect(
+          (
+            await client.query<{ n: number }>(
+              'select count(*)::int n from platform_private.resource_revocations where project_id=$1',
+              [project],
+            )
+          ).rows[0]!.n,
+        ).toBe(1);
+      } finally {
+        await client.query('rollback to savepoint changed_grant_case');
+      }
+    });
     it('roundtrips preview and withdrawal through the HTTP module and actual control storage', async () => {
       const app = Fastify({ logger: false });
       await createResourceAdministrationModule(service).register(app);

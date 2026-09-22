@@ -1,6 +1,10 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   ResourceBatchViewSchema,
+  ResourceGrantDifferenceSchema,
+  resourceAccessReferenceKey,
+  type ResourceGrantDifference,
+  type ResourceAccessAction,
   ResourceBatchesPageSchema,
   type ResourceBatchesQuery,
   type ResourceBatchesPage,
@@ -20,6 +24,10 @@ import {
 } from './postgres-authorization.js';
 import { resourceAdministrationFailure as fail } from './resource-administration-error.js';
 import type { ResourceAdministrationOptions } from './resource-administration-service.js';
+import {
+  resourceGrantDiff,
+  type ResourceGrantWindow,
+} from './resource-grant-diff.js';
 export interface ResourceAdministrationSession {
   client: Client;
   human: VerifiedSupabaseJwtClaims;
@@ -64,6 +72,8 @@ interface Member {
   actor_authz_version: string | null;
   display_name: string;
   existing_grant_count: number;
+  grant_snapshot_hash: string | null;
+  grant_diff: ResourceGrantDifference | null;
 }
 const DEFINITIONS = `select p.package_id,p.version package_version,p.name package_name,p.resources,p.allowed_actions,p.license_basis,
  t.preset_id,t.version preset_version,t.name preset_name,t.actions,t.max_days,t.approval_level,
@@ -206,6 +216,60 @@ export class ResourceBatchStore {
       )
     ).rows;
   }
+  async #grantSnapshot(
+    actorId: string,
+    d: Definitions,
+    startsAt: Date,
+    expiresAt: Date,
+  ) {
+    const result = await this.session.client.query<{
+      id: string;
+      resources: ResourcePackageCommand['resources'];
+      actions: ResourceAccessAction[];
+      starts_at: Date;
+      expires_at: Date;
+    }>(
+      `select g.id,p.resources,t.actions,g.starts_at,g.expires_at from platform_private.resource_grants g
+       join platform_private.resource_package_versions p on (p.project_id,p.package_id,p.version)=(g.project_id,g.package_id,g.package_version)
+       join platform_private.resource_preset_versions t on (t.project_id,t.preset_id,t.version)=(g.project_id,g.preset_id,g.preset_version)
+       where g.project_id=$1 and g.actor_id=$2 and g.purpose='web-console' and g.starts_at<$4 and g.expires_at>$3
+       and not exists(select 1 from platform_private.resource_revocations r where r.grant_id=g.id)
+       order by g.id limit 1001`,
+      [
+        this.session.project.id,
+        actorId,
+        startsAt.toISOString(),
+        expiresAt.toISOString(),
+      ],
+    );
+    if (result.rows.length > 1000) fail('RESOURCE_UNAVAILABLE');
+    const wanted = new Set(d.resources.map(resourceAccessReferenceKey));
+    const grants: ResourceGrantWindow[] = result.rows
+      .map((g) => ({
+        id: g.id,
+        resources: g.resources
+          .filter((r) => wanted.has(resourceAccessReferenceKey(r)))
+          .sort((a, b) =>
+            resourceAccessReferenceKey(a).localeCompare(
+              resourceAccessReferenceKey(b),
+            ),
+          ),
+        actions: g.actions.filter((a) => d.actions.includes(a)).sort(),
+        startsAt: g.starts_at.toISOString(),
+        expiresAt: g.expires_at.toISOString(),
+      }))
+      .filter((g) => g.resources.length && g.actions.length);
+    return {
+      hash: createHash('sha256').update(JSON.stringify(grants)).digest('hex'),
+      diff: resourceGrantDiff({
+        resources: d.resources,
+        actions: d.actions as ResourceAccessAction[],
+        startsAt: startsAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        grants,
+      }),
+    };
+  }
   async #audit(
     action: string,
     id: string,
@@ -297,6 +361,9 @@ export class ResourceBatchStore {
         displayName: m.display_name,
         membershipVersion: Number(m.membership_version),
         existingGrantCount: m.existing_grant_count,
+        diff: m.grant_diff
+          ? ResourceGrantDifferenceSchema.parse(m.grant_diff)
+          : null,
         status: m.grant_id ? 'granted' : m.error_code ? 'failed' : 'pending',
         grantId: m.grant_id,
         code: m.error_code,
@@ -341,8 +408,9 @@ export class ResourceBatchStore {
     );
     for (const [index, actor] of command.actorIds.entries()) {
       const m = members.find((m) => m.actor_id === actor)!;
+      const snapshot = await this.#grantSnapshot(actor, d, start, end);
       await this.session.client.query(
-        `insert into platform_private.resource_batch_members(batch_id,project_id,actor_id,ordinal,membership_version,display_name,existing_grant_count,tenant_membership_version,actor_authz_version) values($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `insert into platform_private.resource_batch_members(batch_id,project_id,actor_id,ordinal,membership_version,display_name,existing_grant_count,tenant_membership_version,actor_authz_version,grant_snapshot_hash,grant_diff) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
         [
           id,
           this.session.project.id,
@@ -353,6 +421,8 @@ export class ResourceBatchStore {
           m.existing_grant_count,
           m.tenant_membership_version,
           m.actor_authz_version,
+          snapshot.hash,
+          JSON.stringify(snapshot.diff),
         ],
       );
     }
@@ -385,6 +455,25 @@ export class ResourceBatchStore {
       this.#current(b);
       if (b.valid_until <= (await this.#now())) fail('PREVIEW_EXPIRED');
       await this.#important(this.session.human.userId, b.approval_level);
+      const members = await this.session.client.query<Member>(
+        'select * from platform_private.resource_batch_members where batch_id=$1 order by ordinal',
+        [b.id],
+      );
+      for (const m of members.rows) {
+        if (
+          !m.grant_snapshot_hash ||
+          m.grant_snapshot_hash !==
+            (
+              await this.#grantSnapshot(
+                m.actor_id,
+                b,
+                b.starts_at,
+                b.expires_at,
+              )
+            ).hash
+        )
+          fail('PREVIEW_CHANGED');
+      }
     }
     await this.session.client.query(
       `update platform_private.resource_batches set status=$2,version=version+1,decided_by=$3,decided_session_id=$4,decision_reason=$5,decided_at=statement_timestamp(),updated_at=statement_timestamp() where id=$1`,
@@ -455,6 +544,19 @@ export class ResourceBatchStore {
           String(actual.actor_authz_version)
       )
         code = 'MEMBERSHIP_CHANGED';
+      else if (
+        !expected.grant_snapshot_hash ||
+        expected.grant_snapshot_hash !==
+          (
+            await this.#grantSnapshot(
+              previous.actorId,
+              b,
+              b.starts_at,
+              b.expires_at,
+            )
+          ).hash
+      )
+        code = 'ACCESS_CHANGED';
       else {
         await this.session.client.query('savepoint resource_batch_recipient');
         try {

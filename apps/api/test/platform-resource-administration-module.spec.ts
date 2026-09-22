@@ -49,6 +49,7 @@ function fixture() {
         displayName: 'Reader',
         membershipVersion: 1,
         existingGrantCount: 0,
+        diff: null,
         status: 'pending' as const,
         grantId: null,
         code: null,

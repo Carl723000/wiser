@@ -51,6 +51,7 @@ import { createWiserServerSupabaseClient } from './supabase/server';
 
 const errorCodes = new Set([
   'PREVIEW_EXPIRED',
+  'PREVIEW_CHANGED',
   'REQUEST_STATE_CONFLICT',
   'MEMBERSHIP_CHANGED',
   'AUTHORITY_CHANGED',

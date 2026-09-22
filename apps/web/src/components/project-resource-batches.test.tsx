@@ -444,3 +444,50 @@ it('filters batches, pages results, and lets an executor inspect and cancel a pa
   fireEvent.click(screen.getByRole('button', { name: '刷新批次' }));
   await screen.findByText('公开水文资料');
 });
+it('shows frozen per-member resource-action differences without calling historical grants current access', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      Promise.resolve(
+        Response.json({
+          items: [
+            {
+              ...batch,
+              members: [
+                {
+                  ...batch.members[0],
+                  diff: {
+                    added: 2,
+                    extended: 1,
+                    retained: 3,
+                    removed: 0,
+                    byAction: [
+                      {
+                        action: 'content.read',
+                        added: 2,
+                        extended: 1,
+                        retained: 3,
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+          hasMore: false,
+        }),
+      ),
+    ),
+  );
+  render(
+    <ProjectResourceBatches
+      locale="zh-CN"
+      project={project}
+      viewerId={id(8)}
+    />,
+  );
+  await screen.findByText('新增权限 · 2');
+  expect(screen.getByText('扩展时段 · 1')).toBeDefined();
+  expect(screen.getByText('全时段已有 · 3')).toBeDefined();
+  expect(screen.getByText('撤销权限 · 0')).toBeDefined();
+});
