@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
+lastReviewedCommit: 703a77a401fa978b75ee14ed6c76e1fee8af5697
 ---
 
 ## One identity authority
@@ -178,4 +178,12 @@ After applying the Supabase project-access migration, `WISER_PROJECT_ACCESS_ENAB
 
 An explicit private role policy controls assignable roles and maximum days. New seeds configure the local owner scopes and a data-reader policy but leave project discovery disabled; existing deployments receive no automatic manager or discovery grants. Administrators cannot modify themselves or activate tenant management roles through ordinary project membership. Membership expiry limits all project role use. Revocation affects that project, retains the Auth account and tenant membership, and revokes project bindings. Reactivation does not revive other old grants.
 
-Commands recheck authority, serialize on the project, compare membership versions, enforce actor-scoped idempotency, advance the effective authorization version, and atomically append member history, authorization audit and Control Outbox. A replay returns the original command receipt; clients must reload current membership before showing effective access. The audit and idempotency rows are immutable. Invitation delivery, approval workflow and their user interfaces are separate implementation slices; these endpoints do not imply those flows are ready.
+Commands recheck authority, serialize on the project, compare membership versions, enforce actor-scoped idempotency, advance the effective authorization version, and atomically append member history, authorization audit and Control Outbox. A replay returns the original command receipt; clients must reload current membership before showing effective access. The audit and idempotency rows are immutable. Invitation delivery and the approval workflow remain separate implementation slices; member management does not imply those flows are ready.
+
+## Project access workspace
+
+With the same feature switch enabled on Web and API, the Account menu opens `/[locale]/account/access`. A freshly verified human Session is required. My access shows the current user's effective roles and membership expiry; an active membership row without effective roles is not presented as usable access. Members & permissions is available only for projects with management authority, with scoped search, paging, role/expiry changes and project revocation. The same-origin Web transport forwards the current Session, enforces same-origin JSON writes and bounded request/response bodies, and never falls back to a static or administrative credential. Each command carries a stable idempotency key and expected membership version; the member list is cleared and reloaded after mutations or permission failures.
+
+`WISER_ACCESS_ENVIRONMENT=local` labels an explicitly configured local demonstration; otherwise the page labels the current site. It does not select a database or synchronize accounts. Web uses its configured Supabase instance and internal API origin. Keep those together when preparing an isolated preview. The Account menu also retains own-password and sign-out actions in a keyboard-accessible disclosure, avoiding overlapping primary navigation on narrow displays.
+
+Real-session browser checks use `apps/web/playwright.access.config.ts` against an explicitly supplied loopback origin. Supply the `WISER_ACCESS_E2E_` origin, manager/reader email and password, and project ID from an ignored environment. Use only disposable synthetic members: the checks change expiry and revoke the reader. Trace, screenshots and video are disabled during credential-bearing checks. The normal reference-browser suite skips this separate integration fixture; its absence is not a real-Auth acceptance result.

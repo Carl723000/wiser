@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
+lastReviewedCommit: 703a77a401fa978b75ee14ed6c76e1fee8af5697
 ---
 
 ## 两个前端应用
@@ -246,3 +246,5 @@ BusinessQuery v2允许已审与待审关系共同展示，但不改变断言状�
 参考网页浏览器测试在开始交互前，先等待数据基座工作区响应，把图谱工作区的首次编译计入服务就绪阶段。服务就绪预算为120秒；原有页面导航时限、语言、主题及内容断言保持不变。参考测试仍使用 `next dev`，因为生产模式禁止该套测试采用的无登录配置。这不等于实时 API 或部署环境已验收。
 
 根单元／覆盖率检查默认使用两个工作进程，限制与本地预览服务同时运行时的 DOM 和覆盖率资源竞争。测试时限、断言和覆盖率门槛不变。需要量测并发时可显式传入 Vitest `--maxWorkers`；针对性测试通过不能替代完整验证。
+
+按需启用的账户菜单通过 `/[locale]/account/access` 展示本人访问和获准的项目成员操作。配置与真实会话验收见[统一身份](/architecture/unified-auth/#项目访问工作区)。沿用既有页面外壳、语言和主题，不新增并列业务系统。

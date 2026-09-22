@@ -1,0 +1,184 @@
+import 'server-only';
+import {
+  PlatformUuidSchema,
+  ProjectAccessPageSchema,
+  ProjectAccessGrantSchema,
+  ProjectAccessRevokeSchema,
+  ProjectAccessProjectsPageSchema,
+  ProjectAccessMembersPageSchema,
+  ProjectAccessMemberViewSchema,
+  type ProjectAccessPage,
+  type ProjectAccessGrant,
+  type ProjectAccessRevoke,
+} from '@wiser/platform-contracts';
+import { verifiedSessionAccessToken } from './supabase/verified-session';
+import { createWiserServerSupabaseClient } from './supabase/server';
+
+const errorCodes = new Set([
+  'NOT_AUTHENTICATED',
+  'NOT_AUTHORIZED',
+  'VERSION_CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'INVALID_EXPIRY',
+  'SELF_CHANGE_FORBIDDEN',
+  'ROLE_NOT_ASSIGNABLE',
+  'PROTECTED_MEMBER',
+  'MEMBER_UNAVAILABLE',
+  'VALIDATION_FAILED',
+]);
+export class ProjectAccessWebError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: number,
+  ) {
+    super(code);
+  }
+}
+async function boundedJson(response: Response): Promise<unknown> {
+  if (!response.headers.get('content-type')?.includes('application/json'))
+    throw new Error('Invalid response');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Empty response');
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.byteLength;
+      if (bytes > 524288) {
+        await reader.cancel();
+        throw new Error('Response too large');
+      }
+      chunks.push(part.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const result = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(
+    new TextDecoder('utf-8', { fatal: true }).decode(result),
+  ) as unknown;
+}
+export function createProjectAccessClient(options: {
+  origin: string;
+  token: () => Promise<string>;
+  fetch?: typeof fetch;
+}) {
+  const url = new URL(options.origin);
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  )
+    throw new ProjectAccessWebError('ACCESS_UNAVAILABLE', 503);
+  const fetcher = options.fetch ?? fetch;
+  async function call<T>(
+    path: string,
+    schema: { parse(input: unknown): T },
+    body?: unknown,
+    key?: string,
+  ): Promise<T> {
+    const token = await options.token();
+    try {
+      const response = await fetcher(
+        new URL('/api/platform/v1/access/' + path, url),
+        {
+          method: body === undefined ? 'GET' : 'POST',
+          cache: 'no-store',
+          redirect: 'error',
+          signal: AbortSignal.timeout(10000),
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(body === undefined
+              ? {}
+              : {
+                  'Content-Type': 'application/json',
+                  'Idempotency-Key': key!,
+                }),
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+      );
+      const data = await boundedJson(response);
+      if (!response.ok) {
+        const code =
+          typeof data === 'object' &&
+          data !== null &&
+          'code' in data &&
+          typeof data.code === 'string'
+            ? data.code
+            : null;
+        if (code !== null && errorCodes.has(code))
+          throw new ProjectAccessWebError(code, response.status);
+        throw new Error('Upstream unavailable');
+      }
+      return schema.parse(data);
+    } catch (error) {
+      if (error instanceof ProjectAccessWebError) throw error;
+      throw new ProjectAccessWebError('ACCESS_UNAVAILABLE', 503);
+    }
+  }
+  function pageQuery(input: ProjectAccessPage) {
+    const p = ProjectAccessPageSchema.parse(input);
+    return new URLSearchParams({
+      offset: String(p.offset),
+      limit: String(p.limit),
+      search: p.search,
+    });
+  }
+  return {
+    projects(page: ProjectAccessPage) {
+      return call(
+        'projects?' + pageQuery(page).toString(),
+        ProjectAccessProjectsPageSchema,
+      );
+    },
+    async members(id: string, page: ProjectAccessPage) {
+      PlatformUuidSchema.parse(id);
+      return await call(
+        `projects/${id}/members?${pageQuery(page)}`,
+        ProjectAccessMembersPageSchema,
+      );
+    },
+    grant(command: ProjectAccessGrant, key: string) {
+      return call(
+        'grants',
+        ProjectAccessMemberViewSchema,
+        ProjectAccessGrantSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    revoke(command: ProjectAccessRevoke, key: string) {
+      return call(
+        'revocations',
+        ProjectAccessMemberViewSchema,
+        ProjectAccessRevokeSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+  };
+}
+export function getProjectAccessClient() {
+  if (process.env.WISER_PROJECT_ACCESS_ENABLED !== 'true')
+    throw new ProjectAccessWebError('ACCESS_UNAVAILABLE', 503);
+  return createProjectAccessClient({
+    origin:
+      process.env.WISER_DATA_API_INTERNAL_URL ??
+      process.env.AGENT_EXCON_API_INTERNAL_URL ??
+      '',
+    token: () =>
+      verifiedSessionAccessToken(
+        createWiserServerSupabaseClient,
+        () => new Date(),
+      ),
+  });
+}
