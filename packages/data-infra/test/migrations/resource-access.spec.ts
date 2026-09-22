@@ -76,7 +76,11 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           [s.version, tenant, project, s.item],
         );
         await client.query(
-          `insert into catalog.asset(asset_id,tenant_id,project_id,version_id,storage_key,content_hash,media_type,byte_size,security_level) values($1::uuid,$2,$3,$4,$1::text,decode(repeat('ab',32),'hex'),'text/plain',1,'L1_INTERNAL')`,
+          `insert into catalog.content_blob(content_blob_id,tenant_id,project_id,content_hash,byte_size,raw_storage_key,lifecycle_state,security_level) values($1::uuid,$2,$3,digest($1::text,'sha256'),1,$1::text,'RAW','L1_INTERNAL')`,
+          [s.asset, tenant, project],
+        );
+        await client.query(
+          `insert into catalog.asset(asset_id,tenant_id,project_id,version_id,storage_key,content_hash,media_type,byte_size,security_level,content_blob_id,lifecycle_state) values($1::uuid,$2,$3,$4,$1::text,digest($1::text,'sha256'),'text/plain',1,'L1_INTERNAL',$1::uuid,'RAW')`,
           [s.asset, tenant, project, s.version],
         );
         await client.query(
@@ -92,6 +96,7 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           [tenant, project, s.item, s.version],
         );
       }
+      await client.query(`grant ${role} to current_user`);
       await client.query(`set local role ${role}`);
     });
     beforeEach(async () => {
