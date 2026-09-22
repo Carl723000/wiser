@@ -8,6 +8,7 @@ import {
 } from '@wiser/data-contracts';
 import {
   PostgresAgentConnectionService,
+  PostgresProjectAccessService,
   DelegatedCredentialPrincipalResolver,
   PlatformCredentialPrincipalResolver,
   PostgresPlatformDelegationService,
@@ -30,6 +31,7 @@ import { PlatformAgentResourceSchema } from '@wiser/platform-contracts';
 
 import { createPlatformAgentConnectionsModule } from './agent-connections-module.js';
 import { createPlatformDelegationModule } from './delegation-module.js';
+import { createProjectAccessModule } from './project-access-module.js';
 import {
   createPlatformIdentityModule,
   type PlatformPrincipalResolver,
@@ -44,6 +46,7 @@ export type PlatformAuthRuntimeConfig =
       readonly supabasePublishableKey: string;
       readonly databaseUrl: string;
       readonly delegatedCredentialHmacKeyRing: DelegatedCredentialHmacKeyRing;
+      readonly projectAccess?: boolean;
       readonly agent?: { readonly resource: string; readonly issuer: string };
     };
 
@@ -101,6 +104,14 @@ export function loadPlatformAuthRuntimeConfig(
   environment: NodeJS.ProcessEnv,
 ): PlatformAuthRuntimeConfig {
   const production = environment['NODE_ENV'] === 'production';
+  const projectAccess = environment['WISER_PROJECT_ACCESS_ENABLED'];
+  if (
+    projectAccess !== undefined &&
+    projectAccess !== 'true' &&
+    projectAccess !== 'false'
+  ) {
+    throw new Error('WISER_PROJECT_ACCESS_ENABLED must be true or false.');
+  }
   const configuredMode = environment['WISER_AUTH_MODE'];
   const mode = configuredMode ?? (production ? 'supabase' : 'off');
   if (mode !== 'off' && mode !== 'supabase') {
@@ -160,6 +171,7 @@ export function loadPlatformAuthRuntimeConfig(
     supabasePublishableKey: parsed.data.supabasePublishableKey,
     databaseUrl: parsed.data.databaseUrl,
     delegatedCredentialHmacKeyRing,
+    ...(projectAccess === 'true' ? { projectAccess: true } : {}),
     ...(agent === undefined ? {} : { agent }),
   };
 }
@@ -304,6 +316,14 @@ export function createPlatformAuthRuntimeFromEnvironment(
     async register(app) {
       await identityModule.register(app);
       await delegationModule.register(app);
+      if (config.projectAccess) {
+        await createProjectAccessModule(
+          new PostgresProjectAccessService({
+            pool: database.transactionPool,
+            verifyHuman,
+          }),
+        ).register(app);
+      }
       if (agentModule !== null) await agentModule.register(app);
       app.addHook('onClose', async () => {
         await database.close();

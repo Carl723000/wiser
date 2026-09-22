@@ -30,6 +30,52 @@ afterEach(async () => {
 });
 
 describe('WISER platform auth runtime', () => {
+  it('registers project management only with its explicit server switch', async () => {
+    const env = {
+      WISER_AUTH_MODE: 'supabase',
+      SUPABASE_URL: 'http://127.0.0.1:56321',
+      SUPABASE_PUBLISHABLE_KEY: 'publishable-test-key-long-enough',
+      DATABASE_URL: 'postgresql://test:test@127.0.0.1:56322/postgres',
+      WISER_DELEGATED_CREDENTIAL_HMAC_KEYS: JSON.stringify({
+        activeKeyId: 'test',
+        keys: { test: Buffer.alloc(32, 7).toString('base64url') },
+      }),
+    };
+    const factories: PlatformAuthRuntimeFactories = {
+      createClaimsClient: () => ({
+        getClaims: () => Promise.resolve({ data: null, error: null }),
+      }),
+      createAuthorizationDatabase: () => ({
+        query: () => Promise.resolve({ rows: [] }),
+        delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
+        transactionPool: {
+          connect: () => Promise.reject(new Error('No database call expected')),
+        },
+        close: () => Promise.resolve(),
+      }),
+    };
+    for (const enabled of [false, true]) {
+      const module = createPlatformAuthModuleFromEnvironment(
+        {
+          ...env,
+          ...(enabled ? { WISER_PROJECT_ACCESS_ENABLED: 'true' } : {}),
+        },
+        factories,
+      )!;
+      const app = buildApp({ logger: false, modules: [module] });
+      openApps.push(app);
+      expect(
+        (await app.inject('/api/platform/v1/access/projects')).statusCode,
+      ).toBe(enabled ? 401 : 404);
+    }
+    expect(() =>
+      loadPlatformAuthRuntimeConfig({
+        ...env,
+        WISER_PROJECT_ACCESS_ENABLED: 'yes',
+      }),
+    ).toThrow('WISER_PROJECT_ACCESS_ENABLED');
+  });
+
   it('registers Agent routes in the actual configured runtime', async () => {
     const module = createPlatformAuthModuleFromEnvironment(
       {

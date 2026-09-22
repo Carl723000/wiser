@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 5afd0a3
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -200,3 +200,7 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 ### 服务端业务成员清单存储
 
 追加迁移`0029_exploration_membership.sql`在既有查询快照和保存视图中增加可空的`business_pins`，只保存断言UUID与版本对，与有大小限制的客户端条件分开。旧行继续为null，不回填或改写。数据库拒绝格式错误、重复或超限清单（最多100,000对／8 MiB）；这是存储保护上限，不是已验证的查询或绘图能力。整行强制RLS、快照不可改写及保存视图单向撤销约束同样覆盖新列。`packages/data-infra/test/migrations/exploration-membership.spec.ts`在独立合成库验证2,033个成员、六项作用域隔离及修改拒绝。本存储切片本身尚未启用项目全景查询，不修改既有协议上限，不批准知识或导入外部观测；API和网页接续另行验证。
+
+## 项目访问控制记录
+
+`04_project_access.sql` 与 CLI 生成的迁移新增私有、强制 RLS 的项目设置、可分配角色、邀请、幂等回执及不可变成员事件，不为浏览器或 service-role 增加直读权限。项目发现默认关闭。这些记录属于控制面，不另建身份库，也不进入 Data Foundation 迁移历史。`WISER_ACCESS_TEST_DATABASE_URL` 集成套件仅可连接已迁移并加载 seed 的可丢弃 Supabase 测试库；先运行 pgTAP，再加入集成测试身份。不得重置现有开发或共享实例。

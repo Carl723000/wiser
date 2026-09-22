@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: b4cdd91cf4fb64c97094ecb601bf931c03603bc0
+lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
 ---
 
 ## 单一身份源
@@ -171,3 +171,11 @@ data-postgres 只保存 Tenant、Project、Actor UUID 与策略版本，不复�
 纯函数形式的项目授权规则区分`platform.membership.manage`与`platform.access.approve`。项目管理或资料读取权限本身不代表转授权权。授予角色必须有明确的可分配角色配置，角色为有效的普通业务角色，期限有界且不超过配置及管理员有效权限期限，安全等级不高于管理员。含平台权限的角色不能通过该流程分配。禁止给自己授权或自行批准；普通成员撤销操作不能移除管理岗位，其变更仍由受控维护流程办理，同时保护最后一个管理员和其他管理岗位。
 
 此规则是实现基础，尚不代表新增管理接口已经部署。传输与持久化层仍须验证实时直接人类Session，在事务内重新加载当前项目授权，并处理并发、重试和审计。规则不读取用户可编辑metadata、不新建身份源、不授予资料级下载权限，也不改变既有Data鉴权。
+
+## 项目成员 API
+
+应用 Supabase 项目访问迁移后，显式设置 `WISER_PROJECT_ACCESS_ENABLED=true` 才注册 `/api/platform/v1/access/projects`、该前缀下的 `/projects/:projectId/members`，以及 POST `/grants`、`/revocations`。默认关闭，原入口不变。每次操作重新验证真人 Session、项目权限和可分配角色；service-role 与代理委托不能充当真人管理员。分页最多50条，拒绝未知命令字段，响应只返回声明字段且禁止缓存。
+
+私有项目策略限定可分配角色和最长天数；开发 seed 配置本地管理员 scope 与 data-reader 策略，但默认不开放项目发现。迁移不会自动给现有部署增加管理员或开放项目。普通成员入口禁止改自己的权限，也不能借新增成员激活既有租户管理角色。成员期限约束该项目内全部角色的使用；撤权保留 Auth 账号和租户成员，只撤销指定项目及其角色绑定，重新激活不会复活其他旧授权。
+
+事务内串行锁定项目、比较成员版本、核对幂等键和内容哈希，推进有效授权版本，并一起写入成员历史、既有授权审计和 Control Outbox。重放返回原命令回执，页面须再查询当前成员状态，不能把旧回执当作当前有效权限。审计与幂等记录不可改写。邀请投递、申请审批和页面是后续实现切片，不能由这些接口推断整个流程已完成。

@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-07
-lastReviewedCommit: 626cfd1c22e8c24fb38306520c4e9433a5984151
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
 ---
 
 ## 四类数据必须分开
@@ -96,3 +96,7 @@ Supabase 镜像作为一个兼容版本集合锁定，gateway 配置与该集合
 - [ ] 下载链接短期有效并绑定对象权限。
 - [ ] RLS、SQL 事务和状态机负向测试在真实 PostgreSQL 上通过。
 - [ ] 在线 AI 测试不是合并请求的必需条件。
+
+## 项目访问控制记录
+
+`04_project_access.sql` 与 CLI 生成的迁移新增私有、强制 RLS 的项目设置、可分配角色、邀请、幂等回执及不可变成员事件，不为浏览器或 service-role 增加直读权限。项目发现默认关闭。这些记录属于控制面，不另建身份库，也不进入 Data Foundation 迁移历史。`WISER_ACCESS_TEST_DATABASE_URL` 集成套件仅可连接已迁移并加载 seed 的可丢弃 Supabase 测试库；先运行 pgTAP，再加入集成测试身份。不得重置现有开发或共享实例。

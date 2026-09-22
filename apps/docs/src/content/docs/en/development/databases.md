@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 5afd0a3
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -200,3 +200,7 @@ See PostgreSQL's [RLS integrity boundary](https://www.postgresql.org/docs/curren
 ### Server-owned business membership storage
 
 Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the existing owner-scoped exploration snapshot and saved-view tables. It stores only assertion UUID/version pairs, separately from the bounded client specification. Existing rows remain null and unchanged. The database rejects malformed, duplicate or oversized memberships (100,000 pairs / 8 MiB maximum); this is a storage guard, not a claimed query/render capacity. Forced RLS, immutable snapshot contents and saved-view one-way revocation continue to apply to the whole row. `packages/data-infra/test/migrations/exploration-membership.spec.ts` exercises 2,033 synthetic members, six scope boundaries and mutation rejection in a disposable database. This storage slice alone does not enable project-wide business queries, change existing capability limits, approve knowledge or load external observations. API use and client integration require separate verification.
+
+## Project access control records
+
+`04_project_access.sql` and its CLI-generated migration add private, forced-RLS project settings, assignable roles, invitations, idempotency receipts and immutable member events. No direct client or service-role table grants are added. Settings default to closed discovery. These are control-plane records, not a second identity store or Data Foundation migration. The optional `WISER_ACCESS_TEST_DATABASE_URL` integration suite must target a disposable migrated and seeded Supabase database; run pgTAP before integration fixtures. Never run a reset against the existing developer or shared instance.

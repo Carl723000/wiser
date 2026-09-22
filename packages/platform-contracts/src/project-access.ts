@@ -9,10 +9,32 @@ const RoleKey = z
   .regex(/^[a-z][a-z0-9-]*$/);
 const Reason = z.string().trim().min(5).max(1000);
 
-export const ProjectAccessGrantSchema = z.never();
-export const ProjectAccessRevokeSchema = z.never();
-export const ProjectAccessInviteSchema = z.never();
-export const ProjectAccessPageSchema = z.never();
+export const ProjectAccessGrantSchema = z.strictObject({
+  projectId: Id,
+  actorId: Id,
+  roleKey: RoleKey,
+  expiresAt: Timestamp,
+  reason: Reason,
+  expectedVersion: z.number().int().nonnegative(),
+});
+export const ProjectAccessRevokeSchema = z.strictObject({
+  projectId: Id,
+  actorId: Id,
+  reason: Reason,
+  expectedVersion: z.number().int().positive(),
+});
+export const ProjectAccessInviteSchema = z.strictObject({
+  projectId: Id,
+  email: z.string().trim().email().max(254),
+  roleKey: RoleKey,
+  expiresAt: Timestamp,
+  reason: Reason,
+});
+export const ProjectAccessPageSchema = z.strictObject({
+  offset: z.coerce.number().int().min(0).max(100000).default(0),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  search: z.string().trim().max(100).default(''),
+});
 
 export type ProjectAccessGrant = z.infer<typeof ProjectAccessGrantSchema>;
 export type ProjectAccessRevoke = z.infer<typeof ProjectAccessRevokeSchema>;
@@ -67,3 +89,44 @@ export interface ProjectAccessEventView {
   readonly reason: string;
   readonly createdAt: string;
 }
+
+// Responses are allowlisted independently of database rows and future private fields.
+export const ProjectAccessMemberViewSchema = z.object({
+  actorId: Id,
+  displayName: z.string(),
+  email: z.string().email(),
+  status: z.string(),
+  version: z.number().int().positive(),
+  expiresAt: Timestamp.nullable(),
+  protected: z.boolean(),
+  roles: z.array(
+    z.object({ roleKey: RoleKey, expiresAt: Timestamp.nullable() }),
+  ),
+});
+export const ProjectAccessProjectViewSchema = z.object({
+  projectId: Id,
+  tenantId: Id,
+  nameZh: z.string(),
+  nameEn: z.string(),
+  canManage: z.boolean(),
+  canApprove: z.boolean(),
+  requestsEnabled: z.boolean(),
+  memberStatus: z.string().nullable(),
+  expiresAt: Timestamp.nullable(),
+  roles: z.array(RoleKey),
+  assignableRoles: z.array(
+    z.object({
+      roleKey: RoleKey,
+      maxDays: z.number().int().min(1).max(366),
+      scopes: z.array(z.string()),
+    }),
+  ),
+});
+export const ProjectAccessMembersPageSchema = z.object({
+  items: z.array(ProjectAccessMemberViewSchema).max(50),
+  hasMore: z.boolean(),
+});
+export const ProjectAccessProjectsPageSchema = z.object({
+  items: z.array(ProjectAccessProjectViewSchema).max(50),
+  hasMore: z.boolean(),
+});

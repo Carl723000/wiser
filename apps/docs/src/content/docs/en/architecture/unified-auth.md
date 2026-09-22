@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: b4cdd91cf4fb64c97094ecb601bf931c03603bc0
+lastReviewedCommit: e0ed128a888894cbaf319d3fa028f1133228d92c
 ---
 
 ## One identity authority
@@ -170,4 +170,12 @@ data-postgres stores only Tenant, Project, and Actor UUIDs plus a policy version
 
 The pure project-access policy distinguishes `platform.membership.manage` from `platform.access.approve`. A project-management or data-read scope alone never permits delegation. Grants require an explicit assignable-role policy, an active ordinary business role, a bounded expiry within that policy and the manager's effective authority, and a security ceiling no higher than the manager's. Roles carrying platform scopes cannot be assigned through this workflow. Self-grants and self-approval are denied; management members cannot be removed through the ordinary member-removal action. Their lifecycle remains a trusted maintenance operation, protecting the last administrator as well as other management positions.
 
-This policy is an implementation foundation, not a new deployed management endpoint. Transport and persistence must still verify a live direct human Session, load current scoped facts inside the transaction, and protect concurrency, retries and audit. The policy does not read user metadata, create an identity store, grant dataset-specific download rights or change existing Data authorization.
+The opt-in project-access transport and PostgreSQL service verify a live direct human Session, load current scoped facts inside the transaction, and protect concurrency, retries and audit. The policy does not read user metadata, create an identity store, grant dataset-specific download rights or change existing Data authorization.
+
+## Project member API
+
+After applying the Supabase project-access migration, `WISER_PROJECT_ACCESS_ENABLED=true` registers `/api/platform/v1/access/projects`, project-scoped `/projects/:projectId/members`, and the POST `/grants` and `/revocations` commands under that prefix. The switch is off by default and disabled deployments retain their previous routes. The API never accepts service-role or delegated identities as human administrators. Pagination is bounded at 50; unknown command fields are rejected; responses allowlist public fields and are private/no-store.
+
+An explicit private role policy controls assignable roles and maximum days. New seeds configure the local owner scopes and a data-reader policy but leave project discovery disabled; existing deployments receive no automatic manager or discovery grants. Administrators cannot modify themselves or activate tenant management roles through ordinary project membership. Membership expiry limits all project role use. Revocation affects that project, retains the Auth account and tenant membership, and revokes project bindings. Reactivation does not revive other old grants.
+
+Commands recheck authority, serialize on the project, compare membership versions, enforce actor-scoped idempotency, advance the effective authorization version, and atomically append member history, authorization audit and Control Outbox. A replay returns the original command receipt; clients must reload current membership before showing effective access. The audit and idempotency rows are immutable. Invitation delivery, approval workflow and their user interfaces are separate implementation slices; these endpoints do not imply those flows are ready.
