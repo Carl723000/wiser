@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 56ae66bc1173833d480473668396c0a6226c6c67
+lastReviewedCommit: 1acbf7e0799b150e312eea24b46cac20004851d1
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -208,3 +208,7 @@ Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the
 ## Immutable resource authority
 
 `05_resource_access.sql` adds private forced-RLS settings, immutable package/preset versions, grants, separate revocations and audit events. Existing projects remain legacy unless explicitly configured; seed data does not enable managed mode or issue new grants. Settings cannot be deleted to restore broad legacy access. Changes advance a project resource revision, while package/action and duration constraints bind every grant to exact versions. Browser and generic service roles receive no direct table access. Run the new pgTAP suite and complete reset/lint/advisor gates only in a disposable instance. API management, provider ceilings and Data outlet enforcement remain required before enabling this mode for real users.
+
+## Resource membership read policies
+
+`0030_resource_read_scope.sql` adds restrictive SELECT policies without altering stored business rows or existing write policies. The scope is transaction-local and derived from verified control authority; it is not client input. Version membership is an uncorrelated set, permitting hashed scans rather than per-record grant decoding. `packages/data-infra/test/migrations/resource-access.spec.ts`, under `WISER_DATA_PG_INTEGRATION=1` and a disposable `DATA_TEST_DATABASE_URL`, checks a non-BYPASSRLS role, full metadata and direct child reads, parsed records and geometry, exact version pairs, base-security intersection, separate originals/exports, discovery denial, malformed/expired contexts and rollback. All synthetic fixtures and temporary role grants roll back. Apply using the checked-sum Data runner; never reset an existing preview database for this test. These tests establish the storage foundation, not completed API/projection enforcement.

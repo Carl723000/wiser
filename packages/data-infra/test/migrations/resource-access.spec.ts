@@ -15,6 +15,8 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       asset: randomUUID(),
       evidence: randomUUID(),
       assertion: randomUUID(),
+      analysis: randomUUID(),
+      record: randomUUID(),
     }));
     const first = sources[0]!,
       second = sources[1]!;
@@ -47,7 +49,7 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
     };
     const ids = async (table: string, column: string) =>
       (
-        await client.query(
+        await client.query<{ id: string }>(
           `select ${column} id from ${table} order by ${column}`,
         )
       ).rows.map((row) => row['id']);
@@ -95,6 +97,26 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           `insert into catalog.temporal_extent(tenant_id,project_id,data_item_id,version_id,starts_at,ends_at,timezone,security_level) values($1,$2,$3,$4,now(),now(),'UTC','L1_INTERNAL')`,
           [tenant, project, s.item, s.version],
         );
+        await client.query(
+          `insert into service.operation(operation_id,tenant_id,project_id,capability_id,actor_id,status,security_level,request_payload) values($1,$2,$3,'data.analysis.create',$1,'PENDING','L1_INTERNAL','{}')`,
+          [s.analysis, tenant, project],
+        );
+        await client.query(
+          `insert into service.analysis_run(analysis_id,tenant_id,project_id,version_id,operation_id,parser_version,security_level,policy_version) values($1,$2,$3,$4,$1,'synthetic','L1_INTERNAL',1)`,
+          [s.analysis, tenant, project, s.version],
+        );
+        await client.query(
+          `insert into service.analysis_asset(analysis_id,asset_id,tenant_id,project_id,source_hash,status,record_count,feature_count,security_level,policy_version) values($1,$2::uuid,$3,$4,digest($2::text,'sha256'),'READY',1,1,'L1_INTERNAL',1)`,
+          [s.analysis, s.asset, tenant, project],
+        );
+        await client.query(
+          `insert into catalog.analysis_record(analysis_id,record_id,asset_id,tenant_id,project_id,record_index,record_values,geom,security_level,policy_version) values($1,$2,$3,$4,$5,1,'{"label":"Synthetic point"}',st_setsrid(st_makepoint(0,0),4326),'L1_INTERNAL',1)`,
+          [s.analysis, s.record, s.asset, tenant, project],
+        );
+        await client.query(
+          `update service.analysis_run set status='READY',completed_at=now() where analysis_id=$1`,
+          [s.analysis],
+        );
       }
       await client.query(`grant ${role} to current_user`);
       await client.query(`set local role ${role}`);
@@ -132,7 +154,7 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       ]);
       expect(
         (
-          await client.query(
+          await client.query<{ total: number }>(
             'select count(*)::int total from catalog.data_item_version',
           )
         ).rows[0]?.['total'],
@@ -151,6 +173,24 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         first.version,
       ]);
     });
+    it('filters parsed records and geometry projections through their immutable analysis version', async () => {
+      await scope(policy());
+      expect(await ids('service.analysis_run', 'analysis_id')).toEqual([
+        first.analysis,
+      ]);
+      expect(await ids('service.analysis_asset', 'analysis_id')).toEqual([
+        first.analysis,
+      ]);
+      expect(await ids('catalog.analysis_record', 'record_id')).toEqual([
+        first.record,
+      ]);
+      expect(await ids('service.analysis_amap_geometry', 'record_id')).toEqual([
+        first.record,
+      ]);
+      expect(await ids('catalog.content_blob', 'content_blob_id')).toEqual([
+        first.asset,
+      ]);
+    });
     it('does not turn a discoverable source into full metadata or content access', async () => {
       await scope(policy({ 'source.discover': [ref(first)] }));
       expect(await ids('catalog.data_item', 'data_item_id')).toEqual([]);
@@ -164,6 +204,7 @@ describe.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         }),
       );
       expect(await ids('catalog.data_item_version', 'version_id')).toEqual([]);
+      expect(await ids('catalog.data_item', 'data_item_id')).toEqual([]);
       await scope(policy());
       await set('wiser.max_security_level', 'L0_PUBLIC');
       expect(await ids('catalog.data_item_version', 'version_id')).toEqual([]);

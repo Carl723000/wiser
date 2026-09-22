@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 45b425bbc553df81a4127d57a47f9437514cdf2b
+lastReviewedCommit: 1acbf7e0799b150e312eea24b46cac20004851d1
 ---
 
 ## External metadata reader boundary
@@ -430,3 +430,7 @@ The project graph requests bounded pages through the session-verified Web DAL. E
 ### Coverage in project access management
 
 The permission workspace reuses authorized exploration resources and whole-query summaries instead of copying a catalog or scanning original files. Its bounded 20-row resource list is not the count denominator. Registered resources, parsed content rows, spatial features and professionally reviewed assertions remain different measures. The selected tenant/project travels through the existing verified caller API context, including normal RLS and query-continuation checks. Management rights alone do not confer Data content access.
+
+## Resource read scope foundation
+
+Append-only migration `0030_resource_read_scope.sql` intersects existing forced tenant/project/security RLS with exact immutable resource membership. A trusted API transaction may install `wiser.resource_scope` and `wiser.resource_action`; unconfigured transactions retain existing behavior. Managed metadata, versions, assets, evidence, analyses, records, geometry and lineage reads use authorized version membership before counts or pagination. Original access is independent; result export also requires content access. Discovery permission never exposes raw catalog metadata. Invalid, empty or expired managed scopes fail closed. Grants remain in the control database; no grant is copied to Data authority. This foundation does not yet wire runtime scope propagation, projection reauthorization, download revocation or source-card discovery; managed project activation must wait for those acceptance gates.
