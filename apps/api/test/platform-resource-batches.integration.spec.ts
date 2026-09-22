@@ -178,7 +178,7 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query<{ n: number }>(
-            'select count(*)::int n from platform_private.resource_batches',
+            "select count(*)::int n from platform_private.resource_batches where project_id='b2000000-0000-4000-8000-000000000001'",
           )
         ).rows[0]!.n,
       ).toBe(0);
@@ -201,7 +201,7 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query<{ n: number }>(
-            'select count(*)::int n from platform_private.resource_grants',
+            "select count(*)::int n from platform_private.resource_grants where project_id='b2000000-0000-4000-8000-000000000001'",
           )
         ).rows[0]!.n,
       ).toBe(0);
@@ -246,7 +246,7 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query<{ n: number }>(
-            'select count(*)::int n from platform_private.resource_grants',
+            "select count(*)::int n from platform_private.resource_grants where project_id='b2000000-0000-4000-8000-000000000001'",
           )
         ).rows[0]!.n,
       ).toBe(0);
@@ -297,7 +297,7 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query<{ n: number }>(
-            'select count(*)::int n from platform_private.resource_grants',
+            "select count(*)::int n from platform_private.resource_grants where project_id='b2000000-0000-4000-8000-000000000001'",
           )
         ).rows[0]!.n,
       ).toBe(2);
@@ -339,7 +339,7 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query<{ n: number }>(
-            'select count(*)::int n from platform_private.resource_grants',
+            "select count(*)::int n from platform_private.resource_grants where project_id='b2000000-0000-4000-8000-000000000001'",
           )
         ).rows[0]!.n,
       ).toBe(2);
@@ -650,6 +650,72 @@ describe.skipIf(!url)(
       await expect(service.executeBatch(execution(done))).rejects.toMatchObject(
         { code: 'REQUEST_STATE_CONFLICT' },
       );
+    });
+    it('persists per-member differences and rejects approval after an overlapping grant changes', async () => {
+      await client.query('savepoint diff_case');
+      try {
+        const fresh = {
+          ...pack,
+          packageId: randomUUID(),
+          resources: [{ ...resource, versionId: randomUUID() }],
+        };
+        await service.savePackage({
+          token: 'owner',
+          command: fresh,
+          idempotencyKey: randomUUID(),
+        });
+        const from = new Date(Date.now() + 60000),
+          middle = new Date(from.getTime() + 3600000),
+          until = new Date(from.getTime() + 7200000);
+        async function grant(start: Date, end: Date) {
+          await client.query(
+            "insert into platform_private.resource_grants(project_id,actor_id,package_id,package_version,preset_id,preset_version,purpose,starts_at,expires_at,created_by,approved_by,reason) values($1,$2,$3,1,$4,1,'web-console',$5,$6,$7,$8,'Synthetic overlapping permission')",
+            [
+              project,
+              reader,
+              fresh.packageId,
+              preset.presetId,
+              start,
+              end,
+              owner,
+              approver,
+            ],
+          );
+        }
+        await grant(from, middle);
+        const pending = await service.previewBatch({
+          token: 'owner',
+          idempotencyKey: randomUUID(),
+          command: {
+            ...preview,
+            packageId: fresh.packageId,
+            startsAt: from.toISOString(),
+            expiresAt: until.toISOString(),
+          },
+        });
+        expect(pending.members.find((x) => x.actorId === reader)).toMatchObject(
+          { diff: { added: 0, extended: 1, retained: 0, removed: 0 } },
+        );
+        expect(pending.members.find((x) => x.actorId === second)).toMatchObject(
+          { diff: { added: 1, extended: 0, retained: 0, removed: 0 } },
+        );
+        await grant(middle, until);
+        await expect(
+          service.decideBatch({
+            token: 'approver',
+            idempotencyKey: randomUUID(),
+            command: {
+              projectId: project,
+              batchId: pending.id,
+              expectedVersion: 1,
+              decision: 'approve',
+              reason: 'Stale difference must be refreshed',
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'PREVIEW_CHANGED' });
+      } finally {
+        await client.query('rollback to savepoint diff_case');
+      }
     });
     it('roundtrips preview and withdrawal through the HTTP module and actual control storage', async () => {
       const app = Fastify({ logger: false });
