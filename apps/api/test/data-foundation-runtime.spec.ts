@@ -164,12 +164,28 @@ describe('Data Foundation production runtime composition', () => {
   it('wires resource management only when both trusted control and Data ports exist', () => {
     const f = factories();
     const validateResourcePackage = vi.fn(() => Promise.resolve(false));
-    const resourceAdministrationModule = vi.fn(() => ({ id: 'platform.resource-administration', register() {} }));
-    const make = f.value.createReadRuntime;
-    f.value.createReadRuntime = (pool) => ({ ...make(pool), validateResourcePackage });
-    const runtime = createDataFoundationRuntimeFromEnvironment(enabledEnvironment, { ...authRuntime, resourceAdministrationModule }, f.value);
-    expect(resourceAdministrationModule).toHaveBeenCalledWith(validateResourcePackage);
-    expect(runtime.modules.some(module => module.id === 'platform.resource-administration')).toBe(true);
+    const resourceAdministrationModule = vi.fn(() => ({
+      id: 'platform.resource-administration',
+      register() {},
+    }));
+    const make = f.value.createReadRuntime.bind(f.value);
+    f.value.createReadRuntime = (pool) => ({
+      ...make(pool),
+      validateResourcePackage,
+    });
+    const runtime = createDataFoundationRuntimeFromEnvironment(
+      enabledEnvironment,
+      { ...authRuntime, resourceAdministrationModule },
+      f.value,
+    );
+    expect(resourceAdministrationModule).toHaveBeenCalledWith(
+      validateResourcePackage,
+    );
+    expect(
+      runtime.modules.some(
+        (module) => module.id === 'platform.resource-administration',
+      ),
+    ).toBe(true);
   });
   it('keeps Platform Auth, Data Foundation, and the existing EXCON host composition together', () => {
     const dataModules = [

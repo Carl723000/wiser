@@ -140,19 +140,63 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       await client.query(`set local role ${role}`);
       const validatePackage = createDataResourcePackageValidator(runtimePool);
       const packageInput = {
-        context: { principal: context.principal, authorization: context.authorization, traceId: context.traceId },
+        context: {
+          principal: context.principal,
+          authorization: context.authorization,
+          traceId: context.traceId,
+        },
         signal: context.signal,
         command: {
-          projectId: project, packageId: randomUUID(), expectedVersion: 0, name: 'Authorized source package',
-          resources: [{ kind: 'version' as const, dataItemId: first.dataItemId, versionId: first.versionId }],
-          allowedActions: ['content.read' as const], licenseBasis: 'Approved synthetic fixture', reason: 'Verify exact version availability',
+          projectId: project,
+          packageId: randomUUID(),
+          expectedVersion: 0,
+          name: 'Authorized source package',
+          resources: [
+            {
+              kind: 'version' as const,
+              dataItemId: first.dataItemId,
+              versionId: first.versionId,
+            },
+          ],
+          allowedActions: ['content.read' as const],
+          licenseBasis: 'Approved synthetic fixture',
+          reason: 'Verify exact version availability',
         },
       };
       expect(await validatePackage(packageInput)).toBe(true);
-      expect(await validatePackage({ ...packageInput, command: { ...packageInput.command, resources: [{ kind: 'version', dataItemId: second.dataItemId, versionId: second.versionId }] } })).toBe(false);
-      expect(await validatePackage({ ...packageInput, command: { ...packageInput.command, projectId: randomUUID() } })).toBe(false);
-      expect(await validatePackage({ ...packageInput, signal: AbortSignal.abort() })).toBe(false);
-      expect(await validatePackage({ ...packageInput, command: { ...packageInput.command, resources: [{ kind: 'external-source', sourceId: randomUUID() }] } })).toBe(false);
+      expect(
+        await validatePackage({
+          ...packageInput,
+          command: {
+            ...packageInput.command,
+            resources: [
+              {
+                kind: 'version',
+                dataItemId: second.dataItemId,
+                versionId: second.versionId,
+              },
+            ],
+          },
+        }),
+      ).toBe(false);
+      expect(
+        await validatePackage({
+          ...packageInput,
+          command: { ...packageInput.command, projectId: randomUUID() },
+        }),
+      ).toBe(false);
+      expect(
+        await validatePackage({ ...packageInput, signal: AbortSignal.abort() }),
+      ).toBe(false);
+      expect(
+        await validatePackage({
+          ...packageInput,
+          command: {
+            ...packageInput.command,
+            resources: [{ kind: 'external-source', sourceId: randomUUID() }],
+          },
+        }),
+      ).toBe(false);
       const projectionAuthority = new PostgresProjectionReadAuthority({
         pool: runtimePool,
       });
@@ -209,6 +253,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         [first.dataItemId],
       );
       await client.query(`set local role ${role}`);
+      expect(await validatePackage(packageInput)).toBe(false);
       await expect(
         projectionAuthority.assertVisible(projectionRequest, [
           reference(first),

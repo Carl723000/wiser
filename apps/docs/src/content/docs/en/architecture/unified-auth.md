@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 7c76ce20ef84cead6b32041214cf1b0b3fd0a7b3
+lastReviewedCommit: 3b65807f7603eaecd9def2d8d32d7f048293a67b
 ---
 
 ## One identity authority
@@ -228,4 +228,6 @@ The PostgreSQL resource authority loader reads project settings, exact package/p
 
 Package creation requires a trusted application validator for exact resource visibility and license limits, with a five-second deadline and cancellation. It receives the current resource-scoped context, not broad manager access or browser-supplied authority. Data authority is accessed through that application port, never a control/Data database join. The caller records the license basis and reason. Original-read, result-export and external-directory presets require important approval; a later request cannot relabel these actions as ordinary. Receipt and audit identify the immutable version and new authority revision. HTTP/UI wiring and batch approval are subsequent acceptance gates; these service methods alone are not a completed management workflow.
 
-The resource-administration HTTP module provides bounded latest-version listings and strict package/preset creation commands, with private no-store responses and required idempotency keys. Listings expose package counts and declared license bases, not the full resource member list. Only a live human with project membership-management authority can use the service; management does not imply content access. This module still requires composition with a trusted Data validation port before runtime enablement.
+The resource-administration HTTP module provides bounded latest-version listings and strict package/preset creation commands, with private no-store responses and required idempotency keys. Listings expose package counts and declared license bases, not the full resource member list. Only a live human with project membership-management authority can use the service; management does not imply content access. Runtime composition requires the trusted Data validation port.
+
+Resource administration is composed only when project access is enabled and the Data runtime supplies its trusted package-validation port. This port checks all fixed versions in one bounded SQL query under current tenant, project, security and resource RLS, including publication and acceptance. An absent source authorization statement fails validation. The entered license basis remains a manager declaration for independent review; it is not automatically established legal permission. External-source definitions fail closed until the separate permitted-source registry port is available. No control-plane/Data database join or browser-provided authority snapshot is used.

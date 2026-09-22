@@ -41,6 +41,8 @@ import {
   type DataCommandObjectStore,
 } from './postgres-command-executors.js';
 import { createPostgresDataReadRuntime } from './postgres-read-executors.js';
+import { createDataResourcePackageValidator } from './resource-package-validator.js';
+import type { ResourceAdministrationOptions } from '@wiser/platform-auth';
 import {
   Neo4jGraphQueryPort,
   PostgisGeoQueryPort,
@@ -88,7 +90,7 @@ interface ExecutorRuntime {
 
 interface ReadExecutorRuntime extends ExecutorRuntime {
   readonly audit: DataCapabilityAuditPort;
-  readonly validateResourcePackage?: import('@wiser/platform-auth').ResourceAdministrationOptions['validatePackage'];
+  readonly validateResourcePackage?: ResourceAdministrationOptions['validatePackage'];
 }
 
 export interface DataFoundationRuntimeFactories {
@@ -202,7 +204,11 @@ const defaultFactories: DataFoundationRuntimeFactories = {
     };
   },
   createReadRuntime(pool) {
-    return createPostgresDataReadRuntime((pool as DefaultPool).pg);
+    const pg = (pool as DefaultPool).pg;
+    return {
+      ...createPostgresDataReadRuntime(pg),
+      validateResourcePackage: createDataResourcePackageValidator(pg),
+    };
   },
   createCommandRuntime(pool, objectStore) {
     return createPostgresDataCommandRuntime(
@@ -394,6 +400,14 @@ export function createDataFoundationRuntimeFromEnvironment(
     };
     const modules = Object.freeze([
       health,
+      ...(platformAuth.resourceAdministrationModule &&
+      read.validateResourcePackage
+        ? [
+            platformAuth.resourceAdministrationModule(
+              read.validateResourcePackage,
+            ),
+          ]
+        : []),
       createDataFoundationRestModule({
         resolver: platformAuth.resolver,
         handler,

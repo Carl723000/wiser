@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 7c76ce20ef84cead6b32041214cf1b0b3fd0a7b3
+lastReviewedCommit: 3b65807f7603eaecd9def2d8d32d7f048293a67b
 ---
 
 ## External metadata reader boundary
@@ -442,3 +442,5 @@ Managed graph expansion/path queries constrain every node and relationship to th
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
 Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+
+Resource administration is composed only when project access is enabled and the Data runtime supplies its trusted package-validation port. This port checks all fixed versions in one bounded SQL query under current tenant, project, security and resource RLS, including publication and acceptance. An absent source authorization statement fails validation. The entered license basis remains a manager declaration for independent review; it is not automatically established legal permission. External-source definitions fail closed until the separate permitted-source registry port is available. No control-plane/Data database join or browser-provided authority snapshot is used.

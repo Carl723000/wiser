@@ -9,6 +9,7 @@ import {
 import {
   PostgresAgentConnectionService,
   PostgresProjectAccessService,
+  PostgresResourceAdministrationService,
   DelegatedCredentialPrincipalResolver,
   PlatformCredentialPrincipalResolver,
   ResourceScopedPrincipalResolver,
@@ -37,6 +38,7 @@ import { createPlatformAgentConnectionsModule } from './agent-connections-module
 import { createPlatformDelegationModule } from './delegation-module.js';
 import { createProjectInvitationSender } from './project-invitation-sender.js';
 import { createProjectAccessModule } from './project-access-module.js';
+import { createResourceAdministrationModule } from './resource-administration-module.js';
 import {
   createPlatformIdentityModule,
   type PlatformPrincipalResolver,
@@ -380,7 +382,24 @@ export function createPlatformAuthRuntimeFromEnvironment(
       });
     },
   };
-  return { module, resolver };
+  return {
+    module,
+    resolver,
+    ...(config.projectAccess
+      ? {
+          resourceAdministrationModule: (
+            validatePackage: ResourceAdministrationOptions['validatePackage'],
+          ) =>
+            createResourceAdministrationModule(
+              new PostgresResourceAdministrationService({
+                pool: database.transactionPool,
+                verifyHuman,
+                validatePackage,
+              }),
+            ),
+        }
+      : {}),
+  };
 }
 
 export function createPlatformAuthModuleFromEnvironment(
