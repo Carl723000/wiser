@@ -123,3 +123,43 @@ export type ResourceAccessDecision = {
   readonly grantIds: readonly string[];
   readonly validUntil: string | null;
 };
+
+const GrantList = z
+  .array(ResourceAccessGrantSnapshotSchema)
+  .max(1000)
+  .refine(
+    (grants) => new Set(grants.map((grant) => grant.id)).size === grants.length,
+    { message: 'Duplicate grant identifiers.' },
+  );
+export const ResourceAccessScopeInputSchema = z.strictObject({
+  mode: z.enum(['legacy', 'managed']),
+  tenantId: Id,
+  projectId: Id,
+  actorId: Id,
+  purpose: z
+    .string()
+    .min(1)
+    .max(96)
+    .regex(/^[a-z][a-z0-9-]*$/),
+  now: Timestamp,
+  grants: GrantList,
+  delegator: z.strictObject({ actorId: Id, grants: GrantList }).optional(),
+});
+export type ResourceAccessScopeInput = z.infer<
+  typeof ResourceAccessScopeInputSchema
+>;
+export const ResourceAccessScopeSchema = z.discriminatedUnion('mode', [
+  z.strictObject({ mode: z.literal('legacy') }),
+  z.strictObject({
+    mode: z.literal('managed'),
+    permissions: z.strictObject({
+      'source.discover': z.array(ResourceAccessReferenceSchema).max(1000),
+      'content.read': z.array(ResourceAccessReferenceSchema).max(1000),
+      'original.read': z.array(ResourceAccessReferenceSchema).max(1000),
+      'result.export': z.array(ResourceAccessReferenceSchema).max(1000),
+      'external.directory': z.array(ResourceAccessReferenceSchema).max(1000),
+    }),
+    validUntil: Timestamp.nullable(),
+  }),
+]);
+export type ResourceAccessScope = z.infer<typeof ResourceAccessScopeSchema>;

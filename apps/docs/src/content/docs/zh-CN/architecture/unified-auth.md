@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 58e1cfbcb15bb2ec344d360c5f9d5677f5ead634
+lastReviewedCommit: d2531996bcdad7f8f6a33ead1c1270cd20b5089a
 ---
 
 ## 单一身份源
@@ -215,3 +215,5 @@ API 在 `/api/platform/v1/access` 下提供项目范围 GET `/projects/:projectI
 Platform contracts中的`ResourceAccessGrantSnapshot`绑定主体、租户、项目、用途、资源包与预设版本、精确资料版本或外部来源、动作、生效和到期时间。`evaluateResourceAccess`是附加的确定性限制，时间和当前权威事实由调用方明确传入。内容读取不隐含原件获取、导出或外部目录调用；撤销一项授权不撤销其他独立有效授权。结果列出命中授权和最早重验时间，畸形或重复的权威记录失败关闭。
 
 当前判定器是实现基础，尚未作为运行时策略启用；持久化及全部出口完成接入和验证前，页面不得宣称已落实资料与操作分权。明确的legacy模式保留既有门禁，managed模式要求匹配的有效授权。两种模式均继续检查会话、项目、scope、安全等级、资源与供方限制。不得接受浏览器自报的判定权威输入，也不能以有效期为由忽略实时撤权。
+
+纯资源范围编译器按动作整理固定资源引用，对结果设置上限，并将委托授权与委托人的有效范围取交集。重新核验时点包含将来生效和到期边界；权威快照格式错误时拒绝生成范围。该基础模块本身尚不启用运行时资源策略。

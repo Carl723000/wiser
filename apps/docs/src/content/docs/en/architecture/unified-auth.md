@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 58e1cfbcb15bb2ec344d360c5f9d5677f5ead634
+lastReviewedCommit: d2531996bcdad7f8f6a33ead1c1270cd20b5089a
 ---
 
 ## One identity authority
@@ -215,3 +215,5 @@ Use isolated synthetic accounts for applicant, approver and manager. Verify requ
 `ResourceAccessGrantSnapshot` in Platform contracts pins the subject, Tenant, Project, Purpose, resource-package and preset versions, exact DataItem/Version or external-source references, actions, activation and expiry. `evaluateResourceAccess` is a deterministic additional restriction, with time and current authority facts supplied explicitly. A content-read grant never implies original-download, export or external-directory permission. Revoking one grant preserves independent overlapping grants; results list the matching grants and the earliest revalidation deadline. Malformed or duplicate authority facts fail closed.
 
 The evaluator is a building block, not an enabled runtime policy. Until persistence and every transport outlet are integrated and verified, no product surface may advertise enforced resource/action separation. Explicit legacy mode preserves existing gates; managed mode requires a matching live grant. Existing session, project, scope, security-level, resource and provider checks remain mandatory in both modes. Do not accept evaluator authority inputs from browser requests or treat its expiry as permission to cache through a revocation.
+
+The pure resource scope compiler groups immutable references by action, bounds each result, and intersects delegated resource grants with the delegator. Its next revalidation boundary includes future activation and expiry; malformed authority snapshots fail closed. This foundation alone does not activate runtime resource policies.
