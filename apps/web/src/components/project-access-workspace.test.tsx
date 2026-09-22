@@ -41,6 +41,8 @@ it('shows personal access without presenting member controls to an ordinary read
     />,
   );
   expect(screen.getByRole('heading', { name: '我的访问' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: '权限总览' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: '资源与覆盖' })).toBeTruthy();
   expect(
     screen
       .getByRole('button', { name: '京津冀测试项目' })
@@ -73,7 +75,9 @@ it('loads the selected project members and clears them when authorization is wit
     );
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
     typeof input === 'string' &&
-    (input.includes('/invitations?') || input.includes('/requests?'))
+    (input.includes('/invitations?') ||
+      input.includes('/requests?') ||
+      input.includes('/api/platform/resources?'))
       ? Promise.resolve(Response.json({ items: [], hasMore: false }))
       : fetch(input, init),
   );
@@ -122,4 +126,6 @@ it('offers an actionable request without exposing approval controls to an ordina
   );
   expect(screen.getByRole('button', { name: '申请访问' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: '审批与记录' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '申请访问' }));
+  expect(screen.getByRole('button', { name: '提交申请' })).toBeTruthy();
 });
