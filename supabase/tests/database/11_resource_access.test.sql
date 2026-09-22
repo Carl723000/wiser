@@ -1,0 +1,14 @@
+begin;
+select plan(10);
+select has_table('platform_private','resource_access_settings','managed projects have explicit authority settings');
+select has_table('platform_private','resource_package_versions','resource membership is versioned');
+select has_table('platform_private','resource_preset_versions','actions and expiry bounds are versioned');
+select has_table('platform_private','resource_grants','effective grants reference immutable packages and presets');
+select has_table('platform_private','resource_revocations','revocations preserve original grant history');
+select has_table('platform_private','resource_access_events','resource changes have immutable audit evidence');
+select is((select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='platform_private' and c.relname in ('resource_access_settings','resource_package_versions','resource_preset_versions','resource_grants','resource_revocations','resource_access_events') and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity),6::bigint,'all resource authority tables force RLS');
+select is((select count(*) from information_schema.role_table_grants where table_schema='platform_private' and table_name in ('resource_access_settings','resource_package_versions','resource_preset_versions','resource_grants','resource_revocations','resource_access_events') and grantee in ('anon','authenticated','service_role','PUBLIC')),0::bigint,'clients cannot administer resource authority directly');
+select has_trigger('platform_private','resource_package_versions','resource_package_versions_immutable','packages retain fixed history');
+select has_trigger('platform_private','resource_grants','resource_grants_immutable','grant scope cannot be overwritten');
+select * from finish();
+rollback;
