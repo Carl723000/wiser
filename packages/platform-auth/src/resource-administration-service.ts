@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  type ResourceBatchPreviewCommand,
+  type ResourceBatchDecision,
+  type ResourceBatchAction,
+  type ResourceBatchView,
   ResourcePackageCommandSchema,
   ResourcePresetCommandSchema,
   ResourceDefinitionsQuerySchema,
@@ -68,6 +72,30 @@ export class PostgresResourceAdministrationService {
   readonly #options: ResourceAdministrationOptions;
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
+  }
+  previewBatch(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourceBatchPreviewCommand;
+  }): Promise<ResourceBatchView> {
+    void input;
+    return Promise.reject(new Error('NOT_IMPLEMENTED'));
+  }
+  decideBatch(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourceBatchDecision;
+  }): Promise<ResourceBatchView> {
+    void input;
+    return Promise.reject(new Error('NOT_IMPLEMENTED'));
+  }
+  executeBatch(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourceBatchAction;
+  }): Promise<ResourceBatchView> {
+    void input;
+    return Promise.reject(new Error('NOT_IMPLEMENTED'));
   }
   definitions(input: {
     token: string;
