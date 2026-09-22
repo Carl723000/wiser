@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 1acbf7e0799b150e312eea24b46cac20004851d1
+lastReviewedCommit: fbff05b6d19fb9c5a315782041142efe8de8d53f
 ---
 
 ## 外部元数据读取边界
