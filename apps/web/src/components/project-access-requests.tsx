@@ -188,7 +188,7 @@ export function ProjectAccessRequests({
   return (
     <section className={styles.editor} aria-label={w.title}>
       <h3>{w.title}</h3>
-      <p>{w.steps}</p>
+      <p className={styles.flow}>{w.steps}</p>
       <div className={styles.actions}>
         {!review && project.requestsEnabled ? (
           <button
@@ -318,12 +318,16 @@ export function ProjectAccessRequests({
               <tr key={item.id}>
                 <td>{item.applicantEmail}</td>
                 <td>
-                  {item.roleKey === 'data-reader' ? t.readRole : item.roleKey}
+                  <span className={styles.roleBadge}>
+                    {item.roleKey === 'data-reader' ? t.readRole : item.roleKey}
+                  </span>
                 </td>
                 <td>{new Date(item.expiresAt).toLocaleString(locale)}</td>
                 <td>{item.reason}</td>
                 <td>
-                  {w[item.status]}
+                  <span className={styles.badge} data-status={item.status}>
+                    {w[item.status]}
+                  </span>
                   {item.decisionReason ? (
                     <details>
                       <summary>{w.decisionReason}</summary>
@@ -339,9 +343,11 @@ export function ProjectAccessRequests({
                   ) : null}
                 </td>
                 <td>
-                  {item.accessState === 'expired'
-                    ? w.accessExpired
-                    : w[item.accessState]}
+                  <span className={styles.badge} data-status={item.accessState}>
+                    {item.accessState === 'expired'
+                      ? w.accessExpired
+                      : w[item.accessState]}
+                  </span>
                 </td>
                 <td>
                   <div className={styles.actions}>

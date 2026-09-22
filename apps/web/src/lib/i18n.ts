@@ -28,7 +28,7 @@ export function isLocale(value: string): value is Locale {
 
 const zhCN = {
   projectAccess: {
-    title: '项目访问管理',
+    title: '权限管理系统',
     account: '账户',
     request: {
       title: '申请记录',
@@ -154,7 +154,7 @@ const zhCN = {
     self: '不能通过这里调整自己的管理权限。',
     revokeHint: '只撤销此项目的访问，不删除账号。',
     expiryHint: '成员期限约束此项目的所有角色。',
-    help: '查看权限说明',
+    help: '权限说明',
     readRole: '资料查阅',
     readScope:
       '“资料查阅”角色可查阅已获准的资料及原件；实际范围仍受项目及资源权限约束。',

@@ -41,7 +41,11 @@ it('shows personal access without presenting member controls to an ordinary read
     />,
   );
   expect(screen.getByRole('heading', { name: '我的访问' })).toBeTruthy();
-  expect(screen.getByText('京津冀测试项目')).toBeTruthy();
+  expect(
+    screen
+      .getByRole('button', { name: '京津冀测试项目' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
   expect(screen.queryByRole('button', { name: '成员与权限' })).toBeNull();
 });
 it('loads the selected project members and clears them when authorization is withdrawn', async () => {

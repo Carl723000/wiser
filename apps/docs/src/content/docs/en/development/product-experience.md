@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: bb5e00c433de4e3966e12533c0f15b629a221e61
+lastReviewedCommit: f082a38a6ce3953dea1e3d67e860f6c820807b59
 ---
 
 ## What this guide governs
@@ -300,3 +300,7 @@ Exploration keeps repeated introductions, graph-scope explanations, style semant
 In an expanded workspace, Escape on an open question-mark help closes that help first; a subsequent Escape retains the normal workspace exit behavior without clearing graph selection.
 
 Explicitly mapped external-source details offer a year-range station-directory query, without fetching on entry. Registration, loading, empty, unconfigured, denied, expired and unavailable states remain distinct. Each bounded page replaces the previous one; failures, cancellation, source/range changes and page hiding clear retained rows. Only permitted station identifiers, years and administrative labels appear; results are neither ingested nor mapped automatically. Optional guidance uses the shared question-mark help component with keyboard/touch access. This panel does not grant provider access or establish live-provider acceptance.
+
+### Access management presentation
+
+The access workspace uses concise business headings, action verbs and consistent role labels. Project context, membership state, role and expiry have distinct visual hierarchy. Historical request results remain separate from current access state. Text and symbols accompany theme-aware status colors. Optional explanations are disclosed on demand; failures, access denial and important action consequences remain visible. Do not add fictitious metrics or unavailable controls to suggest product completeness.

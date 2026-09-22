@@ -340,6 +340,7 @@ export function ProjectAccessWorkspace({
       {projectLoading ? <p role="status">{t.loading}</p> : null}
       <div className={styles.layout}>
         <aside className={styles.projects} aria-label={t.choose}>
+          <h2 className={styles.sideTitle}>{t.project}</h2>
           {projects.items.map((p) => (
             <button
               key={p.projectId}
@@ -372,6 +373,12 @@ export function ProjectAccessWorkspace({
         <section className={styles.content}>
           {project ? (
             <>
+              <div className={styles.projectHeading}>
+                <span>{t.project}</span>
+                <strong>
+                  {locale === 'zh-CN' ? project.nameZh : project.nameEn}
+                </strong>
+              </div>
               <nav className={styles.tabs} aria-label={t.title}>
                 <button
                   aria-pressed={view === 'mine'}
@@ -409,21 +416,35 @@ export function ProjectAccessWorkspace({
                     <div>
                       <dt>{t.status}</dt>
                       <dd>
-                        {statusLabel(
-                          project.memberStatus === 'active' &&
+                        <span
+                          className={styles.badge}
+                          data-status={
+                            project.memberStatus === 'active' &&
                             project.roles.length === 0
-                            ? null
-                            : project.memberStatus,
-                          t,
-                        )}
+                              ? 'unknown'
+                              : (project.memberStatus ?? 'unknown')
+                          }
+                        >
+                          {statusLabel(
+                            project.memberStatus === 'active' &&
+                              project.roles.length === 0
+                              ? null
+                              : project.memberStatus,
+                            t,
+                          )}
+                        </span>
                       </dd>
                     </div>
                     <div>
                       <dt>{t.role}</dt>
                       <dd>
-                        {project.roles
-                          .map((r) => roleLabel(r, t))
-                          .join(' / ') || t.noRole}
+                        {project.roles.length
+                          ? project.roles.map((r) => (
+                              <span className={styles.roleBadge} key={r}>
+                                {roleLabel(r, t)}
+                              </span>
+                            ))
+                          : t.noRole}
                       </dd>
                     </div>
                     <div>
@@ -509,16 +530,30 @@ export function ProjectAccessWorkspace({
                                 <span>{m.email}</span>
                               </td>
                               <td>
-                                {m.roles
-                                  .map((r) => roleLabel(r.roleKey, t))
-                                  .join(' / ') || t.noRole}
+                                {m.roles.length
+                                  ? m.roles.map((r) => (
+                                      <span
+                                        className={styles.roleBadge}
+                                        key={r.roleKey}
+                                      >
+                                        {roleLabel(r.roleKey, t)}
+                                      </span>
+                                    ))
+                                  : t.noRole}
                               </td>
                               <td>
                                 {m.expiresAt
                                   ? new Date(m.expiresAt).toLocaleString(locale)
                                   : t.noExpiry}
                               </td>
-                              <td>{statusLabel(m.status, t)}</td>
+                              <td>
+                                <span
+                                  className={styles.badge}
+                                  data-status={m.status}
+                                >
+                                  {statusLabel(m.status, t)}
+                                </span>
+                              </td>
                               <td>
                                 {m.protected ? (
                                   <span>{t.protected}</span>
