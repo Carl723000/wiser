@@ -66,7 +66,19 @@ export interface SpecialSearchOrchestrator {
   search(request: unknown): Promise<unknown>;
 }
 
+export interface ProjectionReadAuthority {
+  assertVisible(
+    request: ScopedSpecialQueryRequest,
+    references: readonly {
+      readonly dataItemId: string;
+      readonly versionId: string;
+      readonly evidenceId: string;
+    }[],
+  ): Promise<void>;
+}
+
 export interface SpecialQueryExecutorOptions {
+  readonly projectionAuthority?: ProjectionReadAuthority;
   readonly search: SpecialSearchOrchestrator;
   readonly data: DataStructuredQueryPort;
   readonly graph: GraphQueryPort;

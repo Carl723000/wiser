@@ -359,3 +359,38 @@ describe('SearchOrchestrator', () => {
     ]);
   });
 });
+
+it('binds managed search continuations to resource authority revision fingerprints', async () => {
+  const search = orchestrator({
+    openSearch: backend('opensearch', [
+      hit(ITEM_A, VERSION_A, EVIDENCE_A),
+      hit(ITEM_B, VERSION_B, EVIDENCE_B),
+    ]),
+  });
+  const page = await search.search(
+    input({ first: 1, resourceFingerprint: 'a'.repeat(64) }),
+  );
+  expect(page.nextCursor).toBeDefined();
+  await expect(
+    search.search(
+      input({
+        first: 1,
+        resourceFingerprint: 'b'.repeat(64),
+        after: page.nextCursor,
+      }),
+    ),
+  ).rejects.toMatchObject({ code: 'INVALID_CURSOR' });
+});
+it('accepts all 1000 bounded authority version pins without truncation', async () => {
+  const versions = Array.from(
+    { length: 1000 },
+    (_, i) => `a2000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+  );
+  const port = backend('opensearch');
+  await orchestrator({ openSearch: port }).search(
+    input({ versionIds: versions }),
+  );
+  expect(port.search).toHaveBeenCalledWith(
+    expect.objectContaining({ versionIds: expect.arrayContaining(versions) }),
+  );
+});
