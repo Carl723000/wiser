@@ -147,3 +147,35 @@ it('changes a cached permission fingerprint at expiry even when authority revisi
   });
   expect(expired?.authorization).not.toEqual(first?.authorization);
 });
+it('requires the authority delegator to match the verified credential owner', async () => {
+  const delegatedContext = {
+    ...context,
+    principal: {
+      actorId: id(1),
+      actorType: 'agent' as const,
+      authenticationMethod: 'delegated_credential' as const,
+      credentialId: id(30),
+      delegationId: id(31),
+      delegatedBy: id(32),
+    },
+  };
+  const valid = {
+    ...snapshot,
+    delegator: { actorId: id(32), grants: [{ ...grant, actorId: id(32) }] },
+  };
+  const load = vi
+    .fn()
+    .mockResolvedValueOnce(valid)
+    .mockResolvedValueOnce(snapshot)
+    .mockResolvedValueOnce({
+      ...valid,
+      delegator: { ...valid.delegator, actorId: id(33) },
+    });
+  const resolver = new ResourceScopedPrincipalResolver({
+    base: { resolve: vi.fn().mockResolvedValue(delegatedContext) },
+    load,
+  });
+  expect(await resolver.resolve(input)).not.toBeNull();
+  expect(await resolver.resolve(input)).toBeNull();
+  expect(await resolver.resolve(input)).toBeNull();
+});

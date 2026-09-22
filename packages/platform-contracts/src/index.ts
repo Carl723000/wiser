@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ResourceAccessContextSchema } from './resource-access.ts';
 
 export const PlatformUuidSchema = z.string().uuid();
 
@@ -115,6 +116,7 @@ export const AuthorizedContextSchema = z.strictObject({
   purpose: PlatformPurposeSchema,
   maxSecurityLevel: PlatformSecurityLevelSchema,
   authzVersion: z.number().int().nonnegative(),
+  resourceAccess: ResourceAccessContextSchema.optional(),
 });
 export type AuthorizedContext = z.infer<typeof AuthorizedContextSchema>;
 

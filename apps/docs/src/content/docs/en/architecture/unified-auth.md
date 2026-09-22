@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 2ebd1a25f36a4f91d890271c40953b55e8c004f4
+lastReviewedCommit: 520927ad46cc74936c9c8a56d24bcccd0da3874b
 ---
 
 ## One identity authority
@@ -217,3 +217,5 @@ Use isolated synthetic accounts for applicant, approver and manager. Verify requ
 The evaluator is a building block, not an enabled runtime policy. Until persistence and every transport outlet are integrated and verified, no product surface may advertise enforced resource/action separation. Explicit legacy mode preserves existing gates; managed mode requires a matching live grant. Existing session, project, scope, security-level, resource and provider checks remain mandatory in both modes. Do not accept evaluator authority inputs from browser requests or treat its expiry as permission to cache through a revocation.
 
 The pure resource scope compiler groups immutable references by action, bounds each result, and intersects delegated resource grants with the delegator. Its next revalidation boundary includes future activation and expiry; malformed authority snapshots fail closed. This foundation alone does not activate runtime resource policies.
+
+A resource-scoped resolver can attach a fresh control-plane scope to a verified session. It binds the snapshot to the exact subject, project and purpose, requires the verified delegator, and fingerprints the effective scope for cache separation. It does not cache grant reads or fall back on authority failure. Runtime wiring and outlet enforcement are separate requirements before activating a managed project.

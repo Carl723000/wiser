@@ -163,3 +163,14 @@ export const ResourceAccessScopeSchema = z.discriminatedUnion('mode', [
   }),
 ]);
 export type ResourceAccessScope = z.infer<typeof ResourceAccessScopeSchema>;
+
+export const ResourceAccessAuthoritySnapshotSchema =
+  ResourceAccessScopeInputSchema.extend({
+    revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  });
+export const ResourceAccessContextSchema = z.strictObject({
+  revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+  scope: ResourceAccessScopeSchema,
+});
+export type ResourceAccessContext = z.infer<typeof ResourceAccessContextSchema>;
