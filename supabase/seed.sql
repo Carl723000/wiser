@@ -1438,3 +1438,5 @@ insert into platform_private.project_access_roles(project_id,role_id,max_days)
 -- Resource policies remain opt-in: do not enable resource_access_settings or issue
 -- resource grants for existing seed identities. Isolated resource tests create
 -- their own rolled-back managed policy fixtures after checking this default.
+
+-- Batch approvals and recipient lists are created only by isolated acceptance fixtures; no approver-role policy is seeded.

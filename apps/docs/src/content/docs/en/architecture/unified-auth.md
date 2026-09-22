@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 0fec2a47b7e98cf8c045195122b99f10576a32b9
+lastReviewedCommit: b5440a7f8fa35ba04f3fedd76b486e7d8a467a73
 ---
 
 ## One identity authority
