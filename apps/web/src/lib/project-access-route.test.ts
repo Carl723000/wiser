@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 const client = {
+  batches: vi.fn(),
+  previewBatch: vi.fn(),
   projects: vi.fn(),
   members: vi.fn(),
   grant: vi.fn(),
@@ -128,4 +130,48 @@ it('returns only the authenticated service result with cache disabled', async ()
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toContain('no-store');
   expect(await response.json()).toEqual({ items: [], hasMore: false });
+});
+
+it('forwards bounded batch browsing and preview only through the verified server client', async () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  client.batches.mockResolvedValue({ items: [], hasMore: false });
+  const response = await GET(
+    new Request(
+      `http://wiser.test/api/platform/access/resource-batches?projectId=${projectId}&status=pending`,
+    ),
+    context('resource-batches'),
+  );
+  expect(response.status).toBe(200);
+  expect(client.batches).toHaveBeenCalledWith(projectId, {
+    offset: 0,
+    limit: 20,
+    status: 'pending',
+  });
+  const command = {
+    projectId,
+    packageId: projectId,
+    packageVersion: 1,
+    presetId: projectId,
+    presetVersion: 1,
+    actorIds: [projectId],
+    purpose: 'web-console',
+    startsAt: '2026-09-23T00:00:00Z',
+    expiresAt: '2026-09-24T00:00:00Z',
+    reason: 'Prepare resource preview',
+  };
+  client.previewBatch.mockResolvedValue({ status: 'pending' });
+  const req = new Request(
+    'http://wiser.test/api/platform/access/resource-batch-preview',
+    {
+      method: 'POST',
+      headers: {
+        origin: 'http://wiser.test',
+        'content-type': 'application/json',
+        'idempotency-key': projectId,
+      },
+      body: JSON.stringify(command),
+    },
+  );
+  expect((await POST(req, context('resource-batch-preview'))).status).toBe(200);
+  expect(client.previewBatch).toHaveBeenCalledWith(command, projectId);
 });
