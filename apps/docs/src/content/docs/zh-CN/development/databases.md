@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: a13f4e9a2b50c2cc41a574b0754ce99a6257667d
+lastReviewedCommit: 56ae66bc1173833d480473668396c0a6226c6c67
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -204,3 +204,7 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 ## 项目访问控制记录
 
 `04_project_access.sql` 与 CLI 生成的迁移新增私有、强制 RLS 的项目设置、可分配角色、邀请、幂等回执及不可变成员事件，不为浏览器或 service-role 增加直读权限。项目发现默认关闭。这些记录属于控制面，不另建身份库，也不进入 Data Foundation 迁移历史。`WISER_ACCESS_TEST_DATABASE_URL` 集成套件仅可连接已迁移并加载 seed 的可丢弃 Supabase 测试库；先运行 pgTAP，再加入集成测试身份。不得重置现有开发或共享实例。
+
+## 固定版本资源授权
+
+`05_resource_access.sql` 增加私有、强制RLS的项目配置、固定版本资源包与预设、授权、独立撤销记录及审计事件。既有项目未显式配置时保留原规则；种子不启用受管理模式、不自动发出资源授权。配置不能通过删除恢复为旧宽权限。变更推进项目资源修订号，资料包动作上限与预设期限在数据库内约束授权，资源和策略始终引用固定版本。浏览器与通用服务角色没有直接表权限。新增pgTAP及完整重置、lint、advisor仅对可丢弃实例执行。真实用户启用前还须完成业务API、供方上限及Data各出口的执行检查。
