@@ -4,6 +4,12 @@ import {
 } from '@wiser/platform-auth';
 import {
   PlatformUuidSchema,
+  ResourceBatchPreviewCommandSchema,
+  ResourceBatchDecisionSchema,
+  ResourceBatchActionSchema,
+  ResourceBatchViewSchema,
+  ResourceBatchesQuerySchema,
+  ResourceBatchesPageSchema,
   ResourceDefinitionsQuerySchema,
   ResourceDefinitionsPageSchema,
   ResourceDefinitionReceiptSchema,
@@ -15,7 +21,14 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { WiserApiModule } from './modules.js';
 export type ResourceAdministrationHttpService = Pick<
   PostgresResourceAdministrationService,
-  'definitions' | 'savePackage' | 'savePreset'
+  | 'definitions'
+  | 'savePackage'
+  | 'savePreset'
+  | 'batches'
+  | 'previewBatch'
+  | 'decideBatch'
+  | 'executeBatch'
+  | 'withdrawBatch'
 >;
 const Params = z.strictObject({ projectId: PlatformUuidSchema });
 const publicErrors = new Set([
@@ -26,6 +39,13 @@ const publicErrors = new Set([
   'IDEMPOTENCY_CONFLICT',
   'RESOURCE_POLICY_NOT_ENABLED',
   'RESOURCE_UNAVAILABLE',
+  'PREVIEW_EXPIRED',
+  'REQUEST_UNAVAILABLE',
+  'REQUEST_STATE_CONFLICT',
+  'MEMBERSHIP_CHANGED',
+  'AUTHORITY_CHANGED',
+  'IMPORTANT_APPROVAL_REQUIRED',
+  'SELF_CHANGE_FORBIDDEN',
 ]);
 async function guarded(
   request: FastifyRequest,
@@ -52,7 +72,11 @@ async function guarded(
           : error.code === 'VALIDATION_FAILED'
             ? 400
             : error.code === 'VERSION_CONFLICT' ||
-                error.code === 'IDEMPOTENCY_CONFLICT'
+                error.code === 'IDEMPOTENCY_CONFLICT' ||
+                error.code === 'PREVIEW_EXPIRED' ||
+                error.code === 'REQUEST_STATE_CONFLICT' ||
+                error.code === 'MEMBERSHIP_CHANGED' ||
+                error.code === 'AUTHORITY_CHANGED'
               ? 409
               : 403;
       return reply.status(status).send({ code: error.code });
@@ -66,6 +90,66 @@ export function createResourceAdministrationModule(
   return {
     id: 'platform.resource-administration',
     register(app) {
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/resource-batches',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ResourceBatchesPageSchema.parse(
+              await service.batches({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ResourceBatchesQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      for (const action of [
+        'preview',
+        'decide',
+        'execute',
+        'withdraw',
+      ] as const) {
+        app.post(
+          '/api/platform/v1/access/resource-batches/' + action,
+          { bodyLimit: 16384 },
+          (request, reply) =>
+            guarded(request, reply, async (token) => {
+              const idempotencyKey = PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              );
+              const shared = { token, idempotencyKey };
+              const result =
+                action === 'preview'
+                  ? await service.previewBatch({
+                      ...shared,
+                      command: ResourceBatchPreviewCommandSchema.parse(
+                        request.body,
+                      ),
+                    })
+                  : action === 'decide'
+                    ? await service.decideBatch({
+                        ...shared,
+                        command: ResourceBatchDecisionSchema.parse(
+                          request.body,
+                        ),
+                      })
+                    : action === 'execute'
+                      ? await service.executeBatch({
+                          ...shared,
+                          command: ResourceBatchActionSchema.parse(
+                            request.body,
+                          ),
+                        })
+                      : await service.withdrawBatch({
+                          ...shared,
+                          command: ResourceBatchActionSchema.parse(
+                            request.body,
+                          ),
+                        });
+              return ResourceBatchViewSchema.parse(result);
+            }),
+        );
+      }
       app.get(
         '/api/platform/v1/access/projects/:projectId/resource-definitions',
         (request, reply) =>

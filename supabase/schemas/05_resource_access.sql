@@ -96,7 +96,7 @@ create table platform_private.resource_access_events (
  id uuid primary key default gen_random_uuid(),
  project_id uuid not null references platform_private.resource_access_settings(project_id) on delete restrict,
  actor_id uuid not null references platform.actors(id) on delete restrict,
- action text not null check(action in ('package.create','preset.create','preview','approve','reject','grant','revoke','execute.failed','retire')),
+ action text not null check(action in ('package.create','preset.create','preview','approve','reject','withdraw','grant','revoke','execute.failed','retire')),
  subject_id uuid not null,
  reason text not null check(length(reason) between 5 and 1000),
  before_state jsonb not null check(jsonb_typeof(before_state)='object' and octet_length(before_state::text)<=131072),

@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import {
   ResourceBatchViewSchema,
+  ResourceBatchesPageSchema,
+  type ResourceBatchesQuery,
+  type ResourceBatchesPage,
   ResourcePackageCommandSchema,
   type PlatformRequestContext,
   type ResourceBatchView,
@@ -73,6 +76,44 @@ export class ResourceBatchStore {
     private readonly session: ResourceAdministrationSession,
     private readonly validatePackage: ResourceAdministrationOptions['validatePackage'],
   ) {}
+  async list(page: ResourceBatchesQuery): Promise<ResourceBatchesPage> {
+    const ids = await this.session.client.query<{ id: string }>(
+      'select id from platform_private.resource_batches where project_id=$1 and ($2::text is null or status=$2) order by created_at desc,id desc offset $3 limit $4',
+      [
+        this.session.project.id,
+        page.status ?? null,
+        page.offset,
+        page.limit + 1,
+      ],
+    );
+    const items: ResourceBatchView[] = [];
+    for (const row of ids.rows.slice(0, page.limit))
+      items.push(await this.#view(row.id));
+    return ResourceBatchesPageSchema.parse({
+      items,
+      hasMore: ids.rows.length > page.limit,
+    });
+  }
+  async withdraw(command: ResourceBatchAction): Promise<ResourceBatchView> {
+    const before = await this.#view(command.batchId);
+    if (before.applicantId !== this.session.human.userId)
+      fail('NOT_AUTHORIZED');
+    if (before.version !== command.expectedVersion) fail('VERSION_CONFLICT');
+    if (before.status !== 'pending') fail('REQUEST_STATE_CONFLICT');
+    await this.session.client.query(
+      "update platform_private.resource_batches set status='withdrawn',version=version+1,updated_at=statement_timestamp() where id=$1",
+      [command.batchId],
+    );
+    const after = await this.#view(command.batchId);
+    await this.#audit(
+      'withdraw',
+      command.batchId,
+      command.reason,
+      before,
+      after,
+    );
+    return after;
+  }
   async #definitions(command: {
     packageId: string;
     packageVersion: number;

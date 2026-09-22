@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 6fc8ed29b5ed3c62e25b2ac70a2e810a4eb9049e
+lastReviewedCommit: ff303fb36182516c345d72e9cd245b7d0b50a27d
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -216,3 +216,5 @@ Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the
 Resource batch migration `20260922213413_resource_batches.sql` + `20260922214035_resource_batch_indexes.sql` follows immutable resource authority. Validate `12_resource_batches.test.sql` in the disposable control instance; preserve existing identity and resource histories.
 
 Migration `20260922214718_resource_batch_member_versions.sql` stores separate tenant-membership and actor authority versions alongside the project-member snapshot. Null historical values require a new preview; they are not backfilled from current permissions.
+
+`20260922220953_resource_batch_withdrawal_audit.sql` adds an explicit withdrawal audit action; request snapshots and earlier events remain immutable.

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import Fastify from 'fastify';
+import { createResourceAdministrationModule } from '../src/platform/resource-administration-module.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
 import { PostgresResourceAdministrationService } from '@wiser/platform-auth';
@@ -14,6 +16,7 @@ const sessions = {
   owner: randomUUID(),
   approver: randomUUID(),
   reader: randomUUID(),
+  second: randomUUID(),
 };
 const resource = {
   kind: 'version' as const,
@@ -95,7 +98,9 @@ describe.skipIf(!url)(
               ? { userId: approver, sessionId: sessions.approver }
               : token === 'reader'
                 ? { userId: reader, sessionId: sessions.reader }
-                : null,
+                : token === 'second'
+                  ? { userId: second, sessionId: sessions.second }
+                  : null,
         ),
     });
     beforeAll(async () => {
@@ -111,6 +116,10 @@ describe.skipIf(!url)(
           sessions.reader,
           reader,
         ],
+      );
+      await client.query(
+        'insert into auth.sessions(id,user_id) values($1,$2)',
+        [sessions.second, second],
       );
       await client.query(
         'insert into platform_private.resource_access_settings(project_id,tenant_id,enabled_by) values($1,$2,$3)',
@@ -576,6 +585,13 @@ describe.skipIf(!url)(
       ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
     });
     it('lists bounded project batches for managers and approval-only reviewers, isolated by project', async () => {
+      await expect(
+        service.batches({
+          token: 'second',
+          projectId: project,
+          page: { offset: 0, limit: 20 },
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
       const a = await service.batches({
         token: 'owner',
         projectId: project,
@@ -634,6 +650,53 @@ describe.skipIf(!url)(
       await expect(service.executeBatch(execution(done))).rejects.toMatchObject(
         { code: 'REQUEST_STATE_CONFLICT' },
       );
+    });
+    it('roundtrips preview and withdrawal through the HTTP module and actual control storage', async () => {
+      const app = Fastify({ logger: false });
+      await createResourceAdministrationModule(service).register(app);
+      try {
+        const headers = {
+          authorization: 'Bearer owner',
+          'idempotency-key': randomUUID(),
+        };
+        const created = await app.inject({
+          method: 'POST',
+          url: '/api/platform/v1/access/resource-batches/preview',
+          headers,
+          payload: { ...preview, packageVersion: 2 },
+        });
+        expect(created.statusCode).toBe(200);
+        const body = created.json<{ id: string; version: number }>();
+        const listed = await app.inject({
+          url: `/api/platform/v1/access/projects/${project}/resource-batches?status=pending`,
+          headers: { authorization: 'Bearer approver' },
+        });
+        expect(listed.statusCode).toBe(200);
+        expect(listed.body).toContain(body.id);
+        const withdrawn = await app.inject({
+          method: 'POST',
+          url: '/api/platform/v1/access/resource-batches/withdraw',
+          headers: { ...headers, 'idempotency-key': randomUUID() },
+          payload: {
+            projectId: project,
+            batchId: body.id,
+            expectedVersion: body.version,
+            reason: 'Close obsolete request',
+          },
+        });
+        expect(withdrawn.statusCode).toBe(200);
+        expect(withdrawn.json<{ status: string }>().status).toBe('withdrawn');
+        expect(
+          (
+            await client.query<{ n: number }>(
+              "select count(*)::int n from platform_private.resource_access_events where subject_id=$1 and action='withdraw'",
+              [body.id],
+            )
+          ).rows[0]!.n,
+        ).toBe(1);
+      } finally {
+        await app.close();
+      }
     });
   },
 );

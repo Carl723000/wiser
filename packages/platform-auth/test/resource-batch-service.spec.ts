@@ -72,7 +72,9 @@ function fixture() {
   const writes: string[] = [];
   const query = <Row>(sql: string, values: readonly unknown[] = []) => {
     let rows: unknown[] = [];
-    if (sql.includes('select statement_timestamp() now')) rows = [{ now }];
+    if (sql.startsWith('select id from platform_private.resource_batches'))
+      rows = [{ id: batch.id }, { id: randomUUID() }];
+    else if (sql.includes('select statement_timestamp() now')) rows = [{ now }];
     else if (sql.startsWith('select p.package_id')) rows = [definition];
     else if (sql.includes('from platform.project_memberships')) rows = members;
     else if (sql.startsWith('select * from platform_private.resource_batches'))
@@ -85,10 +87,12 @@ function fixture() {
       writes.push(sql);
     } else if (sql.startsWith('insert into')) writes.push(sql);
     else if (sql.startsWith('update platform_private.resource_batches')) {
-      batch.status = String(values[1]);
+      batch.status = sql.includes("status='withdrawn'")
+        ? 'withdrawn'
+        : String(values[1]);
       batch.version++;
-      batch.decided_by = String(values[2]);
-      batch.decision_reason = String(values[4]);
+      batch.decided_by = typeof values[2] === 'string' ? values[2] : null;
+      batch.decision_reason = typeof values[4] === 'string' ? values[4] : null;
       writes.push(sql);
     } else throw Error('Unexpected storage operation');
     return Promise.resolve({ rows: rows as Row[], rowCount: rows.length });
@@ -283,6 +287,67 @@ describe('batch service failure and cancellation boundaries', () => {
       }),
     ])
       await expect(result).rejects.toMatchObject({ code: 'NOT_AUTHENTICATED' });
+    expect(connect).not.toHaveBeenCalled();
+  });
+  it('returns only the bounded page and records own withdrawal without a grant', async () => {
+    const f = fixture();
+    const page = await f.store.list({ offset: 0, limit: 1 });
+    expect(page.items).toHaveLength(1);
+    expect(page.hasMore).toBe(true);
+    const result = await f.store.withdraw({
+      projectId,
+      batchId: f.batch.id,
+      expectedVersion: 1,
+      reason: 'Withdraw obsolete scope',
+    });
+    expect(result.status).toBe('withdrawn');
+    expect(f.writes.some((sql) => sql.includes('resource_grants'))).toBe(false);
+  });
+  it('requires authentication and valid paging for batch listing and withdrawal', async () => {
+    const connect = vi.fn(() => Promise.reject(Error('must not connect')));
+    const service = new PostgresResourceAdministrationService({
+      pool: { connect },
+      verifyHuman: () => Promise.resolve(null),
+      validatePackage: () => Promise.resolve(true),
+    });
+    expect(() =>
+      service.batches({
+        token: 'none',
+        projectId,
+        page: { offset: 0, limit: 21 },
+      }),
+    ).toThrow('VALIDATION_FAILED');
+    expect(() =>
+      service.withdrawBatch({
+        token: 'none',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId,
+          batchId: randomUUID(),
+          expectedVersion: 0,
+          reason: 'Withdraw old scope',
+        },
+      }),
+    ).toThrow('VALIDATION_FAILED');
+    await expect(
+      service.batches({
+        token: 'none',
+        projectId,
+        page: { offset: 0, limit: 20 },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_AUTHENTICATED' });
+    await expect(
+      service.withdrawBatch({
+        token: 'none',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId,
+          batchId: randomUUID(),
+          expectedVersion: 1,
+          reason: 'Withdraw old scope',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_AUTHENTICATED' });
     expect(connect).not.toHaveBeenCalled();
   });
 });

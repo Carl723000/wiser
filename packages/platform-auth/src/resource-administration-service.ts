@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  ResourceBatchesQuerySchema,
   type ResourceBatchesQuery,
   type ResourceBatchesPage,
   ResourceBatchPreviewCommandSchema,
@@ -75,19 +76,43 @@ export class PostgresResourceAdministrationService {
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
   }
-  batches(_input: {
+  batches(input: {
     token: string;
     projectId: string;
     page: ResourceBatchesQuery;
   }): Promise<ResourceBatchesPage> {
-    return Promise.reject(new ResourceAdministrationError('NOT_IMPLEMENTED'));
+    const page = ResourceBatchesQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      (session) =>
+        new ResourceBatchStore(session, this.#options.validatePackage).list(
+          page.data,
+        ),
+      ['platform.membership.manage', 'platform.access.approve'],
+    );
   }
-  withdrawBatch(_input: {
+  withdrawBatch(input: {
     token: string;
     idempotencyKey: string;
     command: ResourceBatchAction;
   }): Promise<ResourceBatchView> {
-    return Promise.reject(new ResourceAdministrationError('NOT_IMPLEMENTED'));
+    const command = ResourceBatchActionSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(input.token, command.data.projectId, (session) =>
+      this.#write(
+        session,
+        input.idempotencyKey,
+        'batch.withdraw',
+        command.data,
+        () =>
+          new ResourceBatchStore(
+            session,
+            this.#options.validatePackage,
+          ).withdraw(command.data),
+      ),
+    );
   }
   previewBatch(input: {
     token: string;
@@ -223,7 +248,10 @@ export class PostgresResourceAdministrationService {
     work: (session: Session) => Promise<T>,
     requiredScope:
       | 'platform.membership.manage'
-      | 'platform.access.approve' = 'platform.membership.manage',
+      | 'platform.access.approve'
+      | readonly (
+          'platform.membership.manage' | 'platform.access.approve'
+        )[] = 'platform.membership.manage',
   ): Promise<T> {
     uuid(projectId);
     const human = await this.#options.verifyHuman(token);
@@ -257,7 +285,12 @@ export class PostgresResourceAdministrationService {
         projectId,
         purpose: 'web-console',
       });
-      if (!authorization?.scopes.includes(requiredScope))
+      if (
+        !authorization ||
+        !(
+          typeof requiredScope === 'string' ? [requiredScope] : requiredScope
+        ).some((scope) => authorization.scopes.includes(scope))
+      )
         fail('NOT_AUTHORIZED');
       const settings = await client.query(
         'select revision from platform_private.resource_access_settings where project_id=$1 for update',
