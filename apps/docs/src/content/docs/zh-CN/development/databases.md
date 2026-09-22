@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: b5440a7f8fa35ba04f3fedd76b486e7d8a467a73
+lastReviewedCommit: 6fc8ed29b5ed3c62e25b2ac70a2e810a4eb9049e
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -214,3 +214,5 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 `0030_resource_read_scope.sql` 新增限制型 SELECT 策略，不改既有业务数据与写入策略。范围由可信控制权威编译后设置在当前事务内，不能接受客户端直接提供。版本成员作为非关联集合参与筛选，允许数据库采用哈希扫描，避免每条记录重复解析授权。`packages/data-infra/test/migrations/resource-access.spec.ts` 通过 `WISER_DATA_PG_INTEGRATION=1` 与可丢弃的 `DATA_TEST_DATABASE_URL` 验证无 BYPASSRLS 角色、完整元数据及子表直接读取、解析记录与几何、精确版本组合、安全等级交集、查看与原件及导出分权、来源发现拒绝、无效或过期范围和事务回滚。全部合成夹具及临时角色授权回滚。使用 Data 校验和迁移器应用，不为测试重置既有预览数据库。这些检查证明存储层基础，不代表 API 与投影授权已全部接通。
 
 批量办理迁移 `20260922213413_resource_batches.sql` + `20260922214035_resource_batch_indexes.sql`接续资源权威迁移；在隔离控制库运行`12_resource_batches.test.sql`，保留既有身份和资源历史。
+
+迁移`20260922214718_resource_batch_member_versions.sql`为成员快照补充独立的租户成员版本与主体授权版本。历史空值要求重新预览，不以当前权限推算旧批准范围。

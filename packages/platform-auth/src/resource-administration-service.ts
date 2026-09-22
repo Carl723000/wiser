@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  ResourceBatchPreviewCommandSchema,
+  ResourceBatchDecisionSchema,
+  ResourceBatchActionSchema,
   type ResourceBatchPreviewCommand,
   type ResourceBatchDecision,
   type ResourceBatchAction,
@@ -41,15 +44,12 @@ export interface ResourceAdministrationOptions {
     signal: AbortSignal;
   }) => Promise<boolean>;
 }
-export class ResourceAdministrationError extends Error {
-  constructor(readonly code: string) {
-    super(code);
-    this.name = 'ResourceAdministrationError';
-  }
-}
-function fail(code: string): never {
-  throw new ResourceAdministrationError(code);
-}
+export { ResourceAdministrationError } from './resource-administration-error.js';
+import {
+  ResourceAdministrationError,
+  resourceAdministrationFailure as fail,
+} from './resource-administration-error.js';
+import { ResourceBatchStore } from './resource-batch-service.js';
 function uuid(value: string) {
   if (
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -78,24 +78,78 @@ export class PostgresResourceAdministrationService {
     idempotencyKey: string;
     command: ResourceBatchPreviewCommand;
   }): Promise<ResourceBatchView> {
-    void input;
-    return Promise.reject(new Error('NOT_IMPLEMENTED'));
+    const parsed = ResourceBatchPreviewCommandSchema.safeParse(input.command);
+    if (!parsed.success) fail('VALIDATION_FAILED');
+    const command = parsed.data;
+    return this.#transaction(
+      input.token,
+      command.projectId,
+      (session) =>
+        this.#write(
+          session,
+          input.idempotencyKey,
+          'batch.preview',
+          command,
+          () =>
+            new ResourceBatchStore(
+              session,
+              this.#options.validatePackage,
+            ).preview(command),
+        ),
+      'platform.membership.manage',
+    );
   }
   decideBatch(input: {
     token: string;
     idempotencyKey: string;
     command: ResourceBatchDecision;
   }): Promise<ResourceBatchView> {
-    void input;
-    return Promise.reject(new Error('NOT_IMPLEMENTED'));
+    const parsed = ResourceBatchDecisionSchema.safeParse(input.command);
+    if (!parsed.success) fail('VALIDATION_FAILED');
+    const command = parsed.data;
+    return this.#transaction(
+      input.token,
+      command.projectId,
+      (session) =>
+        this.#write(
+          session,
+          input.idempotencyKey,
+          'batch.decide',
+          command,
+          () =>
+            new ResourceBatchStore(
+              session,
+              this.#options.validatePackage,
+            ).decide(command),
+        ),
+      'platform.access.approve',
+    );
   }
   executeBatch(input: {
     token: string;
     idempotencyKey: string;
     command: ResourceBatchAction;
   }): Promise<ResourceBatchView> {
-    void input;
-    return Promise.reject(new Error('NOT_IMPLEMENTED'));
+    const parsed = ResourceBatchActionSchema.safeParse(input.command);
+    if (!parsed.success) fail('VALIDATION_FAILED');
+    const command = parsed.data;
+    return this.#transaction(
+      input.token,
+      command.projectId,
+      (session) =>
+        this.#write(
+          session,
+          input.idempotencyKey,
+          'batch.execute',
+          command,
+          () =>
+            new ResourceBatchStore(
+              session,
+              this.#options.validatePackage,
+            ).execute(command),
+        ),
+      'platform.membership.manage',
+    );
   }
   definitions(input: {
     token: string;
@@ -151,6 +205,9 @@ export class PostgresResourceAdministrationService {
     token: string,
     projectId: string,
     work: (session: Session) => Promise<T>,
+    requiredScope:
+      | 'platform.membership.manage'
+      | 'platform.access.approve' = 'platform.membership.manage',
   ): Promise<T> {
     uuid(projectId);
     const human = await this.#options.verifyHuman(token);
@@ -184,7 +241,7 @@ export class PostgresResourceAdministrationService {
         projectId,
         purpose: 'web-console',
       });
-      if (!authorization?.scopes.includes('platform.membership.manage'))
+      if (!authorization?.scopes.includes(requiredScope))
         fail('NOT_AUTHORIZED');
       const settings = await client.query(
         'select revision from platform_private.resource_access_settings where project_id=$1 for update',
@@ -226,12 +283,12 @@ export class PostgresResourceAdministrationService {
       client.release();
     }
   }
-  async #write(
+  async #write<T>(
     session: Session,
     key: string,
-    kind: 'package' | 'preset',
-    command: ResourcePackageCommand | ResourcePresetCommand,
-    work: () => Promise<ResourceDefinitionReceipt>,
+    kind: string,
+    command: unknown,
+    work: () => Promise<T>,
   ) {
     uuid(key);
     const { client, human, project } = session;
@@ -243,7 +300,7 @@ export class PostgresResourceAdministrationService {
     ]);
     const prior = await client.query<{
       request_hash: string;
-      result: ResourceDefinitionReceipt;
+      result: T;
     }>(
       'select request_hash,result from platform_private.project_access_mutations where actor_id=$1 and idempotency_key=$2',
       [human.userId, key],

@@ -168,10 +168,10 @@ describe.skipIf(!url)(
       ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
       expect(
         (
-          await client.query(
+          await client.query<{ n: number }>(
             'select count(*)::int n from platform_private.resource_batches',
           )
-        ).rows[0].n,
+        ).rows[0]!.n,
       ).toBe(0);
     });
     it('preserves explicit members across duplicate previews and grants nothing before execution', async () => {
@@ -191,10 +191,10 @@ describe.skipIf(!url)(
       ).toBe(true);
       expect(
         (
-          await client.query(
+          await client.query<{ n: number }>(
             'select count(*)::int n from platform_private.resource_grants',
           )
-        ).rows[0].n,
+        ).rows[0]!.n,
       ).toBe(0);
       await expect(
         service.decideBatch({
@@ -236,10 +236,10 @@ describe.skipIf(!url)(
       expect(approved.status).toBe('approved');
       expect(
         (
-          await client.query(
+          await client.query<{ n: number }>(
             'select count(*)::int n from platform_private.resource_grants',
           )
-        ).rows[0].n,
+        ).rows[0]!.n,
       ).toBe(0);
       failRecipient = true;
       const partial = await service.executeBatch({
@@ -287,10 +287,10 @@ describe.skipIf(!url)(
       ).toEqual(complete);
       expect(
         (
-          await client.query(
+          await client.query<{ n: number }>(
             'select count(*)::int n from platform_private.resource_grants',
           )
-        ).rows[0].n,
+        ).rows[0]!.n,
       ).toBe(2);
     });
     it('requires a new preview after package update and never reinterprets an approval', async () => {
@@ -329,10 +329,10 @@ describe.skipIf(!url)(
       ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
       expect(
         (
-          await client.query(
+          await client.query<{ n: number }>(
             'select count(*)::int n from platform_private.resource_grants',
           )
-        ).rows[0].n,
+        ).rows[0]!.n,
       ).toBe(2);
     });
     it('does not silently approve important actions with ordinary approval authority', async () => {
@@ -368,6 +368,212 @@ describe.skipIf(!url)(
           idempotencyKey: randomUUID(),
         }),
       ).rejects.toMatchObject({ code: 'IMPORTANT_APPROVAL_REQUIRED' });
+    });
+    async function approvedBatch(actorIds = [reader]) {
+      const batch = await service.previewBatch({
+        token: 'owner',
+        command: { ...preview, packageVersion: 2, actorIds },
+        idempotencyKey: randomUUID(),
+      });
+      return service.decideBatch({
+        token: 'approver',
+        command: {
+          projectId: project,
+          batchId: batch.id,
+          expectedVersion: 1,
+          decision: 'approve',
+          reason: 'Independent scope review',
+        },
+        idempotencyKey: randomUUID(),
+      });
+    }
+    function execution(batch: { id: string; version: number }) {
+      return {
+        token: 'owner',
+        command: {
+          projectId: project,
+          batchId: batch.id,
+          expectedVersion: batch.version,
+          reason: 'Execute current approved snapshot',
+        },
+        idempotencyKey: randomUUID(),
+      };
+    }
+    it('rejects preview key reuse with another recipient selection', async () => {
+      const key = randomUUID();
+      const input = {
+        token: 'owner',
+        command: { ...preview, packageVersion: 2 },
+        idempotencyKey: key,
+      };
+      await service.previewBatch(input);
+      await expect(
+        service.previewBatch({
+          ...input,
+          command: { ...input.command, actorIds: [reader] },
+        }),
+      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    });
+    it.each(['project', 'tenant', 'actor'] as const)(
+      'does not hide a changed %s authority version behind another unchanged version',
+      async (kind) => {
+        await client.query('savepoint authority_case');
+        try {
+          const batch = await approvedBatch();
+          const sql =
+            kind === 'project'
+              ? 'update platform.project_memberships set membership_version=membership_version+1 where project_id=$1 and actor_id=$2'
+              : kind === 'tenant'
+                ? 'update platform.tenant_memberships set membership_version=membership_version+1 where tenant_id=$1 and actor_id=$2'
+                : 'update platform.actors set authz_version=authz_version+1 where id=$2 and $1::uuid is not null';
+          await client.query(sql, [
+            kind === 'tenant' ? tenant : project,
+            reader,
+          ]);
+          const result = await service.executeBatch(execution(batch));
+          expect(result.status).toBe('partial');
+          expect(result.members[0]).toMatchObject({
+            status: 'failed',
+            code: 'MEMBERSHIP_CHANGED',
+            grantId: null,
+            attempts: 1,
+          });
+          expect(
+            (
+              await client.query<{ n: number }>(
+                'select count(*)::int n from platform_private.resource_batch_attempts where batch_id=$1 and grant_id is not null',
+                [batch.id],
+              )
+            ).rows[0]!.n,
+          ).toBe(0);
+        } finally {
+          await client.query('rollback to savepoint authority_case');
+        }
+      },
+    );
+    it.each(['session', 'role'] as const)(
+      'rechecks the recorded approver %s before issuing grants',
+      async (kind) => {
+        await client.query('savepoint approver_case');
+        try {
+          const batch = await approvedBatch();
+          if (kind === 'session')
+            await client.query('delete from auth.sessions where id=$1', [
+              sessions.approver,
+            ]);
+          else
+            await client.query(
+              "update platform.role_bindings set status='revoked' where actor_id=$1 and project_id=$2",
+              [approver, project],
+            );
+          await expect(
+            service.executeBatch(execution(batch)),
+          ).rejects.toMatchObject({ code: 'AUTHORITY_CHANGED' });
+          expect(
+            (
+              await client.query<{ n: number }>(
+                'select count(*)::int n from platform_private.resource_batch_attempts where batch_id=$1',
+                [batch.id],
+              )
+            ).rows[0]!.n,
+          ).toBe(0);
+        } finally {
+          await client.query('rollback to savepoint approver_case');
+        }
+      },
+    );
+    it('rechecks Data authority after approval and preserves a retryable approval when unavailable', async () => {
+      const batch = await approvedBatch();
+      validatePackage.mockResolvedValueOnce(false);
+      await expect(
+        service.executeBatch(execution(batch)),
+      ).rejects.toMatchObject({ code: 'RESOURCE_UNAVAILABLE' });
+      expect(
+        (
+          await client.query(
+            'select status,version from platform_private.resource_batches where id=$1',
+            [batch.id],
+          )
+        ).rows[0],
+      ).toMatchObject({ status: 'approved', version: batch.version });
+      expect((await service.executeBatch(execution(batch))).status).toBe(
+        'executed',
+      );
+    });
+    it('accepts configured important approval and blocks execution when that designation is withdrawn', async () => {
+      await client.query('savepoint important_case');
+      try {
+        const important = {
+          ...preset,
+          presetId: randomUUID(),
+          approvalLevel: 'important' as const,
+        };
+        await service.savePreset({
+          token: 'owner',
+          command: important,
+          idempotencyKey: randomUUID(),
+        });
+        await client.query(
+          "insert into platform_private.resource_approval_roles(project_id,role_id,configured_by,reason) select $1,id,$2,'Synthetic designated approval' from platform.roles where role_key='batch-approver-test'",
+          [project, owner],
+        );
+        const pending = await service.previewBatch({
+          token: 'owner',
+          command: {
+            ...preview,
+            packageVersion: 2,
+            presetId: important.presetId,
+          },
+          idempotencyKey: randomUUID(),
+        });
+        const approved = await service.decideBatch({
+          token: 'approver',
+          command: {
+            projectId: project,
+            batchId: pending.id,
+            expectedVersion: 1,
+            decision: 'approve',
+            reason: 'Designated important scope review',
+          },
+          idempotencyKey: randomUUID(),
+        });
+        await client.query(
+          'update platform_private.resource_approval_roles set active=false where project_id=$1',
+          [project],
+        );
+        await expect(
+          service.executeBatch(execution(approved)),
+        ).rejects.toMatchObject({ code: 'IMPORTANT_APPROVAL_REQUIRED' });
+      } finally {
+        await client.query('rollback to savepoint important_case');
+      }
+    });
+    it('expires a saved preview without issuing grants or allowing late approval', async () => {
+      const now = Date.now();
+      const pending = await service.previewBatch({
+        token: 'owner',
+        command: {
+          ...preview,
+          packageVersion: 2,
+          startsAt: new Date(now - 1000).toISOString(),
+          expiresAt: new Date(now + 200).toISOString(),
+        },
+        idempotencyKey: randomUUID(),
+      });
+      await client.query('select pg_sleep(0.25)');
+      await expect(
+        service.decideBatch({
+          token: 'approver',
+          command: {
+            projectId: project,
+            batchId: pending.id,
+            expectedVersion: 1,
+            decision: 'approve',
+            reason: 'Late review cannot grant',
+          },
+          idempotencyKey: randomUUID(),
+        }),
+      ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
     });
   },
 );

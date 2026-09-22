@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: b5440a7f8fa35ba04f3fedd76b486e7d8a467a73
+lastReviewedCommit: 6fc8ed29b5ed3c62e25b2ac70a2e810a4eb9049e
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -214,3 +214,5 @@ Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the
 `0030_resource_read_scope.sql` adds restrictive SELECT policies without altering stored business rows or existing write policies. The scope is transaction-local and derived from verified control authority; it is not client input. Version membership is an uncorrelated set, permitting hashed scans rather than per-record grant decoding. `packages/data-infra/test/migrations/resource-access.spec.ts`, under `WISER_DATA_PG_INTEGRATION=1` and a disposable `DATA_TEST_DATABASE_URL`, checks a non-BYPASSRLS role, full metadata and direct child reads, parsed records and geometry, exact version pairs, base-security intersection, separate originals/exports, discovery denial, malformed/expired contexts and rollback. All synthetic fixtures and temporary role grants roll back. Apply using the checked-sum Data runner; never reset an existing preview database for this test. These tests establish the storage foundation, not completed API/projection enforcement.
 
 Resource batch migration `20260922213413_resource_batches.sql` + `20260922214035_resource_batch_indexes.sql` follows immutable resource authority. Validate `12_resource_batches.test.sql` in the disposable control instance; preserve existing identity and resource histories.
+
+Migration `20260922214718_resource_batch_member_versions.sql` stores separate tenant-membership and actor authority versions alongside the project-member snapshot. Null historical values require a new preview; they are not backfilled from current permissions.

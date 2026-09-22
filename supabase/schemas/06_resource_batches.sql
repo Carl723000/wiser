@@ -132,3 +132,6 @@ create index resource_batch_members_actor_idx on platform_private.resource_batch
 create index resource_batch_attempts_member_idx on platform_private.resource_batch_attempts(batch_id,project_id,actor_id);
 create index resource_batch_attempts_grant_idx on platform_private.resource_batch_attempts(grant_id,project_id);
 create index resource_batch_attempts_executor_idx on platform_private.resource_batch_attempts(executed_by);
+-- Null historical snapshots are rejected at execution; never infer old authority from current membership.
+alter table platform_private.resource_batch_members add column tenant_membership_version bigint check(tenant_membership_version>0);
+alter table platform_private.resource_batch_members add column actor_authz_version bigint check(actor_authz_version>0);
