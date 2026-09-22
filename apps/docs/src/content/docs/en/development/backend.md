@@ -21,8 +21,8 @@ checkPaths:
   - packages/**
   - compose.yaml
   - package.json
-lastReviewedAt: 2026-09-22
-lastReviewedCommit: bb5e00c433de4e3966e12533c0f15b629a221e61
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 765d0230b28ddf1657565e489cd3e7d935e0a317
 ---
 
 ## Backend topology

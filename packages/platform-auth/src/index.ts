@@ -184,3 +184,5 @@ export {
   type PlatformCredentialPrincipalResolverOptions,
   type PlatformPrincipalResolverLike,
 } from './platform-credential-principal-resolver.js';
+
+export { evaluateResourceAccess } from './resource-access-policy.js';

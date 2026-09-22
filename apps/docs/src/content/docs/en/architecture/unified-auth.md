@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-22
-lastReviewedCommit: 703a77a401fa978b75ee14ed6c76e1fee8af5697
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 765d0230b28ddf1657565e489cd3e7d935e0a317
 ---
 
 ## One identity authority
@@ -209,3 +209,9 @@ Submission does not grant access. An independent approver records approve/reject
 A failed execution retains a bounded reason and a new request version. After refreshing, a transient failure can be retried with current authority; a version conflict must not overwrite an intervening change. The applicant can withdraw pending, approved or failed-but-unexecuted requests and submit a fresh request for independent review, including when the original approver is no longer available. Once effective, withdrawal is not revocation: an authorized manager must revoke the project membership. Concurrent withdrawal/execute and approve/reject are serialized with optimistic versions and actor-scoped idempotency.
 
 Use isolated synthetic accounts for applicant, approver and manager. Verify request → decision without access → execution → actual catalog/original/graph/map reads → revocation using the same unexpired Session. Previously issued signed file links retain their own bounded lifetime; denying new resource requests does not erase downloaded copies. This prototype does not introduce per-dataset grants, separate download permission, professional knowledge approval, cross-environment account synchronization or controlled computation.
+
+## Immutable resource grant evaluation
+
+`ResourceAccessGrantSnapshot` in Platform contracts pins the subject, Tenant, Project, Purpose, resource-package and preset versions, exact DataItem/Version or external-source references, actions, activation and expiry. `evaluateResourceAccess` is a deterministic additional restriction, with time and current authority facts supplied explicitly. A content-read grant never implies original-download, export or external-directory permission. Revoking one grant preserves independent overlapping grants; results list the matching grants and the earliest revalidation deadline. Malformed or duplicate authority facts fail closed.
+
+The evaluator is a building block, not an enabled runtime policy. Until persistence and every transport outlet are integrated and verified, no product surface may advertise enforced resource/action separation. Explicit legacy mode preserves existing gates; managed mode requires a matching live grant. Existing session, project, scope, security-level, resource and provider checks remain mandatory in both modes. Do not accept evaluator authority inputs from browser requests or treat its expiry as permission to cache through a revocation.
