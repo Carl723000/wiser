@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 02345029
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 45b425bbc553df81a4127d57a47f9437514cdf2b
 ---
 
 ## External metadata reader boundary
@@ -426,3 +426,7 @@ Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 5
 Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.
 
 The project graph requests bounded pages through the session-verified Web DAL. Each request discovers the target relation-list capability; exact 1.7 support uses the bounded mode, otherwise the same query and cursor use at most 100 items. Discovery failures propagate rather than retrying around authorization. Fixed-source queries retain the 100-item path. The browser rejects incomplete totals, duplicate identities, empty continuation pages and repeated cursors before displaying the graph.
+
+### Coverage in project access management
+
+The permission workspace reuses authorized exploration resources and whole-query summaries instead of copying a catalog or scanning original files. Its bounded 20-row resource list is not the count denominator. Registered resources, parsed content rows, spatial features and professionally reviewed assertions remain different measures. The selected tenant/project travels through the existing verified caller API context, including normal RLS and query-continuation checks. Management rights alone do not confer Data content access.

@@ -10,6 +10,7 @@ import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './project-access-workspace.module.css';
 import { ProjectAccessRequests } from './project-access-requests';
 import { ProjectInvitations } from './project-invitations';
+import { ProjectResourceCoverage } from './project-resource-coverage';
 type Props = {
   locale: Locale;
   initial: { items: readonly ProjectAccessProjectView[]; hasMore: boolean };
@@ -204,7 +205,9 @@ export function ProjectAccessWorkspace({
   const t = getDictionary(locale).projectAccess;
   const [projects, setProjects] = useState(initial);
   const [projectId, setProjectId] = useState(initial.items[0]?.projectId ?? '');
-  const [view, setView] = useState<'mine' | 'members' | 'approvals'>('mine');
+  const [view, setView] = useState<
+    'overview' | 'mine' | 'members' | 'approvals'
+  >('overview');
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectLoading, setProjectLoading] = useState(false);
@@ -218,6 +221,7 @@ export function ProjectAccessWorkspace({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [openApplication, setOpenApplication] = useState(false);
   const [editing, setEditing] = useState<{
     member: ProjectAccessMemberView;
     revoke: boolean;
@@ -279,7 +283,7 @@ export function ProjectAccessWorkspace({
     setProjectLoading(true);
     setProjects({ items: [], hasMore: false });
     setProjectId('');
-    setView('mine');
+    setView('overview');
     setError(null);
     try {
       const value = ProjectAccessProjectsPageSchema.parse(
@@ -349,7 +353,7 @@ export function ProjectAccessWorkspace({
                 setProjectId(p.projectId);
                 setMemberPage(0);
                 setNotice(null);
-                setView('mine');
+                setView('overview');
               }}
             >
               {locale === 'zh-CN' ? p.nameZh : p.nameEn}
@@ -381,8 +385,17 @@ export function ProjectAccessWorkspace({
               </div>
               <nav className={styles.tabs} aria-label={t.title}>
                 <button
+                  aria-pressed={view === 'overview'}
+                  onClick={() => setView('overview')}
+                >
+                  {t.overview}
+                </button>
+                <button
                   aria-pressed={view === 'mine'}
-                  onClick={() => setView('mine')}
+                  onClick={() => {
+                    setOpenApplication(false);
+                    setView('mine');
+                  }}
                 >
                   {t.mine}
                 </button>
@@ -404,14 +417,24 @@ export function ProjectAccessWorkspace({
                 ) : null}
               </nav>
               <h2>
-                {view === 'mine'
-                  ? t.mine
-                  : view === 'members'
-                    ? t.members
-                    : t.approvals}
+                {view === 'overview'
+                  ? t.overview
+                  : view === 'mine'
+                    ? t.mine
+                    : view === 'members'
+                      ? t.members
+                      : t.approvals}
               </h2>
-              {view === 'mine' ? (
+              {view === 'overview' ? (
+                <ProjectResourceCoverage
+                  locale={locale}
+                  tenantId={project.tenantId}
+                  projectId={project.projectId}
+                />
+              ) : null}
+              {view === 'mine' || view === 'overview' ? (
                 <>
+                  {view === 'overview' ? <h3>{t.mine}</h3> : null}
                   <dl className={styles.facts}>
                     <div>
                       <dt>{t.status}</dt>
@@ -468,12 +491,25 @@ export function ProjectAccessWorkspace({
                   >
                     {t.retry}
                   </button>
-                  <ProjectAccessRequests
-                    key={project.projectId}
-                    locale={locale}
-                    project={project}
-                    viewerId={viewerId}
-                  />
+                  {view === 'mine' ? (
+                    <ProjectAccessRequests
+                      key={project.projectId}
+                      locale={locale}
+                      project={project}
+                      viewerId={viewerId}
+                      initialApplicationOpen={openApplication}
+                    />
+                  ) : project.requestsEnabled ? (
+                    <button
+                      disabled={project.assignableRoles.length === 0}
+                      onClick={() => {
+                        setOpenApplication(true);
+                        setView('mine');
+                      }}
+                    >
+                      {t.request.apply}
+                    </button>
+                  ) : null}
                 </>
               ) : view === 'approvals' ? (
                 <ProjectAccessRequests

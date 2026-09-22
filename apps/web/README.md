@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-09-22
-lastReviewedCommit: f082a38a6ce3953dea1e3d67e860f6c820807b59
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 45b425bbc553df81a4127d57a47f9437514cdf2b
 ---
 
 # WISER Web / 产品前端
@@ -154,3 +154,5 @@ The normal Data Foundation entry shares the server exploration loader and opens 
 ## Project access verification / 项目访问验收
 
 The opt-in account workspace and its isolated real-session browser checks are documented in [Unified Auth](../docs/src/content/docs/en/architecture/unified-auth.md#project-access-workspace) / [统一身份](../docs/src/content/docs/zh-CN/architecture/unified-auth.md#项目访问工作区). It manages only the connected environment. Apply its migration and explicit role policy before enabling both API and Web; the UI never exposes Auth administrative credentials. / 后台只管理所连接环境，页面不能替代迁移和明确授权；邀请需另配服务端邮件与模板，审批通过后仍须显式执行授权；办理结果与当前有效权限分开显示。
+
+The normal account access workspace opens project resource coverage through verified-session HTTP reads, whole-query summaries and bounded resource pages. Selected project context is reauthorized by the API. / 正常账户权限工作区通过已验证会话读取所选项目资料覆盖，采用完整查询汇总和有界资源分页；项目上下文仍由API重新授权。

@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-22
-lastReviewedCommit: f082a38a6ce3953dea1e3d67e860f6c820807b59
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 45b425bbc553df81a4127d57a47f9437514cdf2b
 ---
 
 ## Two frontend applications
@@ -248,3 +248,9 @@ Reference Web browser tests wait for the Data Foundation workspace to respond be
 The root unit/coverage runner defaults to two workers to bound DOM and coverage contention on development hosts with preview services. Test deadlines, assertions and coverage thresholds are unchanged. Use an explicit Vitest `--maxWorkers` value for a measured concurrency experiment; a focused pass does not replace full verification.
 
 The opt-in account menu opens `/[locale]/account/access` for personal access and authorized project member actions. See [Unified Auth](/en/architecture/unified-auth/#project-access-workspace) for configuration and real-session acceptance. It retains the existing shell, locale and theme; it is not a new peer business system.
+
+## Project resource coverage
+
+The normal `account/access` workspace opens an access overview and reads resource coverage for the selected tenant/project through the same-origin `GET /api/platform/resources` adapter. The server-only DAL forwards the verified current session to Data Foundation; selecting context never confers membership, Data scopes or resource access. Query parameters cannot provide an actor, grant or token. Counts and readiness distributions come from the full server-owned query manifest, while each resource page is bounded to 20 rows. Pagination retains the query identifier; filters create a new query. Project changes, denied access, expiry and failed refresh clear old content; aborted earlier requests cannot repopulate it. Unknown analysis totals remain unavailable.
+
+Resource rows distinguish content, spatial and graph readiness and expose fixed-version details. Optional counting explanations reuse keyboard/touch-accessible contextual help. Chinese/English, theme and narrow-screen acceptance use the same authenticated page. This coverage surface does not itself grant access, infer professional approval, or establish cross-resource temporal coverage.
