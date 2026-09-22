@@ -88,6 +88,7 @@ interface ExecutorRuntime {
 
 interface ReadExecutorRuntime extends ExecutorRuntime {
   readonly audit: DataCapabilityAuditPort;
+  readonly validateResourcePackage?: import('@wiser/platform-auth').ResourceAdministrationOptions['validatePackage'];
 }
 
 export interface DataFoundationRuntimeFactories {

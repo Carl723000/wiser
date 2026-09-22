@@ -22,6 +22,7 @@ import {
   parseDelegatedCredentialHmacKeyRing,
   type AuthorizationQuery,
   type ResourceAuthorityQuery,
+  type ResourceAdministrationOptions,
   type AuthorizationRow,
   type DelegatedCredentialAuthorizationQuery,
   type DelegatedCredentialAuthorizationRow,
@@ -79,6 +80,9 @@ export interface PlatformAuthRuntimeFactories {
 export interface PlatformAuthRuntime {
   readonly module: WiserApiModule | null;
   readonly resolver: PlatformPrincipalResolver | null;
+  readonly resourceAdministrationModule?: (
+    validatePackage: ResourceAdministrationOptions['validatePackage'],
+  ) => WiserApiModule;
 }
 
 const SupabaseRuntimeFields = z.strictObject({
