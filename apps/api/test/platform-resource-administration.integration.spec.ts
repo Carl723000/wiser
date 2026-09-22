@@ -221,5 +221,20 @@ describe.skipIf(!url)(
         ).rows[0],
       ).toEqual({ actions: ['content.read'] });
     });
+    it('lists only latest definitions in the authorized project with bounded pages', async () => {
+      const page = { kind: 'package' as const, offset: 0, limit: 1, search: 'Synthetic' };
+      const result = await service.definitions({ token: 'owner', projectId: project, page });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ kind: 'package', id: packageCommand.packageId, version: 2, resourceCount: 2 });
+      expect(result.hasMore).toBe(false);
+      expect(result.items[0]).not.toHaveProperty('resources');
+      const presets = await service.definitions({ token: 'owner', projectId: project, page: { ...page, kind: 'preset' } });
+      expect(presets.items[0]).toMatchObject({ kind: 'preset', id: presetCommand.presetId, version: 2, approvalLevel: 'important' });
+      for (const input of [
+        { token: 'reader', projectId: project, page },
+        { token: 'owner', projectId: randomUUID(), page },
+        { token: 'owner', projectId: project, page: { ...page, limit: 21 } },
+      ]) await expect(service.definitions(input)).rejects.toBeDefined();
+    });
   },
 );

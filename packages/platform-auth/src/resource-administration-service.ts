@@ -6,6 +6,8 @@ import {
   type ResourcePackageCommand,
   type ResourcePresetCommand,
   type ResourceDefinitionReceipt,
+  type ResourceDefinitionsQuery,
+  type ResourceDefinitionsPage,
 } from '@wiser/platform-contracts';
 import type {
   SupabaseJwtClaimsVerifier,
@@ -64,6 +66,13 @@ export class PostgresResourceAdministrationService {
   readonly #options: ResourceAdministrationOptions;
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
+  }
+  definitions(_input: {
+    token: string;
+    projectId: string;
+    page: ResourceDefinitionsQuery;
+  }): Promise<ResourceDefinitionsPage> {
+    return Promise.reject(new ResourceAdministrationError('NOT_IMPLEMENTED'));
   }
   async #transaction<T>(
     token: string,

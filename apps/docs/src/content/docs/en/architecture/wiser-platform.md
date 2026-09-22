@@ -18,7 +18,7 @@ checkPaths:
   - infrastructure/**
   - supabase/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 078e62406a5a7bd07ee936b20fb28d6d9582bddd
+lastReviewedCommit: 66efd3f1652335f6dac5af6db8235c4fab070d1b
 ---
 
 ## Decision summary
