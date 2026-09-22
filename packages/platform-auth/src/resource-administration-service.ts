@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   ResourcePackageCommandSchema,
   ResourcePresetCommandSchema,
+  ResourceDefinitionsQuerySchema,
+  ResourceDefinitionsPageSchema,
   type PlatformRequestContext,
   type ResourcePackageCommand,
   type ResourcePresetCommand,
@@ -67,12 +69,55 @@ export class PostgresResourceAdministrationService {
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
   }
-  definitions(_input: {
+  definitions(input: {
     token: string;
     projectId: string;
     page: ResourceDefinitionsQuery;
   }): Promise<ResourceDefinitionsPage> {
-    return Promise.reject(new ResourceAdministrationError('NOT_IMPLEMENTED'));
+    const parsed = ResourceDefinitionsQuerySchema.safeParse(input.page);
+    if (!parsed.success)
+      return Promise.reject(
+        new ResourceAdministrationError('VALIDATION_FAILED'),
+      );
+    const page = parsed.data;
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      async ({ client, project }) => {
+        const packageList = page.kind === 'package';
+        const table = packageList
+          ? 'resource_package_versions'
+          : 'resource_preset_versions';
+        const id = packageList ? 'package_id' : 'preset_id';
+        const fields = packageList
+          ? 'jsonb_array_length(resources)::int "resourceCount",allowed_actions "allowedActions",license_basis "licenseBasis"'
+          : 'actions,max_days "maxDays",approval_level "approvalLevel"';
+        const result = await client.query<Record<string, unknown>>(
+          `select ${id} id,version,name,created_at "createdAt",${fields}
+         from (select distinct on (${id}) * from platform_private.${table}
+          where project_id=$1 order by ${id},version desc) latest
+         where position(lower($2) in lower(name))>0
+         order by name,${id} offset $3 limit $4`,
+          [project.id, page.search, page.offset, page.limit + 1],
+        );
+        const revision = await client.query<{ revision: string }>(
+          'select revision from platform_private.resource_access_settings where project_id=$1',
+          [project.id],
+        );
+        return ResourceDefinitionsPageSchema.parse({
+          items: result.rows.slice(0, page.limit).map((row) => ({
+            ...row,
+            kind: page.kind,
+            createdAt:
+              row['createdAt'] instanceof Date
+                ? row['createdAt'].toISOString()
+                : row['createdAt'],
+          })),
+          hasMore: result.rows.length > page.limit,
+          authorityRevision: Number(revision.rows[0]?.revision),
+        });
+      },
+    );
   }
   async #transaction<T>(
     token: string,

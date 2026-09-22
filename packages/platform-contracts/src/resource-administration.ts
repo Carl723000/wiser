@@ -97,5 +97,9 @@ export const ResourceDefinitionsPageSchema = z.object({
   hasMore: z.boolean(),
   authorityRevision: z.number().int().positive(),
 });
-export type ResourceDefinitionsQuery = z.infer<typeof ResourceDefinitionsQuerySchema>;
-export type ResourceDefinitionsPage = z.infer<typeof ResourceDefinitionsPageSchema>;
+export type ResourceDefinitionsQuery = z.infer<
+  typeof ResourceDefinitionsQuerySchema
+>;
+export type ResourceDefinitionsPage = z.infer<
+  typeof ResourceDefinitionsPageSchema
+>;
