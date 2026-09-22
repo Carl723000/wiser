@@ -35,14 +35,61 @@ export interface ProjectRemovalCheck {
   readonly targetHasManagementAuthority: boolean;
 }
 
+const SECURITY_RANK: Readonly<Record<PlatformSecurityLevel, number>> = {
+  L0_PUBLIC: 0,
+  L1_INTERNAL: 1,
+  L2_RESTRICTED: 2,
+  L3_CONFIDENTIAL: 3,
+};
+
+/** The caller supplies freshly loaded authority and an explicit clock. */
 export function checkProjectGrant(
-  _input: ProjectGrantCheck,
+  input: ProjectGrantCheck,
 ): ProjectAccessPolicyError | null {
-  throw new Error('Project grant policy is not implemented.');
+  const required =
+    input.action === 'approve'
+      ? 'platform.access.approve'
+      : 'platform.membership.manage';
+  if (!input.scopes.includes(required)) return 'NOT_AUTHORIZED';
+  if (input.actorId === input.targetActorId) return 'SELF_CHANGE_FORBIDDEN';
+  if (
+    input.policy === null ||
+    input.policy.roleKey !== input.role.key ||
+    !input.role.active ||
+    !Number.isInteger(input.policy.maxDays) ||
+    input.policy.maxDays < 1 ||
+    input.policy.maxDays > 366 ||
+    input.role.scopes.some((scope) => scope.startsWith('platform.')) ||
+    SECURITY_RANK[input.role.securityLevel] >
+      SECURITY_RANK[input.managerSecurityLevel]
+  ) {
+    return 'ROLE_NOT_ASSIGNABLE';
+  }
+  const expiry = Date.parse(input.expiresAt);
+  const managerExpiry =
+    input.managerExpiresAt === null
+      ? Infinity
+      : Date.parse(input.managerExpiresAt);
+  if (
+    !Number.isFinite(input.now) ||
+    !Number.isFinite(expiry) ||
+    Number.isNaN(managerExpiry) ||
+    expiry <= input.now ||
+    expiry > input.now + input.policy.maxDays * 86_400_000 ||
+    expiry > managerExpiry
+  ) {
+    return 'INVALID_EXPIRY';
+  }
+  return null;
 }
 
+/** Management members are intentionally reserved for the trusted maintenance workflow. */
 export function checkProjectRemoval(
-  _input: ProjectRemovalCheck,
+  input: ProjectRemovalCheck,
 ): ProjectAccessPolicyError | null {
-  throw new Error('Project removal policy is not implemented.');
+  if (!input.scopes.includes('platform.membership.manage'))
+    return 'NOT_AUTHORIZED';
+  if (input.actorId === input.targetActorId) return 'SELF_CHANGE_FORBIDDEN';
+  if (input.targetHasManagementAuthority) return 'PROTECTED_MEMBER';
+  return null;
 }

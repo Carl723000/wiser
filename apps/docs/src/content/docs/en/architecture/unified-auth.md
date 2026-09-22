@@ -165,3 +165,9 @@ data-postgres stores only Tenant, Project, and Actor UUIDs plus a policy version
 - Excess scope, purpose, security level, fields, or export volume.
 - RLS isolation for anon, authenticated, API, worker, and migration roles.
 - No server secret in browsers, MCP, logs, or telemetry.
+
+## Project management policy boundary
+
+The pure project-access policy distinguishes `platform.membership.manage` from `platform.access.approve`. A project-management or data-read scope alone never permits delegation. Grants require an explicit assignable-role policy, an active ordinary business role, a bounded expiry within that policy and the manager's effective authority, and a security ceiling no higher than the manager's. Roles carrying platform scopes cannot be assigned through this workflow. Self-grants and self-approval are denied; management members cannot be removed through the ordinary member-removal action. Their lifecycle remains a trusted maintenance operation, protecting the last administrator as well as other management positions.
+
+This policy is an implementation foundation, not a new deployed management endpoint. Transport and persistence must still verify a live direct human Session, load current scoped facts inside the transaction, and protect concurrency, retries and audit. The policy does not read user metadata, create an identity store, grant dataset-specific download rights or change existing Data authorization.
