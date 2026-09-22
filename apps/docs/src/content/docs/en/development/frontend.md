@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 151cbe94396f90832984fbf56c308794fcaf1941
+lastReviewedCommit: a7d411a459d17055133c4f72588f66cde18b8aec
 ---
 
 ## Two frontend applications
@@ -260,3 +260,5 @@ Resource rows distinguish content, spatial and graph readiness and expose fixed-
 Managed projects expose resource-package and preset tabs only to current project managers. The live projects response carries the optional `resourceAccessEnabled` flag; its absence preserves existing navigation. Both tables retrieve at most 20 latest definitions per page. Package creation selects explicit fixed versions from the current authorized coverage query, retains selections across pages and deduplicates exact item/version pairs. It never selects unread pages or grants access. Preset updates create an immutable version and retain the expected previous version.
 
 The same-origin adapter verifies session, origin, bounded input and idempotency keys before forwarding definitions. Ambiguous retries keep an identical command key; changed inputs get a new key. Project changes and failed authorization clear retained definitions and close editors. Successful saves explicitly distinguish stored definitions from effective member grants. Creation remains unavailable while the current definition list is loading or denied.
+
+The resource-enabled project workbench includes a batch-access tab for managers and approval reviewers. Managers select only explicitly loaded members and immutable package/preset versions; approval-only users see review controls without member-management controls. Applicant/recipient self-approval controls are absent, while the server independently enforces the rule. Preview, approval and execution statuses remain distinct, receipts retain per-recipient history, and retries reuse unchanged command keys (including fixed preview timestamps). Project changes abort stale requests. The same verified-session BFF handles bounded lists and all four batch actions.

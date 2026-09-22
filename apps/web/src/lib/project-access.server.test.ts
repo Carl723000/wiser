@@ -153,3 +153,73 @@ it('transports versioned resource definitions through the verified session only'
     headers: { 'Idempotency-Key': id },
   });
 });
+
+it('sends bounded batch actions to their exact authenticated routes and preserves safe expiry errors', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockImplementation(() =>
+      Promise.resolve(
+        Response.json({ code: 'PREVIEW_EXPIRED' }, { status: 409 }),
+      ),
+    );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('verified'),
+    fetch,
+  });
+  const action = {
+    projectId: id,
+    batchId: id,
+    expectedVersion: 1,
+    reason: 'Current scope review',
+  };
+  await expect(
+    client.batches(id, { offset: 0, limit: 20, status: 'pending' }),
+  ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED', status: 409 });
+  await expect(
+    client.previewBatch(
+      {
+        projectId: id,
+        packageId: id,
+        packageVersion: 1,
+        presetId: id,
+        presetVersion: 1,
+        actorIds: [id],
+        purpose: 'web-console',
+        startsAt: '2026-09-23T00:00:00Z',
+        expiresAt: '2026-09-24T00:00:00Z',
+        reason: action.reason,
+      },
+      id,
+    ),
+  ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
+  await expect(
+    client.decideBatch({ ...action, decision: 'approve' }, id),
+  ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
+  await expect(client.executeBatch(action, id)).rejects.toMatchObject({
+    code: 'PREVIEW_EXPIRED',
+  });
+  await expect(client.withdrawBatch(action, id)).rejects.toMatchObject({
+    code: 'PREVIEW_EXPIRED',
+  });
+  const urls = fetch.mock.calls.map(([url]) => address(url));
+  expect(urls[0]).toContain(
+    `/projects/${id}/resource-batches?offset=0&limit=20&status=pending`,
+  );
+  for (const [index, verb] of [
+    'preview',
+    'decide',
+    'execute',
+    'withdraw',
+  ].entries())
+    expect(urls[index + 1]).toBe(
+      `${origin}/api/platform/v1/access/resource-batches/${verb}`,
+    );
+  for (const [, options] of fetch.mock.calls)
+    expect(options).toMatchObject({
+      cache: 'no-store',
+      redirect: 'error',
+      headers: { Authorization: 'Bearer verified' },
+    });
+});

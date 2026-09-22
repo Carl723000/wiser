@@ -166,6 +166,7 @@ it('forwards bounded batch browsing and preview only through the verified server
       method: 'POST',
       headers: {
         origin: 'http://wiser.test',
+        host: 'wiser.test',
         'content-type': 'application/json',
         'idempotency-key': projectId,
       },

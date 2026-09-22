@@ -1,5 +1,15 @@
 import 'server-only';
 import {
+  ResourceBatchesQuerySchema,
+  ResourceBatchesPageSchema,
+  ResourceBatchPreviewCommandSchema,
+  ResourceBatchDecisionSchema,
+  ResourceBatchActionSchema,
+  ResourceBatchViewSchema,
+  type ResourceBatchesQuery,
+  type ResourceBatchPreviewCommand,
+  type ResourceBatchDecision,
+  type ResourceBatchAction,
   ResourceDefinitionsQuerySchema,
   ResourceDefinitionsPageSchema,
   ResourcePackageCommandSchema,
@@ -40,6 +50,12 @@ import { verifiedSessionAccessToken } from './supabase/verified-session';
 import { createWiserServerSupabaseClient } from './supabase/server';
 
 const errorCodes = new Set([
+  'PREVIEW_EXPIRED',
+  'REQUEST_STATE_CONFLICT',
+  'MEMBERSHIP_CHANGED',
+  'AUTHORITY_CHANGED',
+  'IMPORTANT_APPROVAL_REQUIRED',
+  'SELF_CHANGE_FORBIDDEN',
   'NOT_AUTHENTICATED',
   'NOT_AUTHORIZED',
   'VERSION_CONFLICT',
@@ -168,6 +184,51 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    batches(id: string, input: ResourceBatchesQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourceBatchesQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        ...(p.status ? { status: p.status } : {}),
+      });
+      return call(
+        `projects/${id}/resource-batches?${query}`,
+        ResourceBatchesPageSchema,
+      );
+    },
+    previewBatch(command: ResourceBatchPreviewCommand, key: string) {
+      return call(
+        'resource-batches/preview',
+        ResourceBatchViewSchema,
+        ResourceBatchPreviewCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    decideBatch(command: ResourceBatchDecision, key: string) {
+      return call(
+        'resource-batches/decide',
+        ResourceBatchViewSchema,
+        ResourceBatchDecisionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    executeBatch(command: ResourceBatchAction, key: string) {
+      return call(
+        'resource-batches/execute',
+        ResourceBatchViewSchema,
+        ResourceBatchActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    withdrawBatch(command: ResourceBatchAction, key: string) {
+      return call(
+        'resource-batches/withdraw',
+        ResourceBatchViewSchema,
+        ResourceBatchActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     definitions(id: string, input: ResourceDefinitionsQuery) {
       PlatformUuidSchema.parse(id);
       const page = ResourceDefinitionsQuerySchema.parse(input);

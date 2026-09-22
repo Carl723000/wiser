@@ -1,4 +1,8 @@
 import {
+  ResourceBatchesQuerySchema,
+  ResourceBatchPreviewCommandSchema,
+  ResourceBatchDecisionSchema,
+  ResourceBatchActionSchema,
   ResourceDefinitionsQuerySchema,
   ResourcePackageCommandSchema,
   ResourcePresetCommandSchema,
@@ -38,6 +42,23 @@ export async function GET(
   context: Context,
 ): Promise<Response> {
   const { action } = await context.params;
+  if (action === 'resource-batches') {
+    const { projectId, ...input } = Object.fromEntries(
+      new URL(request.url).searchParams,
+    );
+    const project = PlatformUuidSchema.safeParse(projectId),
+      page = ResourceBatchesQuerySchema.safeParse(input);
+    if (!project.success || !page.success)
+      return fail(400, 'VALIDATION_FAILED');
+    try {
+      return Response.json(
+        await getProjectAccessClient().batches(project.data, page.data),
+        { headers },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  }
   if (action === 'resource-definitions') {
     const { projectId, ...query } = Object.fromEntries(
       new URL(request.url).searchParams,
@@ -107,7 +128,11 @@ export async function POST(
     action !== 'withdraw-request' &&
     action !== 'execute-request' &&
     action !== 'resource-package' &&
-    action !== 'resource-preset'
+    action !== 'resource-preset' &&
+    action !== 'resource-batch-preview' &&
+    action !== 'resource-batch-decide' &&
+    action !== 'resource-batch-execute' &&
+    action !== 'resource-batch-withdraw'
   )
     return fail(404, 'NOT_FOUND');
   if (!request.headers.get('content-type')?.startsWith('application/json'))
@@ -155,6 +180,33 @@ export async function POST(
   if (!key.success) return fail(400, 'VALIDATION_FAILED');
   try {
     const client = getProjectAccessClient();
+    if (action === 'resource-batch-preview') {
+      const command = ResourceBatchPreviewCommandSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.previewBatch(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'resource-batch-decide') {
+      const command = ResourceBatchDecisionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.decideBatch(command.data, key.data), {
+        headers,
+      });
+    }
+    if (
+      action === 'resource-batch-execute' ||
+      action === 'resource-batch-withdraw'
+    ) {
+      const command = ResourceBatchActionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        action === 'resource-batch-execute'
+          ? await client.executeBatch(command.data, key.data)
+          : await client.withdrawBatch(command.data, key.data),
+        { headers },
+      );
+    }
     if (action === 'resource-package') {
       const command = ResourcePackageCommandSchema.safeParse(body);
       if (!command.success) return fail(400, 'VALIDATION_FAILED');
