@@ -1,4 +1,8 @@
 import {
+  ProjectAccessRequestSchema,
+  ProjectAccessRequestActionSchema,
+  ProjectAccessRequestDecisionSchema,
+  ProjectAccessRequestWithdrawalSchema,
   PlatformUuidSchema,
   ProjectAccessPageSchema,
   ProjectAccessGrantSchema,
@@ -31,7 +35,13 @@ export async function GET(
   context: Context,
 ): Promise<Response> {
   const { action } = await context.params;
-  if (action !== 'projects' && action !== 'members' && action !== 'invitations')
+  if (
+    action !== 'projects' &&
+    action !== 'members' &&
+    action !== 'invitations' &&
+    action !== 'requests' &&
+    action !== 'events'
+  )
     return fail(404, 'NOT_FOUND');
   const query = Object.fromEntries(new URL(request.url).searchParams);
   const { projectId, ...pageInput } = query;
@@ -50,7 +60,11 @@ export async function GET(
         ? await client.projects(page.data)
         : action === 'members'
           ? await client.members(projectId, page.data)
-          : await client.invitations(projectId, page.data),
+          : action === 'invitations'
+            ? await client.invitations(projectId, page.data)
+            : action === 'requests'
+              ? await client.requests(projectId, page.data)
+              : await client.events(projectId, page.data),
       { headers },
     );
   } catch (error) {
@@ -67,7 +81,11 @@ export async function POST(
     action !== 'grant' &&
     action !== 'revoke' &&
     action !== 'invite' &&
-    action !== 'deliver-invitation'
+    action !== 'deliver-invitation' &&
+    action !== 'request' &&
+    action !== 'decide-request' &&
+    action !== 'withdraw-request' &&
+    action !== 'execute-request'
   )
     return fail(404, 'NOT_FOUND');
   if (!request.headers.get('content-type')?.startsWith('application/json'))
@@ -115,6 +133,36 @@ export async function POST(
   if (!key.success) return fail(400, 'VALIDATION_FAILED');
   try {
     const client = getProjectAccessClient();
+    if (action === 'request') {
+      const command = ProjectAccessRequestSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.requestAccess(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'decide-request') {
+      const command = ProjectAccessRequestDecisionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.decideRequest(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'withdraw-request') {
+      const command = ProjectAccessRequestWithdrawalSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.withdrawRequest(command.data, key.data),
+        { headers },
+      );
+    }
+    if (action === 'execute-request') {
+      const command = ProjectAccessRequestActionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.executeRequest(command.data, key.data),
+        { headers },
+      );
+    }
     if (action === 'invite') {
       const command = ProjectAccessInviteSchema.safeParse(body);
       if (!command.success) return fail(400, 'VALIDATION_FAILED');

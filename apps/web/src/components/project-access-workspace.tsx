@@ -8,11 +8,13 @@ import {
 } from '@wiser/platform-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './project-access-workspace.module.css';
+import { ProjectAccessRequests } from './project-access-requests';
 import { ProjectInvitations } from './project-invitations';
 type Props = {
   locale: Locale;
   initial: { items: readonly ProjectAccessProjectView[]; hasMore: boolean };
   environmentLabel: string;
+  viewerId: string;
 };
 function formText(form: FormData, key: string): string {
   const value = form.get(key);
@@ -197,11 +199,12 @@ export function ProjectAccessWorkspace({
   locale,
   initial,
   environmentLabel,
+  viewerId,
 }: Props) {
   const t = getDictionary(locale).projectAccess;
   const [projects, setProjects] = useState(initial);
   const [projectId, setProjectId] = useState(initial.items[0]?.projectId ?? '');
-  const [view, setView] = useState<'mine' | 'members'>('mine');
+  const [view, setView] = useState<'mine' | 'members' | 'approvals'>('mine');
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectLoading, setProjectLoading] = useState(false);
@@ -384,8 +387,22 @@ export function ProjectAccessWorkspace({
                     {t.members}
                   </button>
                 ) : null}
+                {project.canApprove ? (
+                  <button
+                    aria-pressed={view === 'approvals'}
+                    onClick={() => setView('approvals')}
+                  >
+                    {t.approvals}
+                  </button>
+                ) : null}
               </nav>
-              <h2>{view === 'mine' ? t.mine : t.members}</h2>
+              <h2>
+                {view === 'mine'
+                  ? t.mine
+                  : view === 'members'
+                    ? t.members
+                    : t.approvals}
+              </h2>
               {view === 'mine' ? (
                 <>
                   <dl className={styles.facts}>
@@ -423,7 +440,28 @@ export function ProjectAccessWorkspace({
                     <p>{t.expiryHint}</p>
                     <p>{t.readScope}</p>
                   </details>
+                  <button
+                    onClick={() =>
+                      void findProjects(projectSearch, projectPage)
+                    }
+                  >
+                    {t.retry}
+                  </button>
+                  <ProjectAccessRequests
+                    key={project.projectId}
+                    locale={locale}
+                    project={project}
+                    viewerId={viewerId}
+                  />
                 </>
+              ) : view === 'approvals' ? (
+                <ProjectAccessRequests
+                  key={project.projectId}
+                  locale={locale}
+                  project={project}
+                  viewerId={viewerId}
+                  review
+                />
               ) : (
                 <>
                   <form

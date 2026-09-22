@@ -309,4 +309,279 @@ describe.skipIf(!url)('project request decisions and effective access', () => {
       ).items[0]?.version,
     ).toBe(1);
   });
+  it('refuses self-approval and concurrent contradictory decisions', async () => {
+    const self = await service.requestAccess({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        roleKey: 'data-reader',
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        reason: 'Synthetic self-approval denial',
+      },
+    });
+    await expect(
+      service.decideRequest({
+        token: 'owner',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId: project,
+          requestId: self.id,
+          expectedVersion: self.version,
+          decision: 'approve',
+          reason: 'Cannot approve my own request',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'SELF_CHANGE_FORBIDDEN' });
+    await service.withdrawRequest({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: self.id,
+        expectedVersion: self.version,
+        reason: 'Cleanly withdraw synthetic request',
+      },
+    });
+    const pending = await request();
+    const decisions = await Promise.allSettled(
+      (['approve', 'reject'] as const).map((decision) =>
+        service.decideRequest({
+          token: 'owner',
+          idempotencyKey: randomUUID(),
+          command: {
+            projectId: project,
+            requestId: pending.id,
+            expectedVersion: pending.version,
+            decision,
+            reason: 'Concurrent synthetic reviewer decision',
+          },
+        }),
+      ),
+    );
+    expect(decisions.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(decisions.find((x) => x.status === 'rejected')).toMatchObject({
+      reason: { code: 'VERSION_CONFLICT' },
+    });
+    expect(
+      (
+        await pool.query(
+          'select actor_id from platform.project_memberships where project_id=$1 and actor_id=$2',
+          [project, actorId],
+        )
+      ).rowCount,
+    ).toBe(0);
+  });
+  it('does not revive an approved request after its expiry', async () => {
+    const pending = await request();
+    const approved = await service.decideRequest({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: pending.id,
+        expectedVersion: pending.version,
+        decision: 'approve',
+        reason: 'Synthetic approval before expiry',
+      },
+    });
+    await pool.query(
+      "update platform_private.project_access_requests set created_at=now()-interval '2 days',expires_at=now()-interval '1 day' where id=$1",
+      [approved.id],
+    );
+    const failed = await service.executeRequest({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: approved.id,
+        expectedVersion: approved.version,
+      },
+    });
+    expect(failed).toMatchObject({
+      status: 'expired',
+      lastErrorCode: 'INVALID_EXPIRY',
+    });
+    expect(
+      (
+        await pool.query(
+          'select actor_id from platform.project_memberships where project_id=$1 and actor_id=$2',
+          [project, actorId],
+        )
+      ).rowCount,
+    ).toBe(0);
+  });
+
+  it('allows the applicant to cancel an unexecuted approval and resubmit safely', async () => {
+    const pending = await request();
+    const approved = await service.decideRequest({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: pending.id,
+        expectedVersion: pending.version,
+        decision: 'approve',
+        reason: 'Approval awaiting execution',
+      },
+    });
+    const withdrawn = await service.withdrawRequest({
+      token: 'reader',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: approved.id,
+        expectedVersion: approved.version,
+        reason:
+          'Original reviewer unavailable; cancel before a fresh independent review',
+      },
+    });
+    expect(withdrawn.status).toBe('withdrawn');
+    await expect(
+      service.executeRequest({
+        token: 'owner',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId: project,
+          requestId: approved.id,
+          expectedVersion: approved.version,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+    expect((await request()).status).toBe('pending');
+  });
+  it('reports future-effective membership as changed rather than currently active', async () => {
+    const pending = await request();
+    const approved = await service.decideRequest({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: pending.id,
+        expectedVersion: pending.version,
+        decision: 'approve',
+        reason: 'Temporary access',
+      },
+    });
+    const applied = await service.executeRequest({
+      token: 'owner',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: approved.id,
+        expectedVersion: approved.version,
+      },
+    });
+    await pool.query(
+      "update platform.project_memberships set effective_at=now()+interval '1 hour' where project_id=$1 and actor_id=$2",
+      [project, actorId],
+    );
+    const own = await service.requests({
+      token: 'reader',
+      projectId: project,
+      page: { offset: 0, limit: 20, search: '' },
+    });
+    expect(own.items.find((x) => x.id === applied.id)?.accessState).toBe(
+      'changed',
+    );
+  });
+
+  it('rechecks a separate approver binding before execution and keeps their scope distinct from management', async () => {
+    const approverId = randomUUID(),
+      approvalSession = randomUUID(),
+      roleId = randomUUID();
+    await pool.query('insert into auth.users(id,email) values($1,$2)', [
+      approverId,
+      `approver-${approverId}@example.test`,
+    ]);
+    await pool.query('insert into auth.sessions(id,user_id) values($1,$2)', [
+      approvalSession,
+      approverId,
+    ]);
+    await pool.query(
+      "insert into platform.roles(id,role_key,system_id,max_security_level) values($1,$2,'platform','L1_INTERNAL')",
+      [roleId, `reviewer-${roleId}`],
+    );
+    await pool.query(
+      "insert into platform.role_scopes(role_id,scope) values($1,'platform.access.approve')",
+      [roleId],
+    );
+    const tenant = (
+      await pool.query<{ tenant_id: string }>(
+        'select tenant_id from platform.projects where id=$1',
+        [project],
+      )
+    ).rows[0]!.tenant_id;
+    await pool.query(
+      'insert into platform.tenant_memberships(tenant_id,actor_id) values($1,$2)',
+      [tenant, approverId],
+    );
+    await pool.query(
+      'insert into platform.project_memberships(project_id,tenant_id,actor_id) values($1,$2,$3)',
+      [project, tenant, approverId],
+    );
+    const binding = randomUUID();
+    await pool.query(
+      'insert into platform.role_bindings(id,actor_id,tenant_id,project_id,role_id,created_by_actor_id) values($1,$2,$3,$4,$5,$2)',
+      [binding, approverId, tenant, project, roleId],
+    );
+    const reviewer = new PostgresProjectAccessService({
+      pool: transactionPool,
+      verifyHuman: () =>
+        Promise.resolve({ userId: approverId, sessionId: approvalSession }),
+    });
+    await expect(
+      reviewer.members({
+        token: 'reviewer',
+        projectId: project,
+        page: { offset: 0, limit: 20, search: '' },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+    const pending = await request();
+    const approved = await reviewer.decideRequest({
+      token: 'reviewer',
+      idempotencyKey: randomUUID(),
+      command: {
+        projectId: project,
+        requestId: pending.id,
+        expectedVersion: pending.version,
+        decision: 'approve',
+        reason: 'Independent reviewer',
+      },
+    });
+    await pool.query(
+      "update platform.role_bindings set status='revoked' where id=$1",
+      [binding],
+    );
+    await expect(
+      reviewer.executeRequest({
+        token: 'reviewer',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId: project,
+          requestId: approved.id,
+          expectedVersion: approved.version,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+    expect(
+      (
+        await pool.query(
+          'select actor_id from platform.project_memberships where project_id=$1 and actor_id=$2',
+          [project, actorId],
+        )
+      ).rowCount,
+    ).toBe(0);
+    await expect(
+      service.executeRequest({
+        token: 'owner',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId: project,
+          requestId: approved.id,
+          expectedVersion: approved.version,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+  });
 });

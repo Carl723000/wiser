@@ -1,5 +1,16 @@
 import 'server-only';
 import {
+  ProjectAccessRequestSchema,
+  ProjectAccessRequestActionSchema,
+  ProjectAccessRequestDecisionSchema,
+  ProjectAccessRequestWithdrawalSchema,
+  ProjectAccessRequestViewSchema,
+  ProjectAccessRequestsPageSchema,
+  ProjectAccessEventsPageSchema,
+  type ProjectAccessRequest,
+  type ProjectAccessRequestAction,
+  type ProjectAccessRequestDecision,
+  type ProjectAccessRequestWithdrawal,
   PlatformUuidSchema,
   ProjectAccessPageSchema,
   ProjectAccessGrantSchema,
@@ -32,6 +43,9 @@ const errorCodes = new Set([
   'MEMBER_UNAVAILABLE',
   'INVITATION_UNAVAILABLE',
   'DELIVERY_IN_PROGRESS',
+  'REQUEST_UNAVAILABLE',
+  'REQUEST_ALREADY_PENDING',
+  'REQUEST_STATE_CONFLICT',
   'VALIDATION_FAILED',
 ]);
 export class ProjectAccessWebError extends Error {
@@ -144,6 +158,52 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    requests(id: string, page: ProjectAccessPage) {
+      PlatformUuidSchema.parse(id);
+      return call(
+        `projects/${id}/requests?${pageQuery(page)}`,
+        ProjectAccessRequestsPageSchema,
+      );
+    },
+    events(id: string, page: ProjectAccessPage) {
+      PlatformUuidSchema.parse(id);
+      return call(
+        `projects/${id}/events?${pageQuery(page)}`,
+        ProjectAccessEventsPageSchema,
+      );
+    },
+    requestAccess(command: ProjectAccessRequest, key: string) {
+      return call(
+        'requests',
+        ProjectAccessRequestViewSchema,
+        ProjectAccessRequestSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    decideRequest(command: ProjectAccessRequestDecision, key: string) {
+      return call(
+        'request-decisions',
+        ProjectAccessRequestViewSchema,
+        ProjectAccessRequestDecisionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    withdrawRequest(command: ProjectAccessRequestWithdrawal, key: string) {
+      return call(
+        'request-withdrawals',
+        ProjectAccessRequestViewSchema,
+        ProjectAccessRequestWithdrawalSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    executeRequest(command: ProjectAccessRequestAction, key: string) {
+      return call(
+        'request-executions',
+        ProjectAccessRequestViewSchema,
+        ProjectAccessRequestActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     projects(page: ProjectAccessPage) {
       return call(
         'projects?' + pageQuery(page).toString(),

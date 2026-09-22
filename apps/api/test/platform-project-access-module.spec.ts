@@ -23,6 +23,12 @@ const member = {
 };
 function fixture() {
   const service = {
+    requests: vi.fn(() => Promise.resolve({ items: [], hasMore: false })),
+    events: vi.fn(() => Promise.resolve({ items: [], hasMore: false })),
+    requestAccess: vi.fn(() => Promise.reject(new Error('not used'))),
+    decideRequest: vi.fn(() => Promise.reject(new Error('not used'))),
+    withdrawRequest: vi.fn(() => Promise.reject(new Error('not used'))),
+    executeRequest: vi.fn(() => Promise.reject(new Error('not used'))),
     invitations: vi.fn(() => Promise.resolve({ items: [], hasMore: false })),
     invite: vi.fn(() => Promise.reject(new Error('Not used'))),
     deliverInvitation: vi.fn(() => Promise.reject(new Error('Not used'))),
@@ -163,5 +169,79 @@ describe('Project access HTTP boundary', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(response.headers['cache-control']).toContain('no-store');
+  });
+  it('does not accept caller identity or approval authority in a request command', async () => {
+    const { app, service } = fixture();
+    for (const extra of [
+      { applicantId: member.actorId },
+      { canApprove: true },
+      { status: 'approved' },
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/platform/v1/access/requests',
+        headers: { ...auth, 'idempotency-key': randomUUID() },
+        payload: {
+          projectId,
+          roleKey: 'data-reader',
+          expiresAt: '2027-01-01T00:00:00Z',
+          reason: 'Read evidence',
+          ...extra,
+        },
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(service.requestAccess).not.toHaveBeenCalled();
+  });
+  it('keeps bounded request and event queries within the specified project', async () => {
+    const { app, service } = fixture();
+    for (const route of ['requests', 'events']) {
+      expect(
+        (
+          await app.inject({
+            url: `/api/platform/v1/access/projects/${projectId}/${route}?limit=51`,
+            headers: auth,
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await app.inject({
+            url: `/api/platform/v1/access/projects/${projectId}/${route}?limit=1&offset=1`,
+            headers: auth,
+          })
+        ).statusCode,
+      ).toBe(200);
+    }
+    expect(service.requests).toHaveBeenCalledWith({
+      token: 'human-session',
+      projectId,
+      page: { limit: 1, offset: 1, search: '' },
+    });
+    expect(service.events).toHaveBeenCalledWith({
+      token: 'human-session',
+      projectId,
+      page: { limit: 1, offset: 1, search: '' },
+    });
+  });
+  it('maps stale request decisions to conflict without exposing private errors', async () => {
+    const { app, service } = fixture();
+    service.decideRequest.mockRejectedValue(
+      new ProjectAccessError('VERSION_CONFLICT'),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/platform/v1/access/request-decisions',
+      headers: { ...auth, 'idempotency-key': randomUUID() },
+      payload: {
+        projectId,
+        requestId: randomUUID(),
+        expectedVersion: 1,
+        decision: 'approve',
+        reason: 'Review evidence',
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ code: 'VERSION_CONFLICT' });
   });
 });

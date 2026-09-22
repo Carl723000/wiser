@@ -23,6 +23,10 @@ const project = {
     { roleKey: 'data-reader', maxDays: 30, scopes: ['data.catalog.read'] },
   ],
 };
+vi.stubGlobal(
+  'fetch',
+  vi.fn(() => Promise.resolve(Response.json({ items: [], hasMore: false }))),
+);
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -30,6 +34,7 @@ afterEach(() => {
 it('shows personal access without presenting member controls to an ordinary reader', () => {
   render(
     <ProjectAccessWorkspace
+      viewerId="33333333-3333-4333-8333-333333333333"
       locale="zh-CN"
       initial={{ items: [project], hasMore: false }}
       environmentLabel="本机演示"
@@ -63,12 +68,14 @@ it('loads the selected project members and clears them when authorization is wit
       Response.json({ code: 'NOT_AUTHORIZED' }, { status: 403 }),
     );
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
-    typeof input === 'string' && input.includes('/invitations?')
+    typeof input === 'string' &&
+    (input.includes('/invitations?') || input.includes('/requests?'))
       ? Promise.resolve(Response.json({ items: [], hasMore: false }))
       : fetch(input, init),
   );
   render(
     <ProjectAccessWorkspace
+      viewerId="33333333-3333-4333-8333-333333333333"
       locale="en"
       initial={{ items: [{ ...project, canManage: true }], hasMore: false }}
       environmentLabel="Local demonstration"
@@ -88,10 +95,27 @@ it('loads the selected project members and clears them when authorization is wit
 it('does not present an active membership without effective roles as usable access', () => {
   render(
     <ProjectAccessWorkspace
+      viewerId="33333333-3333-4333-8333-333333333333"
       locale="zh-CN"
       initial={{ items: [{ ...project, roles: [] }], hasMore: false }}
       environmentLabel="本机演示"
     />,
   );
   expect(screen.queryByText('有效', { exact: true })).toBeNull();
+});
+it('offers an actionable request without exposing approval controls to an ordinary user', () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve(Response.json({ items: [], hasMore: false }))),
+  );
+  render(
+    <ProjectAccessWorkspace
+      viewerId="33333333-3333-4333-8333-333333333333"
+      locale="zh-CN"
+      initial={{ items: [project], hasMore: false }}
+      environmentLabel="本机演示"
+    />,
+  );
+  expect(screen.getByRole('button', { name: '申请访问' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '审批与记录' })).toBeNull();
 });
