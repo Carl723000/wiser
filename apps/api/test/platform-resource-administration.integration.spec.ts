@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
-import { PostgresResourceAdministrationService, PostgresProjectAccessService } from '@wiser/platform-auth';
+import {
+  PostgresResourceAdministrationService,
+  PostgresProjectAccessService,
+} from '@wiser/platform-auth';
 import type { PlatformDelegationTransactionPool } from '@wiser/platform-auth';
 const url = process.env['WISER_RESOURCE_TEST_DATABASE_URL'];
 const project = 'b2000000-0000-4000-8000-000000000001';
@@ -94,9 +97,19 @@ describe.skipIf(!url)(
       await pool.end();
     });
     it('advertises managed resource navigation only from live project authority', async () => {
-      const access = new PostgresProjectAccessService({ pool: txPool, verifyHuman: () => Promise.resolve({ userId: owner, sessionId: sessions.owner }) });
-      const result = await access.projects({ token: 'owner', page: { offset: 0, limit: 20, search: '' } });
-      expect(result.items.find(p => p.projectId === project)).toMatchObject({ resourceAccessEnabled: true, canManage: true });
+      const access = new PostgresProjectAccessService({
+        pool: txPool,
+        verifyHuman: () =>
+          Promise.resolve({ userId: owner, sessionId: sessions.owner }),
+      });
+      const result = await access.projects({
+        token: 'owner',
+        page: { offset: 0, limit: 20, search: '' },
+      });
+      expect(result.items.find((p) => p.projectId === project)).toMatchObject({
+        resourceAccessEnabled: true,
+        canManage: true,
+      });
     });
     it('does not accept an unverified caller or a member without management authority', async () => {
       for (const token of ['invalid', 'reader'])

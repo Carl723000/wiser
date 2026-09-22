@@ -79,6 +79,7 @@ interface ProjectRow {
   name_zh_cn: string;
   name_en: string;
   requests_enabled: boolean;
+  resource_access_enabled?: boolean;
   now: Date;
 }
 interface RequestRow {
@@ -260,7 +261,8 @@ export class PostgresProjectAccessService {
     uuid(projectId);
     const result = await client.query<ProjectRow>(
       `select p.id,p.tenant_id,p.name_zh_cn,p.name_en,
-    coalesce(s.requests_enabled,false) requests_enabled,statement_timestamp() now
+    coalesce(s.requests_enabled,false) requests_enabled,statement_timestamp() now,
+    exists(select 1 from platform_private.resource_access_settings rs where rs.project_id=p.id) resource_access_enabled
     from platform.projects p join platform.tenants t on t.id=p.tenant_id
     left join platform_private.project_access_settings s on s.project_id=p.id
     where p.id=$1 and p.status='active' and t.status='active' for update of p`,
@@ -312,7 +314,8 @@ export class PostgresProjectAccessService {
     return this.#transaction(input.token, async (client, human) => {
       const rows = await client.query<ProjectRow>(
         `select p.id,p.tenant_id,p.name_zh_cn,p.name_en,
-    coalesce(s.requests_enabled,false) requests_enabled,statement_timestamp() now
+    coalesce(s.requests_enabled,false) requests_enabled,statement_timestamp() now,
+    exists(select 1 from platform_private.resource_access_settings rs where rs.project_id=p.id) resource_access_enabled
     from platform.projects p join platform.tenants t on t.id=p.tenant_id
     left join platform_private.project_access_settings s on s.project_id=p.id
     where p.status='active' and t.status='active'
@@ -348,6 +351,7 @@ export class PostgresProjectAccessService {
           canApprove:
             context?.scopes.includes('platform.access.approve') ?? false,
           requestsEnabled: project.requests_enabled,
+          resourceAccessEnabled: project.resource_access_enabled === true,
           memberStatus: member?.status ?? null,
           expiresAt: member?.expiresAt ?? null,
           roles: context?.roles ?? [],

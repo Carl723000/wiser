@@ -1,5 +1,13 @@
 import 'server-only';
 import {
+  ResourceDefinitionsQuerySchema,
+  ResourceDefinitionsPageSchema,
+  ResourcePackageCommandSchema,
+  ResourcePresetCommandSchema,
+  ResourceDefinitionReceiptSchema,
+  type ResourceDefinitionsQuery,
+  type ResourcePackageCommand,
+  type ResourcePresetCommand,
   ProjectAccessRequestSchema,
   ProjectAccessRequestActionSchema,
   ProjectAccessRequestDecisionSchema,
@@ -47,6 +55,8 @@ const errorCodes = new Set([
   'REQUEST_ALREADY_PENDING',
   'REQUEST_STATE_CONFLICT',
   'VALIDATION_FAILED',
+  'RESOURCE_POLICY_NOT_ENABLED',
+  'RESOURCE_UNAVAILABLE',
 ]);
 export class ProjectAccessWebError extends Error {
   constructor(
@@ -158,6 +168,36 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    definitions(id: string, input: ResourceDefinitionsQuery) {
+      PlatformUuidSchema.parse(id);
+      const page = ResourceDefinitionsQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        kind: page.kind,
+        offset: String(page.offset),
+        limit: String(page.limit),
+        search: page.search,
+      });
+      return call(
+        `projects/${id}/resource-definitions?${query}`,
+        ResourceDefinitionsPageSchema,
+      );
+    },
+    savePackage(command: ResourcePackageCommand, key: string) {
+      return call(
+        'resource-packages',
+        ResourceDefinitionReceiptSchema,
+        ResourcePackageCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    savePreset(command: ResourcePresetCommand, key: string) {
+      return call(
+        'resource-presets',
+        ResourceDefinitionReceiptSchema,
+        ResourcePresetCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     requests(id: string, page: ProjectAccessPage) {
       PlatformUuidSchema.parse(id);
       return call(

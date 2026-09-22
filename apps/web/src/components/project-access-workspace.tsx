@@ -11,6 +11,7 @@ import styles from './project-access-workspace.module.css';
 import { ProjectAccessRequests } from './project-access-requests';
 import { ProjectInvitations } from './project-invitations';
 import { ProjectResourceCoverage } from './project-resource-coverage';
+import { ProjectResourceDefinitions } from './project-resource-definitions';
 type Props = {
   locale: Locale;
   initial: { items: readonly ProjectAccessProjectView[]; hasMore: boolean };
@@ -206,7 +207,7 @@ export function ProjectAccessWorkspace({
   const [projects, setProjects] = useState(initial);
   const [projectId, setProjectId] = useState(initial.items[0]?.projectId ?? '');
   const [view, setView] = useState<
-    'overview' | 'mine' | 'members' | 'approvals'
+    'overview' | 'mine' | 'members' | 'approvals' | 'packages' | 'presets'
   >('overview');
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState('');
@@ -415,6 +416,22 @@ export function ProjectAccessWorkspace({
                     {t.approvals}
                   </button>
                 ) : null}
+                {project.canManage && project.resourceAccessEnabled ? (
+                  <>
+                    <button
+                      aria-pressed={view === 'packages'}
+                      onClick={() => setView('packages')}
+                    >
+                      {getDictionary(locale).resourceDefinitions.packages}
+                    </button>
+                    <button
+                      aria-pressed={view === 'presets'}
+                      onClick={() => setView('presets')}
+                    >
+                      {getDictionary(locale).resourceDefinitions.presets}
+                    </button>
+                  </>
+                ) : null}
               </nav>
               <h2>
                 {view === 'overview'
@@ -423,7 +440,11 @@ export function ProjectAccessWorkspace({
                     ? t.mine
                     : view === 'members'
                       ? t.members
-                      : t.approvals}
+                      : view === 'packages'
+                        ? getDictionary(locale).resourceDefinitions.packages
+                        : view === 'presets'
+                          ? getDictionary(locale).resourceDefinitions.presets
+                          : t.approvals}
               </h2>
               {view === 'overview' ? (
                 <ProjectResourceCoverage
@@ -511,6 +532,12 @@ export function ProjectAccessWorkspace({
                     </button>
                   ) : null}
                 </>
+              ) : view === 'packages' || view === 'presets' ? (
+                <ProjectResourceDefinitions
+                  project={project}
+                  locale={locale}
+                  kind={view === 'packages' ? 'package' : 'preset'}
+                />
               ) : view === 'approvals' ? (
                 <ProjectAccessRequests
                   key={project.projectId}

@@ -16,14 +16,58 @@ import { POST, GET } from '../app/api/platform/access/[action]/route';
 const context = (action: string) => ({ params: Promise.resolve({ action }) });
 it('forwards bounded resource definitions and preserves the fixed preset version', async () => {
   const projectId = '11111111-1111-4111-8111-111111111111';
-  client.definitions.mockResolvedValue({ items: [], hasMore: false, authorityRevision: 1 });
-  expect((await GET(new Request(`http://wiser.test/api/platform/access/resource-definitions?projectId=${projectId}&kind=preset`),context('resource-definitions'))).status).toBe(200);
-  expect(client.definitions).toHaveBeenCalledWith(projectId, { kind: 'preset', offset: 0, limit: 20, search: '' });
-  client.savePreset.mockResolvedValue({ kind: 'preset', id: projectId, version: 1, authorityRevision: 1 });
-  const command = { projectId, presetId: projectId, expectedVersion: 0, name: 'Read', actions: ['content.read'], maxDays: 30, approvalLevel: 'ordinary', reason: 'Approved research' };
-  const response = await POST(new Request('http://wiser.test/api/platform/access/resource-preset', { method: 'POST', headers: { origin: 'http://wiser.test', host: 'wiser.test', 'content-type': 'application/json', 'idempotency-key': projectId }, body: JSON.stringify(command) }), context('resource-preset'));
+  client.definitions.mockResolvedValue({
+    items: [],
+    hasMore: false,
+    authorityRevision: 1,
+  });
+  expect(
+    (
+      await GET(
+        new Request(
+          `http://wiser.test/api/platform/access/resource-definitions?projectId=${projectId}&kind=preset`,
+        ),
+        context('resource-definitions'),
+      )
+    ).status,
+  ).toBe(200);
+  expect(client.definitions).toHaveBeenCalledWith(projectId, {
+    kind: 'preset',
+    offset: 0,
+    limit: 20,
+    search: '',
+  });
+  client.savePreset.mockResolvedValue({
+    kind: 'preset',
+    id: projectId,
+    version: 1,
+    authorityRevision: 1,
+  });
+  const command = {
+    projectId,
+    presetId: projectId,
+    expectedVersion: 0,
+    name: 'Read',
+    actions: ['content.read'],
+    maxDays: 30,
+    approvalLevel: 'ordinary',
+    reason: 'Approved research',
+  };
+  const response = await POST(
+    new Request('http://wiser.test/api/platform/access/resource-preset', {
+      method: 'POST',
+      headers: {
+        origin: 'http://wiser.test',
+        host: 'wiser.test',
+        'content-type': 'application/json',
+        'idempotency-key': projectId,
+      },
+      body: JSON.stringify(command),
+    }),
+    context('resource-preset'),
+  );
   expect(response.status).toBe(200);
-  expect(client.savePreset).toHaveBeenCalledWith(command,projectId);
+  expect(client.savePreset).toHaveBeenCalledWith(command, projectId);
 });
 it('rejects a cross-origin mutation before forwarding any identity or command', async () => {
   const response = await POST(

@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 3a94bc769affbe8422a896e68f6b630eb5189608
+lastReviewedCommit: 444ea9510e00f5fc74c4733db3b46fbefd30c916
 ---
 
 # WISER Web / 产品前端
@@ -156,3 +156,5 @@ The normal Data Foundation entry shares the server exploration loader and opens 
 The opt-in account workspace and its isolated real-session browser checks are documented in [Unified Auth](../docs/src/content/docs/en/architecture/unified-auth.md#project-access-workspace) / [统一身份](../docs/src/content/docs/zh-CN/architecture/unified-auth.md#项目访问工作区). It manages only the connected environment. Apply its migration and explicit role policy before enabling both API and Web; the UI never exposes Auth administrative credentials. / 后台只管理所连接环境，页面不能替代迁移和明确授权；邀请需另配服务端邮件与模板，审批通过后仍须显式执行授权；办理结果与当前有效权限分开显示。
 
 The normal account access workspace opens project resource coverage through verified-session HTTP reads, whole-query summaries and bounded resource pages. Selected project context is reauthorized by the API. / 正常账户权限工作区通过已验证会话读取所选项目资料覆盖，采用完整查询汇总和有界资源分页；项目上下文仍由API重新授权。
+
+Managed project managers can create fixed-version resource packages from authorized coverage and versioned presets in the same workspace. Saving definitions does not grant access. / 已启用资源管理的项目管理员可在同一工作区从获准清单创建固定版本资源包及权限预设；保存定义不等于授予权限。
