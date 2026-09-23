@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { Pool, type PoolClient } from 'pg';
 import { expect, it } from 'vitest';
 import { z } from 'zod';
@@ -15,6 +18,42 @@ import { createDataFoundationGraphqlModule } from '../src/data-foundation/graphq
 import { createPostgresDataReadRuntime } from '../src/data-foundation/postgres-read-executors.js';
 import { createDataFoundationRestModule } from '../src/data-foundation/rest-module.js';
 
+type McpRequestHandler = (
+  request: IncomingMessage,
+  response: ServerResponse,
+) => Promise<void>;
+type McpAuthorizer = (
+  request: IncomingMessage,
+) => Promise<McpRequestHandler | null>;
+
+// Keep the API test inside its TypeScript root while loading the real sibling
+// MCP host at runtime; this adds no API-to-MCP production dependency.
+const { createAgentHttpAuthorizer } = (await import(
+  new URL('../../mcp/src/platform/agent-http-authorizer.ts', import.meta.url)
+    .href
+)) as {
+  createAgentHttpAuthorizer: (options: {
+    dataApiUrl: string;
+    fetch: typeof fetch;
+  }) => McpAuthorizer;
+};
+const { closeWiserMcpHttpServer, createWiserMcpHttpServer } = (await import(
+  new URL('../../mcp/src/http-server.ts', import.meta.url).href
+)) as {
+  createWiserMcpHttpServer: (options: {
+    ready: () => boolean;
+    authorize: McpAuthorizer;
+  }) => Server;
+  closeWiserMcpHttpServer: (server: Server) => Promise<void>;
+};
+if (
+  typeof createAgentHttpAuthorizer !== 'function' ||
+  typeof createWiserMcpHttpServer !== 'function' ||
+  typeof closeWiserMcpHttpServer !== 'function'
+) {
+  throw new Error('Expected MCP host modules are unavailable');
+}
+
 const controlUrl =
   process.env['GOAL89_CONTROL_URL'] ??
   process.env['WISER_RESOURCE_TEST_DATABASE_URL'];
@@ -25,24 +64,33 @@ const dataUrl = process.env['DATA_TEST_DATABASE_URL'];
 it.skipIf(
   !controlUrl || !dataUrl || process.env['WISER_DATA_PG_INTEGRATION'] !== '1',
 )(
-  'rechecks two fixed-resource readers through REST and GraphQL in their original sessions after one grant is revoked',
+  'rechecks two fixed-resource readers through REST, GraphQL and MCP in their original sessions after one grant is revoked',
   async () => {
     const controlPool = new Pool({ connectionString: controlUrl, max: 1 });
     const dataPool = new Pool({ connectionString: dataUrl, max: 1 });
     let control: PoolClient | undefined;
     let data: PoolClient | undefined;
     let app: ReturnType<typeof buildApp> | undefined;
+    let mcpServer: ReturnType<typeof createWiserMcpHttpServer> | undefined;
     const tenantId = 'b1000000-0000-4000-8000-000000000001';
     const ownerId = '10000000-0000-4000-8000-000000000005';
     const actors = [
       {
         id: '10000000-0000-4000-8000-000000000001',
-        token: 'goal89-reader-one',
+        token: `wdc1.wdc_${'1'.repeat(22)}.${'1'.repeat(43)}`,
+        mcpToken: 'goal89-mcp-reader-one',
+        connectionId: randomUUID(),
+        clientId: randomUUID(),
+        delegationId: randomUUID(),
         sessionId: randomUUID(),
       },
       {
         id: '10000000-0000-4000-8000-000000000003',
-        token: 'goal89-reader-two',
+        token: `wdc1.wdc_${'2'.repeat(22)}.${'2'.repeat(43)}`,
+        mcpToken: 'goal89-mcp-reader-two',
+        connectionId: randomUUID(),
+        clientId: randomUUID(),
+        delegationId: randomUUID(),
         sessionId: randomUUID(),
       },
     ] as const;
@@ -126,7 +174,7 @@ it.skipIf(
         [actors[1].id, packages[1], readExportPreset, randomUUID()],
       ]) {
         await control.query(
-          "insert into platform_private.resource_grants(id,project_id,actor_id,package_id,package_version,preset_id,preset_version,purpose,starts_at,expires_at,created_by,approved_by,reason) values($1,$2,$3,$4,1,$5,1,'research',now()-interval '1 minute',now()+interval '1 day',$6,$6,'Synthetic same-session acceptance')",
+          "insert into platform_private.resource_grants(id,project_id,actor_id,package_id,package_version,preset_id,preset_version,purpose,starts_at,expires_at,created_by,approved_by,reason) values($1,$2,$3,$4,1,$5,1,'agent-data',now()-interval '1 minute',now()+interval '1 day',$6,$6,'Synthetic same-session acceptance')",
           [grantId, projectId, actorId, packageId, presetId, ownerId],
         );
       }
@@ -186,7 +234,7 @@ it.skipIf(
               !actor ||
               input.tenantId !== tenantId ||
               input.projectId !== projectId ||
-              input.purpose !== 'research'
+              input.purpose !== 'agent-data'
             )
               return null;
             const session = await control!.query(
@@ -205,7 +253,7 @@ it.skipIf(
               authorization: {
                 tenantId,
                 projectId,
-                purpose: 'research',
+                purpose: 'agent-data',
                 roles: ['data-reader'],
                 scopes: ['data.catalog.read'],
                 maxSecurityLevel: 'L1_INTERNAL',
@@ -264,11 +312,141 @@ it.skipIf(
         ],
       });
 
+      const apiFetch: typeof fetch = async (input, init) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        const requestHeaders = new Headers(init?.headers);
+        if (url.pathname === '/api/platform/v1/agent-connections/exchange') {
+          const bearer = requestHeaders.get('authorization');
+          const actor = actors.find(
+            ({ mcpToken }) => bearer === `Bearer ${mcpToken}`,
+          );
+          if (actor === undefined) {
+            return Response.json({ code: 'NOT_AUTHORIZED' }, { status: 403 });
+          }
+          const expiresAt = new Date(Date.now() + 60_000).toISOString();
+          return Response.json({
+            connection: {
+              connectionId: actor.connectionId,
+              clientId: actor.clientId,
+              delegationId: actor.delegationId,
+              tenantId,
+              projectId,
+              scopes: ['data.catalog.read'],
+              purpose: 'agent-data',
+              maxSecurityLevel: 'L1_INTERNAL',
+              status: 'active',
+              expiresAt,
+            },
+            token: actor.token,
+            expiresAt,
+          });
+        }
+        if (
+          !url.pathname.startsWith('/api/data/v1/') ||
+          init?.method !== 'GET'
+        ) {
+          throw new Error('Unexpected synthetic MCP Data API request');
+        }
+        const response = await app!.inject({
+          method: 'GET',
+          url: `${url.pathname}${url.search}`,
+          headers: Object.fromEntries(requestHeaders),
+        });
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: {
+            'Content-Type': String(
+              response.headers['content-type'] ?? 'application/json',
+            ),
+          },
+        });
+      };
+      mcpServer = createWiserMcpHttpServer({
+        ready: () => true,
+        authorize: createAgentHttpAuthorizer({
+          dataApiUrl: 'http://api.invalid/api/data/v1/',
+          fetch: apiFetch,
+        }),
+      });
+      mcpServer.listen(0, '127.0.0.1');
+      await once(mcpServer, 'listening');
+      const mcpOrigin = `http://127.0.0.1:${(mcpServer.address() as AddressInfo).port}`;
+      let mcpRequestId = 0;
+      const callMcp = async (
+        token: string,
+        name: string,
+        args: Readonly<Record<string, unknown>>,
+      ) => {
+        const response = await fetch(`${mcpOrigin}/mcp`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: 'application/json, text/event-stream',
+            'content-type': 'application/json',
+            'mcp-protocol-version': '2025-03-26',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: ++mcpRequestId,
+            method: 'tools/call',
+            params: { name, arguments: args },
+          }),
+        });
+        expect(response.status).toBe(200);
+        return z
+          .object({
+            result: z.object({
+              isError: z.boolean().optional(),
+              structuredContent: z
+                .object({ ok: z.boolean(), data: z.json().optional() })
+                .passthrough(),
+            }),
+          })
+          .parse(await response.json());
+      };
+      const readMcp = async (token: string) => {
+        const result = await callMcp(token, 'data_catalog_search', {
+          query: 'Goal89 live',
+          first: 10,
+          includeTotal: true,
+        });
+        expect(result.result.structuredContent.ok).toBe(true);
+        return z
+          .object({
+            items: z.array(z.object({ dataItemId: z.uuid() })),
+            totalCount: z.number().int(),
+          })
+          .parse(result.result.structuredContent.data);
+      };
+      const readMcpItem = (token: string, dataItemId: string) =>
+        callMcp(token, 'data_catalog_get', { dataItemId });
+
+      const missingMcpIdentity = await fetch(`${mcpOrigin}/mcp`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-03-26',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: ++mcpRequestId,
+          method: 'tools/call',
+          params: {
+            name: 'data_catalog_search',
+            arguments: { query: 'Goal89 live', first: 10 },
+          },
+        }),
+      });
+      expect(missingMcpIdentity.status).toBe(401);
+
       const headers = (token: string) => ({
         authorization: `Bearer ${token}`,
         'x-wiser-tenant-id': tenantId,
         'x-wiser-project-id': projectId,
-        'x-wiser-purpose': 'research',
+        'x-wiser-purpose': 'agent-data',
       });
       const readRest = async (token: string) => {
         const response = await app!.inject({
@@ -333,18 +511,40 @@ it.skipIf(
       expect(
         ids((await readGraphql(actors[1].token)).data.dataCatalog.nodes),
       ).toEqual(secondId);
+      const firstMcpInitial = await readMcp(actors[0].mcpToken);
+      const secondMcpInitial = await readMcp(actors[1].mcpToken);
+      expect(ids(firstMcpInitial.items)).toEqual(bothIds);
+      expect(firstMcpInitial.totalCount).toBe(2);
+      expect(ids(secondMcpInitial.items)).toEqual(secondId);
+      expect(secondMcpInitial.totalCount).toBe(1);
+      expect(
+        (await readMcpItem(actors[0].mcpToken, sources[0].dataItemId)).result
+          .structuredContent.ok,
+      ).toBe(true);
+      const initiallyDeniedMcpItem = await readMcpItem(
+        actors[1].mcpToken,
+        sources[0].dataItemId,
+      );
+      expect(initiallyDeniedMcpItem.result.isError).toBe(true);
+      expect(initiallyDeniedMcpItem.result.structuredContent.ok).toBe(false);
+      expect(JSON.stringify(initiallyDeniedMcpItem)).not.toContain(
+        sources[0].name,
+      );
+      expect(JSON.stringify(initiallyDeniedMcpItem)).not.toContain(
+        sources[0].dataItemId,
+      );
       const firstBefore = await resolver.resolve({
         token: actors[0].token,
         tenantId,
         projectId,
-        purpose: 'research',
+        purpose: 'agent-data',
         traceId: 'a'.repeat(32),
       });
       const secondBefore = await resolver.resolve({
         token: actors[1].token,
         tenantId,
         projectId,
-        purpose: 'research',
+        purpose: 'agent-data',
         traceId: 'b'.repeat(32),
       });
       const firstScope = firstBefore?.authorization.resourceAccess?.scope;
@@ -363,7 +563,7 @@ it.skipIf(
         token: actors[0].token,
         tenantId,
         projectId,
-        purpose: 'research',
+        purpose: 'agent-data',
         traceId: 'c'.repeat(32),
       });
       expect(firstAfter?.principal.sessionId).toBe(
@@ -374,6 +574,9 @@ it.skipIf(
       ).toBeGreaterThan(
         firstBefore?.authorization.resourceAccess?.revision ?? 0,
       );
+      expect(firstAfter?.authorization.resourceAccess?.scope.mode).toBe(
+        'managed',
+      );
       const firstRevoked = await readRest(actors[0].token);
       expect(ids(firstRevoked.items)).toEqual(secondId);
       expect(firstRevoked.totalCount).toBe(1);
@@ -383,11 +586,30 @@ it.skipIf(
       expect(
         ids((await readGraphql(actors[0].token)).data.dataCatalog.nodes),
       ).toEqual(secondId);
+      const firstMcpRevoked = await readMcp(actors[0].mcpToken);
+      expect(ids(firstMcpRevoked.items)).toEqual(secondId);
+      expect(firstMcpRevoked.totalCount).toBe(1);
+      const revokedMcpItem = await readMcpItem(
+        actors[0].mcpToken,
+        sources[0].dataItemId,
+      );
+      expect(revokedMcpItem.result.isError).toBe(true);
+      expect(revokedMcpItem.result.structuredContent.ok).toBe(false);
+      expect(JSON.stringify(revokedMcpItem)).not.toContain(sources[0].name);
+      expect(JSON.stringify(revokedMcpItem)).not.toContain(
+        sources[0].dataItemId,
+      );
+      expect(ids((await readMcp(actors[1].mcpToken)).items)).toEqual(secondId);
+      expect(
+        (await readMcpItem(actors[1].mcpToken, sources[1].dataItemId)).result
+          .structuredContent.ok,
+      ).toBe(true);
       expect(ids((await readRest(actors[1].token)).items)).toEqual(secondId);
       expect(
         ids((await readGraphql(actors[1].token)).data.dataCatalog.nodes),
       ).toEqual(secondId);
     } finally {
+      if (mcpServer) await closeWiserMcpHttpServer(mcpServer);
       await app?.close();
       if (data) {
         await data.query('rollback').catch(() => undefined);
