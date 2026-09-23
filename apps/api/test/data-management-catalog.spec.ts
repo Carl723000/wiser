@@ -56,19 +56,21 @@ function fixture() {
           release() {},
           query: <Row>() =>
             Promise.resolve({
-              rows: [{
-                snapshot: {
-                  mode: 'managed',
-                  tenantId: context.authorization.tenantId,
-                  projectId: context.authorization.projectId,
-                  actorId,
-                  purpose: context.authorization.purpose,
-                  now: new Date().toISOString(),
-                  revision: 1,
-                  grants: [],
-                  limits: [],
+              rows: [
+                {
+                  snapshot: {
+                    mode: 'managed',
+                    tenantId: context.authorization.tenantId,
+                    projectId: context.authorization.projectId,
+                    actorId,
+                    purpose: context.authorization.purpose,
+                    now: new Date().toISOString(),
+                    revision: 1,
+                    grants: [],
+                    limits: [],
+                  },
                 },
-              }] as Row[],
+              ] as Row[],
               rowCount: 1,
             }),
         },
@@ -83,7 +85,11 @@ describe('separately appointed management metadata catalog', () => {
   it('requires one live, context-bound permit before opening Data', async () => {
     const f = fixture();
     await expect(
-      f.read({ context: f.context, page: f.page, signal: new AbortController().signal }),
+      f.read({
+        context: f.context,
+        page: f.page,
+        signal: new AbortController().signal,
+      }),
     ).rejects.toThrow();
     expect(f.connect).not.toHaveBeenCalled();
     const permit = await f.permit();
@@ -91,7 +97,10 @@ describe('separately appointed management metadata catalog', () => {
       f.read({
         context: {
           ...f.context,
-          authorization: { ...f.context.authorization, projectId: randomUUID() },
+          authorization: {
+            ...f.context.authorization,
+            projectId: randomUUID(),
+          },
         },
         page: f.page,
         signal: new AbortController().signal,
@@ -117,9 +126,17 @@ describe('separately appointed management metadata catalog', () => {
     const statements = f.query.mock.calls.map(([sql]) => sql.toLowerCase());
     expect(statements).toContain('begin read only');
     expect(statements).toContain('set local role wiser_data_metadata');
-    expect(statements.some((sql) => sql.includes("set_config('wiser.resource_scope','',true)"))).toBe(true);
-    expect(statements.join('\n')).toContain('length(trim(i.authorization_scope))>0');
-    expect(statements.join('\n')).not.toMatch(/catalog\.asset|knowledge\.evidence_fragment/);
+    expect(
+      statements.some((sql) =>
+        sql.includes("set_config('wiser.resource_scope','',true)"),
+      ),
+    ).toBe(true);
+    expect(statements.join('\n')).toContain(
+      'length(trim(i.authorization_scope))>0',
+    );
+    expect(statements.join('\n')).not.toMatch(
+      /catalog\.asset|knowledge\.evidence_fragment/,
+    );
     expect(f.release).toHaveBeenCalledOnce();
     await expect(
       f.read({

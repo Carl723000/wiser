@@ -383,27 +383,45 @@ it('transports source stewardship with fresh identity, fixed versions and strict
 it('reads the management catalog through a freshly verified session and rejects malformed metadata', async () => {
   const id = '11111111-1111-4111-8111-111111111111';
   const item = {
-    dataItemId: id, versionId: id, name: 'River source',
-    sourceOrganization: 'Synthetic provider', versionNumber: 1,
-    securityLevel: 'L0_PUBLIC', processingStage: 'RAW',
-    publicationStatus: 'PUBLISHED', acceptanceStatus: 'PASSED',
-    policyId: null, expectedPolicyVersion: 0,
+    dataItemId: id,
+    versionId: id,
+    name: 'River source',
+    sourceOrganization: 'Synthetic provider',
+    versionNumber: 1,
+    securityLevel: 'L0_PUBLIC',
+    processingStage: 'RAW',
+    publicationStatus: 'PUBLISHED',
+    acceptanceStatus: 'PASSED',
+    policyId: null,
+    expectedPolicyVersion: 0,
   };
-  const fetch = vi.fn<typeof globalThis.fetch>()
-    .mockResolvedValueOnce(Response.json({
-      items: [item], hasMore: false,
-      checkedAt: '2026-09-23T00:00:00Z', managementRoleOptions: ['platform-owner'],
-    }))
-    .mockResolvedValueOnce(Response.json({
-      items: [{ ...item, sourceContact: 'must not cross this port' }],
-      hasMore: false, checkedAt: '2026-09-23T00:00:00Z',
-      managementRoleOptions: [],
-    }));
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [item],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+        managementRoleOptions: ['platform-owner'],
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [{ ...item, sourceContact: 'must not cross this port' }],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+        managementRoleOptions: [],
+      }),
+    );
   const client = createProjectAccessClient({
-    origin, token: () => Promise.resolve('fresh-human-session'), fetch,
+    origin,
+    token: () => Promise.resolve('fresh-human-session'),
+    fetch,
   });
   const page = await client.managementCatalog(id, {
-    offset: 0, limit: 20, search: 'River',
+    offset: 0,
+    limit: 20,
+    search: 'River',
   });
   expect(page.items[0]).toMatchObject({ dataItemId: id, versionId: id });
   expect(address(fetch.mock.calls[0]?.[0])).toContain(
@@ -413,7 +431,11 @@ it('reads the management catalog through a freshly verified session and rejects 
     cache: 'no-store',
     headers: { Authorization: 'Bearer fresh-human-session' },
   });
-  await expect(client.managementCatalog(id, {
-    offset: 0, limit: 20, search: '',
-  })).rejects.toMatchObject({ message: 'ACCESS_UNAVAILABLE' });
+  await expect(
+    client.managementCatalog(id, {
+      offset: 0,
+      limit: 20,
+      search: '',
+    }),
+  ).rejects.toMatchObject({ message: 'ACCESS_UNAVAILABLE' });
 });
