@@ -1,3 +1,7 @@
+import {
+  consumeResourceManagementPermit,
+  type ResourceAdministrationOptions,
+} from '@wiser/platform-auth';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
@@ -59,7 +63,18 @@ describe.skipIf(!url)(
           release() {},
         }),
     };
-    const validatePackage = vi.fn(() => Promise.resolve(true));
+    const validatePackage = vi.fn<
+      ResourceAdministrationOptions['validatePackage']
+    >((input) =>
+      Promise.resolve(
+        consumeResourceManagementPermit(
+          input.managementPermit,
+          input.context,
+          input.command.resources,
+          input.command.allowedActions,
+        ) !== null,
+      ),
+    );
     const service = new PostgresResourceAdministrationService({
       pool: txPool,
       validatePackage,

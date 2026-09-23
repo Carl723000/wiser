@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 3b65807f7603eaecd9def2d8d32d7f048293a67b
+lastReviewedCommit: c5167b6c
 ---
 
 ## External metadata reader boundary
@@ -443,4 +443,4 @@ REST, GraphQL, evidence, STAC and map response delivery resolves authority again
 
 Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
 
-Resource administration is composed only when project access is enabled and the Data runtime supplies its trusted package-validation port. This port checks all fixed versions in one bounded SQL query under current tenant, project, security and resource RLS, including publication and acceptance. An absent source authorization statement fails validation. The entered license basis remains a manager declaration for independent review; it is not automatically established legal permission. External-source definitions fail closed until the separate permitted-source registry port is available. No control-plane/Data database join or browser-provided authority snapshot is used.
+Resource administration uses a metadata-only validation port. After checking the current source policy under control-plane project/settings locks, Platform issues a process-local, single-use permit bound to the verified actor/session, tenant, project, purpose, roles, scopes, security ceiling, authority version, exact resources and requested actions. It expires within five seconds and never outlives source permission. A serialized copy, changed request or replay is rejected before Data access. The port performs one bounded boolean check of fixed versions, publication, acceptance and source authorization text in a private read-only transaction. It installs only those exact references in the existing transaction-local version RLS transport; it never changes personal grants or passes that connection/scope to content, evidence, original or export adapters. Tenant/project/security RLS remains effective. Cancellation and expired results fail closed. Personal content access is neither required nor granted. External sources still require their separate registry port; management coverage browsing remains a separate integration gate.

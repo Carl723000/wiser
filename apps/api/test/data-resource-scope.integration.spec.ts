@@ -1,4 +1,5 @@
-import { assertResourceManagementPolicy } from '../../../packages/platform-auth/src/resource-management-policy.js';
+import { authorizeManagementMetadata } from './resource-management-fixture.js';
+import { assertResourceManagementPolicy } from '@wiser/platform-auth';
 import { z } from 'zod';
 import { createDataResourcePackageValidator } from '../src/data-foundation/resource-package-validator.js';
 import { PostgresProjectionReadAuthority } from '../src/data-foundation/query-adapters.js';
@@ -164,7 +165,8 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           reason: 'Verify exact version availability',
         },
       };
-      expect(await validatePackage(packageInput)).toBe(true);
+      // Personal visibility alone is not independent management authorization.
+      expect(await validatePackage(packageInput)).toBe(false);
       expect(
         await validatePackage({
           ...packageInput,
@@ -202,7 +204,9 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       const manager = structuredClone(packageInput.context);
       manager.authorization.scopes = ['platform.membership.manage'];
       manager.authorization.roles = ['source-steward'];
-      manager.authorization.resourceAccess!.scope.permissions['content.read'] =
+      if (manager.authorization.resourceAccess?.scope.mode !== 'managed')
+        throw Error('Expected managed fixture');
+      manager.authorization.resourceAccess.scope.permissions['content.read'] =
         [];
       const now = new Date(),
         end = new Date(now.getTime() + 3600000);
@@ -211,41 +215,42 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           context: manager,
           client: {
             release() {},
-            query: async <Row>() => ({
-              rows: [
-                {
-                  snapshot: {
-                    mode: 'managed',
-                    tenantId: tenant,
-                    projectId: project,
-                    actorId: actor,
-                    purpose: manager.authorization.purpose,
-                    revision: 1,
-                    now: now.toISOString(),
-                    grants: [],
-                    limits: [
-                      {
-                        id: randomUUID(),
-                        version: 1,
-                        tenantId: tenant,
-                        projectId: project,
-                        resource: packageInput.command.resources[0],
-                        allowedActions: ['content.read'],
-                        managementRoles: ['source-steward'],
-                        licenseBasis: 'Synthetic independent permit',
-                        status: 'active',
-                        startsAt: new Date(
-                          now.getTime() - 3600000,
-                        ).toISOString(),
-                        expiresAt: end.toISOString(),
-                        maxGrantDays: 1,
-                      },
-                    ],
+            query: <Row>() =>
+              Promise.resolve({
+                rows: [
+                  {
+                    snapshot: {
+                      mode: 'managed',
+                      tenantId: tenant,
+                      projectId: project,
+                      actorId: actor,
+                      purpose: manager.authorization.purpose,
+                      revision: 1,
+                      now: now.toISOString(),
+                      grants: [],
+                      limits: [
+                        {
+                          id: randomUUID(),
+                          version: 1,
+                          tenantId: tenant,
+                          projectId: project,
+                          resource: packageInput.command.resources[0],
+                          allowedActions: ['content.read'],
+                          managementRoles: ['source-steward'],
+                          licenseBasis: 'Synthetic independent permit',
+                          status: 'active',
+                          startsAt: new Date(
+                            now.getTime() - 3600000,
+                          ).toISOString(),
+                          expiresAt: end.toISOString(),
+                          maxGrantDays: 1,
+                        },
+                      ],
+                    },
                   },
-                },
-              ] as Row[],
-              rowCount: 1,
-            }),
+                ] as Row[],
+                rowCount: 1,
+              }),
           },
         },
         packageInput.command.resources,
@@ -258,7 +263,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       };
       expect(await validatePackage(managementRequest)).toBe(true);
       expect(
-        manager.authorization.resourceAccess!.scope.permissions['content.read'],
+        manager.authorization.resourceAccess.scope.permissions['content.read'],
       ).toEqual([]);
       const managerCatalog = createPostgresDataReadRuntime(
         runtimePool,
@@ -276,6 +281,68 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           },
         ),
       ).resolves.toMatchObject({ totalCount: 0, items: [] });
+      expect(
+        (
+          await client.query<{ n: number }>(
+            'select count(*)::int n from catalog.asset',
+          )
+        ).rows[0]?.n,
+      ).toBe(0);
+      expect(
+        (
+          await client.query<{ n: number }>(
+            'select count(*)::int n from knowledge.evidence_fragment',
+          )
+        ).rows[0]?.n,
+      ).toBe(0);
+      expect(await validatePackage(managementRequest)).toBe(false); // single use
+      // Source permission cannot override tenant, project, security or Data publication facts.
+      for (const constraint of [
+        'tenant',
+        'project',
+        'security',
+        'pair',
+      ] as const) {
+        const r = {
+          ...packageInput,
+          context: structuredClone(packageInput.context),
+          command: structuredClone(packageInput.command),
+        };
+        if (constraint === 'tenant')
+          r.context.authorization.tenantId = randomUUID();
+        if (constraint === 'project')
+          r.context.authorization.projectId = r.command.projectId =
+            randomUUID();
+        if (constraint === 'security')
+          r.context.authorization.maxSecurityLevel = 'L0_PUBLIC';
+        if (constraint === 'pair')
+          r.command.resources[0]!.versionId = second.versionId;
+        expect(
+          await validatePackage(await authorizeManagementMetadata(r)),
+        ).toBe(false);
+      }
+      for (const patch of [
+        "authorization_scope=''",
+        "acceptance_status='PENDING'",
+        "publication_status='WITHDRAWN'",
+      ]) {
+        await client.query('savepoint management_data_fact');
+        try {
+          await client.query('reset role');
+          await client.query(
+            `update catalog.data_item set ${patch} where data_item_id=$1`,
+            [first.dataItemId],
+          );
+          await client.query(`set local role ${role}`);
+          expect(
+            await validatePackage(
+              await authorizeManagementMetadata(packageInput),
+            ),
+          ).toBe(false);
+        } finally {
+          await client.query('rollback to savepoint management_data_fact');
+        }
+      }
       const projectionAuthority = new PostgresProjectionReadAuthority({
         pool: runtimePool,
       });
@@ -332,7 +399,9 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         [first.dataItemId],
       );
       await client.query(`set local role ${role}`);
-      expect(await validatePackage(packageInput)).toBe(false);
+      expect(
+        await validatePackage(await authorizeManagementMetadata(packageInput)),
+      ).toBe(false);
       await expect(
         projectionAuthority.assertVisible(projectionRequest, [
           reference(first),

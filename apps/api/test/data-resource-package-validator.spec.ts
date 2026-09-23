@@ -1,3 +1,4 @@
+import { authorizeManagementMetadata } from './resource-management-fixture.js';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { ResourceAdministrationOptions } from '@wiser/platform-auth';
@@ -102,7 +103,9 @@ describe('Data package validation lifecycle', () => {
       dataItemId: randomUUID(),
       versionId: randomUUID(),
     });
-    expect(await f.validate(request)).toBe(true);
+    expect(await f.validate(await authorizeManagementMetadata(request))).toBe(
+      true,
+    );
     const reads = f.query.mock.calls.filter(([sql]) =>
       sql.includes('data.resource-package.validation'),
     );
@@ -112,6 +115,71 @@ describe('Data package validation lifecycle', () => {
     );
     expect(f.release).toHaveBeenCalledOnce();
   });
+  it('rejects forged, reused, altered or expired management permits before opening a connection', async () => {
+    const f = fixture(),
+      request = await authorizeManagementMetadata(input());
+    expect(
+      await f.validate({
+        ...request,
+        managementPermit: { ...request.managementPermit! },
+      }),
+    ).toBe(false);
+    expect(f.connect).not.toHaveBeenCalled();
+    expect(await f.validate(request)).toBe(true);
+    expect(await f.validate(request)).toBe(false);
+    expect(f.connect).toHaveBeenCalledTimes(1);
+    for (const field of [
+      'actor',
+      'project',
+      'ceiling',
+      'resource',
+      'action',
+    ] as const) {
+      const r = await authorizeManagementMetadata(input());
+      if (field === 'actor') r.context.principal.actorId = randomUUID();
+      if (field === 'project')
+        r.context.authorization.projectId = r.command.projectId = randomUUID();
+      if (field === 'ceiling')
+        r.context.authorization.maxSecurityLevel = 'L3_CONFIDENTIAL';
+      if (field === 'resource')
+        r.command.resources = [
+          {
+            kind: 'version',
+            dataItemId: randomUUID(),
+            versionId: randomUUID(),
+          },
+        ];
+      if (field === 'action') r.command.allowedActions = ['original.read'];
+      expect(await f.validate(r)).toBe(false);
+    }
+    const expired = await authorizeManagementMetadata(input()),
+      now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 6000);
+    try {
+      expect(await f.validate(expired)).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(f.connect).toHaveBeenCalledTimes(1);
+  });
+  it.each(['data.resource-package.validation', 'commit'])(
+    'rejects a result whose management permit expires during %s',
+    async (stage) => {
+      const f = fixture(),
+        request = await authorizeManagementMetadata(input()),
+        now = Date.now();
+      const clock = vi.spyOn(Date, 'now');
+      f.query.mockImplementation((sql) => {
+        if (sql.includes(stage)) clock.mockReturnValue(now + 6000);
+        return Promise.resolve({ rows: [{ denied: 0 }] });
+      });
+      try {
+        expect(await f.validate(request)).toBe(false);
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
   it('rejects partial authority matches, rolls back query failures and always releases the connection', async () => {
     const f = fixture();
     f.query.mockImplementation((sql) =>
@@ -119,13 +187,17 @@ describe('Data package validation lifecycle', () => {
         ? Promise.resolve({ rows: [{ denied: 1 }] })
         : Promise.resolve({ rows: [] }),
     );
-    expect(await f.validate(input())).toBe(false);
+    expect(await f.validate(await authorizeManagementMetadata(input()))).toBe(
+      false,
+    );
     f.query.mockImplementation((sql) =>
       sql.includes('data.resource-package.validation')
         ? Promise.reject(new Error('private storage failure'))
         : Promise.resolve({ rows: [] }),
     );
-    expect(await f.validate(input())).toBe(false);
+    expect(await f.validate(await authorizeManagementMetadata(input()))).toBe(
+      false,
+    );
     expect(f.query).toHaveBeenCalledWith('rollback');
     expect(f.release).toHaveBeenCalledTimes(2);
   });
@@ -136,9 +208,14 @@ describe('Data package validation lifecycle', () => {
       if (sql.includes('data.resource-package.validation')) controller.abort();
       return Promise.resolve({ rows: [{ denied: 0 }] });
     });
-    expect(await f.validate({ ...input(), signal: controller.signal })).toBe(
-      false,
-    );
+    expect(
+      await f.validate(
+        await authorizeManagementMetadata({
+          ...input(),
+          signal: controller.signal,
+        }),
+      ),
+    ).toBe(false);
     expect(f.release).toHaveBeenCalledOnce();
   });
 });

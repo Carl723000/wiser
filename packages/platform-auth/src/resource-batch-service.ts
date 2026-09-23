@@ -1,4 +1,7 @@
-import { assertResourceManagementPolicy } from './resource-management-policy.js';
+import {
+  assertResourceManagementPolicy,
+  type ResourceManagementPermit,
+} from './resource-management-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   ResourceBatchViewSchema,
@@ -159,14 +162,18 @@ export class ResourceBatchStore {
       )
     ).rows[0]!.now;
   }
-  async #validate(d: Definitions, reason: string) {
+  async #validate(
+    d: Definitions,
+    reason: string,
+    managementPermit: ResourceManagementPermit,
+  ) {
     const command = ResourcePackageCommandSchema.parse({
       projectId: this.session.project.id,
       packageId: d.package_id,
       expectedVersion: d.package_version,
       name: d.package_name,
       resources: d.resources,
-      allowedActions: d.allowed_actions,
+      allowedActions: d.actions,
       licenseBasis: d.license_basis,
       reason,
     });
@@ -176,6 +183,7 @@ export class ResourceBatchStore {
       const valid = await Promise.race([
         this.validatePackage({
           context: this.session.context,
+          managementPermit,
           command,
           signal: controller.signal,
         }),
@@ -389,7 +397,7 @@ export class ResourceBatchStore {
       fail('VALIDATION_FAILED');
     const members = await this.#members(command.actorIds, end);
     if (members.length !== command.actorIds.length) fail('MEMBERSHIP_CHANGED');
-    await assertResourceManagementPolicy(
+    const managementPermit = await assertResourceManagementPolicy(
       this.session,
       d.resources,
       d.actions as ResourceAccessAction[],
@@ -398,7 +406,7 @@ export class ResourceBatchStore {
         expiresAt: command.expiresAt,
       },
     );
-    await this.#validate(d, command.reason);
+    await this.#validate(d, command.reason, managementPermit);
     const id = randomUUID();
     await this.session.client.query(
       `insert into platform_private.resource_batches(id,project_id,package_id,package_version,preset_id,preset_version,applicant_id,purpose,starts_at,expires_at,valid_until,reason) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -539,7 +547,7 @@ export class ResourceBatchStore {
       startsAt: b.starts_at.toISOString(),
       expiresAt: b.expires_at.toISOString(),
     };
-    await assertResourceManagementPolicy(
+    const managementPermit = await assertResourceManagementPolicy(
       this.session,
       b.resources,
       b.actions as ResourceAccessAction[],
@@ -564,7 +572,7 @@ export class ResourceBatchStore {
       b.actions as ResourceAccessAction[],
       window,
     );
-    await this.#validate(b, command.reason);
+    await this.#validate(b, command.reason, managementPermit);
     const original = (
       await this.session.client.query<Member>(
         'select * from platform_private.resource_batch_members where batch_id=$1 order by ordinal',

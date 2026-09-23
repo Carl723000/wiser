@@ -1,4 +1,7 @@
-import { assertResourceManagementPolicy } from './resource-management-policy.js';
+import {
+  assertResourceManagementPolicy,
+  type ResourceManagementPermit,
+} from './resource-management-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   ResourceGrantsQuerySchema,
@@ -55,6 +58,7 @@ export interface ResourceAdministrationOptions {
     context: PlatformRequestContext;
     command: ResourcePackageCommand;
     signal: AbortSignal;
+    managementPermit?: ResourceManagementPermit;
   }) => Promise<boolean>;
 }
 export { ResourceAdministrationError } from './resource-administration-error.js';
@@ -507,7 +511,7 @@ export class PostgresResourceAdministrationService {
             command.packageId,
             command.expectedVersion,
           );
-          await assertResourceManagementPolicy(
+          const managementPermit = await assertResourceManagementPolicy(
             session,
             command.resources,
             command.allowedActions,
@@ -518,6 +522,7 @@ export class PostgresResourceAdministrationService {
             const valid = await Promise.race([
               this.#options.validatePackage({
                 context: session.context,
+                managementPermit,
                 command,
                 signal: controller.signal,
               }),

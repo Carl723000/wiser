@@ -1,10 +1,12 @@
-import type { ResourceAdministrationOptions } from '@wiser/platform-auth';
+import {
+  consumeResourceManagementPermit,
+  type ResourceAdministrationOptions,
+} from '@wiser/platform-auth';
 import {
   PlatformRequestContextSchema,
   ResourcePackageCommandSchema,
 } from '@wiser/platform-contracts';
 import type { QueryAdapterPgPool } from './query-adapters.js';
-import { applyResourceReadScope } from './resource-read-scope.js';
 export function createDataResourcePackageValidator(
   pool: QueryAdapterPgPool,
 ): ResourceAdministrationOptions['validatePackage'] {
@@ -16,7 +18,11 @@ export function createDataResourcePackageValidator(
     const auth = context.data.authorization;
     if (
       auth.projectId !== command.data.projectId ||
-      !auth.scopes.includes('data.catalog.read')
+      !auth.scopes.some(
+        (scope) =>
+          scope === 'platform.membership.manage' ||
+          scope === 'platform.access.approve',
+      )
     )
       return false;
     // External sources require their own registered description/permit port.
@@ -26,6 +32,13 @@ export function createDataResourcePackageValidator(
       command.data.allowedActions.includes('external.directory')
     )
       return false;
+    const validUntil = consumeResourceManagementPermit(
+      input.managementPermit,
+      context.data,
+      command.data.resources,
+      command.data.allowedActions,
+    );
+    if (!validUntil) return false;
     const client = await pool.connect();
     try {
       await client.query('begin read only');
@@ -40,7 +53,19 @@ export function createDataResourcePackageValidator(
           String(auth.authzVersion),
         ],
       );
-      await applyResourceReadScope(client, auth);
+      // The transaction is private to this fixed, boolean metadata query. Reuse
+      // exact-version RLS transport without changing personal content permissions.
+      // Never hand this client/scope to catalog, evidence, asset or export adapters.
+      await client.query(
+        "/* data.resource.management-metadata-scope */ select set_config('wiser.resource_scope',$1,true),set_config('wiser.resource_action','content.read',true)",
+        [
+          JSON.stringify({
+            mode: 'managed',
+            validUntil,
+            permissions: { 'content.read': command.data.resources },
+          }),
+        ],
+      );
       if (input.signal.aborted) throw new Error('Cancelled');
       const rows = await client.query(
         `/* data.resource-package.validation */
@@ -57,10 +82,13 @@ export function createDataResourcePackageValidator(
       );
       const valid =
         !input.signal.aborted &&
+        Date.parse(validUntil) > Date.now() &&
         rows.rows.length === 1 &&
         rows.rows[0]?.['denied'] === 0;
       await client.query('commit');
-      return valid;
+      return (
+        valid && !input.signal.aborted && Date.parse(validUntil) > Date.now()
+      );
     } catch {
       await client.query('rollback').catch(() => undefined);
       return false;

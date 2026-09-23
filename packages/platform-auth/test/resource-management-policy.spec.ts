@@ -68,13 +68,13 @@ function session(snapshot: unknown = authority, ctx = context) {
 it('allows source management without assigning the manager any personal reading grant', async () => {
   await expect(
     assertResourceManagementPolicy(session(), [resource], ['content.read']),
-  ).resolves.toBeUndefined();
+  ).resolves.toEqual({ kind: 'resource-management-metadata' });
   await expect(
     assertResourceManagementPolicy(session(), [resource], ['content.read'], {
       startsAt: now,
       expiresAt: '2026-09-24T00:00:00Z',
     }),
-  ).resolves.toBeUndefined();
+  ).resolves.toEqual({ kind: 'resource-management-metadata' });
   expect(context.authorization.scopes).not.toContain('data.catalog.read');
   expect(authority.grants).toEqual([]);
 });
