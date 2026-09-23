@@ -139,6 +139,11 @@ describe.skipIf(!url)(
         'insert into platform.role_bindings(actor_id,tenant_id,project_id,role_id,created_by_actor_id) values($1,$2,$3,$4,$5),($6,$2,$3,$4,$5)',
         [approver, tenant, project, role, owner, reader],
       );
+      await client.query(
+        `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by)
+        values($1,$2,1,$3,array['content.read'],array['platform-owner','batch-approver-test'],'Synthetic independent source permission',now()-interval '1 day',now()+interval '60 days',10,$4,$5)`,
+        [project, randomUUID(), JSON.stringify(resource), reader, owner],
+      );
       await service.savePackage({
         token: 'owner',
         command: pack,
@@ -157,6 +162,71 @@ describe.skipIf(!url)(
       }
       await pool.end();
     });
+    it('refuses a grant term beyond the source ceiling even when the preset allows it', async () => {
+      await client.query('savepoint source_term_test');
+      try {
+        await expect(
+          service.previewBatch({
+            token: 'owner',
+            idempotencyKey: randomUUID(),
+            command: {
+              ...preview,
+              expiresAt: new Date(Date.now() + 15 * 86400000).toISOString(),
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'RESOURCE_UNAVAILABLE' });
+      } finally {
+        await client.query('rollback to savepoint source_term_test');
+      }
+    });
+    it.each(['approve', 'execute'] as const)(
+      'rechecks revoked source permission before %s',
+      async (stage) => {
+        await client.query('savepoint source_revocation_test');
+        try {
+          const pending = await service.previewBatch({
+            token: 'owner',
+            idempotencyKey: randomUUID(),
+            command: preview,
+          });
+          const action = {
+            projectId: project,
+            batchId: pending.id,
+            expectedVersion: pending.version,
+            reason: 'Synthetic independent source review',
+          };
+          const approved =
+            stage === 'execute'
+              ? await service.decideBatch({
+                  token: 'approver',
+                  idempotencyKey: randomUUID(),
+                  command: { ...action, decision: 'approve' },
+                })
+              : pending;
+          await client.query(
+            `insert into platform_private.resource_policy_revocations(project_id,policy_id,version,revoked_by,reason) select project_id,policy_id,version,$2,'Synthetic source revocation' from platform_private.resource_policy_versions where project_id=$1 and resource=$3::jsonb`,
+            [project, owner, JSON.stringify(resource)],
+          );
+          const result =
+            stage === 'approve'
+              ? service.decideBatch({
+                  token: 'approver',
+                  idempotencyKey: randomUUID(),
+                  command: { ...action, decision: 'approve' },
+                })
+              : service.executeBatch({
+                  token: 'owner',
+                  idempotencyKey: randomUUID(),
+                  command: { ...action, expectedVersion: approved.version },
+                });
+          await expect(result).rejects.toMatchObject({
+            code: 'RESOURCE_UNAVAILABLE',
+          });
+        } finally {
+          await client.query('rollback to savepoint source_revocation_test');
+        }
+      },
+    );
     it('rejects ordinary callers and invalid ranges without persisting a batch', async () => {
       await expect(
         service.previewBatch({

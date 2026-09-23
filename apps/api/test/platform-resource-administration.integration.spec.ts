@@ -72,6 +72,12 @@ describe.skipIf(!url)(
               : null,
         ),
     });
+    const permit = async (ref: typeof resource) =>
+      client.query(
+        `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by)
+       values($1,$2,1,$3,array['content.read'],array['platform-owner'],'Synthetic independently approved source',now()-interval '1 day',now()+interval '60 days',30,$4,$5)`,
+        [project, randomUUID(), JSON.stringify(ref), reader, owner],
+      );
     beforeAll(async () => {
       client = await pool.connect();
       await client.query('begin');
@@ -83,6 +89,7 @@ describe.skipIf(!url)(
         'insert into platform_private.resource_access_settings(project_id,tenant_id,enabled_by) values($1,$2,$3)',
         [project, tenant, owner],
       );
+      await permit(resource);
       // The reader has no business-management scope in this fixture.
       await client.query(
         'delete from platform.role_bindings where actor_id=$1',
@@ -124,6 +131,60 @@ describe.skipIf(!url)(
         });
       expect(validatePackage).not.toHaveBeenCalled();
     });
+    it('rejects a package without independently approved source permission', async () => {
+      await client.query('savepoint source_package_test');
+      try {
+        await expect(
+          service.savePackage({
+            token: 'owner',
+            idempotencyKey: randomUUID(),
+            command: {
+              ...packageCommand,
+              packageId: randomUUID(),
+              resources: [{ ...resource, versionId: randomUUID() }],
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'RESOURCE_UNAVAILABLE' });
+      } finally {
+        await client.query('rollback to savepoint source_package_test');
+      }
+    });
+    it.each(['role', 'action', 'expired'] as const)(
+      'rejects a package outside its source %s limit',
+      async (constraint) => {
+        await client.query('savepoint source_package_test');
+        try {
+          const ref = { ...resource, versionId: randomUUID() };
+          await client.query(
+            `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by)
+        values($1,$2,1,$3,$4,$5,'Synthetic independent permission',now()-interval '2 days',case when $6 then now()-interval '1 hour' else now()+interval '10 days' end,30,$7,$8)`,
+            [
+              project,
+              randomUUID(),
+              JSON.stringify(ref),
+              constraint === 'action' ? ['source.discover'] : ['content.read'],
+              constraint === 'role' ? ['other-manager'] : ['platform-owner'],
+              constraint === 'expired',
+              reader,
+              owner,
+            ],
+          );
+          await expect(
+            service.savePackage({
+              token: 'owner',
+              idempotencyKey: randomUUID(),
+              command: {
+                ...packageCommand,
+                packageId: randomUUID(),
+                resources: [ref],
+              },
+            }),
+          ).rejects.toMatchObject({ code: 'RESOURCE_UNAVAILABLE' });
+        } finally {
+          await client.query('rollback to savepoint source_package_test');
+        }
+      },
+    );
     it('persists one immutable package and one audit receipt across an identical retry', async () => {
       const request = {
         token: 'owner',
@@ -158,6 +219,7 @@ describe.skipIf(!url)(
         expectedVersion: 1,
         resources: [resource, { ...resource, versionId: randomUUID() }],
       };
+      await permit(next.resources[1]!);
       expect(
         await service.savePackage({
           token: 'owner',
