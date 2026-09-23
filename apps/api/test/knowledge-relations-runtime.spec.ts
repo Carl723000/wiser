@@ -123,10 +123,16 @@ function fixture() {
         row_version: Number(v[3]) + 1,
       });
     if (sql.startsWith('select b.*')) {
+      const single = rows.get(String(v[0]));
       const selected = sql.includes('where b.assertion_id=any(')
-        ? (v[0] as string[]).map((id) => rows.get(id)).filter(Boolean)
+        ? (v[0] as string[]).flatMap((id) => {
+            const row = rows.get(id);
+            return row ? [row] : [];
+          })
         : sql.includes('where b.assertion_id=')
-          ? [rows.get(String(v[0]))].filter(Boolean)
+          ? single
+            ? [single]
+            : []
           : [...rows.values()];
       return {
         rows: visible ? selected : [],

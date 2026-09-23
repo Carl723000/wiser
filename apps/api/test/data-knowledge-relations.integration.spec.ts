@@ -116,6 +116,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           ),
         );
       await client.query(`create role ${role} nologin nosuperuser nobypassrls`);
+      await client.query(`grant ${role} to current_user`);
       await client.query(
         `grant usage on schema catalog,service,knowledge,security,event to ${role}`,
       );

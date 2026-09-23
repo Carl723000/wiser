@@ -21,7 +21,6 @@ import {
   RelationReviewInputSchema,
   RelationBatchListInputSchema,
   QuerySpecSchema,
-  type RelationAssertion,
   type RelationCandidate,
 } from '@wiser/data-contracts';
 import {
@@ -103,6 +102,20 @@ async function load(client: Client, id: string) {
   );
   if (!rows.rows[0]) throw fail('NOT_FOUND');
   return assertion(rows.rows[0]);
+}
+async function loadBatch(client: Client, ids: readonly string[]) {
+  const result = await client.query(
+    `${SELECT} where b.assertion_id=any($1::uuid[]) and ${VISIBLE}`,
+    [ids],
+  );
+  const rowsById = new Map(
+    result.rows.map((row) => [String(row['assertion_id']), row]),
+  );
+  return ids.map((id) => {
+    const row = rowsById.get(id);
+    if (!row) throw fail('NOT_FOUND');
+    return assertion(row);
+  });
 }
 export function createKnowledgeRelationExecutors(
   pool: PostgresDataCommandPool,
@@ -211,22 +224,31 @@ export function createKnowledgeRelationExecutors(
             } catch {
               throw fail('STATE_CONFLICT');
             }
-            const items: RelationAssertion[] = [];
+            const existingBindings = await client.query(
+              `select identity_key,assertion_id,encode(fingerprint,'hex') fingerprint from knowledge.assertion_binding where version_id=$1::uuid and mapping_version=$2 and identity_key=any($3::text[])`,
+              [
+                input.versionId,
+                input.mappingVersion,
+                grouped.map((g) => g.identity),
+              ],
+            );
+            const bindingsByIdentity = new Map(
+              existingBindings.rows.map((row) => [
+                String(row['identity_key']),
+                row,
+              ]),
+            );
+            const itemIds: string[] = [];
             let createdCount = 0;
             for (const { identity, candidate } of grouped) {
               const fingerprint = createHash('sha256')
                 .update(JSON.stringify(candidate))
                 .digest('hex');
-              const old = await client.query(
-                `select assertion_id,encode(fingerprint,'hex') fingerprint from knowledge.assertion_binding where version_id=$1::uuid and mapping_version=$2 and identity_key=$3`,
-                [input.versionId, input.mappingVersion, identity],
-              );
-              if (old.rows[0]) {
-                if (old.rows[0]['fingerprint'] !== fingerprint)
+              const old = bindingsByIdentity.get(identity);
+              if (old) {
+                if (old['fingerprint'] !== fingerprint)
                   throw fail('IDEMPOTENCY_CONFLICT');
-                items.push(
-                  await load(client, String(old.rows[0]['assertion_id'])),
-                );
+                itemIds.push(String(old['assertion_id']));
                 continue;
               }
               if (candidate.supersedesId) {
@@ -295,9 +317,10 @@ export function createKnowledgeRelationExecutors(
                   context.authorization.authzVersion,
                 ],
               );
-              items.push(await load(client, id));
+              itemIds.push(id);
               createdCount++;
             }
+            const items = await loadBatch(client, itemIds);
             const output = {
               items,
               createdCount,
