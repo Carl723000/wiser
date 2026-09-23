@@ -84,6 +84,8 @@ export interface PlatformAuthRuntime {
   readonly resolver: PlatformPrincipalResolver | null;
   readonly resourceAdministrationModule?: (
     validatePackage: ResourceAdministrationOptions['validatePackage'],
+    listManagementCatalog?: ResourceAdministrationOptions['listManagementCatalog'],
+    listExternalSources?: ResourceAdministrationOptions['listExternalSources'],
   ) => WiserApiModule;
 }
 
@@ -389,12 +391,16 @@ export function createPlatformAuthRuntimeFromEnvironment(
       ? {
           resourceAdministrationModule: (
             validatePackage: ResourceAdministrationOptions['validatePackage'],
+            listManagementCatalog?: ResourceAdministrationOptions['listManagementCatalog'],
+            listExternalSources?: ResourceAdministrationOptions['listExternalSources'],
           ) =>
             createResourceAdministrationModule(
               new PostgresResourceAdministrationService({
                 pool: database.transactionPool,
                 verifyHuman,
                 validatePackage,
+                ...(listManagementCatalog ? { listManagementCatalog } : {}),
+                ...(listExternalSources ? { listExternalSources } : {}),
               }),
             ),
         }

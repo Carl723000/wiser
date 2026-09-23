@@ -1,5 +1,24 @@
 import 'server-only';
 import {
+  ResourcePolicyRequestsQuerySchema,
+  ResourceManagementCatalogQuerySchema,
+  ResourceManagementCatalogPageSchema,
+  ExternalSourceManagementQuerySchema,
+  ExternalSourceManagementPageSchema,
+  ResourcePolicyProposalSchema,
+  ResourcePolicyDecisionSchema,
+  ResourcePolicyActionSchema,
+  ResourcePolicyRevokeSchema,
+  ResourcePolicyRequestsPageSchema,
+  ResourcePolicyRequestViewSchema,
+  ResourcePolicyRevokeReceiptSchema,
+  type ResourcePolicyRequestsQuery,
+  type ResourceManagementCatalogQuery,
+  type ExternalSourceManagementQuery,
+  type ResourcePolicyProposal,
+  type ResourcePolicyDecision,
+  type ResourcePolicyAction,
+  type ResourcePolicyRevoke,
   ResourceGrantsQuerySchema,
   ResourceGrantsPageSchema,
   ResourceGrantRevokeCommandSchema,
@@ -194,6 +213,76 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    managementCatalog(id: string, input: ResourceManagementCatalogQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourceManagementCatalogQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        search: p.search,
+      });
+      return call(
+        `projects/${id}/management-catalog?${query}`,
+        ResourceManagementCatalogPageSchema,
+      );
+    },
+    externalSources(id: string, input: ExternalSourceManagementQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ExternalSourceManagementQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+      });
+      return call(
+        `projects/${id}/external-sources?${query}`,
+        ExternalSourceManagementPageSchema,
+      );
+    },
+    sourcePolicyRequests(id: string, input: ResourcePolicyRequestsQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourcePolicyRequestsQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        ...(p.status ? { status: p.status } : {}),
+      });
+      return call(
+        `projects/${id}/source-policy-requests?${query}`,
+        ResourcePolicyRequestsPageSchema,
+      );
+    },
+    proposeSourcePolicy(command: ResourcePolicyProposal, key: string) {
+      return call(
+        'source-policies/propose',
+        ResourcePolicyRequestViewSchema,
+        ResourcePolicyProposalSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    decideSourcePolicy(command: ResourcePolicyDecision, key: string) {
+      return call(
+        'source-policies/decide',
+        ResourcePolicyRequestViewSchema,
+        ResourcePolicyDecisionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    withdrawSourcePolicy(command: ResourcePolicyAction, key: string) {
+      return call(
+        'source-policies/withdraw',
+        ResourcePolicyRequestViewSchema,
+        ResourcePolicyActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    revokeSourcePolicy(command: ResourcePolicyRevoke, key: string) {
+      return call(
+        'source-policies/revoke',
+        ResourcePolicyRevokeReceiptSchema,
+        ResourcePolicyRevokeSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     grants(id: string, input: ResourceGrantsQuery) {
       PlatformUuidSchema.parse(id);
       const p = ResourceGrantsQuerySchema.parse(input);

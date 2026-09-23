@@ -1,5 +1,30 @@
+import { ResourcePolicyStore } from './resource-policy-service.js';
+import {
+  ResourcePolicyProposalSchema,
+  ResourcePolicyDecisionSchema,
+  ResourcePolicyActionSchema,
+  ResourcePolicyRevokeSchema,
+  ResourcePolicyRequestsQuerySchema,
+  ResourceManagementCatalogQuerySchema,
+  ResourceManagementCatalogPageSchema,
+  ExternalSourceManagementQuerySchema,
+  ExternalSourceManagementPageSchema,
+  type ResourcePolicyProposal,
+  type ResourcePolicyDecision,
+  type ResourcePolicyAction,
+  type ResourcePolicyRevoke,
+  type ResourcePolicyRequestsQuery,
+  type ResourcePolicyRequestView,
+  type ResourcePolicyRequestsPage,
+  type ResourceManagementCatalogQuery,
+  type ResourceManagementCatalogPage,
+  type ExternalSourceManagementQuery,
+  type ExternalSourceManagementPage,
+  type ResourcePolicyRevokeReceipt,
+} from '@wiser/platform-contracts';
 import {
   assertResourceManagementPolicy,
+  issueResourceManagementPermit,
   type ResourceManagementPermit,
 } from './resource-management-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -59,7 +84,31 @@ export interface ResourceAdministrationOptions {
     command: ResourcePackageCommand;
     signal: AbortSignal;
     managementPermit?: ResourceManagementPermit;
+    /** Internal policy dates; source proposals must remain inside supplier terms. */
+    policyWindow?: { readonly startsAt: string; readonly expiresAt: string };
   }) => Promise<boolean>;
+  /** Fixed-column Data catalog port for separately appointed source staff. */
+  readonly listManagementCatalog?: (input: {
+    context: PlatformRequestContext;
+    page: ResourceManagementCatalogQuery;
+    signal: AbortSignal;
+    managementPermit?: ResourceManagementPermit;
+  }) => Promise<ResourceManagementCatalogPage>;
+  /** Trusted host listing only. Missing wiring yields no external sources. */
+  readonly listExternalSources?: (input: {
+    context: PlatformRequestContext;
+    page: ExternalSourceManagementQuery;
+    signal: AbortSignal;
+  }) => Promise<{
+    items: Omit<
+      ExternalSourceManagementPage['items'][number],
+      | 'connectionStatus'
+      | 'wiserPolicyStatus'
+      | 'policyId'
+      | 'expectedPolicyVersion'
+    >[];
+    hasMore: boolean;
+  }>;
 }
 export { ResourceAdministrationError } from './resource-administration-error.js';
 import {
@@ -90,6 +139,327 @@ export class PostgresResourceAdministrationService {
   readonly #options: ResourceAdministrationOptions;
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
+  }
+  sourcePolicyRequests(input: {
+    token: string;
+    projectId: string;
+    page: ResourcePolicyRequestsQuery;
+  }): Promise<ResourcePolicyRequestsPage> {
+    const page = ResourcePolicyRequestsQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      (session) =>
+        new ResourcePolicyStore(session, this.#options.validatePackage).list(
+          page.data,
+        ),
+      ['platform.membership.manage', 'platform.access.approve'],
+    );
+  }
+  externalSources(input: {
+    token: string;
+    projectId: string;
+    page: ExternalSourceManagementQuery;
+  }): Promise<ExternalSourceManagementPage> {
+    const page = ExternalSourceManagementQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      async (session) => {
+        const rights = await new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        ).requireAuthority('read');
+        const now = (
+          await session.client.query<{ now: Date }>(
+            'select statement_timestamp() now',
+          )
+        ).rows[0]!.now;
+        if (!this.#options.listExternalSources)
+          return ExternalSourceManagementPageSchema.parse({
+            items: [],
+            hasMore: false,
+            checkedAt: now.toISOString(),
+            managementRoleOptions: [],
+            canPropose: false,
+          });
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const catalog = await Promise.race([
+            this.#options.listExternalSources({
+              context: session.context,
+              page: page.data,
+              signal: controller.signal,
+            }),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(() => {
+                controller.abort();
+                reject(new ResourceAdministrationError('RESOURCE_UNAVAILABLE'));
+              }, 5000);
+            }),
+          ]);
+          if (controller.signal.aborted) fail('RESOURCE_UNAVAILABLE');
+          const identities = catalog.items.map((item) => item.sourceId);
+          if (
+            catalog.items.length > page.data.limit ||
+            new Set(identities).size !== identities.length
+          )
+            fail('RESOURCE_UNAVAILABLE');
+          const policyRows = await session.client.query<{
+            resource_key: string;
+            policy_id: string;
+            version: number;
+            starts_at: Date;
+            expires_at: Date;
+            revoked: boolean;
+          }>(
+            `select distinct on (v.resource_key)
+              v.resource_key,v.policy_id,v.version,v.starts_at,v.expires_at,
+              exists(select 1 from platform_private.resource_policy_revocations x
+                where x.project_id=v.project_id and x.policy_id=v.policy_id and x.version=v.version) revoked
+             from platform_private.resource_policy_versions v
+             where v.project_id=$1 and v.resource_key=any($2::text[])
+             order by v.resource_key,v.version desc`,
+            [session.project.id, identities.map((id) => `s:${id}`)],
+          );
+          const roleRows = await session.client.query<{ role_key: string }>(
+            `select role_key from platform_private.resource_policy_roles
+             where project_id=$1 and active and can_propose order by role_key`,
+            [session.project.id],
+          );
+          const policies = new Map(
+            policyRows.rows.map((row) => [row.resource_key, row]),
+          );
+          return ExternalSourceManagementPageSchema.parse({
+            items: catalog.items.map((item) => {
+              const policy = policies.get(`s:${item.sourceId}`);
+              const wiserPolicyStatus = !policy
+                ? 'none'
+                : policy.revoked
+                  ? 'revoked'
+                  : policy.expires_at.getTime() <= now.getTime()
+                    ? 'expired'
+                    : policy.starts_at.getTime() > now.getTime()
+                      ? 'scheduled'
+                      : 'active';
+              return {
+                ...item,
+                connectionStatus: 'UNKNOWN',
+                wiserPolicyStatus,
+                policyId: policy?.policy_id ?? null,
+                expectedPolicyVersion: policy?.version ?? 0,
+                eligibleForProposal:
+                  rights.canPropose && item.eligibleForProposal,
+              };
+            }),
+            hasMore: catalog.hasMore,
+            checkedAt: now.toISOString(),
+            managementRoleOptions: roleRows.rows.map((row) => row.role_key),
+            canPropose: rights.canPropose,
+          });
+        } finally {
+          if (timer) clearTimeout(timer);
+          controller.abort();
+        }
+      },
+      ['platform.membership.manage', 'platform.access.approve'],
+    );
+  }
+  managementCatalog(input: {
+    token: string;
+    projectId: string;
+    page: ResourceManagementCatalogQuery;
+  }): Promise<ResourceManagementCatalogPage> {
+    const page = ResourceManagementCatalogQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      async (session) => {
+        await new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        ).requireAuthority('read');
+        if (!this.#options.listManagementCatalog) fail('RESOURCE_UNAVAILABLE');
+        const permit = issueResourceManagementPermit(
+          session.context,
+          [],
+          [],
+          new Date(Date.now() + 5000).toISOString(),
+          'management-catalog',
+        );
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const catalog = await Promise.race([
+            this.#options.listManagementCatalog({
+              context: session.context,
+              page: page.data,
+              signal: controller.signal,
+              managementPermit: permit,
+            }),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(() => {
+                controller.abort();
+                reject(new ResourceAdministrationError('RESOURCE_UNAVAILABLE'));
+              }, 5000);
+            }),
+          ]);
+          const keys = catalog.items.map(
+            (item) =>
+              `v:${item.dataItemId.toLowerCase()}:${item.versionId.toLowerCase()}`,
+          );
+          const policyRows = await session.client.query<{
+            resource_key: string;
+            policy_id: string;
+            version: number;
+          }>(
+            `select distinct on (resource_key) resource_key,policy_id,version
+               from platform_private.resource_policy_versions
+               where project_id=$1 and resource_key=any($2::text[])
+               order by resource_key,version desc`,
+            [session.project.id, keys],
+          );
+          const roleRows = await session.client.query<{ role_key: string }>(
+            `select role_key from platform_private.resource_policy_roles
+               where project_id=$1 and active and can_propose order by role_key`,
+            [session.project.id],
+          );
+          const latest = new Map(
+            policyRows.rows.map((row) => [row.resource_key, row]),
+          );
+          return ResourceManagementCatalogPageSchema.parse({
+            ...catalog,
+            items: catalog.items.map((item) => {
+              const policy = latest.get(
+                `v:${item.dataItemId.toLowerCase()}:${item.versionId.toLowerCase()}`,
+              );
+              return {
+                ...item,
+                policyId: policy?.policy_id ?? null,
+                expectedPolicyVersion: policy?.version ?? 0,
+              };
+            }),
+            managementRoleOptions: roleRows.rows.map((row) => row.role_key),
+          });
+        } finally {
+          if (timer) clearTimeout(timer);
+          controller.abort();
+        }
+      },
+      ['platform.membership.manage', 'platform.access.approve'],
+    );
+  }
+  proposeSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyProposal;
+  }): Promise<ResourcePolicyRequestView> {
+    const command = ResourcePolicyProposalSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('propose');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.propose',
+          command.data,
+          () => store.propose(command.data),
+        );
+      },
+      'platform.membership.manage',
+    );
+  }
+  decideSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyDecision;
+  }): Promise<ResourcePolicyRequestView> {
+    const command = ResourcePolicyDecisionSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('approve');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.decide',
+          command.data,
+          () => store.decide(command.data),
+        );
+      },
+      'platform.access.approve',
+    );
+  }
+  withdrawSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyAction;
+  }): Promise<ResourcePolicyRequestView> {
+    const command = ResourcePolicyActionSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('propose');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.withdraw',
+          command.data,
+          () => store.withdraw(command.data),
+        );
+      },
+      'platform.membership.manage',
+    );
+  }
+  revokeSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyRevoke;
+  }): Promise<ResourcePolicyRevokeReceipt> {
+    const command = ResourcePolicyRevokeSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('propose');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.revoke',
+          command.data,
+          () => store.revoke(command.data),
+        );
+      },
+      'platform.membership.manage',
+    );
   }
   grants(input: {
     token: string;

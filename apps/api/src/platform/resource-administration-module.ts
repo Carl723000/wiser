@@ -1,4 +1,18 @@
 import {
+  ResourcePolicyRequestsQuerySchema,
+  ResourcePolicyRequestsPageSchema,
+  ResourceManagementCatalogQuerySchema,
+  ResourceManagementCatalogPageSchema,
+  ExternalSourceManagementQuerySchema,
+  ExternalSourceManagementPageSchema,
+  ResourcePolicyProposalSchema,
+  ResourcePolicyDecisionSchema,
+  ResourcePolicyActionSchema,
+  ResourcePolicyRevokeSchema,
+  ResourcePolicyRequestViewSchema,
+  ResourcePolicyRevokeReceiptSchema,
+} from '@wiser/platform-contracts';
+import {
   ResourceAdministrationError,
   type PostgresResourceAdministrationService,
 } from '@wiser/platform-auth';
@@ -27,6 +41,13 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { WiserApiModule } from './modules.js';
 export type ResourceAdministrationHttpService = Pick<
   PostgresResourceAdministrationService,
+  | 'sourcePolicyRequests'
+  | 'managementCatalog'
+  | 'externalSources'
+  | 'proposeSourcePolicy'
+  | 'decideSourcePolicy'
+  | 'withdrawSourcePolicy'
+  | 'revokeSourcePolicy'
   | 'grants'
   | 'revokeGrant'
   | 'renewGrant'
@@ -101,6 +122,90 @@ export function createResourceAdministrationModule(
   return {
     id: 'platform.resource-administration',
     register(app) {
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/source-policy-requests',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ResourcePolicyRequestsPageSchema.parse(
+              await service.sourcePolicyRequests({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ResourcePolicyRequestsQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/management-catalog',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ResourceManagementCatalogPageSchema.parse(
+              await service.managementCatalog({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ResourceManagementCatalogQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/external-sources',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ExternalSourceManagementPageSchema.parse(
+              await service.externalSources({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ExternalSourceManagementQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      for (const action of [
+        'propose',
+        'decide',
+        'withdraw',
+        'revoke',
+      ] as const) {
+        app.post(
+          '/api/platform/v1/access/source-policies/' + action,
+          { bodyLimit: 16384 },
+          (request, reply) =>
+            guarded(request, reply, async (token) => {
+              const shared = {
+                token,
+                idempotencyKey: PlatformUuidSchema.parse(
+                  request.headers['idempotency-key'],
+                ),
+              };
+              if (action === 'revoke')
+                return ResourcePolicyRevokeReceiptSchema.parse(
+                  await service.revokeSourcePolicy({
+                    ...shared,
+                    command: ResourcePolicyRevokeSchema.parse(request.body),
+                  }),
+                );
+              const result =
+                action === 'propose'
+                  ? await service.proposeSourcePolicy({
+                      ...shared,
+                      command: ResourcePolicyProposalSchema.parse(request.body),
+                    })
+                  : action === 'decide'
+                    ? await service.decideSourcePolicy({
+                        ...shared,
+                        command: ResourcePolicyDecisionSchema.parse(
+                          request.body,
+                        ),
+                      })
+                    : await service.withdrawSourcePolicy({
+                        ...shared,
+                        command: ResourcePolicyActionSchema.parse(request.body),
+                      });
+              return ResourcePolicyRequestViewSchema.parse(result);
+            }),
+        );
+      }
       app.get(
         '/api/platform/v1/access/projects/:projectId/resource-grants',
         (request, reply) =>

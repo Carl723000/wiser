@@ -1,0 +1,27 @@
+begin;
+select no_plan();
+select has_table('platform_private','resource_policy_roles','Source stewardship roles are explicitly configured');
+select has_table('platform_private','resource_policy_requests','Source permission proposals are separate from published authority');
+select is((select count(*)::integer from platform_private.resource_policy_roles),0,'No publication roles are automatically granted');
+select is((select count(*)::integer from platform_private.resource_policy_requests),0,'No real source proposals are seeded');
+select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid='platform_private.resource_policy_roles'::regclass),'Source roles force RLS');
+select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid='platform_private.resource_policy_requests'::regclass),'Source proposals force RLS');
+select ok(not has_table_privilege('anon','platform_private.resource_policy_roles','SELECT'),'Anonymous cannot inspect stewardship roles');
+select ok(not has_table_privilege('authenticated','platform_private.resource_policy_roles','INSERT'),'Members cannot appoint themselves');
+select ok(not has_table_privilege('service_role','platform_private.resource_policy_roles','UPDATE'),'Generic service credentials cannot reconfigure stewardship');
+select ok(not has_table_privilege('anon','platform_private.resource_policy_requests','SELECT'),'Anonymous cannot inspect proposals');
+select ok(not has_table_privilege('authenticated','platform_private.resource_policy_requests','INSERT'),'Members cannot bypass the authenticated application workflow');
+select ok(not has_table_privilege('service_role','platform_private.resource_policy_requests','UPDATE'),'Generic service credentials cannot approve proposals');
+insert into platform_private.resource_access_settings(project_id,tenant_id,enabled_by) values('b2000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000005');
+insert into platform_private.resource_policy_requests(id,project_id,policy_id,expected_policy_version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,reason,applicant_id,applicant_session_id)
+values('89000000-0000-4000-8000-000000000101','b2000000-0000-4000-8000-000000000001','89000000-0000-4000-8000-000000000102',0,'{"kind":"external-source","sourceId":"synthetic-directory"}',array['source.discover'],array['platform-owner'],'Synthetic license evidence',now(),now()+interval '30 days',30,'Synthetic storage test','10000000-0000-4000-8000-000000000005','89000000-0000-4000-8000-000000000103');
+select throws_ok($$update platform_private.resource_policy_requests set license_basis='Replacement evidence'$$,'23514',null,'Submitted license evidence cannot change');
+select throws_ok($$update platform_private.resource_policy_requests set status='rejected',version=2,decided_by=applicant_id,decided_at=now(),decision_reason='Self approval test'$$,'23514',null,'Applicant cannot decide their proposal');
+select throws_ok($$update platform_private.resource_policy_requests set status='published',version=2,decided_by='10000000-0000-4000-8000-000000000002',decided_at=now(),decision_reason='Synthetic approval',published_version=1$$,'23514',null,'Publication must reference matching immutable policy');
+select throws_ok($$update platform_private.resource_policy_requests set status='withdrawn',version=1$$,'23514',null,'Transitions require a new optimistic version');
+select throws_ok($$delete from platform_private.resource_policy_requests$$,'22023',null,'Proposal history cannot be removed');
+update platform_private.resource_policy_requests set status='withdrawn',version=2;
+select throws_ok($$update platform_private.resource_policy_requests set status='pending',version=3$$,'23514',null,'Withdrawn proposals cannot reopen');
+select is((select count(*) from platform_private.resource_policy_versions),0::bigint,'A proposal or withdrawal creates no source permission');
+select * from finish();
+rollback;

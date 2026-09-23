@@ -218,3 +218,8 @@ export * from './resource-batch.ts';
 export * from './resource-grants.ts';
 
 export * from './resource-policy-limits.ts';
+
+export * from './resource-policy-administration.ts';
+
+export * from './resource-management-catalog.ts';
+export * from './resource-external-sources.ts';

@@ -3,6 +3,10 @@ import { Buffer } from 'node:buffer';
 import { Pool } from 'pg';
 
 import { createExternalMetadataExecutor } from './external-metadata-executor.js';
+import {
+  createTrustedExternalMetadataPorts,
+  type TrustedExternalMetadataRegistry,
+} from './external-metadata-registry.js';
 import { DATA_CAPABILITY_IDS } from '@wiser/data-contracts';
 import {
   createDataEmbedding,
@@ -42,6 +46,7 @@ import {
 } from './postgres-command-executors.js';
 import { createPostgresDataReadRuntime } from './postgres-read-executors.js';
 import { createDataResourcePackageValidator } from './resource-package-validator.js';
+import { createDataManagementCatalogReader } from './management-catalog.js';
 import type { ResourceAdministrationOptions } from '@wiser/platform-auth';
 import {
   Neo4jGraphQueryPort,
@@ -91,7 +96,13 @@ interface ExecutorRuntime {
 interface ReadExecutorRuntime extends ExecutorRuntime {
   readonly audit: DataCapabilityAuditPort;
   readonly validateResourcePackage?: ResourceAdministrationOptions['validatePackage'];
+  readonly listManagementCatalog?: ResourceAdministrationOptions['listManagementCatalog'];
+  readonly listExternalSources?: ResourceAdministrationOptions['listExternalSources'];
 }
+
+type ExternalMetadataPorts = ReturnType<
+  typeof createTrustedExternalMetadataPorts
+>;
 
 export interface DataFoundationRuntimeFactories {
   createPool(
@@ -100,7 +111,10 @@ export interface DataFoundationRuntimeFactories {
   createObjectStore(
     config: Extract<DataFoundationApiRuntimeConfig, { mode: 'enabled' }>,
   ): DataFoundationObjectStoreResource;
-  createReadRuntime(pool: DataFoundationSharedPool): ReadExecutorRuntime;
+  createReadRuntime(
+    pool: DataFoundationSharedPool,
+    external?: ExternalMetadataPorts,
+  ): ReadExecutorRuntime;
   createCommandRuntime(
     pool: DataFoundationSharedPool,
     objectStore: unknown,
@@ -108,6 +122,7 @@ export interface DataFoundationRuntimeFactories {
   createSpecialExecutors(
     config: Extract<DataFoundationApiRuntimeConfig, { mode: 'enabled' }>,
     pool: DataFoundationSharedPool,
+    external?: ExternalMetadataPorts,
   ): readonly DataCapabilityExecutor[];
   createAssetDownloadPort(
     pool: DataFoundationSharedPool,
@@ -203,11 +218,18 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       },
     };
   },
-  createReadRuntime(pool) {
+  createReadRuntime(pool, external) {
     const pg = (pool as DefaultPool).pg;
     return {
       ...createPostgresDataReadRuntime(pg),
-      validateResourcePackage: createDataResourcePackageValidator(pg),
+      validateResourcePackage: createDataResourcePackageValidator(pg, external),
+      listManagementCatalog: createDataManagementCatalogReader(pg),
+      ...(external
+        ? {
+            listExternalSources: (input) =>
+              external.listManagementSources(input),
+          }
+        : {}),
     };
   },
   createCommandRuntime(pool, objectStore) {
@@ -216,7 +238,7 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       objectStore as DataCommandObjectStore,
     );
   },
-  createSpecialExecutors(config, pool) {
+  createSpecialExecutors(config, pool, external) {
     const pg = (pool as DefaultPool).pg;
     const embedding = createDataEmbedding(config.embedding);
     const search = new SearchOrchestrator({
@@ -265,7 +287,11 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       ...createReconciliationExecutors(pg),
       ...createAssessmentExecutors(pg),
       ...createKnowledgeRelationExecutors(pg),
-      createExternalMetadataExecutor(),
+      createExternalMetadataExecutor(
+        external
+          ? (sourceId, context) => external.resolveReader(sourceId, context)
+          : undefined,
+      ),
     ];
   },
   createAssetDownloadPort(pool, objectStore) {
@@ -336,6 +362,7 @@ export function createDataFoundationRuntimeFromEnvironment(
   environment: NodeJS.ProcessEnv,
   platformAuth: PlatformAuthRuntime,
   factories: DataFoundationRuntimeFactories = defaultFactories,
+  externalMetadataRegistry?: TrustedExternalMetadataRegistry,
 ): DataFoundationRuntime {
   const config = loadDataFoundationApiRuntimeConfig(environment);
   if (config.mode === 'off') {
@@ -363,9 +390,12 @@ export function createDataFoundationRuntimeFromEnvironment(
   };
 
   try {
-    const read = factories.createReadRuntime(pool);
+    const external = externalMetadataRegistry
+      ? createTrustedExternalMetadataPorts(externalMetadataRegistry)
+      : undefined;
+    const read = factories.createReadRuntime(pool, external);
     const command = factories.createCommandRuntime(pool, objectStore.store);
-    const special = factories.createSpecialExecutors(config, pool);
+    const special = factories.createSpecialExecutors(config, pool, external);
     const assetDownload = factories.createAssetDownloadPort(
       pool,
       objectStore.store,
@@ -405,6 +435,8 @@ export function createDataFoundationRuntimeFromEnvironment(
         ? [
             platformAuth.resourceAdministrationModule(
               read.validateResourcePackage,
+              read.listManagementCatalog,
+              read.listExternalSources,
             ),
           ]
         : []),
