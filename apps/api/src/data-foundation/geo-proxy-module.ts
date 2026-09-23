@@ -1196,6 +1196,16 @@ export function createDataFoundationGeoProxyModule(
           const params = request.params as { readonly service?: unknown };
           const planned = ogcRequest(request, params.service);
           if (planned === null) return null;
+          // Service capabilities describe the whole upstream catalog, not one
+          // version. A versionId/CQL filter cannot safely narrow that XML.
+          if (
+            context.authorization.resourceAccess !== undefined &&
+            planned.query.some(
+              ([key, value]) =>
+                key === 'request' && value.toLowerCase() === 'getcapabilities',
+            )
+          )
+            return 'FORBIDDEN';
           if (planned.versionId !== undefined) {
             await options.authority.authorizeVectorVersion({
               context,
@@ -1235,6 +1245,13 @@ export function createDataFoundationGeoProxyModule(
           const params = request.params as { readonly '*'?: unknown };
           const planned = stacRequest(request, params['*'] ?? '', context);
           if (planned === null || planned === 'NOT_FOUND') return planned;
+          // The upstream collection is tenant/project-wide. Until item lists
+          // are curated per resource, managed users may read conformance only.
+          if (
+            context.authorization.resourceAccess !== undefined &&
+            planned.path !== '/conformance'
+          )
+            return 'FORBIDDEN';
           return {
             target: planned.target,
             path: planned.path,
