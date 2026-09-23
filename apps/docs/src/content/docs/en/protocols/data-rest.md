@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 ---
 
 ## Protocol boundary
@@ -280,6 +280,8 @@ After an ambiguous failure, retry only the identical actor, Tenant, Project, Pur
 ## Shared exploration result sets
 
 `POST /api/data/v1/explore/query` calls `data.explore.query` and requires both `data.query.execute` and `data.catalog.read`. Start with `{"spec":{"text":"water"},"view":"resources","first":20}`. Continue with `{"queryId":"<returned UUID>","view":"resources","first":20,"after":"<returned cursor>"}`. Supply exactly one of `spec` or `queryId`; continuation requires the latter. The response carries `queryId`, `spec`, creation/expiry times, authorized `totalCount`, versioned `resources`, readiness and optional `nextCursor`.
+
+The `resources` response also includes optional `summary.coverage`. For the reauthorized, pinned resource set, `temporal` and `geometry` each report `recordedVersionCount` and `unknownVersionCount`; the two counts partition `summary.resourceCount` independently of the page size. A version is recorded when at least one extent row is visible under Data RLS, and multiple rows for that version count once. Unknown includes missing or non-visible extents, so these counts do not certify sampling time, geometry accuracy, CRS, or administrative/river identity. `approvedAssertionCount` and `effectiveActions` remain `null` rather than invented totals. A revoked or expired query cannot reuse its old summary.
 
 Manifests expire after 30 minutes. Foreign owners, changed Purpose/security/policy and expired IDs return `404`; changed authority membership returns `409`; malformed criteria/cursors and more than 10,000 matching versions return `422`. At most 32 recent manifests are retained per matching owner/context; creating another can evict an older query. Re-run the original specification when a result set expires. Projection readiness may advance independently. No raw SQL, Cypher, tenant or actor override is accepted.
 
