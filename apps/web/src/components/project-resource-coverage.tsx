@@ -199,6 +199,59 @@ function Coverage({ locale, tenantId, projectId }: Props) {
               <dd>{number(result.summary?.indexedFeatureCount)}</dd>
             </div>
           </dl>
+          <section
+            className={styles.coverageStatus}
+            aria-label={t.coverageStatus}
+          >
+            <div className={styles.heading}>
+              <h3>{t.coverageStatus}</h3>
+              <ContextHelp label={t.coverageHelp}>
+                {t.coverageHelpText}
+              </ContextHelp>
+            </div>
+            <dl className={styles.secondaryMetrics}>
+              <div>
+                <dt>{t.timeRecorded}</dt>
+                <dd data-testid="coverage-time-recorded">
+                  {number(
+                    result.summary?.coverage?.temporal.recordedVersionCount,
+                  )}
+                </dd>
+                <small>
+                  {t.timeUnknown}:{' '}
+                  {number(
+                    result.summary?.coverage?.temporal.unknownVersionCount,
+                  )}
+                </small>
+              </div>
+              <div>
+                <dt>{t.spaceRecorded}</dt>
+                <dd data-testid="coverage-space-recorded">
+                  {number(
+                    result.summary?.coverage?.geometry.recordedVersionCount,
+                  )}
+                </dd>
+                <small>
+                  {t.spaceUnknown}:{' '}
+                  {number(
+                    result.summary?.coverage?.geometry.unknownVersionCount,
+                  )}
+                </small>
+              </div>
+              <div>
+                <dt>{t.approvedKnowledge}</dt>
+                <dd>
+                  {number(result.summary?.coverage?.approvedAssertionCount)}
+                </dd>
+              </div>
+              <div>
+                <dt>{t.effectiveActions}</dt>
+                <dd>
+                  {result.summary?.coverage?.effectiveActions ?? t.unknown}
+                </dd>
+              </div>
+            </dl>
+          </section>
           {result.summary ? (
             <div className={styles.distributions}>
               {(['records', 'spatial'] as const).map((kind) => (

@@ -3,6 +3,7 @@ import {
   ExplorationQueryInputV111Schema as PreviousInput,
   ExplorationResultV111Schema as PreviousResult,
   QuerySpecSchema as PreviousSpec,
+  ExplorationSummarySchema as PreviousSummary,
 } from './v111.ts';
 import { BusinessQuerySchema } from './business.ts';
 export * from './v111.ts';
@@ -65,10 +66,39 @@ export const ExplorationQueryInputSchema = z
           message: issue.message,
         });
   });
+const CoverageCount = z.number().int().nonnegative().max(10000);
+const VersionCoverageSchema = z.strictObject({
+  recordedVersionCount: CoverageCount,
+  unknownVersionCount: CoverageCount,
+});
+export const ExplorationResourceCoverageSchema = z.strictObject({
+  temporal: VersionCoverageSchema,
+  geometry: VersionCoverageSchema,
+  approvedAssertionCount: z.null(),
+  effectiveActions: z.null(),
+});
+export const ExplorationSummarySchema = PreviousSummary.extend({
+  coverage: ExplorationResourceCoverageSchema.optional(),
+}).superRefine((summary, context) => {
+  const coverage = summary.coverage;
+  if (!coverage) return;
+  for (const kind of ['temporal', 'geometry'] as const)
+    if (
+      coverage[kind].recordedVersionCount +
+        coverage[kind].unknownVersionCount !==
+      summary.resourceCount
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['coverage', kind],
+        message: 'Coverage counts must partition the authorized resource set',
+      });
+});
 export const ExplorationResultSchema = z
   .strictObject({
     ...PreviousResult.shape,
     spec: QuerySpecSchema,
+    summary: ExplorationSummarySchema.optional(),
     membership: z
       .strictObject({
         complete: z.literal(true),
@@ -79,14 +109,25 @@ export const ExplorationResultSchema = z
   })
   .superRefine((value, context) => {
     const { businessQuery: _business, scope: _scope, ...spec } = value.spec;
-    const { membership, ...previous } = value;
+    const { membership, summary, ...previous } = value;
     if ((value.spec.scope === 'project') !== (membership !== undefined))
       context.addIssue({
         code: 'custom',
         path: ['membership'],
         message: 'Project results require complete server membership counts',
       });
-    const checked = PreviousResult.safeParse({ ...previous, spec });
+    const checked = PreviousResult.safeParse({
+      ...previous,
+      spec,
+      ...(summary
+        ? {
+            summary: (() => {
+              const { coverage: _coverage, ...prior } = summary;
+              return prior;
+            })(),
+          }
+        : {}),
+    });
     if (!checked.success)
       for (const issue of checked.error.issues)
         context.addIssue({
