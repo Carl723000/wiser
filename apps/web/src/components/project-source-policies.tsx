@@ -1,9 +1,12 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
+  ResourceManagementCatalogPageSchema,
+  ResourcePolicyProposalSchema,
   ResourcePolicyRequestsPageSchema,
   ResourcePolicyRequestViewSchema,
   ResourcePolicyRevokeReceiptSchema,
+  type ResourceManagementCatalogPage,
   type ResourcePolicyRequestsPage,
 } from '@wiser/platform-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
@@ -11,7 +14,14 @@ import { ContextHelp } from './context-help';
 import styles from './project-access-workspace.module.css';
 type Props = { projectId: string; viewerId: string; locale: Locale };
 type Row = ResourcePolicyRequestsPage['items'][number];
+type CatalogItem = ResourceManagementCatalogPage['items'][number];
 type Action = 'publish' | 'reject' | 'withdraw' | 'revoke';
+const policyActions = [
+  'source.discover',
+  'content.read',
+  'original.read',
+  'result.export',
+] as const;
 async function json(response: Response): Promise<unknown> {
   const value: unknown = await response.json();
   if (!response.ok)
@@ -39,6 +49,22 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
     data: ResourcePolicyRequestsPage | null;
     error: string;
   }>({ key: '', data: null, error: '' });
+  const [catalogOpen, setCatalogOpen] = useState(false),
+    [catalogPage, setCatalogPage] = useState(0),
+    [catalogDraft, setCatalogDraft] = useState(''),
+    [catalogSearch, setCatalogSearch] = useState(''),
+    [catalogRevision, setCatalogRevision] = useState(0);
+  const [catalogState, setCatalogState] = useState<{
+    key: string;
+    data: ResourceManagementCatalogPage | null;
+    error: string;
+  }>({ key: '', data: null, error: '' });
+  const [chosen, setChosen] = useState<{
+      item: CatalogItem;
+      policyId: string;
+      roleOptions: string[];
+    } | null>(null),
+    [proposalError, setProposalError] = useState('');
   const [editor, setEditor] = useState<{ row: Row; action: Action } | null>(
       null,
     ),
@@ -50,9 +76,12 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
     if (editor) reasonInput.current?.focus();
   }, [editor]);
   const retry = useRef<{ body: string; key: string } | null>(null),
+    proposalRetry = useRef<{ body: string; key: string } | null>(null),
     mutation = useRef<AbortController | null>(null);
   const key = `${page}:${filter}:${revision}`,
     data = state.key === key ? state.data : null;
+  const catalogKey = `${projectId}:${catalogPage}:${catalogSearch}:${catalogRevision}`,
+    catalog = catalogState.key === catalogKey ? catalogState.data : null;
   const errorText = (code: string) =>
     code === 'NOT_AUTHORIZED'
       ? t.denied
@@ -99,8 +128,50 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
     return () => c.abort();
   }, [projectId, page, filter, key]);
   useEffect(() => {
+    if (!catalogOpen || !data?.canPropose) return;
+    const controller = new AbortController();
+    void fetch(
+      '/api/platform/access/management-catalog?' +
+        new URLSearchParams({
+          projectId,
+          offset: String(catalogPage * 20),
+          limit: '20',
+          search: catalogSearch,
+        }).toString(),
+      { cache: 'no-store', signal: controller.signal },
+    )
+      .then(json)
+      .then((value) => ResourceManagementCatalogPageSchema.parse(value))
+      .then((value) => {
+        if (!controller.signal.aborted)
+          setCatalogState({ key: catalogKey, data: value, error: '' });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          if (error instanceof Error && error.message === 'NOT_AUTHORIZED')
+            setChosen(null);
+          setCatalogState({
+            key: catalogKey,
+            data: null,
+            error:
+              error instanceof Error ? error.message : 'ACCESS_UNAVAILABLE',
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [
+    catalogOpen,
+    catalogKey,
+    catalogPage,
+    catalogSearch,
+    data?.canPropose,
+    projectId,
+  ]);
+  useEffect(() => {
     const refreshState = () => {
       setEditor(null);
+      setChosen(null);
+      setCatalogOpen(false);
       setState({ key: '', data: null, error: '' });
       setRevision((x) => x + 1);
     };
@@ -214,14 +285,106 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
   }
   function edit(row: Row, action: Action) {
     setEditor({ row, action });
+    setCatalogOpen(false);
+    setChosen(null);
     setError('');
     setSaved('');
     retry.current = null;
+  }
+  async function submitProposal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!chosen || !data?.canPropose || busy) return;
+    const form = new FormData(event.currentTarget);
+    const start = new Date(String(form.get('startsAt') ?? '')),
+      end = new Date(String(form.get('expiresAt') ?? ''));
+    const command = ResourcePolicyProposalSchema.safeParse({
+      projectId,
+      policyId: chosen.policyId,
+      expectedPolicyVersion: chosen.item.expectedPolicyVersion,
+      resource: {
+        kind: 'version',
+        dataItemId: chosen.item.dataItemId,
+        versionId: chosen.item.versionId,
+      },
+      allowedActions: form.getAll('actions'),
+      managementRoles: form.getAll('roles'),
+      licenseBasis: form.get('licenseBasis'),
+      startsAt: Number.isFinite(start.valueOf()) ? start.toISOString() : '',
+      expiresAt: Number.isFinite(end.valueOf()) ? end.toISOString() : '',
+      maxGrantDays: Number(form.get('maxGrantDays')),
+      reason: form.get('reason'),
+    });
+    if (!command.success) {
+      setProposalError(t.proposalInvalid);
+      return;
+    }
+    const body = JSON.stringify(command.data);
+    if (proposalRetry.current?.body !== body)
+      proposalRetry.current = { body, key: crypto.randomUUID() };
+    const controller = new AbortController();
+    mutation.current = controller;
+    setBusy(true);
+    setProposalError('');
+    setSaved('');
+    try {
+      ResourcePolicyRequestViewSchema.parse(
+        await json(
+          await fetch('/api/platform/access/source-policy-propose', {
+            method: 'POST',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+              'content-type': 'application/json',
+              'idempotency-key': proposalRetry.current.key,
+            },
+            body,
+          }),
+        ),
+      );
+      if (!controller.signal.aborted) {
+        setSaved(t.savedProposal);
+        setChosen(null);
+        setCatalogOpen(false);
+        setCatalogRevision((value) => value + 1);
+        refresh();
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        const code =
+          error instanceof Error ? error.message : 'ACCESS_UNAVAILABLE';
+        setProposalError(errorText(code));
+        if (code === 'VERSION_CONFLICT' || code === 'RESOURCE_UNAVAILABLE') {
+          setChosen(null);
+          setCatalogRevision((value) => value + 1);
+        }
+        if (code === 'NOT_AUTHORIZED') {
+          setChosen(null);
+          setCatalogOpen(false);
+          setState({ key, data: null, error: code });
+        }
+      }
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+    }
   }
   return (
     <section aria-label={t.title}>
       <div className={styles.actions}>
         <ContextHelp label={t.help}>{t.helpText}</ContextHelp>
+        {data?.canPropose ? (
+          <button
+            disabled={busy}
+            aria-expanded={catalogOpen}
+            onClick={() => {
+              setCatalogOpen((value) => !value);
+              setChosen(null);
+              setEditor(null);
+              setProposalError('');
+            }}
+          >
+            {t.create}
+          </button>
+        ) : null}
         <label>
           {t.history}
           <select
@@ -380,6 +543,187 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
             </button>
           </div>
         </>
+      ) : null}
+      {catalogOpen && data?.canPropose ? (
+        <section className={styles.editor} aria-label={t.catalog}>
+          <h3>{t.catalog}</h3>
+          {proposalError ? <p role="alert">{proposalError}</p> : null}
+          <form
+            className={styles.search}
+            onSubmit={(event) => {
+              event.preventDefault();
+              setCatalogSearch(catalogDraft.trim());
+              setCatalogPage(0);
+              setChosen(null);
+            }}
+          >
+            <label>
+              {t.catalogSearch}
+              <input
+                value={catalogDraft}
+                onChange={(event) => setCatalogDraft(event.target.value)}
+                maxLength={120}
+                disabled={busy}
+              />
+            </label>
+            <button disabled={busy} type="submit">
+              {t.catalogQuery}
+            </button>
+          </form>
+          {catalogState.key === catalogKey && catalogState.error ? (
+            <p role="alert">{errorText(catalogState.error)}</p>
+          ) : !catalog ? (
+            <p role="status">{t.catalogLoading}</p>
+          ) : (
+            <>
+              {!catalog.items.length ? <p>{t.catalogEmpty}</p> : null}
+              <ul className={styles.sourceCatalogList}>
+                {catalog.items.map((item) => (
+                  <li
+                    key={`${item.dataItemId}:${item.versionId}`}
+                    data-version-id={item.versionId}
+                  >
+                    <div>
+                      <strong>{item.name}</strong>
+                      <span>
+                        {item.sourceOrganization} · {t.versionNumber}
+                        {item.versionNumber}
+                        {t.versionSuffix} · {t[item.securityLevel]}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setChosen({
+                          item,
+                          policyId: item.policyId ?? crypto.randomUUID(),
+                          roleOptions: catalog.managementRoleOptions,
+                        });
+                        setProposalError('');
+                        proposalRetry.current = null;
+                      }}
+                      aria-label={`${t.chooseSource}${item.sourceOrganization}${t.sourceGenitive}${t.versionNumber}${item.versionNumber}${t.versionSuffix}`}
+                    >
+                      {t.choose}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  disabled={busy || catalogPage === 0}
+                  onClick={() => setCatalogPage((value) => value - 1)}
+                >
+                  {t.previous}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !catalog.hasMore || catalogPage >= 500}
+                  onClick={() => setCatalogPage((value) => value + 1)}
+                >
+                  {t.next}
+                </button>
+              </div>
+            </>
+          )}
+          {chosen ? (
+            <section className={styles.editor} aria-label={t.proposal}>
+              <h3>{t.proposal}</h3>
+              <p>
+                <strong>{chosen.item.name}</strong> ·{' '}
+                {chosen.item.sourceOrganization} · {t.versionNumber}
+                {chosen.item.versionNumber}
+                {t.versionSuffix}
+              </p>
+              <form
+                onSubmit={(event) => {
+                  void submitProposal(event);
+                }}
+              >
+                <fieldset className={styles.sourceChoiceGrid}>
+                  <legend>{d.actions}</legend>
+                  {policyActions.map((action) => (
+                    <label key={action}>
+                      <input type="checkbox" name="actions" value={action} />
+                      {d[action]}
+                    </label>
+                  ))}
+                </fieldset>
+                <fieldset className={styles.sourceChoiceGrid}>
+                  <legend>{t.roles}</legend>
+                  {chosen.roleOptions.length ? (
+                    chosen.roleOptions.map((role) => (
+                      <label key={role}>
+                        <input type="checkbox" name="roles" value={role} />
+                        {role}
+                      </label>
+                    ))
+                  ) : (
+                    <p>{t.noRoles}</p>
+                  )}
+                </fieldset>
+                <label>
+                  {t.license}
+                  <textarea
+                    name="licenseBasis"
+                    minLength={5}
+                    maxLength={1000}
+                    required
+                    rows={2}
+                  />
+                </label>
+                <div className={styles.sourceDates}>
+                  <label>
+                    {t.startsAt}
+                    <input type="datetime-local" name="startsAt" required />
+                  </label>
+                  <label>
+                    {t.expiresAt}
+                    <input type="datetime-local" name="expiresAt" required />
+                  </label>
+                  <label>
+                    {t.maxGrantDays}
+                    <input
+                      type="number"
+                      name="maxGrantDays"
+                      min={1}
+                      max={366}
+                      defaultValue={30}
+                      required
+                    />
+                  </label>
+                </div>
+                <label>
+                  {t.proposalReason}
+                  <textarea
+                    name="reason"
+                    minLength={5}
+                    maxLength={1000}
+                    required
+                    rows={2}
+                  />
+                </label>
+                <div className={styles.actions}>
+                  <button
+                    type="submit"
+                    disabled={busy || !chosen.roleOptions.length}
+                  >
+                    {busy ? t.saving : t.submitProposal}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setChosen(null)}
+                  >
+                    {t.cancel}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+        </section>
       ) : null}
       {editor && data ? (
         <section className={styles.editor} aria-label={t[editor.action]}>
