@@ -432,6 +432,9 @@ it('bounds project pages after complete scope checks and rechecks withdrawal bet
   const original = f.query.getMockImplementation()!;
   const queryId = randomUUID();
   let scope: 'project' | undefined = 'project';
+  const refs = [
+    { dataItemId: f.input.dataItemId, versionId: f.input.versionId },
+  ];
   const business = {
     schemaVersion: 1,
     status: 'PENDING_REVIEW',
@@ -450,9 +453,7 @@ it('bounds project pages after complete scope checks and rechecks withdrawal bet
       return {
         rows: [
           {
-            version_refs: [
-              { dataItemId: f.input.dataItemId, versionId: f.input.versionId },
-            ],
+            version_refs: refs,
             spec: scope
               ? { scope, businessQuery: business }
               : {
@@ -470,10 +471,17 @@ it('bounds project pages after complete scope checks and rechecks withdrawal bet
         rowCount: 1,
       };
     if (
-      sql.startsWith('select b.*') &&
+      sql.includes('from knowledge.assertion_binding b') &&
       sql.includes('jsonb_array_elements($1::jsonb) ref')
-    )
+    ) {
+      const boundValues = values ?? [];
+      expect(sql).toContain('jsonb_array_elements($3::jsonb) pin');
+      expect(JSON.parse(String(boundValues[0]))).toEqual(refs);
+      expect(boundValues[1]).toEqual(['PENDING_REVIEW']);
+      expect(JSON.parse(String(boundValues[2]))).toEqual(pins);
+      expect(boundValues[3]).toBe(100001);
       return { rows: [...f.rows.values()], rowCount: f.rows.size };
+    }
     return original(sql, values);
   });
   const request = {

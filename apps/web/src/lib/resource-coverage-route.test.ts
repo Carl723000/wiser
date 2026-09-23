@@ -53,6 +53,19 @@ it('continues a fixed result set without reconstructing its membership from the 
     after: 'cursor-20',
   });
 });
+it('accepts only supported registration types as server-side filters', async () => {
+  getDal.mockResolvedValue({ explore });
+  explore.mockResolvedValue({ resources: [] });
+  const response = await GET(new Request(base + '&kind=DATASET_INTERFACE'));
+  expect(response.status).toBe(200);
+  expect(explore).toHaveBeenCalledWith({
+    view: 'resources',
+    first: 20,
+    spec: { kinds: ['DATASET_INTERFACE'] },
+  });
+  expect((await GET(new Request(base + '&kind=UNKNOWN'))).status).toBe(400);
+  expect(explore).toHaveBeenCalledTimes(1);
+});
 it('rejects impersonation, malformed context, conflicting filters and duplicate parameters before any data call', async () => {
   for (const suffix of [
     '&actorId=' + queryId,
