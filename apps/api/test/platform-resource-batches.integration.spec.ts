@@ -255,6 +255,69 @@ describe.skipIf(!url)(
         }
       },
     );
+    it.each(['approve', 'execute'] as const)(
+      'pins source policy versions before %s even when permissions remain compatible',
+      async (stage) => {
+        await client.query('savepoint source_revision_test');
+        try {
+          const pending = await service.previewBatch({
+            token: 'owner',
+            idempotencyKey: randomUUID(),
+            command: preview,
+          });
+          const action = {
+            projectId: project,
+            batchId: pending.id,
+            expectedVersion: pending.version,
+            reason: 'Synthetic source revision check',
+          };
+          const ready =
+            stage === 'execute'
+              ? await service.decideBatch({
+                  token: 'approver',
+                  idempotencyKey: randomUUID(),
+                  command: { ...action, decision: 'approve' },
+                })
+              : pending;
+          await client.query(
+            `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by)
+          select project_id,policy_id,version+1,resource,allowed_actions,management_roles,license_basis || ' revised',starts_at,expires_at,max_grant_days,created_by,approved_by
+          from platform_private.resource_policy_versions where project_id=$1 and resource=$2::jsonb`,
+            [project, JSON.stringify(resource)],
+          );
+          if (stage === 'approve')
+            await expect(
+              service.decideBatch({
+                token: 'approver',
+                idempotencyKey: randomUUID(),
+                command: { ...action, decision: 'approve' },
+              }),
+            ).rejects.toMatchObject({ code: 'PREVIEW_CHANGED' });
+          else {
+            const result = await service.executeBatch({
+              token: 'owner',
+              idempotencyKey: randomUUID(),
+              command: { ...action, expectedVersion: ready.version },
+            });
+            expect(
+              result.members.every(
+                (m) => m.grantId === null && m.code === 'ACCESS_CHANGED',
+              ),
+            ).toBe(true);
+          }
+          expect(
+            (
+              await client.query<{ n: number }>(
+                'select count(*)::int n from platform_private.resource_grants where project_id=$1',
+                [project],
+              )
+            ).rows[0]?.n,
+          ).toBe(0);
+        } finally {
+          await client.query('rollback to savepoint source_revision_test');
+        }
+      },
+    );
     it('rejects ordinary callers and invalid ranges without persisting a batch', async () => {
       await expect(
         service.previewBatch({
