@@ -142,3 +142,48 @@ it('fails closed for duplicate, malformed or oversized policy snapshots', () => 
     expect(canAdministerResources({ ...management, limits })).toBe(false);
   }
 });
+it('treats a scheduled license as a future recheck without leaking current access', () => {
+  expect(
+    compileResourceAccessScope({
+      ...scope,
+      limits: [{ ...limit, startsAt: end }],
+    }),
+  ).toMatchObject({ validUntil: end, permissions: { 'content.read': [] } });
+});
+it('validates every resource and keeps provider ceilings independent from locally readable content', () => {
+  const external = { kind: 'external-source', sourceId: id(20) };
+  const externalLimit = {
+    ...limit,
+    id: id(21),
+    resource: external,
+    allowedActions: ['external.directory'],
+    managementRoles: ['provider-steward'],
+  };
+  expect(
+    canAdministerResources({
+      ...management,
+      resources: [external],
+      actions: ['external.directory'],
+      limits: [externalLimit],
+    }),
+  ).toBe(false);
+  expect(
+    canAdministerResources({
+      ...management,
+      roles: ['provider-steward'],
+      resources: [external],
+      actions: ['external.directory'],
+      limits: [externalLimit],
+    }),
+  ).toBe(true);
+  expect(
+    canAdministerResources({
+      ...management,
+      resources: [ref, external],
+      limits: [limit, externalLimit],
+    }),
+  ).toBe(false);
+  expect(
+    canAdministerResources({ ...management, now: end, expiresAt: end }),
+  ).toBe(false);
+});

@@ -201,3 +201,5 @@ export {
   ResourceAdministrationError,
   type ResourceAdministrationOptions,
 } from './resource-administration-service.js';
+
+export { canAdministerResources } from './resource-policy-limits.js';

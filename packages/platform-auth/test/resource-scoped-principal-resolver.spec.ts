@@ -179,3 +179,38 @@ it('requires the authority delegator to match the verified credential owner', as
   expect(await resolver.resolve(input)).toBeNull();
   expect(await resolver.resolve(input)).toBeNull();
 });
+it('changes the response fingerprint when the trusted source license removes access even if the grant is unchanged', async () => {
+  const limit = {
+    id: id(30),
+    version: 1,
+    tenantId: id(3),
+    projectId: id(4),
+    resource,
+    allowedActions: ['content.read'],
+    managementRoles: ['resource-steward'],
+    licenseBasis: 'Verified public research source',
+    status: 'active',
+    startsAt: grant.startsAt,
+    expiresAt: grant.expiresAt,
+    maxGrantDays: 30,
+  };
+  const load = vi
+    .fn()
+    .mockResolvedValueOnce({ ...snapshot, limits: [limit] })
+    .mockResolvedValueOnce({ ...snapshot, limits: [] });
+  const resolver = new ResourceScopedPrincipalResolver({
+    base: { resolve: () => Promise.resolve(context) },
+    load,
+  });
+  const first = await resolver.resolve(input),
+    second = await resolver.resolve(input);
+  expect(first?.authorization.resourceAccess?.scope).toMatchObject({
+    permissions: { 'content.read': [resource] },
+  });
+  expect(second?.authorization.resourceAccess?.scope).toMatchObject({
+    permissions: { 'content.read': [] },
+  });
+  expect(first?.authorization.resourceAccess?.fingerprint).not.toBe(
+    second?.authorization.resourceAccess?.fingerprint,
+  );
+});
