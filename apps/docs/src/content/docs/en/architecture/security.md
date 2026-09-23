@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 56ae66bc1173833d480473668396c0a6226c6c67
+lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
 ---
 
 ## Separate four data classes
@@ -96,3 +96,7 @@ Access requests also remain in the private forced-RLS control plane. Approval is
 ## Immutable resource authority
 
 `05_resource_access.sql` adds private forced-RLS settings, immutable package/preset versions, grants, separate revocations and audit events. Existing projects remain legacy unless explicitly configured; seed data does not enable managed mode or issue new grants. Settings cannot be deleted to restore broad legacy access. Changes advance a project resource revision, while package/action and duration constraints bind every grant to exact versions. Browser and generic service roles receive no direct table access. Run the new pgTAP suite and complete reset/lint/advisor gates only in a disposable instance. API management, provider ceilings and Data outlet enforcement remain required before enabling this mode for real users.
+
+## Bounded resource batch storage
+
+`06_resource_batches.sql` stores immutable fixed-version batch snapshots, at most fifty explicitly numbered recipients, append-only per-recipient attempts and important-approval role policy in the private control plane. Pending requests produce no grants. State changes require increasing versions; applicants and recipients cannot approve their own batch. Approval freezes recipients, purpose and expiry. Successful receipts must reference a grant matching the approved resource/preset versions and recipient; success cannot be repeated. No approver or request is seeded. Runtime review, current membership, provider and Data validity checks remain mandatory; these storage constraints alone do not enable a batch workflow.

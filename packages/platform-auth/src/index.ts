@@ -195,3 +195,17 @@ export {
   createPostgresResourceAuthorityLoader,
   type ResourceAuthorityQuery,
 } from './postgres-resource-authority.js';
+
+export {
+  PostgresResourceAdministrationService,
+  ResourceAdministrationError,
+  type ResourceAdministrationOptions,
+} from './resource-administration-service.js';
+
+export { canAdministerResources } from './resource-policy-limits.js';
+
+export {
+  assertResourceManagementPolicy,
+  consumeResourceManagementPermit,
+  type ResourceManagementPermit,
+} from './resource-management-policy.js';

@@ -1,0 +1,11 @@
+-- Cover all control-plane foreign-key lookups without changing authorization.
+create index resource_approval_roles_role_idx on platform_private.resource_approval_roles(role_id);
+create index resource_approval_roles_configurator_idx on platform_private.resource_approval_roles(configured_by);
+create index resource_batches_package_idx on platform_private.resource_batches(project_id,package_id,package_version);
+create index resource_batches_preset_idx on platform_private.resource_batches(project_id,preset_id,preset_version);
+create index resource_batches_applicant_idx on platform_private.resource_batches(applicant_id);
+create index resource_batches_approver_idx on platform_private.resource_batches(decided_by);
+create index resource_batch_members_actor_idx on platform_private.resource_batch_members(actor_id);
+create index resource_batch_attempts_member_idx on platform_private.resource_batch_attempts(batch_id,project_id,actor_id);
+create index resource_batch_attempts_grant_idx on platform_private.resource_batch_attempts(grant_id,project_id);
+create index resource_batch_attempts_executor_idx on platform_private.resource_batch_attempts(executed_by);

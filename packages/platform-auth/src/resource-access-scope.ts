@@ -18,6 +18,15 @@ export function compileResourceAccessScope(
   const policy = parsed.data;
   if (policy.mode === 'legacy') return { mode: 'legacy' };
   const now = Date.parse(policy.now);
+  const limits =
+    policy.limits === undefined
+      ? null
+      : new Map(
+          policy.limits.map((limit) => [
+            resourceAccessReferenceKey(limit.resource),
+            limit,
+          ]),
+        );
   let deadline: string | null = null;
   const restrictDeadline = (value: string) => {
     if (
@@ -54,7 +63,26 @@ export function compileResourceAccessScope(
         continue;
       for (const action of grant.actions)
         for (const resource of grant.resources) {
-          maps[action].set(resourceAccessReferenceKey(resource), resource);
+          const key = resourceAccessReferenceKey(resource);
+          if (limits !== null) {
+            const limit = limits.get(key);
+            if (
+              !limit ||
+              limit.tenantId !== policy.tenantId ||
+              limit.projectId !== policy.projectId ||
+              limit.status !== 'active' ||
+              !limit.allowedActions.includes(action)
+            )
+              continue;
+            restrictDeadline(limit.startsAt);
+            restrictDeadline(limit.expiresAt);
+            if (
+              Date.parse(limit.startsAt) > now ||
+              Date.parse(limit.expiresAt) <= now
+            )
+              continue;
+          }
+          maps[action].set(key, resource);
         }
     }
     return maps;

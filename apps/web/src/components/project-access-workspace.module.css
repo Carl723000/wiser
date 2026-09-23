@@ -356,3 +356,61 @@
   max-width: 100%;
   white-space: normal;
 }
+
+.batchForm {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.batchForm fieldset {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+.batchForm label:has(input[type='checkbox']) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+}
+.batchForm input[type='checkbox'] {
+  width: 1.1rem;
+  min-height: 1.1rem;
+}
+.batchCard {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.batchCard h3 {
+  margin: 0 0 0.6rem;
+}
+.batchFacts {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+}
+.batchFacts dt {
+  color: var(--text-secondary);
+}
+.batchFacts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .batchFacts {
+    grid-template-columns: 1fr;
+  }
+  .batchFacts dd {
+    margin-bottom: 0.5rem;
+  }
+}

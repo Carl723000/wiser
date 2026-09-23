@@ -1,0 +1,35 @@
+begin;
+select plan(23);
+select has_table('platform_private','resource_batches','Batch snapshots are durable');
+select has_table('platform_private','resource_batch_members','Explicit recipients are durable');
+select has_table('platform_private','resource_batch_attempts','Per-member attempts are append-only');
+select has_table('platform_private','resource_approval_roles','Important approvals have explicit role policy');
+select ok((select count(*)=4 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='platform_private' and c.relname in ('resource_batches','resource_batch_members','resource_batch_attempts','resource_approval_roles') and c.relrowsecurity and c.relforcerowsecurity),'All batch tables force RLS');
+select ok(not has_table_privilege('authenticated','platform_private.resource_batches','SELECT'),'Browser cannot enumerate batches');
+select ok(not has_table_privilege('service_role','platform_private.resource_batch_attempts','INSERT'),'Generic service role cannot forge execution');
+select is((select count(*)::integer from platform_private.resource_approval_roles),0,'Migration does not designate real approvers');
+select is((select count(*)::integer from platform_private.resource_batches),0,'Migration does not issue requests');
+insert into platform_private.resource_access_settings(project_id,tenant_id,enabled_by)
+values('b2000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000005');
+insert into platform_private.resource_package_versions(project_id,package_id,version,name,resources,allowed_actions,license_basis,created_by)
+values('b2000000-0000-4000-8000-000000000001','f1000000-0000-4000-8000-000000000001',1,'Synthetic package','[{"kind":"version","dataItemId":"f2000000-0000-4000-8000-000000000001","versionId":"f3000000-0000-4000-8000-000000000001"}]',array['content.read'],'Synthetic test license','10000000-0000-4000-8000-000000000005');
+insert into platform_private.resource_preset_versions(project_id,preset_id,version,name,actions,max_days,approval_level,created_by)
+values('b2000000-0000-4000-8000-000000000001','f4000000-0000-4000-8000-000000000001',1,'Synthetic preset',array['content.read'],30,'ordinary','10000000-0000-4000-8000-000000000005');
+select lives_ok($$insert into platform_private.resource_batches(id,project_id,package_id,package_version,preset_id,preset_version,applicant_id,purpose,starts_at,expires_at,valid_until,reason) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','f1000000-0000-4000-8000-000000000001',1,'f4000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000005','web-console',now(),now()+interval '1 day',now()+interval '15 minutes','Synthetic batch request')$$,'A fixed pending snapshot is accepted');
+insert into platform_private.resource_batch_members(batch_id,project_id,actor_id,ordinal,membership_version,display_name,existing_grant_count) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,1,'Synthetic reader',0);
+select throws_ok($$insert into platform_private.resource_batch_members(batch_id,project_id,actor_id,ordinal,membership_version,display_name,existing_grant_count) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002',51,1,'Synthetic overflow',0)$$,'23514',null,'Recipients are bounded by fifty numbered slots');
+select throws_ok($$insert into platform_private.resource_batch_attempts(batch_id,project_id,actor_id,attempt,executed_by,error_code) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000005','EXECUTION_FAILED')$$,'23514',null,'Execution cannot precede approval');
+select throws_ok($$update platform_private.resource_batches set status='approved',version=2,decided_by=applicant_id,decided_session_id=gen_random_uuid(),decided_at=now(),decision_reason='Synthetic self approval'$$,'23514',null,'Applicant cannot approve');
+select throws_ok($$update platform_private.resource_batches set status='approved',version=2,decided_by='10000000-0000-4000-8000-000000000001',decided_session_id=gen_random_uuid(),decided_at=now(),decision_reason='Synthetic self approval'$$,'23514',null,'Recipient cannot approve');
+select lives_ok($$update platform_private.resource_batches set status='approved',version=2,decided_by='10000000-0000-4000-8000-000000000002',decided_session_id=gen_random_uuid(),decided_at=now(),decision_reason='Synthetic independent approval'$$,'Independent approval is retained');
+select throws_ok($$insert into platform_private.resource_batch_members(batch_id,project_id,actor_id,ordinal,membership_version,display_name,existing_grant_count) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000003',2,1,'Synthetic late recipient',0)$$,'23514',null,'Approval freezes the recipient set');
+select throws_ok($$update platform_private.resource_batches set status='partial',version=3,expires_at=expires_at+interval '1 day'$$,'22023',null,'Execution cannot expand approved expiry');
+select throws_ok($$update platform_private.resource_batch_members set membership_version=2$$,'22023',null,'Recipient snapshot is immutable');
+select throws_ok($$delete from platform_private.resource_batches$$,'22023',null,'Batch history cannot be deleted');
+select lives_ok($$insert into platform_private.resource_batch_attempts(batch_id,project_id,actor_id,attempt,executed_by,error_code) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000005','MEMBERSHIP_CHANGED')$$,'A failed recipient retains a bounded auditable result');
+
+select ok((select grant_snapshot_hash is null and grant_diff is null from platform_private.resource_batch_members where batch_id='f5000000-0000-4000-8000-000000000001'),'Historical previews stay unknown rather than being recomputed');
+select throws_ok($$update platform_private.resource_batch_members set grant_snapshot_hash=repeat('a',64),grant_diff='{}'$$,'22023',null,'Differences remain part of the immutable preview');
+select lives_ok($$insert into platform_private.resource_batch_attempts(batch_id,project_id,actor_id,attempt,executed_by,error_code) values('f5000000-0000-4000-8000-000000000001','b2000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',2,'10000000-0000-4000-8000-000000000005','ACCESS_CHANGED')$$,'Changed authority has its own bounded failure reason');
+select * from finish();
+rollback;

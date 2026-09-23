@@ -75,6 +75,16 @@ describe('WISER platform auth runtime', () => {
       }),
     };
     for (const enabled of [false, true]) {
+      const runtime = createPlatformAuthRuntimeFromEnvironment(
+        {
+          ...env,
+          ...(enabled ? { WISER_PROJECT_ACCESS_ENABLED: 'true' } : {}),
+        },
+        factories,
+      );
+      expect(typeof runtime.resourceAdministrationModule).toBe(
+        enabled ? 'function' : 'undefined',
+      );
       const module = createPlatformAuthModuleFromEnvironment(
         {
           ...env,

@@ -1,5 +1,32 @@
 import 'server-only';
 import {
+  ResourceGrantsQuerySchema,
+  ResourceGrantsPageSchema,
+  ResourceGrantRevokeCommandSchema,
+  ResourceGrantRenewCommandSchema,
+  ResourceGrantRevokeReceiptSchema,
+  ResourceGrantRenewReceiptSchema,
+  type ResourceGrantsQuery,
+  type ResourceGrantRevokeCommand,
+  type ResourceGrantRenewCommand,
+  ResourceBatchesQuerySchema,
+  ResourceBatchesPageSchema,
+  ResourceBatchPreviewCommandSchema,
+  ResourceBatchDecisionSchema,
+  ResourceBatchActionSchema,
+  ResourceBatchViewSchema,
+  type ResourceBatchesQuery,
+  type ResourceBatchPreviewCommand,
+  type ResourceBatchDecision,
+  type ResourceBatchAction,
+  ResourceDefinitionsQuerySchema,
+  ResourceDefinitionsPageSchema,
+  ResourcePackageCommandSchema,
+  ResourcePresetCommandSchema,
+  ResourceDefinitionReceiptSchema,
+  type ResourceDefinitionsQuery,
+  type ResourcePackageCommand,
+  type ResourcePresetCommand,
   ProjectAccessRequestSchema,
   ProjectAccessRequestActionSchema,
   ProjectAccessRequestDecisionSchema,
@@ -32,6 +59,13 @@ import { verifiedSessionAccessToken } from './supabase/verified-session';
 import { createWiserServerSupabaseClient } from './supabase/server';
 
 const errorCodes = new Set([
+  'PREVIEW_EXPIRED',
+  'PREVIEW_CHANGED',
+  'REQUEST_STATE_CONFLICT',
+  'MEMBERSHIP_CHANGED',
+  'AUTHORITY_CHANGED',
+  'IMPORTANT_APPROVAL_REQUIRED',
+  'SELF_CHANGE_FORBIDDEN',
   'NOT_AUTHENTICATED',
   'NOT_AUTHORIZED',
   'VERSION_CONFLICT',
@@ -47,6 +81,8 @@ const errorCodes = new Set([
   'REQUEST_ALREADY_PENDING',
   'REQUEST_STATE_CONFLICT',
   'VALIDATION_FAILED',
+  'RESOURCE_POLICY_NOT_ENABLED',
+  'RESOURCE_UNAVAILABLE',
 ]);
 export class ProjectAccessWebError extends Error {
   constructor(
@@ -158,6 +194,111 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    grants(id: string, input: ResourceGrantsQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourceGrantsQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        ...(p.actorId ? { actorId: p.actorId } : {}),
+        ...(p.status ? { status: p.status } : {}),
+      });
+      return call(
+        `projects/${id}/resource-grants?${query}`,
+        ResourceGrantsPageSchema,
+      );
+    },
+    revokeGrant(command: ResourceGrantRevokeCommand, key: string) {
+      return call(
+        'resource-grants/revoke',
+        ResourceGrantRevokeReceiptSchema,
+        ResourceGrantRevokeCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    renewGrant(command: ResourceGrantRenewCommand, key: string) {
+      return call(
+        'resource-grants/renew',
+        ResourceGrantRenewReceiptSchema,
+        ResourceGrantRenewCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    batches(id: string, input: ResourceBatchesQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourceBatchesQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        ...(p.status ? { status: p.status } : {}),
+      });
+      return call(
+        `projects/${id}/resource-batches?${query}`,
+        ResourceBatchesPageSchema,
+      );
+    },
+    previewBatch(command: ResourceBatchPreviewCommand, key: string) {
+      return call(
+        'resource-batches/preview',
+        ResourceBatchViewSchema,
+        ResourceBatchPreviewCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    decideBatch(command: ResourceBatchDecision, key: string) {
+      return call(
+        'resource-batches/decide',
+        ResourceBatchViewSchema,
+        ResourceBatchDecisionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    executeBatch(command: ResourceBatchAction, key: string) {
+      return call(
+        'resource-batches/execute',
+        ResourceBatchViewSchema,
+        ResourceBatchActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    withdrawBatch(command: ResourceBatchAction, key: string) {
+      return call(
+        'resource-batches/withdraw',
+        ResourceBatchViewSchema,
+        ResourceBatchActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    definitions(id: string, input: ResourceDefinitionsQuery) {
+      PlatformUuidSchema.parse(id);
+      const page = ResourceDefinitionsQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        kind: page.kind,
+        offset: String(page.offset),
+        limit: String(page.limit),
+        search: page.search,
+      });
+      return call(
+        `projects/${id}/resource-definitions?${query}`,
+        ResourceDefinitionsPageSchema,
+      );
+    },
+    savePackage(command: ResourcePackageCommand, key: string) {
+      return call(
+        'resource-packages',
+        ResourceDefinitionReceiptSchema,
+        ResourcePackageCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    savePreset(command: ResourcePresetCommand, key: string) {
+      return call(
+        'resource-presets',
+        ResourceDefinitionReceiptSchema,
+        ResourcePresetCommandSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     requests(id: string, page: ProjectAccessPage) {
       PlatformUuidSchema.parse(id);
       return call(

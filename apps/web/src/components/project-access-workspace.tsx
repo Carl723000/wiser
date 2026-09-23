@@ -11,6 +11,9 @@ import styles from './project-access-workspace.module.css';
 import { ProjectAccessRequests } from './project-access-requests';
 import { ProjectInvitations } from './project-invitations';
 import { ProjectResourceCoverage } from './project-resource-coverage';
+import { ProjectResourceGrants } from './project-resource-grants';
+import { ProjectResourceBatches } from './project-resource-batches';
+import { ProjectResourceDefinitions } from './project-resource-definitions';
 type Props = {
   locale: Locale;
   initial: { items: readonly ProjectAccessProjectView[]; hasMore: boolean };
@@ -206,7 +209,14 @@ export function ProjectAccessWorkspace({
   const [projects, setProjects] = useState(initial);
   const [projectId, setProjectId] = useState(initial.items[0]?.projectId ?? '');
   const [view, setView] = useState<
-    'overview' | 'mine' | 'members' | 'approvals'
+    | 'overview'
+    | 'mine'
+    | 'members'
+    | 'approvals'
+    | 'packages'
+    | 'presets'
+    | 'batches'
+    | 'grants'
   >('overview');
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState('');
@@ -399,6 +409,14 @@ export function ProjectAccessWorkspace({
                 >
                   {t.mine}
                 </button>
+                {project.resourceAccessEnabled ? (
+                  <button
+                    aria-pressed={view === 'grants'}
+                    onClick={() => setView('grants')}
+                  >
+                    {getDictionary(locale).resourceGrants.title}
+                  </button>
+                ) : null}
                 {project.canManage ? (
                   <button
                     aria-pressed={view === 'members'}
@@ -415,15 +433,49 @@ export function ProjectAccessWorkspace({
                     {t.approvals}
                   </button>
                 ) : null}
+                {project.resourceAccessEnabled &&
+                (project.canManage || project.canApprove) ? (
+                  <button
+                    aria-pressed={view === 'batches'}
+                    onClick={() => setView('batches')}
+                  >
+                    {getDictionary(locale).resourceBatches.title}
+                  </button>
+                ) : null}
+                {project.canManage && project.resourceAccessEnabled ? (
+                  <>
+                    <button
+                      aria-pressed={view === 'packages'}
+                      onClick={() => setView('packages')}
+                    >
+                      {getDictionary(locale).resourceDefinitions.packages}
+                    </button>
+                    <button
+                      aria-pressed={view === 'presets'}
+                      onClick={() => setView('presets')}
+                    >
+                      {getDictionary(locale).resourceDefinitions.presets}
+                    </button>
+                  </>
+                ) : null}
               </nav>
               <h2>
-                {view === 'overview'
-                  ? t.overview
-                  : view === 'mine'
-                    ? t.mine
-                    : view === 'members'
-                      ? t.members
-                      : t.approvals}
+                {view === 'grants'
+                  ? getDictionary(locale).resourceGrants.title
+                  : view === 'batches'
+                    ? getDictionary(locale).resourceBatches.title
+                    : view === 'overview'
+                      ? t.overview
+                      : view === 'mine'
+                        ? t.mine
+                        : view === 'members'
+                          ? t.members
+                          : view === 'packages'
+                            ? getDictionary(locale).resourceDefinitions.packages
+                            : view === 'presets'
+                              ? getDictionary(locale).resourceDefinitions
+                                  .presets
+                              : t.approvals}
               </h2>
               {view === 'overview' ? (
                 <ProjectResourceCoverage
@@ -511,6 +563,26 @@ export function ProjectAccessWorkspace({
                     </button>
                   ) : null}
                 </>
+              ) : view === 'grants' ? (
+                <ProjectResourceGrants
+                  key={project.projectId}
+                  project={project}
+                  locale={locale}
+                  viewerId={viewerId}
+                />
+              ) : view === 'batches' ? (
+                <ProjectResourceBatches
+                  key={project.projectId}
+                  project={project}
+                  locale={locale}
+                  viewerId={viewerId}
+                />
+              ) : view === 'packages' || view === 'presets' ? (
+                <ProjectResourceDefinitions
+                  project={project}
+                  locale={locale}
+                  kind={view === 'packages' ? 'package' : 'preset'}
+                />
               ) : view === 'approvals' ? (
                 <ProjectAccessRequests
                   key={project.projectId}

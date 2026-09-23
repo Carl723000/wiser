@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 1acbf7e0799b150e312eea24b46cac20004851d1
+lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -212,3 +212,13 @@ Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the
 ## Resource membership read policies
 
 `0030_resource_read_scope.sql` adds restrictive SELECT policies without altering stored business rows or existing write policies. The scope is transaction-local and derived from verified control authority; it is not client input. Version membership is an uncorrelated set, permitting hashed scans rather than per-record grant decoding. `packages/data-infra/test/migrations/resource-access.spec.ts`, under `WISER_DATA_PG_INTEGRATION=1` and a disposable `DATA_TEST_DATABASE_URL`, checks a non-BYPASSRLS role, full metadata and direct child reads, parsed records and geometry, exact version pairs, base-security intersection, separate originals/exports, discovery denial, malformed/expired contexts and rollback. All synthetic fixtures and temporary role grants roll back. Apply using the checked-sum Data runner; never reset an existing preview database for this test. These tests establish the storage foundation, not completed API/projection enforcement.
+
+Resource batch migration `20260922213413_resource_batches.sql` + `20260922214035_resource_batch_indexes.sql` follows immutable resource authority. Validate `12_resource_batches.test.sql` in the disposable control instance; preserve existing identity and resource histories.
+
+Migration `20260922214718_resource_batch_member_versions.sql` stores separate tenant-membership and actor authority versions alongside the project-member snapshot. Null historical values require a new preview; they are not backfilled from current permissions.
+
+`20260922220953_resource_batch_withdrawal_audit.sql` adds an explicit withdrawal audit action; request snapshots and earlier events remain immutable.
+
+Migration `20260922225842_resource_batch_diff.sql` adds immutable recipient grant-difference snapshots and fingerprints. Null historical snapshots are intentionally not backfilled.
+
+`07_resource_source_policy.sql` records independently approved immutable source-policy versions and append-only revocations. Apply CLI migrations `20260923032250_resource_source_policy.sql` then `20260923033546_resource_policy_reference_guard.sql` before the updated API. The latter validates resource fields before UUID normalization and uses the indexed identity for version-chain checks. Run `13_resource_source_policy.test.sql` on a clean disposable seed, followed by the real control-loader integration tests. No source license or managed project is seeded.

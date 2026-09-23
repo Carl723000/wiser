@@ -1,4 +1,14 @@
 import {
+  ResourceGrantsQuerySchema,
+  ResourceGrantRevokeCommandSchema,
+  ResourceGrantRenewCommandSchema,
+  ResourceBatchesQuerySchema,
+  ResourceBatchPreviewCommandSchema,
+  ResourceBatchDecisionSchema,
+  ResourceBatchActionSchema,
+  ResourceDefinitionsQuerySchema,
+  ResourcePackageCommandSchema,
+  ResourcePresetCommandSchema,
   ProjectAccessRequestSchema,
   ProjectAccessRequestActionSchema,
   ProjectAccessRequestDecisionSchema,
@@ -35,6 +45,57 @@ export async function GET(
   context: Context,
 ): Promise<Response> {
   const { action } = await context.params;
+  if (action === 'resource-grants') {
+    const { projectId, ...input } = Object.fromEntries(
+      new URL(request.url).searchParams,
+    );
+    const project = PlatformUuidSchema.safeParse(projectId),
+      page = ResourceGrantsQuerySchema.safeParse(input);
+    if (!project.success || !page.success)
+      return fail(400, 'VALIDATION_FAILED');
+    try {
+      return Response.json(
+        await getProjectAccessClient().grants(project.data, page.data),
+        { headers },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  }
+  if (action === 'resource-batches') {
+    const { projectId, ...input } = Object.fromEntries(
+      new URL(request.url).searchParams,
+    );
+    const project = PlatformUuidSchema.safeParse(projectId),
+      page = ResourceBatchesQuerySchema.safeParse(input);
+    if (!project.success || !page.success)
+      return fail(400, 'VALIDATION_FAILED');
+    try {
+      return Response.json(
+        await getProjectAccessClient().batches(project.data, page.data),
+        { headers },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  }
+  if (action === 'resource-definitions') {
+    const { projectId, ...query } = Object.fromEntries(
+      new URL(request.url).searchParams,
+    );
+    const page = ResourceDefinitionsQuerySchema.safeParse(query);
+    const project = PlatformUuidSchema.safeParse(projectId);
+    if (!page.success || !project.success)
+      return fail(400, 'VALIDATION_FAILED');
+    try {
+      return Response.json(
+        await getProjectAccessClient().definitions(project.data, page.data),
+        { headers },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  }
   if (
     action !== 'projects' &&
     action !== 'members' &&
@@ -78,6 +139,8 @@ export async function POST(
   if (!isSameOriginRequest(request)) return fail(403, 'NOT_AUTHORIZED');
   const { action } = await context.params;
   if (
+    action !== 'resource-grant-revoke' &&
+    action !== 'resource-grant-renew' &&
     action !== 'grant' &&
     action !== 'revoke' &&
     action !== 'invite' &&
@@ -85,7 +148,13 @@ export async function POST(
     action !== 'request' &&
     action !== 'decide-request' &&
     action !== 'withdraw-request' &&
-    action !== 'execute-request'
+    action !== 'execute-request' &&
+    action !== 'resource-package' &&
+    action !== 'resource-preset' &&
+    action !== 'resource-batch-preview' &&
+    action !== 'resource-batch-decide' &&
+    action !== 'resource-batch-execute' &&
+    action !== 'resource-batch-withdraw'
   )
     return fail(404, 'NOT_FOUND');
   if (!request.headers.get('content-type')?.startsWith('application/json'))
@@ -106,7 +175,7 @@ export async function POST(
       if (timedOut) return fail(408, 'VALIDATION_FAILED');
       if (part.done) break;
       bytes += part.value.byteLength;
-      if (bytes > 16384) {
+      if (bytes > (action === 'resource-package' ? 262144 : 16384)) {
         await reader.cancel();
         return fail(413, 'VALIDATION_FAILED');
       }
@@ -133,6 +202,61 @@ export async function POST(
   if (!key.success) return fail(400, 'VALIDATION_FAILED');
   try {
     const client = getProjectAccessClient();
+    if (action === 'resource-grant-revoke') {
+      const command = ResourceGrantRevokeCommandSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.revokeGrant(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'resource-grant-renew') {
+      const command = ResourceGrantRenewCommandSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.renewGrant(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'resource-batch-preview') {
+      const command = ResourceBatchPreviewCommandSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.previewBatch(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'resource-batch-decide') {
+      const command = ResourceBatchDecisionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.decideBatch(command.data, key.data), {
+        headers,
+      });
+    }
+    if (
+      action === 'resource-batch-execute' ||
+      action === 'resource-batch-withdraw'
+    ) {
+      const command = ResourceBatchActionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        action === 'resource-batch-execute'
+          ? await client.executeBatch(command.data, key.data)
+          : await client.withdrawBatch(command.data, key.data),
+        { headers },
+      );
+    }
+    if (action === 'resource-package') {
+      const command = ResourcePackageCommandSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.savePackage(command.data, key.data), {
+        headers,
+      });
+    }
+    if (action === 'resource-preset') {
+      const command = ResourcePresetCommandSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(await client.savePreset(command.data, key.data), {
+        headers,
+      });
+    }
     if (action === 'request') {
       const command = ProjectAccessRequestSchema.safeParse(body);
       if (!command.success) return fail(400, 'VALIDATION_FAILED');

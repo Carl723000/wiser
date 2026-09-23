@@ -1,10 +1,17 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 const client = {
+  grants: vi.fn(),
+  revokeGrant: vi.fn(),
+  renewGrant: vi.fn(),
+  batches: vi.fn(),
+  previewBatch: vi.fn(),
   projects: vi.fn(),
   members: vi.fn(),
   grant: vi.fn(),
   revoke: vi.fn(),
+  definitions: vi.fn(),
+  savePreset: vi.fn(),
 };
 vi.mock('./project-access.server', () => ({
   getProjectAccessClient: () => client,
@@ -12,6 +19,61 @@ vi.mock('./project-access.server', () => ({
 }));
 import { POST, GET } from '../app/api/platform/access/[action]/route';
 const context = (action: string) => ({ params: Promise.resolve({ action }) });
+it('forwards bounded resource definitions and preserves the fixed preset version', async () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  client.definitions.mockResolvedValue({
+    items: [],
+    hasMore: false,
+    authorityRevision: 1,
+  });
+  expect(
+    (
+      await GET(
+        new Request(
+          `http://wiser.test/api/platform/access/resource-definitions?projectId=${projectId}&kind=preset`,
+        ),
+        context('resource-definitions'),
+      )
+    ).status,
+  ).toBe(200);
+  expect(client.definitions).toHaveBeenCalledWith(projectId, {
+    kind: 'preset',
+    offset: 0,
+    limit: 20,
+    search: '',
+  });
+  client.savePreset.mockResolvedValue({
+    kind: 'preset',
+    id: projectId,
+    version: 1,
+    authorityRevision: 1,
+  });
+  const command = {
+    projectId,
+    presetId: projectId,
+    expectedVersion: 0,
+    name: 'Read',
+    actions: ['content.read'],
+    maxDays: 30,
+    approvalLevel: 'ordinary',
+    reason: 'Approved research',
+  };
+  const response = await POST(
+    new Request('http://wiser.test/api/platform/access/resource-preset', {
+      method: 'POST',
+      headers: {
+        origin: 'http://wiser.test',
+        host: 'wiser.test',
+        'content-type': 'application/json',
+        'idempotency-key': projectId,
+      },
+      body: JSON.stringify(command),
+    }),
+    context('resource-preset'),
+  );
+  expect(response.status).toBe(200);
+  expect(client.savePreset).toHaveBeenCalledWith(command, projectId);
+});
 it('rejects a cross-origin mutation before forwarding any identity or command', async () => {
   const response = await POST(
     new Request('http://wiser.test/api/platform/access/grant', {
@@ -71,4 +133,111 @@ it('returns only the authenticated service result with cache disabled', async ()
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toContain('no-store');
   expect(await response.json()).toEqual({ items: [], hasMore: false });
+});
+
+it('forwards bounded batch browsing and preview only through the verified server client', async () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  client.batches.mockResolvedValue({ items: [], hasMore: false });
+  const response = await GET(
+    new Request(
+      `http://wiser.test/api/platform/access/resource-batches?projectId=${projectId}&status=pending`,
+    ),
+    context('resource-batches'),
+  );
+  expect(response.status).toBe(200);
+  expect(client.batches).toHaveBeenCalledWith(projectId, {
+    offset: 0,
+    limit: 20,
+    status: 'pending',
+  });
+  const command = {
+    projectId,
+    packageId: projectId,
+    packageVersion: 1,
+    presetId: projectId,
+    presetVersion: 1,
+    actorIds: [projectId],
+    purpose: 'web-console',
+    startsAt: '2026-09-23T00:00:00Z',
+    expiresAt: '2026-09-24T00:00:00Z',
+    reason: 'Prepare resource preview',
+  };
+  client.previewBatch.mockResolvedValue({ status: 'pending' });
+  const req = new Request(
+    'http://wiser.test/api/platform/access/resource-batch-preview',
+    {
+      method: 'POST',
+      headers: {
+        origin: 'http://wiser.test',
+        host: 'wiser.test',
+        'content-type': 'application/json',
+        'idempotency-key': projectId,
+      },
+      body: JSON.stringify(command),
+    },
+  );
+  expect((await POST(req, context('resource-batch-preview'))).status).toBe(200);
+  expect(client.previewBatch).toHaveBeenCalledWith(command, projectId);
+});
+
+it('bounds resource grant queries and protects revocation and renewal from cross-origin or forged bodies', async () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  client.grants.mockResolvedValue({
+    items: [],
+    hasMore: false,
+    checkedAt: '2026-09-23T00:00:00Z',
+  });
+  const url = `http://wiser.test/api/platform/access/resource-grants?projectId=${projectId}`;
+  expect((await GET(new Request(url), context('resource-grants'))).status).toBe(
+    200,
+  );
+  expect(client.grants).toHaveBeenCalledWith(projectId, {
+    offset: 0,
+    limit: 20,
+  });
+  expect(
+    (await GET(new Request(url + '&limit=21'), context('resource-grants')))
+      .status,
+  ).toBe(400);
+  for (const action of ['revoke', 'renew']) {
+    const target = 'resource-grant-' + action,
+      command = {
+        projectId,
+        grantId: projectId,
+        reason: 'End scoped grant',
+        ...(action === 'renew' ? { expiresAt: '2026-10-01T00:00:00Z' } : {}),
+      };
+    const request = (origin: string, body: unknown) =>
+      new Request('http://wiser.test/api/platform/access/' + target, {
+        method: 'POST',
+        headers: {
+          origin,
+          host: 'wiser.test',
+          'content-type': 'application/json',
+          'idempotency-key': projectId,
+        },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (await POST(request('https://other.test', command), context(target)))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await POST(
+          request('http://wiser.test', { ...command, approvedBy: projectId }),
+          context(target),
+        )
+      ).status,
+    ).toBe(400);
+    const method = action === 'revoke' ? client.revokeGrant : client.renewGrant;
+    method.mockResolvedValue({ recorded: true });
+    const response = await POST(
+      request('http://wiser.test', command),
+      context(target),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(method).toHaveBeenCalledWith(command, projectId);
+  }
 });

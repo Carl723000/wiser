@@ -31,11 +31,28 @@ with subjects as (
   on package.project_id=g.project_id and package.package_id=g.package_id and package.version=g.package_version
  join platform_private.resource_preset_versions preset
   on preset.project_id=g.project_id and preset.preset_id=g.preset_id and preset.version=g.preset_version
+ ), current_policies as (
+ select distinct on (p.resource_key) p.*
+ from platform_private.resource_policy_versions p
+ where p.project_id=$2::uuid
+ order by p.resource_key,p.version desc
+ limit 10001
+), policy_limits as (
+ select jsonb_build_object(
+  'id',p.policy_id,'version',p.version,'tenantId',$1::uuid,'projectId',p.project_id,
+  'resource',p.resource,'allowedActions',p.allowed_actions,'managementRoles',p.management_roles,
+  'licenseBasis',p.license_basis,'startsAt',p.starts_at,'expiresAt',p.expires_at,
+  'maxGrantDays',p.max_grant_days,
+  'status',case when exists(select 1 from platform_private.resource_policy_revocations r
+   where r.project_id=p.project_id and r.policy_id=p.policy_id and r.version=p.version)
+   then 'revoked' else 'active' end) snapshot
+ from current_policies p
 )
 select jsonb_build_object(
  'mode',case when settings.project_id is null then 'legacy' else 'managed' end,
  'tenantId',project.tenant_id,'projectId',project.id,'actorId',$3::uuid,
  'purpose',$4::text,'now',statement_timestamp(),'revision',coalesce(settings.revision,0),
+ 'limits',coalesce((select jsonb_agg(snapshot) from policy_limits),'[]'::jsonb),
  'grants',coalesce((select jsonb_agg(snapshot) from live_grants where actor_id=$3::uuid),'[]'::jsonb)
 ) || case when $5::uuid is null then '{}'::jsonb else jsonb_build_object('delegator',jsonb_build_object(
  'actorId',$5::uuid,'grants',coalesce((select jsonb_agg(snapshot) from live_grants where actor_id=$5::uuid),'[]'::jsonb)

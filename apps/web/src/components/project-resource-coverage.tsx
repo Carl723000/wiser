@@ -12,7 +12,17 @@ import { getDictionary, type Locale } from '@/lib/i18n';
 import { ContextHelp } from './context-help';
 import styles from './project-resource-coverage.module.css';
 
-type Props = { locale: Locale; tenantId: string; projectId: string };
+export type CoverageResourceSelection = {
+  dataItemId: string;
+  versionId: string;
+  name: string;
+};
+type Props = {
+  locale: Locale;
+  tenantId: string;
+  projectId: string;
+  onChoose?: (resource: CoverageResourceSelection) => void;
+};
 type ResourceKind = NonNullable<QuerySpec['kinds']>[number];
 type Filters = {
   text?: string;
@@ -24,7 +34,7 @@ type Cursor = { queryId?: string; after?: string };
 export function ProjectResourceCoverage(props: Props) {
   return <Coverage key={`${props.tenantId}:${props.projectId}`} {...props} />;
 }
-function Coverage({ locale, tenantId, projectId }: Props) {
+function Coverage({ locale, tenantId, projectId, onChoose }: Props) {
   const dictionary = getDictionary(locale);
   const t = dictionary.resourceCoverage;
   const states = dictionary.dataFoundation.explorer.readiness;
@@ -305,6 +315,9 @@ function Coverage({ locale, tenantId, projectId }: Props) {
                     <th>{t.content}</th>
                     <th>{t.spatial}</th>
                     <th>{t.graph}</th>
+                    {onChoose ? (
+                      <th>{dictionary.resourceDefinitions.selection}</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -336,6 +349,22 @@ function Coverage({ locale, tenantId, projectId }: Props) {
                           </td>
                         ),
                       )}
+                      {onChoose ? (
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onChoose({
+                                dataItemId: r.dataItemId,
+                                versionId: r.versionId,
+                                name: r.name,
+                              })
+                            }
+                          >
+                            {dictionary.resourceDefinitions.pick}
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>

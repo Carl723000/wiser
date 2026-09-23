@@ -86,10 +86,14 @@ describe.skipIf(!url)(
         "insert into platform_private.resource_grants(id,project_id,actor_id,package_id,package_version,preset_id,preset_version,purpose,starts_at,expires_at,created_by,approved_by,reason) values($1,$2,$3,$4,1,$5,1,'research',now()-interval '1 minute',now()+interval '1 day',$6,$6,'Synthetic resource acceptance')",
         [grantId, project, reader, packageId, presetId, owner],
       );
+      await client.query(
+        "insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by) values($1,$2,1,$3,array['content.read'],array['data-steward'],'Synthetic independent source license',now()-interval '1 day',now()+interval '10 days',30,$4,$5)",
+        [project, randomUUID(), JSON.stringify(resource), reader, owner],
+      );
       const raw = await load(context);
       const { revision, ...input } =
         ResourceAccessAuthoritySnapshotSchema.parse(raw);
-      expect(revision).toBe(4);
+      expect(revision).toBe(5);
       expect(compileResourceAccessScope(input)).toMatchObject({
         permissions: { 'content.read': [resource], 'original.read': [] },
       });
@@ -131,7 +135,7 @@ describe.skipIf(!url)(
         'insert into platform_private.resource_revocations(grant_id,project_id,revoked_by,reason) values($1,$2,$3,$4)',
         [grantId, project, owner, 'Synthetic local revocation'],
       );
-      expect(await load(context)).toMatchObject({ revision: 6, grants: [] });
+      expect(await load(context)).toMatchObject({ revision: 7, grants: [] });
       expect(
         (
           await client.query(

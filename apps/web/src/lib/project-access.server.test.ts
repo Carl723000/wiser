@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 import { createProjectAccessClient } from './project-access.server';
 const origin = 'http://api.test';
+function address(value: Parameters<typeof globalThis.fetch>[0] | undefined) {
+  return value instanceof URL
+    ? value.href
+    : value instanceof Request
+      ? value.url
+      : value;
+}
 describe('project access server transport', () => {
   it('uses only the freshly verified session and disables caching and redirects', async () => {
     const fetch = vi
@@ -76,4 +83,206 @@ describe('project access server transport', () => {
     ).rejects.toBeDefined();
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+it('transports versioned resource definitions through the verified session only', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({ items: [], hasMore: false, authorityRevision: 1 }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ kind: 'package', id, version: 1, authorityRevision: 2 }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ kind: 'preset', id, version: 1, authorityRevision: 3 }),
+    );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('verified'),
+    fetch,
+  });
+  await client.definitions(id, {
+    kind: 'package',
+    offset: 0,
+    limit: 20,
+    search: 'A&B',
+  });
+  await client.savePackage(
+    {
+      projectId: id,
+      packageId: id,
+      expectedVersion: 0,
+      name: 'Research',
+      resources: [{ kind: 'version', dataItemId: id, versionId: id }],
+      allowedActions: ['content.read'],
+      licenseBasis: 'Public research license',
+      reason: 'Research review',
+    },
+    id,
+  );
+  await client.savePreset(
+    {
+      projectId: id,
+      presetId: id,
+      expectedVersion: 0,
+      name: 'Research',
+      actions: ['content.read'],
+      maxDays: 30,
+      approvalLevel: 'ordinary',
+      reason: 'Research review',
+    },
+    id,
+  );
+  expect(address(fetch.mock.calls[0]?.[0])).toContain('search=A%26B');
+  expect(address(fetch.mock.calls[1]?.[0])).toContain(
+    '/access/resource-packages',
+  );
+  expect(address(fetch.mock.calls[2]?.[0])).toContain(
+    '/access/resource-presets',
+  );
+  for (const [, options] of fetch.mock.calls)
+    expect(options).toMatchObject({
+      cache: 'no-store',
+      redirect: 'error',
+      headers: { Authorization: 'Bearer verified' },
+    });
+  expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+    method: 'POST',
+    headers: { 'Idempotency-Key': id },
+  });
+});
+
+it('sends bounded batch actions to their exact authenticated routes and preserves safe expiry errors', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockImplementation(() =>
+      Promise.resolve(
+        Response.json({ code: 'PREVIEW_EXPIRED' }, { status: 409 }),
+      ),
+    );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('verified'),
+    fetch,
+  });
+  const action = {
+    projectId: id,
+    batchId: id,
+    expectedVersion: 1,
+    reason: 'Current scope review',
+  };
+  await expect(
+    client.batches(id, { offset: 0, limit: 20, status: 'pending' }),
+  ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED', status: 409 });
+  await expect(
+    client.previewBatch(
+      {
+        projectId: id,
+        packageId: id,
+        packageVersion: 1,
+        presetId: id,
+        presetVersion: 1,
+        actorIds: [id],
+        purpose: 'web-console',
+        startsAt: '2026-09-23T00:00:00Z',
+        expiresAt: '2026-09-24T00:00:00Z',
+        reason: action.reason,
+      },
+      id,
+    ),
+  ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
+  await expect(
+    client.decideBatch({ ...action, decision: 'approve' }, id),
+  ).rejects.toMatchObject({ code: 'PREVIEW_EXPIRED' });
+  await expect(client.executeBatch(action, id)).rejects.toMatchObject({
+    code: 'PREVIEW_EXPIRED',
+  });
+  await expect(client.withdrawBatch(action, id)).rejects.toMatchObject({
+    code: 'PREVIEW_EXPIRED',
+  });
+  const urls = fetch.mock.calls.map(([url]) => address(url));
+  expect(urls[0]).toContain(
+    `/projects/${id}/resource-batches?offset=0&limit=20&status=pending`,
+  );
+  for (const [index, verb] of [
+    'preview',
+    'decide',
+    'execute',
+    'withdraw',
+  ].entries())
+    expect(urls[index + 1]).toBe(
+      `${origin}/api/platform/v1/access/resource-batches/${verb}`,
+    );
+  for (const [, options] of fetch.mock.calls)
+    expect(options).toMatchObject({
+      cache: 'no-store',
+      redirect: 'error',
+      headers: { Authorization: 'Bearer verified' },
+    });
+});
+
+it('routes resource lifecycle commands with the session identity, exact grant ID and idempotency key', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        grantId: id,
+        revokedAt: '2026-09-23T00:00:00Z',
+        alreadyRevoked: false,
+        otherActiveGrantCount: 1,
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ code: 'REQUEST_STATE_CONFLICT' }, { status: 409 }),
+    );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('verified-session'),
+    fetch,
+  });
+  await client.grants(id, {
+    actorId: id,
+    offset: 20,
+    limit: 20,
+    status: 'active',
+  });
+  expect(address(fetch.mock.calls[0][0])).toContain(
+    `projects/${id}/resource-grants?offset=20&limit=20&actorId=${id}&status=active`,
+  );
+  const command = {
+    projectId: id,
+    grantId: id,
+    reason: 'End scoped resource access',
+  };
+  await client.revokeGrant(command, id);
+  await expect(
+    client.renewGrant({ ...command, expiresAt: '2026-10-01T00:00:00Z' }, id),
+  ).rejects.toMatchObject({ code: 'REQUEST_STATE_CONFLICT' });
+  for (const [i, action] of [
+    [1, 'revoke'],
+    [2, 'renew'],
+  ] as const) {
+    expect(address(fetch.mock.calls[i][0])).toBe(
+      `${origin}/api/platform/v1/access/resource-grants/${action}`,
+    );
+    expect(fetch.mock.calls[i][1]).toMatchObject({
+      cache: 'no-store',
+      redirect: 'error',
+      headers: {
+        Authorization: 'Bearer verified-session',
+        'Idempotency-Key': id,
+      },
+    });
+  }
 });

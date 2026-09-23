@@ -9,6 +9,7 @@ import {
 import {
   PostgresAgentConnectionService,
   PostgresProjectAccessService,
+  PostgresResourceAdministrationService,
   DelegatedCredentialPrincipalResolver,
   PlatformCredentialPrincipalResolver,
   ResourceScopedPrincipalResolver,
@@ -22,6 +23,7 @@ import {
   parseDelegatedCredentialHmacKeyRing,
   type AuthorizationQuery,
   type ResourceAuthorityQuery,
+  type ResourceAdministrationOptions,
   type AuthorizationRow,
   type DelegatedCredentialAuthorizationQuery,
   type DelegatedCredentialAuthorizationRow,
@@ -36,6 +38,7 @@ import { createPlatformAgentConnectionsModule } from './agent-connections-module
 import { createPlatformDelegationModule } from './delegation-module.js';
 import { createProjectInvitationSender } from './project-invitation-sender.js';
 import { createProjectAccessModule } from './project-access-module.js';
+import { createResourceAdministrationModule } from './resource-administration-module.js';
 import {
   createPlatformIdentityModule,
   type PlatformPrincipalResolver,
@@ -79,6 +82,9 @@ export interface PlatformAuthRuntimeFactories {
 export interface PlatformAuthRuntime {
   readonly module: WiserApiModule | null;
   readonly resolver: PlatformPrincipalResolver | null;
+  readonly resourceAdministrationModule?: (
+    validatePackage: ResourceAdministrationOptions['validatePackage'],
+  ) => WiserApiModule;
 }
 
 const SupabaseRuntimeFields = z.strictObject({
@@ -376,7 +382,24 @@ export function createPlatformAuthRuntimeFromEnvironment(
       });
     },
   };
-  return { module, resolver };
+  return {
+    module,
+    resolver,
+    ...(config.projectAccess
+      ? {
+          resourceAdministrationModule: (
+            validatePackage: ResourceAdministrationOptions['validatePackage'],
+          ) =>
+            createResourceAdministrationModule(
+              new PostgresResourceAdministrationService({
+                pool: database.transactionPool,
+                verifyHuman,
+                validatePackage,
+              }),
+            ),
+        }
+      : {}),
+  };
 }
 
 export function createPlatformAuthModuleFromEnvironment(

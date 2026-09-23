@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 45b425bbc553df81a4127d57a47f9437514cdf2b
+lastReviewedCommit: 0a9941d0823e10a05d19b9a8f294e17af846ab4d
 ---
 
 ## Two frontend applications
@@ -254,3 +254,13 @@ The opt-in account menu opens `/[locale]/account/access` for personal access and
 The normal `account/access` workspace opens an access overview and reads resource coverage for the selected tenant/project through the same-origin `GET /api/platform/resources` adapter. The server-only DAL forwards the verified current session to Data Foundation; selecting context never confers membership, Data scopes or resource access. Query parameters cannot provide an actor, grant or token. Counts and readiness distributions come from the full server-owned query manifest, while each resource page is bounded to 20 rows. Pagination retains the query identifier; filters create a new query. Project changes, denied access, expiry and failed refresh clear old content; aborted earlier requests cannot repopulate it. Unknown analysis totals remain unavailable.
 
 Resource rows distinguish content, spatial and graph readiness and expose fixed-version details. Optional counting explanations reuse keyboard/touch-accessible contextual help. Chinese/English, theme and narrow-screen acceptance use the same authenticated page. This coverage surface does not itself grant access, infer professional approval, or establish cross-resource temporal coverage.
+
+## Resource package and preset definitions
+
+Managed projects expose resource-package and preset tabs only to current project managers. The live projects response carries the optional `resourceAccessEnabled` flag; its absence preserves existing navigation. Both tables retrieve at most 20 latest definitions per page. Package creation selects explicit fixed versions from the current authorized coverage query, retains selections across pages and deduplicates exact item/version pairs. It never selects unread pages or grants access. Preset updates create an immutable version and retain the expected previous version.
+
+The same-origin adapter verifies session, origin, bounded input and idempotency keys before forwarding definitions. Ambiguous retries keep an identical command key; changed inputs get a new key. Project changes and failed authorization clear retained definitions and close editors. Successful saves explicitly distinguish stored definitions from effective member grants. Creation remains unavailable while the current definition list is loading or denied.
+
+The resource-enabled project workbench includes a batch-access tab for managers and approval reviewers. Managers select only explicitly loaded members and immutable package/preset versions; approval-only users see review controls without member-management controls. Applicant/recipient self-approval controls are absent, while the server independently enforces the rule. Preview, approval and execution statuses remain distinct, receipts retain per-recipient history, and retries reuse unchanged command keys (including fixed preview timestamps). Project changes abort stale requests. The same verified-session BFF handles bounded lists and all four batch actions.
+
+Batch member details show frozen differences by action, with an explicit unknown state for older previews. Changed grants prompt a fresh application; current effective access is never inferred from a historical receipt.

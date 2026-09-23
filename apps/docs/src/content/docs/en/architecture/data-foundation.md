@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 703ab24be7af3c44b285c144dcbb61d12e337e23
+lastReviewedCommit: 46cd150396b22e873ae44fc87c869174ce3d7b19
 ---
 
 ## External metadata reader boundary
@@ -442,3 +442,5 @@ Managed graph expansion/path queries constrain every node and relationship to th
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
 Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+
+Resource administration uses a metadata-only validation port. After checking the current source policy under control-plane project/settings locks, Platform issues a process-local, single-use permit bound to the verified actor/session, tenant, project, purpose, roles, scopes, security ceiling, authority version, exact resources and requested actions. It expires within five seconds and never outlives source permission. A serialized copy, changed request or replay is rejected before Data access. The port performs one bounded boolean check of fixed versions, publication, acceptance and source authorization text in a private read-only transaction. It installs only those exact references in the existing transaction-local version RLS transport; it never changes personal grants or passes that connection/scope to content, evidence, original or export adapters. Tenant/project/security RLS remains effective. Cancellation and expired results fail closed. Personal content access is neither required nor granted. External sources still require their separate registry port; management coverage browsing remains a separate integration gate.

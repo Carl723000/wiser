@@ -62,6 +62,7 @@ export interface ProjectAccessProjectView {
   readonly canManage: boolean;
   readonly canApprove: boolean;
   readonly requestsEnabled: boolean;
+  readonly resourceAccessEnabled?: boolean;
   readonly memberStatus: string | null;
   readonly expiresAt: string | null;
   readonly roles: readonly string[];
@@ -122,6 +123,7 @@ export const ProjectAccessProjectViewSchema = z.object({
   canManage: z.boolean(),
   canApprove: z.boolean(),
   requestsEnabled: z.boolean(),
+  resourceAccessEnabled: z.boolean().optional(),
   memberStatus: z.string().nullable(),
   expiresAt: Timestamp.nullable(),
   roles: z.array(RoleKey),
