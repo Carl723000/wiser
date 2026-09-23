@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-22
-lastReviewedCommit: bb5e00c433de4e3966e12533c0f15b629a221e61
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 56ae66bc1173833d480473668396c0a6226c6c67
 ---
 
 ## Separate four data classes
@@ -92,3 +92,7 @@ Normal `docker compose down` preserves data. Volume deletion requires a separate
 `04_project_access.sql` and its CLI-generated migration add private, forced-RLS project settings, assignable roles, invitations, idempotency receipts and immutable member events. No direct client or service-role table grants are added. Settings default to closed discovery. These are control-plane records, not a second identity store or Data Foundation migration. The optional `WISER_ACCESS_TEST_DATABASE_URL` integration suite must target a disposable migrated and seeded Supabase database; run pgTAP before integration fixtures. Never run a reset against the existing developer or shared instance.
 
 Access requests also remain in the private forced-RLS control plane. Approval is independent of the applicant and is not itself a grant. Current reviewer authority, configured role bounds and membership versions are rechecked at execution; original audit receipts remain immutable after withdrawal, expiry or revocation.
+
+## Immutable resource authority
+
+`05_resource_access.sql` adds private forced-RLS settings, immutable package/preset versions, grants, separate revocations and audit events. Existing projects remain legacy unless explicitly configured; seed data does not enable managed mode or issue new grants. Settings cannot be deleted to restore broad legacy access. Changes advance a project resource revision, while package/action and duration constraints bind every grant to exact versions. Browser and generic service roles receive no direct table access. Run the new pgTAP suite and complete reset/lint/advisor gates only in a disposable instance. API management, provider ceilings and Data outlet enforcement remain required before enabling this mode for real users.

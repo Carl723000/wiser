@@ -1,3 +1,5 @@
+import { ResourceAccessContextSchema } from '@wiser/platform-contracts';
+import { ExternalMetadataInputSchema } from '@wiser/data-contracts';
 import {
   DataCapabilityHandlerError,
   type DataCapabilityExecutor,
@@ -31,6 +33,26 @@ export function createExternalMetadataExecutor(
   return {
     id: 'data.external.metadata.read',
     async execute(input, context) {
+      if (context.authorization.resourceAccess !== undefined) {
+        const request = ExternalMetadataInputSchema.safeParse(input);
+        if (!request.success)
+          throw new DataCapabilityHandlerError('VALIDATION_FAILED');
+        const access = ResourceAccessContextSchema.safeParse(
+          context.authorization.resourceAccess,
+        );
+        if (
+          !access.success ||
+          access.data.scope.mode !== 'managed' ||
+          access.data.scope.validUntil === null ||
+          Date.parse(access.data.scope.validUntil) <= Date.now() ||
+          !access.data.scope.permissions['external.directory'].some(
+            (ref) =>
+              ref.kind === 'external-source' &&
+              ref.sourceId === request.data.sourceId,
+          )
+        )
+          throw new DataCapabilityHandlerError('FORBIDDEN');
+      }
       if (!reader)
         throw new DataCapabilityHandlerError('EXTERNAL_SOURCE_UNCONFIGURED');
       try {

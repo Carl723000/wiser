@@ -198,7 +198,7 @@ export function validateBackendRequest(
     !Number.isSafeInteger(candidate['limit']) ||
     Number(candidate['limit']) < 1 ||
     Number(candidate['limit']) > 10_000 ||
-    !stringArray(candidate['versionIds'], 256, (entry) =>
+    !stringArray(candidate['versionIds'], 1000, (entry) =>
       UUID_PATTERN.test(entry),
     ) ||
     !stringArray(candidate['businessDomains'], 64, (entry) =>

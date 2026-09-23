@@ -184,3 +184,14 @@ export {
   type PlatformCredentialPrincipalResolverOptions,
   type PlatformPrincipalResolverLike,
 } from './platform-credential-principal-resolver.js';
+
+export { evaluateResourceAccess } from './resource-access-policy.js';
+
+export { compileResourceAccessScope } from './resource-access-scope.js';
+
+export { ResourceScopedPrincipalResolver } from './resource-scoped-principal-resolver.js';
+
+export {
+  createPostgresResourceAuthorityLoader,
+  type ResourceAuthorityQuery,
+} from './postgres-resource-authority.js';

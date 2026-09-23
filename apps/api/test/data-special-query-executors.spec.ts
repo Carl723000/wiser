@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DATA_CAPABILITY_REGISTRY } from '@wiser/data-contracts';
 
@@ -335,5 +335,254 @@ describe('Data Foundation special query executors', () => {
     expect(String(failure)).not.toContain('weaviate');
     expect(String(failure)).not.toContain('secret');
     expect(String(failure)).not.toContain('raw backend payload');
+  });
+});
+
+function managedContext(): DataCapabilityExecutionContext {
+  return {
+    ...context,
+    authorization: {
+      ...context.authorization,
+      resourceAccess: {
+        revision: 1,
+        fingerprint: 'a'.repeat(64),
+        scope: {
+          mode: 'managed',
+          validUntil: '2099-01-01T00:00:00Z',
+          permissions: {
+            'source.discover': [],
+            'content.read': [{ kind: 'version', dataItemId, versionId }],
+            'original.read': [],
+            'result.export': [],
+            'external.directory': [],
+          },
+        },
+      },
+    },
+  };
+}
+describe('managed projection search', () => {
+  it.each(['data.search.federated', 'data.knowledge.search'] as const)(
+    'bounds %s by trusted versions and checks authority before release',
+    async (id) => {
+      const ports = setup();
+      const assertVisible = vi.fn(
+        (_request: ScopedSpecialQueryRequest, _refs: readonly unknown[]) =>
+          Promise.resolve(),
+      );
+      const executors = createSpecialQueryExecutors({
+        ...ports,
+        projectionAuthority: { assertVisible },
+      });
+      await executor(executors, id).execute(
+        { query: '永定河', first: 10 },
+        managedContext(),
+      );
+      expect(ports.search.requests[0]).toMatchObject({
+        versionIds: [versionId],
+        resourceFingerprint: 'a'.repeat(64),
+      });
+      expect(assertVisible).toHaveBeenCalledOnce();
+      expect(assertVisible.mock.calls[0]?.[0].scope.resourceAccess).toEqual(
+        managedContext().authorization.resourceAccess,
+      );
+      expect(assertVisible.mock.calls[0]?.[1]).toEqual([
+        { dataItemId, versionId, evidenceId },
+      ]);
+    },
+  );
+  it('returns empty without contacting projections for discovery-only access', async () => {
+    const ports = setup(),
+      ctx = managedContext();
+    if (ctx.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw Error('test');
+    ctx.authorization.resourceAccess.scope.permissions['content.read'] = [];
+    ctx.authorization.resourceAccess.scope.permissions['source.discover'] = [
+      { kind: 'version', dataItemId, versionId },
+    ];
+    await expect(
+      executor(ports.executors, 'data.search.federated').execute(
+        { query: '永定河' },
+        ctx,
+      ),
+    ).resolves.toEqual({ items: [] });
+    expect(ports.search.requests).toHaveLength(0);
+  });
+  it('fails closed without the authoritative read adapter', async () => {
+    const ports = setup();
+    await expect(
+      executor(ports.executors, 'data.search.federated').execute(
+        { query: '永定河' },
+        managedContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'BACKEND_UNAVAILABLE' });
+    expect(ports.search.requests).toHaveLength(0);
+  });
+  it('rejects a stale projection even when it reports the authorized version', async () => {
+    const ports = setup();
+    const executors = createSpecialQueryExecutors({
+      ...ports,
+      projectionAuthority: {
+        assertVisible: () => Promise.reject(Error('withdrawn')),
+      },
+    });
+    await expect(
+      executor(executors, 'data.search.federated').execute(
+        { query: '永定河' },
+        managedContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'BACKEND_UNAVAILABLE' });
+  });
+  it('rejects item/version mismatches returned by a projection', async () => {
+    const ports = setup(),
+      ctx = managedContext();
+    if (ctx.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw Error('test');
+    ctx.authorization.resourceAccess.scope.permissions['content.read'] = [
+      { kind: 'version', dataItemId: evidenceId, versionId },
+    ];
+    const executors = createSpecialQueryExecutors({
+      ...ports,
+      projectionAuthority: { assertVisible: () => Promise.resolve() },
+    });
+    await expect(
+      executor(executors, 'data.search.federated').execute(
+        { query: '永定河' },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED_BACKEND_RESULT' });
+  });
+});
+
+describe('managed graph projections', () => {
+  it.each(['data.graph.expand', 'data.graph.findPath'] as const)(
+    'revalidates every %s source before returning a graph',
+    async (id) => {
+      const ports = setup();
+      const assertVisible = vi.fn(
+        (_request: ScopedSpecialQueryRequest, _refs: readonly unknown[]) =>
+          Promise.resolve(),
+      );
+      const executors = createSpecialQueryExecutors({
+        ...ports,
+        projectionAuthority: { assertVisible },
+      });
+      const input =
+        id === 'data.graph.expand'
+          ? { entityId: 'station:lugouqiao', maxDepth: 1 }
+          : {
+              fromEntityId: 'station:lugouqiao',
+              toEntityId: 'station:other',
+              maxDepth: 2,
+            };
+      await executor(executors, id).execute(input, managedContext());
+      expect(assertVisible).toHaveBeenCalledOnce();
+      expect(assertVisible.mock.calls[0]?.[1]).toEqual([
+        { dataItemId, versionId, evidenceId },
+      ]);
+    },
+  );
+  it('does not query graph indexes for discovery-only authorization', async () => {
+    const ports = setup(),
+      ctx = managedContext();
+    if (ctx.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw Error('test');
+    ctx.authorization.resourceAccess.scope.permissions['content.read'] = [];
+    await expect(
+      executor(ports.executors, 'data.graph.expand').execute(
+        { entityId: 'station:lugouqiao', maxDepth: 1 },
+        ctx,
+      ),
+    ).resolves.toEqual({ nodes: [], edges: [] });
+    expect(ports.graph.expandRequests).toHaveLength(0);
+  });
+  it('fails closed when graph authority is unavailable', async () => {
+    const ports = setup();
+    await expect(
+      executor(ports.executors, 'data.graph.expand').execute(
+        { entityId: 'station:lugouqiao', maxDepth: 1 },
+        managedContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'BACKEND_UNAVAILABLE' });
+    expect(ports.graph.expandRequests).toHaveLength(0);
+  });
+  it('rejects ungranted graph node versions rather than leaking labels or counts', async () => {
+    const ports = setup(),
+      ctx = managedContext();
+    if (ctx.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw Error('test');
+    ctx.authorization.resourceAccess.scope.permissions['content.read'] = [
+      { kind: 'version', dataItemId, versionId: evidenceId },
+    ];
+    const executors = createSpecialQueryExecutors({
+      ...ports,
+      projectionAuthority: { assertVisible: () => Promise.resolve() },
+    });
+    await expect(
+      executor(executors, 'data.graph.expand').execute(
+        { entityId: 'station:lugouqiao', maxDepth: 1 },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED_BACKEND_RESULT' });
+  });
+  it('checks relationship evidence even when both endpoint nodes are readable', async () => {
+    const ports = setup();
+    const graph = {
+      nodes: [
+        {
+          entityId: 'one',
+          label: 'One',
+          dataItemId,
+          versionId,
+          evidenceId,
+          securityLevel: 'L1_INTERNAL',
+          qualityGrade: 'A',
+          confidence: 0.5,
+        },
+        {
+          entityId: 'two',
+          label: 'Two',
+          dataItemId,
+          versionId,
+          evidenceId,
+          securityLevel: 'L1_INTERNAL',
+          qualityGrade: 'A',
+          confidence: 0.5,
+        },
+      ],
+      edges: [
+        {
+          edgeId: 'edge',
+          fromEntityId: 'one',
+          toEntityId: 'two',
+          relationType: 'related',
+          evidenceId: '66666666-6666-4666-8666-666666666666',
+          confidence: 0.5,
+        },
+      ],
+    };
+    const assertVisible = vi.fn(
+      (
+        _request: ScopedSpecialQueryRequest,
+        refs: readonly { evidenceId: string }[],
+      ) =>
+        refs.some((ref) => ref.evidenceId !== evidenceId)
+          ? Promise.reject(Error('unreadable edge'))
+          : Promise.resolve(),
+    );
+    const executors = createSpecialQueryExecutors({
+      ...ports,
+      graph: {
+        expand: () => Promise.resolve(graph),
+        findPath: () => Promise.resolve(graph),
+      },
+      projectionAuthority: { assertVisible },
+    });
+    await expect(
+      executor(executors, 'data.graph.expand').execute(
+        { entityId: 'one', maxDepth: 1 },
+        managedContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'BACKEND_UNAVAILABLE' });
   });
 });

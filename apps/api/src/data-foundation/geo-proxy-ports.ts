@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { AUTHORIZED } from './exploration-authorization.js';
 import { Buffer } from 'node:buffer';
 
@@ -572,6 +573,7 @@ export class PostgresDataFoundationGeoAuthorityPort
       context.authorization.maxSecurityLevel,
       String(context.authorization.authzVersion),
     ]);
+    await applyResourceReadScope(client, context.authorization);
   }
 
   async authorizeExplorationQuery(input: {

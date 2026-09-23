@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import type { S3AuthorityObjectStore } from '@wiser/data-infra/object-store';
 import type { PlatformRequestContext } from '@wiser/platform-contracts';
 
@@ -119,6 +120,11 @@ export class PostgresDataAssetDownloadPort {
         input.context.authorization.maxSecurityLevel,
         String(input.context.authorization.authzVersion),
       ]);
+      await applyResourceReadScope(
+        client,
+        input.context.authorization,
+        'original.read',
+      );
       const result = await client.query(LOOKUP_SQL, [
         input.context.authorization.tenantId,
         input.context.authorization.projectId,

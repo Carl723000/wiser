@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-22
-lastReviewedCommit: 703a77a401fa978b75ee14ed6c76e1fee8af5697
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 9220c16900f6eb9e94a981944e4e085772a01eca
 ---
 
 ## One identity authority
@@ -209,3 +209,15 @@ Submission does not grant access. An independent approver records approve/reject
 A failed execution retains a bounded reason and a new request version. After refreshing, a transient failure can be retried with current authority; a version conflict must not overwrite an intervening change. The applicant can withdraw pending, approved or failed-but-unexecuted requests and submit a fresh request for independent review, including when the original approver is no longer available. Once effective, withdrawal is not revocation: an authorized manager must revoke the project membership. Concurrent withdrawal/execute and approve/reject are serialized with optimistic versions and actor-scoped idempotency.
 
 Use isolated synthetic accounts for applicant, approver and manager. Verify request → decision without access → execution → actual catalog/original/graph/map reads → revocation using the same unexpired Session. Previously issued signed file links retain their own bounded lifetime; denying new resource requests does not erase downloaded copies. This prototype does not introduce per-dataset grants, separate download permission, professional knowledge approval, cross-environment account synchronization or controlled computation.
+
+## Immutable resource grant evaluation
+
+`ResourceAccessGrantSnapshot` in Platform contracts pins the subject, Tenant, Project, Purpose, resource-package and preset versions, exact DataItem/Version or external-source references, actions, activation and expiry. `evaluateResourceAccess` is a deterministic additional restriction, with time and current authority facts supplied explicitly. A content-read grant never implies original-download, export or external-directory permission. Revoking one grant preserves independent overlapping grants; results list the matching grants and the earliest revalidation deadline. Malformed or duplicate authority facts fail closed.
+
+The production composition now loads the immutable resource authority after verified human/delegated resolution. Apply the control-plane resource migration and Data migration 0030 before starting this runtime; a missing or unavailable authority fails closed. Migrations do not enable any project. Managed-project administration and full browser acceptance remain separate delivery gates. Explicit legacy mode preserves existing gates; managed mode requires a matching live grant. Existing session, project, scope, security-level, resource and provider checks remain mandatory in both modes. Do not accept evaluator authority inputs from browser requests or treat its expiry as permission to cache through a revocation.
+
+The pure resource scope compiler groups immutable references by action, bounds each result, and intersects delegated resource grants with the delegator. Its next revalidation boundary includes future activation and expiry; malformed authority snapshots fail closed. Project settings determine activation; absent settings preserve legacy behavior.
+
+The runtime resource-scoped resolver attaches a fresh control-plane scope to a verified session. It binds the snapshot to the exact subject, project and purpose, requires the verified delegator, and fingerprints the effective scope for cache separation. It does not cache grant reads or fall back on authority failure. It is shared by the platform identity route and sibling system transports.
+
+The PostgreSQL resource authority loader reads project settings, exact package/preset versions, revocations and database time in one statement. It selects only the verified subject and any verified delegator, within the exact project and purpose, and rejects an oversized live grant set rather than truncating rights. The isolated integration suite checks legacy compatibility, immutable package references, purpose/subject separation and immediate revocation. Data receives this trusted context, never caller-supplied resource grants. Managed projects currently admit only the explicit resource-aware capability set; unscoped ingestion, operation, reconciliation and maintenance commands are denied before execution until ownership enforcement is completed. External directory reads additionally require an exact external.directory source grant and independent live provider permission.

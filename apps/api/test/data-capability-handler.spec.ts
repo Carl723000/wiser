@@ -244,3 +244,53 @@ describe('DataCapabilityHandler security boundary', () => {
     );
   });
 });
+
+describe('managed maintenance boundary', () => {
+  it.each([
+    [
+      'data.operation.get',
+      { operationId: 'a1000000-0000-4000-8000-000000000005' },
+    ],
+    [
+      'data.ingestion.get',
+      { ingestionId: 'a1000000-0000-4000-8000-000000000005' },
+    ],
+    [
+      'data.operation.events',
+      { operationId: 'a1000000-0000-4000-8000-000000000005', first: 10 },
+    ],
+  ] as const)(
+    'denies %s before unscoped maintenance data can be returned',
+    async (capabilityId, input) => {
+      const managed = structuredClone(context);
+      managed.authorization.resourceAccess = {
+        revision: 1,
+        fingerprint: 'a'.repeat(64),
+        scope: {
+          mode: 'managed',
+          validUntil: '2099-01-01T00:00:00Z',
+          permissions: {
+            'content.read': [],
+            'original.read': [],
+            'result.export': [],
+            'source.discover': [],
+            'external.directory': [],
+          },
+        },
+      };
+      const selected = executor(capabilityId);
+      const audit = new MemoryAudit();
+      const handler = new DataCapabilityHandler({
+        executors: allExecutors(selected),
+        audit,
+      });
+      await expect(
+        handler.execute({ capabilityId, input, requestContext: managed }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(selected.execute).not.toHaveBeenCalled();
+      expect(audit.records).toMatchObject([
+        { decision: 'DENIED', errorCode: 'FORBIDDEN' },
+      ]);
+    },
+  );
+});

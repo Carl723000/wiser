@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 9d9b451a1be51e0d9f5953d52307fc3f97dfbd37
+lastReviewedCommit: 703ab24be7af3c44b285c144dcbb61d12e337e23
 ---
 
 ## External metadata reader boundary
@@ -430,3 +430,15 @@ The project graph requests bounded pages through the session-verified Web DAL. E
 ### Coverage in project access management
 
 The permission workspace reuses authorized exploration resources and whole-query summaries instead of copying a catalog or scanning original files. Its bounded 20-row resource list is not the count denominator. Registered resources, parsed content rows, spatial features and professionally reviewed assertions remain different measures. The selected tenant/project travels through the existing verified caller API context, including normal RLS and query-continuation checks. Management rights alone do not confer Data content access.
+
+## Resource read scope foundation
+
+Append-only migration `0030_resource_read_scope.sql` intersects existing forced tenant/project/security RLS with exact immutable resource membership. A trusted API transaction may install `wiser.resource_scope` and `wiser.resource_action`; unconfigured transactions retain existing behavior. Managed metadata, versions, assets, evidence, analyses, records, geometry and lineage reads use authorized version membership before counts or pagination. Original access is independent; result export also requires content access. Discovery permission never exposes raw catalog metadata. Invalid, empty or expired managed scopes fail closed. Grants remain in the control database; no grant is copied to Data authority. SQL transaction adapters now install the compiled scope before catalog, exploration, evidence, geo authority, analysis, relation and command-source reads; original delivery uses its independent action and exploration export uses content/export intersection. Catalog and structured/geo cursors, plus command replay hashes, bind the authority fingerprint. A real executor/database test rejects old exploration manifests and export replay after scope loss. Principal-runtime activation, live projection integration, revocable download delivery and source-card discovery remain acceptance gates; no managed project is activated yet.
+
+Managed federated/semantic search sends at most 1000 trusted content-version pins to each backend; discovery-only scope returns no content hits. Search cursors include the resource fingerprint. Exact item/version/evidence references are checked against Data PostgreSQL RLS, publication and cross-source evidence visibility before releasing a page; missing authority adapters fail closed.
+
+Managed graph expansion/path queries constrain every node and relationship to the content-version pins, omit the full authority snapshot from Neo4j parameters, and revalidate node/evidence references against Data PostgreSQL before returning the graph. Readable endpoints never substitute for readable relationship evidence. Empty content scope avoids querying the projection.
+
+REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
+
+Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.

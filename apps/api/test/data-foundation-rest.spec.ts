@@ -737,3 +737,21 @@ describe('Data Foundation REST module', () => {
     );
   });
 });
+
+it('withholds an already-computed REST result when authority changes during execution', async () => {
+  const fixture = appWith(context, {
+    execute: () => {
+      fixture.resolver.resolve.mockResolvedValue({
+        ...context,
+        authorization: { ...context.authorization, authzVersion: 8 },
+      });
+      return Promise.resolve({ privateResult: 'not-to-release' });
+    },
+  });
+  const response = await fixture.app.inject(
+    routeRequest('data.catalog.search'),
+  );
+  expect(response.statusCode).toBe(403);
+  expect(response.body).not.toContain('not-to-release');
+  expect(fixture.resolver.resolve).toHaveBeenCalledTimes(2);
+});

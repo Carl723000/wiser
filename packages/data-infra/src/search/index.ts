@@ -96,6 +96,7 @@ export interface SearchResultPage {
 }
 
 export interface SearchOrchestratorInput {
+  readonly resourceFingerprint?: string;
   readonly tenantId: string;
   readonly projectId: string;
   readonly query: string;
@@ -288,6 +289,7 @@ function validChannels(value: unknown): value is readonly SearchChannel[] {
 }
 
 function fingerprint(input: {
+  readonly resourceFingerprint?: string;
   readonly tenantId: string;
   readonly projectId: string;
   readonly query: string;
@@ -358,10 +360,13 @@ function normalizeInput(input: SearchOrchestratorInput): NormalizedInput {
     !validSecurityLevel(input.maxSecurityLevel) ||
     !Number.isSafeInteger(input.policyVersion) ||
     input.policyVersion < 1 ||
+    (input.resourceFingerprint !== undefined &&
+      (typeof input.resourceFingerprint !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(input.resourceFingerprint))) ||
     (input.businessDomains !== undefined &&
       !validStringArray(input.businessDomains, DOMAIN_PATTERN, 64)) ||
     (input.versionIds !== undefined &&
-      !validStringArray(input.versionIds, UUID_PATTERN, 256)) ||
+      !validStringArray(input.versionIds, UUID_PATTERN, 1000)) ||
     (input.allowedExcerptFields !== undefined &&
       !validStringArray(input.allowedExcerptFields, FIELD_PATTERN, 256)) ||
     (input.securityLevels !== undefined &&
@@ -389,6 +394,9 @@ function normalizeInput(input: SearchOrchestratorInput): NormalizedInput {
       SECURITY_RANK[level] <= SECURITY_RANK[input.maxSecurityLevel],
   );
   const requestFingerprint = fingerprint({
+    ...(input.resourceFingerprint === undefined
+      ? {}
+      : { resourceFingerprint: input.resourceFingerprint }),
     tenantId: input.tenantId,
     projectId: input.projectId,
     query: input.query,

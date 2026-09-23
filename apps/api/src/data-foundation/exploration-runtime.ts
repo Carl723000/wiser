@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import {
   loadBusinessRelations,
   storedBusinessMembership,
@@ -136,6 +137,11 @@ export class PostgresExplorationExecutor {
         context.authorization.purpose,
         String(context.timeoutMs),
       ]);
+      await applyResourceReadScope(
+        client,
+        context.authorization,
+        context.resourceReadAction,
+      );
       const queryId =
         input.queryId ??
         (await this.create(client, input.spec!, context, input.baseQueryId));

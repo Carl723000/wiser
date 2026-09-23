@@ -1434,3 +1434,7 @@ insert into platform_private.project_access_settings(project_id,requests_enabled
 insert into platform_private.project_access_roles(project_id,role_id,max_days)
  values('b2000000-0000-4000-8000-000000000001','b3000000-0000-4000-8000-000000000005',30)
  on conflict do nothing;
+
+-- Resource policies remain opt-in: do not enable resource_access_settings or issue
+-- resource grants for existing seed identities. Isolated resource tests create
+-- their own rolled-back managed policy fixtures after checking this default.

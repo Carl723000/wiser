@@ -917,3 +917,57 @@ describe('PostGIS geo query port', () => {
     expect(pool.connectCalls).toBe(1);
   });
 });
+
+it('constrains graph paths by each node and edge version without forwarding the full authority snapshot', async () => {
+  const http = new FakeHttp();
+  http.responses.push({
+    status: 200,
+    body: {
+      queryType: 'r',
+      data: { fields: ['graph'], values: [[{ nodes: [], edges: [] }]] },
+    },
+  });
+  const port = new Neo4jGraphQueryPort({
+    baseUrl: 'http://neo4j:7474',
+    database: 'neo4j',
+    authorization: 'Basic test',
+    http,
+  });
+  await port.expand({
+    ...request({ entityId: 'one', maxDepth: 1 }),
+    scope: {
+      ...scope,
+      resourceAccess: {
+        revision: 1,
+        fingerprint: 'a'.repeat(64),
+        scope: {
+          mode: 'managed',
+          validUntil: '2099-01-01T00:00:00Z',
+          permissions: {
+            'content.read': [
+              {
+                kind: 'version',
+                dataItemId: DATA_ITEM_ID,
+                versionId: VERSION_ID,
+              },
+            ],
+            'source.discover': [],
+            'original.read': [],
+            'result.export': [],
+            'external.directory': [],
+          },
+        },
+      },
+    },
+  });
+  const body = http.requests[0]?.body as {
+    statement: string;
+    parameters: Record<string, unknown>;
+  };
+  expect(body.parameters).not.toHaveProperty('resourceAccess');
+  expect(body.parameters['resourceVersions']).toEqual([
+    { dataItemId: DATA_ITEM_ID, versionId: VERSION_ID },
+  ]);
+  expect(body.statement).toContain('node.versionId = resource.versionId');
+  expect(body.statement).toContain('edge.versionId = resource.versionId');
+});
