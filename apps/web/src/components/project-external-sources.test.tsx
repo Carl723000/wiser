@@ -88,6 +88,9 @@ it('shows separate supplier, WISER and connection states and submits only a sele
   );
   render(<ProjectExternalSources projectId={id} locale="zh-CN" />);
   expect(await screen.findByText('合成站点目录')).toBeDefined();
+  const help = screen.getByRole('button', { name: '外部来源说明' });
+  fireEvent.click(help);
+  expect(screen.getByRole('note', { name: '外部来源说明' })).toBeDefined();
   expect(screen.getByText('供方许可')).toBeDefined();
   expect(screen.getByText('WISER 来源许可')).toBeDefined();
   expect(screen.getByText('连接核验')).toBeDefined();

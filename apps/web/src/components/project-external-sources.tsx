@@ -7,6 +7,7 @@ import {
   type ExternalSourceManagementPage,
 } from '@wiser/platform-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import { ContextHelp } from './context-help';
 import styles from './project-access-workspace.module.css';
 
 type Item = ExternalSourceManagementPage['items'][number];
@@ -219,8 +220,10 @@ function ExternalSources({ projectId, locale, onSaved }: Props) {
   }
   return (
     <section aria-label={t.title}>
-      <h3>{t.title}</h3>
-      <p>{t.scope}</p>
+      <div className={styles.actions}>
+        <h3>{t.title}</h3>
+        <ContextHelp label={t.help}>{t.scope}</ContextHelp>
+      </div>
       {saved ? <p role="status">{t.saved}</p> : null}
       {state.key === key && state.error ? (
         <p role="alert">

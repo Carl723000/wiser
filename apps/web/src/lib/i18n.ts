@@ -108,6 +108,7 @@ const zhCN = {
   },
   externalSources: {
     title: '外部来源',
+    help: '外部来源说明',
     scope:
       '仅显示当前项目中经核准可供来源管理岗位查看的登记信息。供方许可、WISER 来源许可和连接核验分别判断。',
     loading: '正在核验外部来源',
@@ -2945,6 +2946,7 @@ const en: typeof zhCN = {
   },
   externalSources: {
     title: 'External sources',
+    help: 'External source guidance',
     scope:
       'Only registered details approved for source staff in this project are shown. Supplier permission, WISER source permission, and connection checks are separate.',
     loading: 'Checking external sources',
