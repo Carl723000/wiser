@@ -89,9 +89,10 @@ describe('authorized exploration result sets in PostgreSQL', () => {
         dataItemId: string,
         versionId: string,
         number: number,
+        securityLevel = 'L1_INTERNAL',
       ) => {
         await client.query(
-          `insert into catalog.data_item_version (version_id,tenant_id,project_id,data_item_id,version_number,asset_manifest,source_hash,metadata_hash,processing_stage,generation_method,quality_grade,acceptance_status,publication_status,security_level,committed_at,published_at) values ($1,$2,$3,$4,$5,$6,decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),'RAW','OBSERVED','C','PASSED','PUBLISHED','L1_INTERNAL',now(),now())`,
+          `insert into catalog.data_item_version (version_id,tenant_id,project_id,data_item_id,version_number,asset_manifest,source_hash,metadata_hash,processing_stage,generation_method,quality_grade,acceptance_status,publication_status,security_level,committed_at,published_at) values ($1,$2,$3,$4,$5,$6,decode(repeat('a',64),'hex'),decode(repeat('b',64),'hex'),'RAW','OBSERVED','C','PASSED','PUBLISHED',$7,now(),now())`,
           [
             versionId,
             tenant,
@@ -105,6 +106,7 @@ describe('authorized exploration result sets in PostgreSQL', () => {
                 limitations: ['Source registration only.'],
               },
             }),
+            securityLevel,
           ],
         );
       };
@@ -390,6 +392,99 @@ describe('authorized exploration result sets in PostgreSQL', () => {
         );
         expect(empty.totalCount).toBe(0);
         expect(empty.resources).toEqual([]);
+        await client.query('reset role');
+        const hiddenItem = randomUUID();
+        const hiddenVersion = randomUUID();
+        await client.query(
+          `insert into catalog.data_item (data_item_id,tenant_id,project_id,owner_project_id,name,business_domains,source_natures,source_channels,processing_stage,intended_uses,source_organization,authorization_scope,citation_requirements,unit_definitions,missing_value_rules,anomaly_rules,generation_method,quality_grade,acceptance_status,publication_status,security_level,version,update_mode) values ($1,$2,$3,$3,'Gamma water',array['water'],array['observed'],array['file-upload'],'RAW',array['analysis'],'Fixture provider','data.catalog.read','{}','[]','[]','[]','OBSERVED','C','PASSED','PUBLISHED','L2_RESTRICTED',1,'SNAPSHOT')`,
+          [hiddenItem, tenant, project],
+        );
+        await insertVersion(hiddenItem, hiddenVersion, 1, 'L2_RESTRICTED');
+        await client.query(
+          `insert into catalog.temporal_extent(tenant_id,project_id,data_item_id,version_id,starts_at,ends_at,timezone,security_level) values
+            ($1,$2,$3,$4,'2023-12-01','2024-01-31','Asia/Shanghai','L1_INTERNAL'),
+            ($1,$2,$3,$4,'2024-02-01','2024-02-29','Asia/Shanghai','L1_INTERNAL'),
+            ($1,$2,$5,$6,'2020-01-01','2020-12-31','Asia/Shanghai','L2_RESTRICTED'),
+            ($1,$2,$7,$8,'2022-01-01','2022-12-31','Asia/Shanghai','L2_RESTRICTED')`,
+          [
+            tenant,
+            project,
+            item,
+            newer,
+            hiddenItem,
+            hiddenVersion,
+            secondItem,
+            secondVersion,
+          ],
+        );
+        await client.query(
+          `insert into catalog.spatial_extent(tenant_id,project_id,data_item_id,version_id,source_geometry,source_crs,canonical_geometry,security_level) values
+            ($1,$2,$3,$4,st_setsrid(st_makepoint(116,40),4326),'EPSG:4326',st_setsrid(st_makepoint(116,40),4490),'L1_INTERNAL'),
+            ($1,$2,$5,$6,st_setsrid(st_makepoint(115,39),4326),'EPSG:4326',st_setsrid(st_makepoint(115,39),4490),'L2_RESTRICTED'),
+            ($1,$2,$7,$8,st_setsrid(st_makepoint(117,41),4326),'EPSG:4326',st_setsrid(st_makepoint(117,41),4490),'L2_RESTRICTED')`,
+          [
+            tenant,
+            project,
+            item,
+            newer,
+            hiddenItem,
+            hiddenVersion,
+            secondItem,
+            secondVersion,
+          ],
+        );
+        const covered = ExplorationResultSchema.parse(
+          await executor.execute(
+            {
+              spec: { providers: ['Fixture provider'] },
+              view: 'resources',
+              first: 1,
+            },
+            context,
+          ),
+        );
+        expect(covered.totalCount).toBe(2);
+        expect(covered.resources).toHaveLength(1);
+        expect(covered.summary?.coverage).toEqual({
+          temporal: { recordedVersionCount: 1, unknownVersionCount: 1 },
+          geometry: { recordedVersionCount: 1, unknownVersionCount: 1 },
+          approvedAssertionCount: null,
+          effectiveActions: null,
+        });
+        const olderPin = ExplorationResultSchema.parse(
+          await executor.execute(
+            { queryId: first.queryId, view: 'resources', first: 1 },
+            context,
+          ),
+        );
+        expect(olderPin.summary?.coverage).toMatchObject({
+          temporal: { recordedVersionCount: 0, unknownVersionCount: 2 },
+          geometry: { recordedVersionCount: 0, unknownVersionCount: 2 },
+        });
+        const coveredNext = ExplorationResultSchema.parse(
+          await executor.execute(
+            {
+              queryId: covered.queryId,
+              view: 'resources',
+              first: 1,
+              after: covered.nextCursor,
+            },
+            context,
+          ),
+        );
+        expect(coveredNext.summary?.coverage).toEqual(
+          covered.summary?.coverage,
+        );
+        expect(coveredNext.resources).toHaveLength(1);
+        await expect(
+          executor.execute(
+            { queryId: covered.queryId, view: 'resources' },
+            {
+              ...context,
+              authorization: { ...context.authorization, authzVersion: 2 },
+            },
+          ),
+        ).rejects.toMatchObject({ code: 'NOT_FOUND' });
         await client.query('reset role');
         const expired = randomUUID();
         const asset = randomUUID(),
@@ -1362,6 +1457,17 @@ describe('authorized exploration result sets in PostgreSQL', () => {
           { c1: 'large-records' },
           { c1: 'large-records' },
         ]);
+        await client.query('reset role');
+        await client.query(
+          "update catalog.data_item set publication_status='WITHDRAWN' where data_item_id=$1",
+          [secondItem],
+        );
+        await expect(
+          executor.execute(
+            { queryId: covered.queryId, view: 'resources' },
+            context,
+          ),
+        ).rejects.toMatchObject({ code: 'CONFLICT' });
       } finally {
         await client.query('rollback');
         client.release();
