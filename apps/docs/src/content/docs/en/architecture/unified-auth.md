@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 83e5587c559253effbe84772747e2ebd95054919
+lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
 ---
 
 ## One identity authority
@@ -240,4 +240,6 @@ Resource grant administration lists bounded records for the current member; insp
 
 The Resource grants tab lists the signed-in member’s records; managers can select a member from bounded project pages. Status describes the recorded period/revocation, separately from actual access. A reasoned single-grant revocation preserves independent grants. Renewal produces a new pending batch using fixed package/preset versions; independent approval and execution are still required. HTTP and same-origin Web routes validate IDs, reject extra fields, preserve actor-scoped idempotency and disable caching. Switching project/member clears in-flight editors; uncertain retries retain their request key.
 
-A trusted source-policy snapshot can further cap each resource/action and its validity period. The pure scope compiler intersects those ceilings with member and delegator grants; missing entries in an enforced snapshot deny access. A separate pure administration check requires an explicitly permitted management role, base project authority, exact resource versions, permitted actions and a period within every source license. These deterministic contracts are separate from package-entered license text. Policy persistence, trusted loading, management metadata access and UI integration must be verified before enabling this source-policy layer; the current contract-only milestone does not assert production enforcement.
+Managed projects now load trusted source-policy ceilings in the same control-database statement as grants, revocations, the revision and time. Immutable `resource_policy_versions` bind one exact resource to a monotonic identity/version chain, permitted actions, management roles, license evidence and validity; an independent approval identity is required. Append-only `resource_policy_revocations` invalidate the current version without deleting history. Both tables are private, force RLS, deny generic client/service-role access, and advance the project authority revision.
+
+The loader always supplies policy limits in managed mode: missing, expired, future or revoked current policy denies the affected resource. It selects the latest published version without falling back to older permissions and fails closed above 10,000 current resource policies. Member and delegator grants are intersected with those limits. Legacy projects retain existing behavior; the migration seeds no policy or project activation. Apply the control migration before updating API services. Management policy publication, management metadata access and the related UI remain a separate integration gate: package-entered license text is never a trusted source policy.

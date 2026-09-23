@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: e4dc9c0ece4f3db01ae78959d0ca1e25b159aaed
+lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -220,3 +220,5 @@ Migration `20260922214718_resource_batch_member_versions.sql` stores separate te
 `20260922220953_resource_batch_withdrawal_audit.sql` adds an explicit withdrawal audit action; request snapshots and earlier events remain immutable.
 
 Migration `20260922225842_resource_batch_diff.sql` adds immutable recipient grant-difference snapshots and fingerprints. Null historical snapshots are intentionally not backfilled.
+
+`07_resource_source_policy.sql` records independently approved immutable source-policy versions and append-only revocations. Apply CLI migrations `20260923032250_resource_source_policy.sql` then `20260923033546_resource_policy_reference_guard.sql` before the updated API. The latter validates resource fields before UUID normalization and uses the indexed identity for version-chain checks. Run `13_resource_source_policy.test.sql` on a clean disposable seed, followed by the real control-loader integration tests. No source license or managed project is seeded.

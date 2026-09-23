@@ -8,7 +8,7 @@ import {
 import { ResourceAccessAuthoritySnapshotSchema } from '@wiser/platform-contracts';
 
 const url = process.env['WISER_RESOURCE_TEST_DATABASE_URL'];
-const project = 'b2000000-0000-4000-8000-000000000001';
+const project = randomUUID();
 const tenant = 'b1000000-0000-4000-8000-000000000001';
 const owner = '10000000-0000-4000-8000-000000000005';
 const reader = '10000000-0000-4000-8000-000000000001';
@@ -49,13 +49,18 @@ describe.skipIf(!url)(
         rows: (await client.query(text, [...values])).rows,
       }),
     );
-    const scope = async () =>
-      compileResourceAccessScope(
-        ResourceAccessAuthoritySnapshotSchema.parse(await load(context)),
-      );
+    const scope = async () => {
+      const { revision: _revision, ...input } =
+        ResourceAccessAuthoritySnapshotSchema.parse(await load(context));
+      return compileResourceAccessScope(input);
+    };
     beforeAll(async () => {
       client = await pool.connect();
       await client.query('begin');
+      await client.query(
+        "insert into platform.projects(id,tenant_id,slug,name_zh_cn,name_en,created_by_actor_id) values($1,$2,$3,'来源策略隔离测试','Isolated source policy test',$4)",
+        [project, tenant, `policy-${project}`, owner],
+      );
       await client.query(
         'insert into platform_private.resource_access_settings(project_id,tenant_id,enabled_by) values($1,$2,$3)',
         [project, tenant, owner],
@@ -158,12 +163,19 @@ describe.skipIf(!url)(
       });
       expect(
         (
-          await client.query(
+          await client.query<{ n: number }>(
             'select count(*)::int n from platform_private.resource_policy_versions where project_id=$1 and policy_id=$2',
             [project, policyId],
           )
-        ).rows[0].n,
+        ).rows[0]?.n,
       ).toBe(4);
     });
+    it('fails closed rather than truncating more than 10000 current source policies', async () => {
+      await client.query(
+        "insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by) select $1,gen_random_uuid(),1,jsonb_build_object('kind','external-source','sourceId','synthetic-overflow-'||n),array['source.discover'],array['data-steward'],'Synthetic bounded policy check',now(),now()+interval '1 day',1,$2,$3 from generate_series(1,10000) n",
+        [project, reader, owner],
+      );
+      expect(await load(context)).toBeNull();
+    }, 30000);
   },
 );

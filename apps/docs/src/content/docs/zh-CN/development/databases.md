@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: e4dc9c0ece4f3db01ae78959d0ca1e25b159aaed
+lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -220,3 +220,5 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 `20260922220953_resource_batch_withdrawal_audit.sql`补充明确的撤回审计动作，申请快照和既有事件保持不可变。
 
 `20260922225842_resource_batch_diff.sql`为成员预览增加不可变授权差异及指纹，历史空值不从当前权限回填。
+
+`07_resource_source_policy.sql`记录独立审批的不可变来源许可版本及追加式撤销。先顺序应用CLI迁移`20260923032250_resource_source_policy.sql`、`20260923033546_resource_policy_reference_guard.sql`，再更新API。后者先校验资料字段再规范UUID，按有索引的身份检查版本链。对干净的可丢弃种子库运行`13_resource_source_policy.test.sql`，再运行真实控制库加载测试；种子不授予来源许可，也不启用受管项目。
