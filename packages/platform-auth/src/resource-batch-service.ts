@@ -230,6 +230,7 @@ export class ResourceBatchStore {
     d: Definitions,
     startsAt: Date,
     expiresAt: Date,
+    policyFingerprint: string,
   ) {
     const result = await this.session.client.query<{
       id: string;
@@ -269,7 +270,9 @@ export class ResourceBatchStore {
       }))
       .filter((g) => g.resources.length && g.actions.length);
     return {
-      hash: createHash('sha256').update(JSON.stringify(grants)).digest('hex'),
+      hash: createHash('sha256')
+        .update(JSON.stringify({ policyFingerprint, grants }))
+        .digest('hex'),
       diff: resourceGrantDiff({
         resources: d.resources,
         actions: d.actions as ResourceAccessAction[],
@@ -427,7 +430,13 @@ export class ResourceBatchStore {
     );
     for (const [index, actor] of command.actorIds.entries()) {
       const m = members.find((m) => m.actor_id === actor)!;
-      const snapshot = await this.#grantSnapshot(actor, d, start, end);
+      const snapshot = await this.#grantSnapshot(
+        actor,
+        d,
+        start,
+        end,
+        managementPermit.policyFingerprint,
+      );
       await this.session.client.query(
         `insert into platform_private.resource_batch_members(batch_id,project_id,actor_id,ordinal,membership_version,display_name,existing_grant_count,tenant_membership_version,actor_authz_version,grant_snapshot_hash,grant_diff) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
         [
@@ -473,7 +482,7 @@ export class ResourceBatchStore {
     if (command.decision === 'approve') {
       this.#current(b);
       if (b.valid_until <= (await this.#now())) fail('PREVIEW_EXPIRED');
-      await assertResourceManagementPolicy(
+      const managementPermit = await assertResourceManagementPolicy(
         this.session,
         b.resources,
         b.actions as ResourceAccessAction[],
@@ -497,6 +506,7 @@ export class ResourceBatchStore {
                 b,
                 b.starts_at,
                 b.expires_at,
+                managementPermit.policyFingerprint,
               )
             ).hash
         )
@@ -610,6 +620,7 @@ export class ResourceBatchStore {
               b,
               b.starts_at,
               b.expires_at,
+              managementPermit.policyFingerprint,
             )
           ).hash
       )

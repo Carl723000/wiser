@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   ResourceAccessAuthoritySnapshotSchema,
   resourceAccessReferenceKey,
@@ -13,6 +14,7 @@ import { resourceAdministrationFailure as fail } from './resource-administration
  * It is never serialized, accepted from HTTP, or installed on a user's context. */
 export interface ResourceManagementPermit {
   readonly kind: 'resource-management-metadata';
+  readonly policyFingerprint: string;
 }
 const permits = new WeakMap<
   ResourceManagementPermit,
@@ -138,23 +140,33 @@ export async function assertResourceManagementPolicy(
     )
       fail('RESOURCE_UNAVAILABLE');
   }
+  const wanted = new Set(resources.map(resourceAccessReferenceKey));
+  const selected = snapshot.limits.filter((limit) =>
+    wanted.has(resourceAccessReferenceKey(limit.resource)),
+  );
+  const policyFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify(
+        selected
+          .map((limit) => [
+            resourceAccessReferenceKey(limit.resource),
+            limit.id,
+            limit.version,
+          ])
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+      ),
+    )
+    .digest('hex');
   const validUntil = new Date(
     Math.min(
       Date.now() + 5000,
       Date.parse(snapshot.now) + 5000,
-      ...snapshot.limits
-        .filter((limit) =>
-          resources.some(
-            (ref) =>
-              resourceAccessReferenceKey(ref) ===
-              resourceAccessReferenceKey(limit.resource),
-          ),
-        )
-        .map((limit) => Date.parse(limit.expiresAt)),
+      ...selected.map((limit) => Date.parse(limit.expiresAt)),
     ),
   ).toISOString();
   const permit: ResourceManagementPermit = Object.freeze({
     kind: 'resource-management-metadata',
+    policyFingerprint,
   });
   permits.set(permit, {
     binding: binding(context, resources, actions),

@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: c5167b6c
+lastReviewedCommit: 2bb18b1b
 ---
 
 ## One identity authority
@@ -245,3 +245,5 @@ Managed projects now load trusted source-policy ceilings in the same control-dat
 The loader always supplies policy limits in managed mode: missing, expired, future or revoked current policy denies the affected resource. It selects the latest published version without falling back to older permissions and fails closed above 10,000 current resource policies. Member and delegator grants are intersected with those limits. Legacy projects retain existing behavior; the migration seeds no policy or project activation. Apply the control migration before updating API services. Management policy publication, management coverage browsing and the related UI remain a separate integration gate: package-entered license text is never a trusted source policy.
 
 Resource-package creation checks current source permission before Data validation: the operator must hold a permitted management role, every requested action must be allowed, and the source permission must be active. Batch preview, approval and execution check the proposed period against source validity and maximum grant duration. Execution also rechecks the recorded approver's current source-management role. Revocation or narrower management eligibility stops new approval/execution without deleting historical records. Project/settings locks serialize these checks with source-policy changes. Source-management eligibility and fixed-version metadata validation neither require nor create personal content grants. Rejection, withdrawal and revocation remain possible without extending source permission.
+
+Resource preview fingerprints also bind the selected source-policy identities and immutable versions. Republishing any selected source policy invalidates earlier approval/execution even if its action ceiling still permits the request; unrelated source policies and result ordering do not invalidate it. The existing preview hash stores this binding with the recipient grant snapshot, so no migration or public payload change is needed. Old pending previews must be regenerated after upgrading this logic. Successful recipients remain recorded; a partially executed batch cannot use changed source authority to grant its remaining recipients.

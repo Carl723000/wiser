@@ -68,13 +68,13 @@ function session(snapshot: unknown = authority, ctx = context) {
 it('allows source management without assigning the manager any personal reading grant', async () => {
   await expect(
     assertResourceManagementPolicy(session(), [resource], ['content.read']),
-  ).resolves.toEqual({ kind: 'resource-management-metadata' });
+  ).resolves.toMatchObject({ kind: 'resource-management-metadata' });
   await expect(
     assertResourceManagementPolicy(session(), [resource], ['content.read'], {
       startsAt: now,
       expiresAt: '2026-09-24T00:00:00Z',
     }),
-  ).resolves.toEqual({ kind: 'resource-management-metadata' });
+  ).resolves.toMatchObject({ kind: 'resource-management-metadata' });
   expect(context.authorization.scopes).not.toContain('data.catalog.read');
   expect(authority.grants).toEqual([]);
 });
@@ -135,4 +135,57 @@ it('rejects a proposed term exceeding the source limit even though the source re
       expiresAt: '2026-09-29T00:00:00Z',
     }),
   ).rejects.toMatchObject({ code: 'RESOURCE_UNAVAILABLE' });
+});
+
+it('binds only the selected immutable source policy versions, not unrelated policy changes', async () => {
+  const first = await assertResourceManagementPolicy(
+    session(),
+    [resource],
+    ['content.read'],
+  );
+  const same = await assertResourceManagementPolicy(
+    session(),
+    [resource],
+    ['content.read'],
+  );
+  const revised = await assertResourceManagementPolicy(
+    session({ ...authority, limits: [{ ...policy, version: 2 }] }),
+    [resource],
+    ['content.read'],
+  );
+  const unrelated = await assertResourceManagementPolicy(
+    session({
+      ...authority,
+      limits: [
+        policy,
+        {
+          ...policy,
+          id: randomUUID(),
+          resource: { ...resource, versionId: randomUUID() },
+        },
+      ],
+    }),
+    [resource],
+    ['content.read'],
+  );
+  expect(first.policyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(same.policyFingerprint).toBe(first.policyFingerprint);
+  expect(revised.policyFingerprint).not.toBe(first.policyFingerprint);
+  expect(unrelated.policyFingerprint).toBe(first.policyFingerprint);
+});
+
+it('keeps the policy fingerprint stable across selected resource and loader ordering', async () => {
+  const other = { ...resource, versionId: randomUUID() },
+    otherPolicy = { ...policy, id: randomUUID(), resource: other };
+  const a = await assertResourceManagementPolicy(
+    session({ ...authority, limits: [policy, otherPolicy] }),
+    [resource, other],
+    ['content.read'],
+  );
+  const b = await assertResourceManagementPolicy(
+    session({ ...authority, limits: [otherPolicy, policy] }),
+    [other, resource],
+    ['content.read'],
+  );
+  expect(a.policyFingerprint).toBe(b.policyFingerprint);
 });
