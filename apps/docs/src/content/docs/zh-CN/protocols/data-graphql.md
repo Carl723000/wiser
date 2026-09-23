@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: c5167b6c
+lastReviewedCommit: 5a43f384b2fc9614c4857f2ed9302898d311718c
 ---
 
 ## 入口与权威契约
@@ -180,6 +180,8 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 ## 共享探索
 
 `dataExplore(input: JSON!): JSON!` 调用 `data.explore.query`，与 REST 共享严格 `QuerySpec`、绑定用户的 `queryId`、固定版本成员、有效期与资源响应。要求 `data.query.execute` 和 `data.catalog.read`，复杂度权重与 `dataQuery` 相同。首次输入 `{spec:{text:"water"},view:"resources",first:20}`，后续使用返回的 `queryId`，并将 `nextCursor` 传入 `after`。
+
+`view: "resources"` 的共享 JSON 响应可包含 `summary.coverage`：`temporal` 和 `geometry` 分别以 `recordedVersionCount`、`unknownVersionCount` 划分重新授权后的固定 `summary.resourceCount`，不受当前页大小影响。同一版本有至少一条行级权限下可见的范围记录只计一次；记录缺失或隐藏均为未知，不等于采样时间、几何精度、坐标系或地名身份已核实。`approvedAssertionCount` 与 `effectiveActions` 尚为 `null`。GraphQL 不另算或缓存覆盖总量，过期或撤权查询不能复用旧结果。
 
 `data.analysis.create` 接收已发布的 `dataItemId` / `versionId` 和幂等键，原子创建带审计的操作与持久化分析任务，不改变来源登记与质量声明。REST：`POST /api/data/v1/analyses`；GraphQL：`createDataAnalysis(input: JSON!)`；MCP：`data_analysis_create`。需要 `data.ingestion.write` 与 `data.catalog.read` 权限；通过返回的操作 ID 查询进度。
 

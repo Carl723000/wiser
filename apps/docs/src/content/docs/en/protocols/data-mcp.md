@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 ---
 
 ## HTTP adapter only
@@ -205,6 +205,8 @@ MCP does not persist bearers, upload ids, multipart ETags, or Operation cursors 
 ## Shared exploration
 
 `data_explore_query` invokes `data.explore.query` through `POST /api/data/v1/explore/query`. Start with `{"spec":{"text":"water"},"view":"resources","first":20}`; continue with the returned `queryId` and `nextCursor` in `after`. The API pins published versions for up to 30 minutes and reauthorizes the owner/context on every request. The MCP gateway has no result-set database access. `NOT_PARSED` and null analytical counts are registration readiness, not evidence of zero observations.
+
+The `resources` result may forward `summary.coverage` unchanged from the authorized HTTP response. `temporal` and `geometry` each give `recordedVersionCount` and `unknownVersionCount` for all pinned, currently visible versions, independent of the returned page. An RLS-visible extent makes a version recorded once; missing or hidden extents remain unknown. These counts do not prove sampling dates, precise geometry, CRS, or place identity. `approvedAssertionCount` and `effectiveActions` remain `null`; MCP must not infer them or reuse a result after query expiry or revocation.
 
 `data.analysis.create` accepts an existing published `dataItemId` / `versionId` and an idempotency key. It creates an audited operation and a durable analysis job atomically; source registration and its quality declaration remain unchanged. REST: `POST /api/data/v1/analyses`; GraphQL: `createDataAnalysis(input: JSON!)`; MCP: `data_analysis_create`. Required scopes are `data.ingestion.write` and `data.catalog.read`. Poll the returned operation for completion.
 
