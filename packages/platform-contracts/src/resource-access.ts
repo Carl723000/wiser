@@ -2,28 +2,21 @@ import { z } from 'zod';
 
 const Id = z.string().uuid();
 const Timestamp = z.string().datetime({ offset: true });
-export const ResourceAccessActionSchema = z.enum([
-  'source.discover',
-  'content.read',
-  'original.read',
-  'result.export',
-  'external.directory',
-]);
-export type ResourceAccessAction = z.infer<typeof ResourceAccessActionSchema>;
-export const ResourceAccessReferenceSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('version'), dataItemId: Id, versionId: Id }),
-  z.strictObject({
-    kind: z.literal('external-source'),
-    sourceId: z
-      .string()
-      .min(1)
-      .max(128)
-      .regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/),
-  }),
-]);
-export type ResourceAccessReference = z.infer<
-  typeof ResourceAccessReferenceSchema
->;
+export {
+  ResourceAccessActionSchema,
+  ResourceAccessReferenceSchema,
+  resourceAccessReferenceKey,
+} from './resource-access-reference.ts';
+export type {
+  ResourceAccessAction,
+  ResourceAccessReference,
+} from './resource-access-reference.ts';
+import {
+  ResourceAccessActionSchema,
+  ResourceAccessReferenceSchema,
+  resourceAccessReferenceKey,
+} from './resource-access-reference.ts';
+import { ResourcePolicyLimitsSchema } from './resource-policy-limits.ts';
 export const ResourceAccessGrantSnapshotSchema = z
   .strictObject({
     id: Id,
@@ -69,15 +62,6 @@ export const ResourceAccessGrantSnapshotSchema = z
 export type ResourceAccessGrantSnapshot = z.infer<
   typeof ResourceAccessGrantSnapshotSchema
 >;
-
-/** Identity is an immutable version or an explicit provider source; never a label. */
-export function resourceAccessReferenceKey(
-  resource: ResourceAccessReference,
-): string {
-  return resource.kind === 'version'
-    ? `version:${resource.dataItemId}:${resource.versionId}`
-    : `external-source:${resource.sourceId}`;
-}
 
 /** Internal authority input, never accepted directly from a browser request. */
 export const ResourceAccessEvaluationSchema = z
@@ -132,6 +116,7 @@ const GrantList = z
     { message: 'Duplicate grant identifiers.' },
   );
 export const ResourceAccessScopeInputSchema = z.strictObject({
+  limits: ResourcePolicyLimitsSchema.optional(),
   mode: z.enum(['legacy', 'managed']),
   tenantId: Id,
   projectId: Id,
