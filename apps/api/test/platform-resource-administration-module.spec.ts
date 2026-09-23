@@ -57,7 +57,51 @@ function fixture() {
       },
     ],
   };
+  const sourcePolicy = {
+    id: randomUUID(),
+    projectId: project,
+    policyId: randomUUID(),
+    expectedPolicyVersion: 0,
+    resource: {
+      kind: 'version' as const,
+      dataItemId: randomUUID(),
+      versionId: randomUUID(),
+    },
+    allowedActions: ['content.read' as const],
+    managementRoles: ['platform-owner'],
+    licenseBasis: 'Synthetic source evidence',
+    startsAt: '2026-09-23T00:00:00Z',
+    expiresAt: '2026-10-23T00:00:00Z',
+    maxGrantDays: 10,
+    reason: 'Synthetic proposal reason',
+    applicantId: randomUUID(),
+    status: 'pending' as const,
+    version: 1,
+    decidedBy: null,
+    decisionReason: null,
+    publishedVersion: null,
+    createdAt: '2026-09-23T00:00:00Z',
+    decidedAt: null,
+  };
   const service = {
+    sourcePolicyRequests: vi.fn(() =>
+      Promise.resolve({
+        items: [sourcePolicy],
+        hasMore: false,
+        canPropose: true,
+        canApprove: false,
+      }),
+    ),
+    proposeSourcePolicy: vi.fn(() => Promise.resolve(sourcePolicy)),
+    decideSourcePolicy: vi.fn(() => Promise.resolve(sourcePolicy)),
+    withdrawSourcePolicy: vi.fn(() => Promise.resolve(sourcePolicy)),
+    revokeSourcePolicy: vi.fn(() =>
+      Promise.resolve({
+        policyId: sourcePolicy.policyId,
+        policyVersion: 1,
+        status: 'revoked' as const,
+      }),
+    ),
     grants: vi.fn(() =>
       Promise.resolve({
         items: [],
@@ -108,7 +152,7 @@ function fixture() {
   const app = Fastify({ logger: false });
   void createResourceAdministrationModule(service).register(app);
   apps.push(app);
-  return { app, service, batch };
+  return { app, service, batch, sourcePolicy };
 }
 describe('resource administration HTTP boundary', () => {
   it('requires a bearer token and bounds definition listings', async () => {
@@ -326,4 +370,102 @@ it('serves own grant records and validates lifecycle commands with non-cacheable
             .otherActiveGrantCount,
     ).toBe(action === 'renew' ? 'pending' : 1);
   }
+});
+
+describe('source permission HTTP boundary', () => {
+  it('bounds the source proposal queue and rejects browser-selected actor authority', async () => {
+    const { app, service } = fixture(),
+      url = `/api/platform/v1/access/projects/${project}/source-policy-requests`;
+    expect((await app.inject({ url })).statusCode).toBe(401);
+    for (const query of ['limit=21', 'actorId=' + randomUUID()])
+      expect(
+        (await app.inject({ url: url + '?' + query, headers: auth }))
+          .statusCode,
+      ).toBe(400);
+    expect(service.sourcePolicyRequests).not.toHaveBeenCalled();
+    const response = await app.inject({ url, headers: auth });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.json()).toMatchObject({
+      canPropose: true,
+      canApprove: false,
+    });
+  });
+  it.each(['propose', 'decide', 'withdraw', 'revoke'] as const)(
+    'protects source %s commands and output',
+    async (action) => {
+      const { app, service, sourcePolicy: p } = fixture();
+      const payload =
+        action === 'propose'
+          ? {
+              projectId: project,
+              policyId: p.policyId,
+              expectedPolicyVersion: 0,
+              resource: p.resource,
+              allowedActions: p.allowedActions,
+              managementRoles: p.managementRoles,
+              licenseBasis: p.licenseBasis,
+              startsAt: p.startsAt,
+              expiresAt: p.expiresAt,
+              maxGrantDays: p.maxGrantDays,
+              reason: p.reason,
+            }
+          : action === 'revoke'
+            ? {
+                projectId: project,
+                policyId: p.policyId,
+                policyVersion: 1,
+                reason: p.reason,
+              }
+            : {
+                projectId: project,
+                requestId: p.id,
+                expectedVersion: 1,
+                reason: p.reason,
+                ...(action === 'decide' ? { decision: 'publish' } : {}),
+              };
+      const url = '/api/platform/v1/access/source-policies/' + action;
+      expect(
+        (await app.inject({ method: 'POST', url, headers: auth, payload }))
+          .statusCode,
+      ).toBe(400);
+      const headers = { ...auth, 'idempotency-key': randomUUID() };
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url,
+            headers,
+            payload: { ...payload, approvedBy: p.applicantId },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const response = await app.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      const fn =
+        action === 'propose'
+          ? service.proposeSourcePolicy
+          : action === 'decide'
+            ? service.decideSourcePolicy
+            : action === 'withdraw'
+              ? service.withdrawSourcePolicy
+              : service.revokeSourcePolicy;
+      expect(fn).toHaveBeenCalledTimes(1);
+      fn.mockRejectedValueOnce(new Error('private storage detail'));
+      const failure = await app.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload,
+      });
+      expect(failure.statusCode).toBe(503);
+      expect(failure.body).not.toContain('private storage detail');
+    },
+  );
 });

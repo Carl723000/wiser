@@ -1,3 +1,19 @@
+import { ResourcePolicyStore } from './resource-policy-service.js';
+import {
+  ResourcePolicyProposalSchema,
+  ResourcePolicyDecisionSchema,
+  ResourcePolicyActionSchema,
+  ResourcePolicyRevokeSchema,
+  ResourcePolicyRequestsQuerySchema,
+  type ResourcePolicyProposal,
+  type ResourcePolicyDecision,
+  type ResourcePolicyAction,
+  type ResourcePolicyRevoke,
+  type ResourcePolicyRequestsQuery,
+  type ResourcePolicyRequestView,
+  type ResourcePolicyRequestsPage,
+  type ResourcePolicyRevokeReceipt,
+} from '@wiser/platform-contracts';
 import {
   assertResourceManagementPolicy,
   type ResourceManagementPermit,
@@ -90,6 +106,131 @@ export class PostgresResourceAdministrationService {
   readonly #options: ResourceAdministrationOptions;
   constructor(options: ResourceAdministrationOptions) {
     this.#options = options;
+  }
+  sourcePolicyRequests(input: {
+    token: string;
+    projectId: string;
+    page: ResourcePolicyRequestsQuery;
+  }): Promise<ResourcePolicyRequestsPage> {
+    const page = ResourcePolicyRequestsQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      (session) =>
+        new ResourcePolicyStore(session, this.#options.validatePackage).list(
+          page.data,
+        ),
+      ['platform.membership.manage', 'platform.access.approve'],
+    );
+  }
+  proposeSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyProposal;
+  }): Promise<ResourcePolicyRequestView> {
+    const command = ResourcePolicyProposalSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('propose');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.propose',
+          command.data,
+          () => store.propose(command.data),
+        );
+      },
+      'platform.membership.manage',
+    );
+  }
+  decideSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyDecision;
+  }): Promise<ResourcePolicyRequestView> {
+    const command = ResourcePolicyDecisionSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('approve');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.decide',
+          command.data,
+          () => store.decide(command.data),
+        );
+      },
+      'platform.access.approve',
+    );
+  }
+  withdrawSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyAction;
+  }): Promise<ResourcePolicyRequestView> {
+    const command = ResourcePolicyActionSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('propose');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.withdraw',
+          command.data,
+          () => store.withdraw(command.data),
+        );
+      },
+      'platform.membership.manage',
+    );
+  }
+  revokeSourcePolicy(input: {
+    token: string;
+    idempotencyKey: string;
+    command: ResourcePolicyRevoke;
+  }): Promise<ResourcePolicyRevokeReceipt> {
+    const command = ResourcePolicyRevokeSchema.safeParse(input.command);
+    if (!command.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      command.data.projectId,
+      async (session) => {
+        const store = new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        );
+        await store.requireAuthority('propose');
+        return this.#write(
+          session,
+          input.idempotencyKey,
+          'source.revoke',
+          command.data,
+          () => store.revoke(command.data),
+        );
+      },
+      'platform.membership.manage',
+    );
   }
   grants(input: {
     token: string;

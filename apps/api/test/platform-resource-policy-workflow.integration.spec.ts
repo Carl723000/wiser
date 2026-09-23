@@ -1,3 +1,6 @@
+import { ResourcePolicyRequestViewSchema } from '@wiser/platform-contracts';
+import Fastify from 'fastify';
+import { createResourceAdministrationModule } from '../src/platform/resource-administration-module.js';
 import { randomUUID } from 'node:crypto';
 import {
   afterAll,
@@ -92,7 +95,7 @@ describe.skipIf(!url)(
         );
       },
     });
-    const submit = (command = proposal(), token = 'owner') =>
+    const submit = async (command = proposal(), token = 'owner') =>
       service.proposeSourcePolicy({
         token,
         idempotencyKey: randomUUID(),
@@ -196,8 +199,12 @@ describe.skipIf(!url)(
         ).rowCount,
       ).toBe(0);
       expect(
-        (await client.query('select * from platform_private.resource_grants'))
-          .rowCount,
+        (
+          await client.query(
+            'select * from platform_private.resource_grants where project_id=$1',
+            [project],
+          )
+        ).rowCount,
       ).toBe(0);
       expect(
         (
@@ -238,7 +245,7 @@ describe.skipIf(!url)(
         publishedVersion: 1,
         decidedBy: actors.approver,
       });
-      const result = (
+      const result: unknown = (
         await client.query(
           'select * from platform_private.resource_policy_versions where policy_id=$1',
           [command.policyId],
@@ -250,10 +257,14 @@ describe.skipIf(!url)(
         created_by: actors.owner,
         approved_by: actors.approver,
       });
-      expect(validatePackage).toHaveBeenCalledTimes(2);
+      expect(validatePackage).toHaveBeenCalledTimes(3);
       expect(
-        (await client.query('select * from platform_private.resource_grants'))
-          .rowCount,
+        (
+          await client.query(
+            'select * from platform_private.resource_grants where project_id=$1',
+            [project],
+          )
+        ).rowCount,
       ).toBe(0);
     });
     it('rejects or withdraws without creating authority, and refuses stale and terminal decisions', async () => {
@@ -348,6 +359,84 @@ describe.skipIf(!url)(
         licenseBasis: 'Revised synthetic license evidence',
       });
       expect(await decide(revision.id)).toMatchObject({ publishedVersion: 2 });
+    });
+    it('refuses a new policy identity for an already published resource', async () => {
+      const command = proposal();
+      const request = await submit(command);
+      await decide(request.id);
+      await expect(
+        submit({ ...command, policyId: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+    });
+    it('rechecks independent reviewer appointment and an expired source period', async () => {
+      const request = await submit();
+      await client.query(
+        "update platform_private.resource_policy_roles set active=false where role_key='source-reviewer-test'",
+      );
+      await expect(decide(request.id)).rejects.toMatchObject({
+        code: 'NOT_AUTHORIZED',
+      });
+      await expect(
+        submit({
+          ...proposal(),
+          startsAt: new Date(Date.now() - 86400000).toISOString(),
+          expiresAt: new Date(Date.now() - 60000).toISOString(),
+        }),
+      ).rejects.toMatchObject({ code: 'RESOURCE_UNAVAILABLE' });
+    });
+    it('runs authenticated HTTP proposal and publication against the actual control store', async () => {
+      const app = Fastify({ logger: false });
+      await createResourceAdministrationModule(service).register(app);
+      try {
+        const command = proposal();
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/platform/v1/access/source-policies/propose',
+          headers: {
+            authorization: 'Bearer owner',
+            'idempotency-key': randomUUID(),
+          },
+          payload: command,
+        });
+        expect(response.statusCode).toBe(200);
+        const request = ResourcePolicyRequestViewSchema.parse(response.json());
+        expect(request.status).toBe('pending');
+        const published = await app.inject({
+          method: 'POST',
+          url: '/api/platform/v1/access/source-policies/decide',
+          headers: {
+            authorization: 'Bearer approver',
+            'idempotency-key': randomUUID(),
+          },
+          payload: {
+            projectId: project,
+            requestId: request.id,
+            expectedVersion: 1,
+            decision: 'publish',
+            reason: 'Independent HTTP review',
+          },
+        });
+        expect(published.statusCode).toBe(200);
+        expect(
+          ResourcePolicyRequestViewSchema.parse(published.json()).status,
+        ).toBe('published');
+        expect(published.headers['cache-control']).toBe('private, no-store');
+        const denied = await app.inject({
+          url: `/api/platform/v1/access/projects/${project}/source-policy-requests`,
+          headers: { authorization: 'Bearer reader' },
+        });
+        expect(denied.statusCode).toBe(403);
+        expect(
+          (
+            await client.query(
+              'select approved_by from platform_private.resource_policy_versions where policy_id=$1',
+              [command.policyId],
+            )
+          ).rows[0],
+        ).toEqual({ approved_by: actors.approver });
+      } finally {
+        await app.close();
+      }
     });
     it('provides bounded review lists and append-only revocation without deleting publication history', async () => {
       const command = proposal(),

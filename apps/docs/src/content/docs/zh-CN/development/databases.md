@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: dc301397
+lastReviewedCommit: e11dd07b
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -224,3 +224,5 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 `07_resource_source_policy.sql`记录独立审批的不可变来源许可版本及追加式撤销。先顺序应用CLI迁移`20260923032250_resource_source_policy.sql`、`20260923033546_resource_policy_reference_guard.sql`，再更新API。后者先校验资料字段再规范UUID，按有索引的身份检查版本链。对干净的可丢弃种子库运行`13_resource_source_policy.test.sql`，再运行真实控制库加载测试；种子不授予来源许可，也不启用受管项目。
 
 来源许可流程存储（`20260923065331_resource_policy_administration.sql`）增加明确的项目办理/审批岗位配置及不可改写的申请。迁移默认不授予岗位或来源许可。申请从待审批开始，状态变化须递增版本，提交依据保留，不允许删除或在终态后重开。发布回执必须对应内容、申请人和独立审批人均一致的不可变许可版本。撤回不产生权限。两张表均强制RLS，匿名、登录用户和通用服务角色不能直接访问。岗位配置仍属受控维护操作；运行时鉴权、HTTP和页面验收与本次存储验证分开。
+
+来源申请存储之后应用 `20260923070909_resource_policy_workflow_audit.sql`，增加登记、发布、拒绝、撤回及来源撤销的明确审计动作，不改既有事件。流程集成测试只使用可回滚的合成身份；已发布事实、当前有效权限与页面验收分开记录。

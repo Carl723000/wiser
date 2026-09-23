@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: dc301397
+lastReviewedCommit: e11dd07b
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -224,3 +224,5 @@ Migration `20260922225842_resource_batch_diff.sql` adds immutable recipient gran
 `07_resource_source_policy.sql` records independently approved immutable source-policy versions and append-only revocations. Apply CLI migrations `20260923032250_resource_source_policy.sql` then `20260923033546_resource_policy_reference_guard.sql` before the updated API. The latter validates resource fields before UUID normalization and uses the indexed identity for version-chain checks. Run `13_resource_source_policy.test.sql` on a clean disposable seed, followed by the real control-loader integration tests. No source license or managed project is seeded.
 
 Source-policy workflow storage (`20260923065331_resource_policy_administration.sql`) adds explicit project stewardship role configuration and immutable proposals. It grants no stewardship roles or source permissions by default. Proposals begin pending, require optimistic state transitions, retain their submitted evidence, and cannot be deleted or reopened after a terminal decision. Publication must refer to an exactly matching immutable policy, including independent approver and applicant identities. Withdrawal creates no permission. Both tables force RLS and deny direct anonymous, authenticated and generic service-role access. Configuring stewardship remains a trusted maintenance operation; runtime authorization, HTTP and UI acceptance are separate from these storage checks.
+
+Apply `20260923070909_resource_policy_workflow_audit.sql` after source proposal storage. It adds explicit proposal, publication, rejection, withdrawal and source revocation audit actions without rewriting prior events. The source workflow integration suite uses rollback-only synthetic identities; published facts, current authorization and UI acceptance remain distinct.
