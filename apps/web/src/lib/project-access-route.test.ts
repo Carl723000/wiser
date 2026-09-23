@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 const client = {
   managementCatalog: vi.fn(),
+  externalSources: vi.fn(),
   sourcePolicyRequests: vi.fn(),
   proposeSourcePolicy: vi.fn(),
   decideSourcePolicy: vi.fn(),
@@ -28,12 +29,17 @@ const context = (action: string) => ({ params: Promise.resolve({ action }) });
 it('forwards only bounded private management-catalog searches', async () => {
   const id = '11111111-1111-4111-8111-111111111111';
   client.managementCatalog.mockResolvedValue({
-    items: [], hasMore: false, checkedAt: '2026-09-23T00:00:00Z',
+    items: [],
+    hasMore: false,
+    checkedAt: '2026-09-23T00:00:00Z',
     managementRoleOptions: [],
   });
   const path = `http://wiser.test/api/platform/access/management-catalog?projectId=${id}`;
   for (const query of ['&limit=21', '&token=caller', '&search=a&search=b']) {
-    expect((await GET(new Request(path + query), context('management-catalog'))).status).toBe(400);
+    expect(
+      (await GET(new Request(path + query), context('management-catalog')))
+        .status,
+    ).toBe(400);
   }
   expect(client.managementCatalog).not.toHaveBeenCalled();
   const response = await GET(
@@ -43,7 +49,33 @@ it('forwards only bounded private management-catalog searches', async () => {
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   expect(client.managementCatalog).toHaveBeenCalledWith(id, {
-    search: 'river', offset: 1, limit: 10,
+    search: 'river',
+    offset: 1,
+    limit: 10,
+  });
+});
+it('forwards only bounded private external source management pages', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  client.externalSources.mockResolvedValue({
+    items: [],
+    hasMore: false,
+    checkedAt: '2026-09-23T00:00:00Z',
+    managementRoleOptions: [],
+    canPropose: false,
+  });
+  const path = `http://wiser.test/api/platform/access/external-sources?projectId=${id}`;
+  for (const query of ['&limit=21', '&sourceId=caller', '&offset=1&offset=2'])
+    expect(
+      (await GET(new Request(path + query), context('external-sources')))
+        .status,
+    ).toBe(400);
+  expect(client.externalSources).not.toHaveBeenCalled();
+  const response = await GET(new Request(path), context('external-sources'));
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+  expect(client.externalSources).toHaveBeenCalledWith(id, {
+    offset: 0,
+    limit: 20,
   });
 });
 it('forwards bounded resource definitions and preserves the fixed preset version', async () => {

@@ -164,8 +164,8 @@ afterEach(async () => {
 describe('Data Foundation production runtime composition', () => {
   it('passes one optional trusted source registry to package validation and external reading, without enabling the default runtime', () => {
     const f = factories();
-    const baseRead = f.value.createReadRuntime;
-    const baseSpecial = f.value.createSpecialExecutors;
+    const baseRead = f.value.createReadRuntime.bind(f.value);
+    const baseSpecial = f.value.createSpecialExecutors.bind(f.value);
     let readPorts: unknown;
     let specialPorts: unknown;
     f.value.createReadRuntime = (pool, external) => {
@@ -219,6 +219,7 @@ describe('Data Foundation production runtime composition', () => {
     );
     expect(resourceAdministrationModule).toHaveBeenCalledWith(
       validateResourcePackage,
+      undefined,
       undefined,
     );
     expect(

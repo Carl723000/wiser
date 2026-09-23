@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SecurityLevelSchema } from '@wiser/data-contracts';
 import {
+  ExternalSourceManagementQuerySchema,
   PlatformUuidSchema,
   ResourceAccessContextSchema,
   type PlatformRequestContext,
@@ -13,6 +14,9 @@ import {
 
 const Field = z.enum(['stationCode', 'year', 'province', 'city']);
 const Action = z.enum(['source.discover', 'external.directory']);
+const SourceId = PlatformUuidSchema.refine(
+  (value) => value === value.toLowerCase(),
+);
 const Permission = z.strictObject({
   status: z.literal('VERIFIED'),
   policyVersion: z.string().min(1).max(128),
@@ -26,11 +30,35 @@ const Permission = z.strictObject({
   securityLevel: SecurityLevelSchema,
 });
 const RecordSchema = z.strictObject({
-  sourceId: PlatformUuidSchema,
+  sourceId: SourceId,
   tenantId: PlatformUuidSchema,
   projectId: PlatformUuidSchema,
   bindingVersion: z.string().min(1).max(128),
+  managementVisible: z.boolean().optional(),
+  /** A non-secret, staff-displayable reference equal to the verified basis. */
+  managementLicenseBasis: z.string().trim().min(5).max(1000).optional(),
   providerPermission: Permission,
+});
+const ListedSchema = z.strictObject({
+  sourceId: SourceId,
+  tenantId: PlatformUuidSchema,
+  projectId: PlatformUuidSchema,
+  name: z.string().trim().min(1).max(160),
+  providerName: z.string().trim().min(1).max(160),
+  securityLevel: SecurityLevelSchema,
+  managementVisible: z.literal(true),
+  providerPermissionStatus: z.enum([
+    'VERIFIED',
+    'PENDING',
+    'EXPIRED',
+    'REVOKED',
+    'UNKNOWN',
+  ]),
+  expiresAt: z.iso.datetime({ offset: true }).nullable(),
+});
+const ListedPageSchema = z.strictObject({
+  items: z.array(ListedSchema).max(20),
+  hasMore: z.boolean(),
 });
 const LevelRank = {
   L0_PUBLIC: 0,
@@ -49,6 +77,13 @@ export interface TrustedExternalMetadataRegistry {
   resolve(
     context: PlatformRequestContext,
     sourceId: string,
+    signal: AbortSignal,
+  ): Promise<unknown>;
+  /** Optional host-owned, project-scoped management listing. Omission is an
+   * empty, unavailable-to-propose directory, never a fallback to Data catalog. */
+  list?(
+    context: PlatformRequestContext,
+    page: { offset: number; limit: number },
     signal: AbortSignal,
   ): Promise<unknown>;
 }
@@ -88,6 +123,7 @@ export function createTrustedExternalMetadataPorts(
     context: PlatformRequestContext,
     sourceId: string,
     signal: AbortSignal,
+    requireReaderClearance = true,
   ): Promise<RegisteredSource | null> => {
     if (signal.aborted) return null;
     try {
@@ -100,8 +136,13 @@ export function createTrustedExternalMetadataPorts(
         record.sourceId !== sourceId ||
         record.tenantId !== context.authorization.tenantId ||
         record.projectId !== context.authorization.projectId ||
-        LevelRank[record.providerPermission.securityLevel] >
-          LevelRank[context.authorization.maxSecurityLevel] ||
+        (!requireReaderClearance &&
+          (record.managementVisible !== true ||
+            record.managementLicenseBasis !==
+              record.providerPermission.basis)) ||
+        (requireReaderClearance &&
+          LevelRank[record.providerPermission.securityLevel] >
+            LevelRank[context.authorization.maxSecurityLevel]) ||
         Date.parse(record.providerPermission.startsAt) > time ||
         Date.parse(record.providerPermission.expiresAt) <= time
       )
@@ -129,6 +170,67 @@ export function createTrustedExternalMetadataPorts(
     );
   };
   return {
+    async listManagementSources(input: {
+      context: PlatformRequestContext;
+      page: { offset: number; limit: number };
+      signal: AbortSignal;
+    }) {
+      const page = ExternalSourceManagementQuerySchema.parse(input.page);
+      if (!registry.list || input.signal.aborted)
+        return { items: [], hasMore: false };
+      const raw = ListedPageSchema.parse(
+        await registry.list(input.context, page, input.signal),
+      );
+      if (input.signal.aborted) throw new Error('Source list cancelled');
+      const ids = raw.items.map((item) => item.sourceId);
+      if (new Set(ids).size !== ids.length) throw new Error('Duplicate source');
+      const auth = input.context.authorization;
+      if (
+        raw.items.some(
+          (item) =>
+            item.tenantId !== auth.tenantId ||
+            item.projectId !== auth.projectId ||
+            !item.managementVisible,
+        )
+      )
+        throw new Error('Out-of-scope source');
+      const items = await Promise.all(
+        raw.items.map(async (item) => {
+          const live =
+            item.providerPermissionStatus === 'VERIFIED'
+              ? await get(input.context, item.sourceId, input.signal, false)
+              : null;
+          const active =
+            live !== null &&
+            live.providerPermission.actions.some(
+              (action) =>
+                action === 'source.discover' || action === 'external.directory',
+            );
+          const permission = live?.providerPermission;
+          return {
+            sourceId: item.sourceId,
+            name: item.name,
+            provider: item.providerName,
+            providerPermissionStatus: permission
+              ? ('VERIFIED' as const)
+              : item.providerPermissionStatus === 'VERIFIED'
+                ? item.expiresAt && Date.parse(item.expiresAt) <= now()
+                  ? ('EXPIRED' as const)
+                  : ('UNKNOWN' as const)
+                : item.providerPermissionStatus,
+            allowedFields: permission ? [...permission.fields] : [],
+            allowedActions: permission ? [...permission.actions] : [],
+            fromYear: permission?.fromYear ?? null,
+            toYear: permission?.toYear ?? null,
+            expiresAt: permission?.expiresAt ?? item.expiresAt,
+            licenseBasis: live?.managementLicenseBasis ?? null,
+            eligibleForProposal: active,
+          };
+        }),
+      );
+      if (input.signal.aborted) throw new Error('Source list cancelled');
+      return { items, hasMore: raw.hasMore };
+    },
     async validateExternalSource(input: {
       context: PlatformRequestContext;
       sourceId: string;
@@ -137,9 +239,16 @@ export function createTrustedExternalMetadataPorts(
       policyWindow?: { readonly startsAt: string; readonly expiresAt: string };
       signal: AbortSignal;
     }): Promise<boolean> {
-      const record = await get(input.context, input.sourceId, input.signal);
+      if (!registry.list) return false;
+      const record = await get(
+        input.context,
+        input.sourceId,
+        input.signal,
+        false,
+      );
       return (
         record !== null &&
+        record.managementVisible === true &&
         input.licenseBasis.trim() === record.providerPermission.basis &&
         (!input.policyWindow ||
           (Number.isFinite(Date.parse(input.policyWindow.startsAt)) &&

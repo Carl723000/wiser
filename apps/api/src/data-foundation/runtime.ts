@@ -97,6 +97,7 @@ interface ReadExecutorRuntime extends ExecutorRuntime {
   readonly audit: DataCapabilityAuditPort;
   readonly validateResourcePackage?: ResourceAdministrationOptions['validatePackage'];
   readonly listManagementCatalog?: ResourceAdministrationOptions['listManagementCatalog'];
+  readonly listExternalSources?: ResourceAdministrationOptions['listExternalSources'];
 }
 
 type ExternalMetadataPorts = ReturnType<
@@ -223,6 +224,12 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       ...createPostgresDataReadRuntime(pg),
       validateResourcePackage: createDataResourcePackageValidator(pg, external),
       listManagementCatalog: createDataManagementCatalogReader(pg),
+      ...(external
+        ? {
+            listExternalSources: (input) =>
+              external.listManagementSources(input),
+          }
+        : {}),
     };
   },
   createCommandRuntime(pool, objectStore) {
@@ -280,7 +287,11 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       ...createReconciliationExecutors(pg),
       ...createAssessmentExecutors(pg),
       ...createKnowledgeRelationExecutors(pg),
-      createExternalMetadataExecutor(external?.resolveReader),
+      createExternalMetadataExecutor(
+        external
+          ? (sourceId, context) => external.resolveReader(sourceId, context)
+          : undefined,
+      ),
     ];
   },
   createAssetDownloadPort(pool, objectStore) {
@@ -425,6 +436,7 @@ export function createDataFoundationRuntimeFromEnvironment(
             platformAuth.resourceAdministrationModule(
               read.validateResourcePackage,
               read.listManagementCatalog,
+              read.listExternalSources,
             ),
           ]
         : []),

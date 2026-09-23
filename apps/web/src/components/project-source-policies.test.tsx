@@ -9,7 +9,10 @@ import {
   within,
   act,
 } from '@testing-library/react';
-import type { ResourcePolicyRequestsPage } from '@wiser/platform-contracts';
+import {
+  ResourcePolicyProposalSchema,
+  type ResourcePolicyRequestsPage,
+} from '@wiser/platform-contracts';
 import { ProjectSourcePolicies } from './project-source-policies';
 const id = (n: number) =>
   `11111111-1111-4111-8111-${String(n).padStart(12, '0')}`;
@@ -270,7 +273,12 @@ it('loads the bounded source catalog only when requested and submits the chosen 
     url.includes('source-policy-propose'),
   );
   expect(submission).toBeDefined();
-  expect(JSON.parse(String(submission?.init?.body))).toMatchObject({
+  const body = submission?.init?.body;
+  expect(typeof body).toBe('string');
+  const command = ResourcePolicyProposalSchema.parse(
+    JSON.parse(body as string) as unknown,
+  );
+  expect(command).toMatchObject({
     projectId: id(1),
     policyId: id(11),
     expectedPolicyVersion: 4,
@@ -283,8 +291,20 @@ it('loads the bounded source catalog only when requested and submits the chosen 
   });
 });
 it('does not offer source selection without proposal authority', async () => {
-  const fetch = vi.fn(() =>
-    Promise.resolve(Response.json({ ...page([]), canPropose: false })),
+  const fetch = vi.fn((url: string) =>
+    Promise.resolve(
+      Response.json(
+        url.includes('external-sources')
+          ? {
+              items: [],
+              hasMore: false,
+              checkedAt: '2026-09-23T00:00:00Z',
+              managementRoleOptions: [],
+              canPropose: false,
+            }
+          : { ...page([]), canPropose: false },
+      ),
+    ),
   );
   vi.stubGlobal('fetch', fetch);
   render(
@@ -292,7 +312,9 @@ it('does not offer source selection without proposal authority', async () => {
   );
   await screen.findByText('暂无符合条件的来源许可申请。');
   expect(screen.queryByRole('button', { name: '登记来源许可' })).toBeNull();
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(
+    fetch.mock.calls.some(([url]) => url.includes('management-catalog')),
+  ).toBe(false);
 });
 it('searches and pages the management catalog without mixing a late earlier response', async () => {
   const resource = {
@@ -359,7 +381,7 @@ it('searches and pages the management catalog without mixing a late earlier resp
       ),
     ).toBe(true),
   );
-  await act(async () => {
+  act(() => {
     finishOldPage?.(
       Response.json({
         items: [{ ...resource, name: '过期的上一页结果' }],

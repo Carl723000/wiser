@@ -92,6 +92,15 @@ function fixture() {
         managementRoleOptions: [],
       }),
     ),
+    externalSources: vi.fn(() =>
+      Promise.resolve({
+        items: [],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+        managementRoleOptions: [],
+        canPropose: false,
+      }),
+    ),
     sourcePolicyRequests: vi.fn(() =>
       Promise.resolve({
         items: [{ ...sourcePolicy, publicationState: 'none' as const }],
@@ -172,7 +181,8 @@ describe('resource administration HTTP boundary', () => {
       (await app.inject({ url: `${url}?limit=21`, headers: auth })).statusCode,
     ).toBe(400);
     expect(
-      (await app.inject({ url: `${url}?unexpected=true`, headers: auth })).statusCode,
+      (await app.inject({ url: `${url}?unexpected=true`, headers: auth }))
+        .statusCode,
     ).toBe(400);
     expect(service.managementCatalog).not.toHaveBeenCalled();
     const response = await app.inject({
@@ -185,6 +195,27 @@ describe('resource administration HTTP boundary', () => {
       token: 'verified-human',
       projectId: project,
       page: { offset: 1, limit: 10, search: 'river' },
+    });
+  });
+  it('serves only a bounded authenticated external source list with no-store', async () => {
+    const { app, service } = fixture();
+    const url = `/api/platform/v1/access/projects/${project}/external-sources`;
+    expect((await app.inject({ url })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ url: url + '?limit=21', headers: auth })).statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ url: url + '?sourceId=' + project, headers: auth }))
+        .statusCode,
+    ).toBe(400);
+    expect(service.externalSources).not.toHaveBeenCalled();
+    const result = await app.inject({ url, headers: auth });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['cache-control']).toBe('private, no-store');
+    expect(service.externalSources).toHaveBeenCalledWith({
+      token: 'verified-human',
+      projectId: project,
+      page: { offset: 0, limit: 20 },
     });
   });
   it('requires a bearer token and bounds definition listings', async () => {

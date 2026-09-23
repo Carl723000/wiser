@@ -3,6 +3,8 @@ import {
   ResourcePolicyRequestsPageSchema,
   ResourceManagementCatalogQuerySchema,
   ResourceManagementCatalogPageSchema,
+  ExternalSourceManagementQuerySchema,
+  ExternalSourceManagementPageSchema,
   ResourcePolicyProposalSchema,
   ResourcePolicyDecisionSchema,
   ResourcePolicyActionSchema,
@@ -41,6 +43,7 @@ export type ResourceAdministrationHttpService = Pick<
   PostgresResourceAdministrationService,
   | 'sourcePolicyRequests'
   | 'managementCatalog'
+  | 'externalSources'
   | 'proposeSourcePolicy'
   | 'decideSourcePolicy'
   | 'withdrawSourcePolicy'
@@ -141,6 +144,19 @@ export function createResourceAdministrationModule(
                 token,
                 projectId: Params.parse(request.params).projectId,
                 page: ResourceManagementCatalogQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/external-sources',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ExternalSourceManagementPageSchema.parse(
+              await service.externalSources({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ExternalSourceManagementQuerySchema.parse(request.query),
               }),
             ),
           ),

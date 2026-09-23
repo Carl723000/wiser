@@ -3,6 +3,8 @@ import {
   ResourcePolicyRequestsQuerySchema,
   ResourceManagementCatalogQuerySchema,
   ResourceManagementCatalogPageSchema,
+  ExternalSourceManagementQuerySchema,
+  ExternalSourceManagementPageSchema,
   ResourcePolicyProposalSchema,
   ResourcePolicyDecisionSchema,
   ResourcePolicyActionSchema,
@@ -12,6 +14,7 @@ import {
   ResourcePolicyRevokeReceiptSchema,
   type ResourcePolicyRequestsQuery,
   type ResourceManagementCatalogQuery,
+  type ExternalSourceManagementQuery,
   type ResourcePolicyProposal,
   type ResourcePolicyDecision,
   type ResourcePolicyAction,
@@ -221,6 +224,18 @@ export function createProjectAccessClient(options: {
       return call(
         `projects/${id}/management-catalog?${query}`,
         ResourceManagementCatalogPageSchema,
+      );
+    },
+    externalSources(id: string, input: ExternalSourceManagementQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ExternalSourceManagementQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+      });
+      return call(
+        `projects/${id}/external-sources?${query}`,
+        ExternalSourceManagementPageSchema,
       );
     },
     sourcePolicyRequests(id: string, input: ResourcePolicyRequestsQuery) {

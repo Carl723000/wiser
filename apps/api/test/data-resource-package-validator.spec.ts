@@ -67,6 +67,13 @@ function externalRequest(): Input {
   return request;
 }
 describe('Data package validation lifecycle', () => {
+  it('fails closed for external policy proposals when no trusted registry is wired', async () => {
+    const f = fixture();
+    expect(
+      await f.validate(await authorizeManagementMetadata(externalRequest())),
+    ).toBe(false);
+    expect(f.connect).not.toHaveBeenCalled();
+  });
   it('validates a registered external source and verified provider licence through a separate trusted port', async () => {
     const f = fixture();
     const request = await authorizeManagementMetadata(externalRequest());

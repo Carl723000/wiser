@@ -11,6 +11,7 @@ import {
 } from '@wiser/platform-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { ContextHelp } from './context-help';
+import { ProjectExternalSources } from './project-external-sources';
 import styles from './project-access-workspace.module.css';
 type Props = { projectId: string; viewerId: string; locale: Locale };
 type Row = ResourcePolicyRequestsPage['items'][number];
@@ -295,8 +296,10 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
     event.preventDefault();
     if (!chosen || !data?.canPropose || busy) return;
     const form = new FormData(event.currentTarget);
-    const start = new Date(String(form.get('startsAt') ?? '')),
-      end = new Date(String(form.get('expiresAt') ?? ''));
+    const startValue = form.get('startsAt'),
+      endValue = form.get('expiresAt');
+    const start = new Date(typeof startValue === 'string' ? startValue : ''),
+      end = new Date(typeof endValue === 'string' ? endValue : '');
     const command = ResourcePolicyProposalSchema.safeParse({
       projectId,
       policyId: chosen.policyId,
@@ -418,6 +421,11 @@ function SourceWorkspace({ projectId, viewerId, locale }: Props) {
       ) : null}
       {data ? (
         <>
+          <ProjectExternalSources
+            projectId={projectId}
+            locale={locale}
+            onSaved={refresh}
+          />
           <p>
             {t.checked} ·{' '}
             <time dateTime={data.checkedAt}>

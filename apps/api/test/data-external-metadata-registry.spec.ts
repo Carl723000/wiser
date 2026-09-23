@@ -59,6 +59,9 @@ function fixture() {
     tenantId,
     projectId,
     bindingVersion: 'adapter-v1',
+    managementVisible: true,
+    managementLicenseBasis:
+      'Synthetic provider approval for directory metadata',
     providerPermission: {
       status: 'VERIFIED' as const,
       policyVersion: 'permit-v1',
@@ -74,13 +77,127 @@ function fixture() {
     provider: { readPage },
   };
   const resolve = vi.fn((): Promise<unknown> => Promise.resolve(record));
+  const listed = {
+    sourceId,
+    tenantId,
+    projectId,
+    name: 'Synthetic station directory',
+    providerName: 'Synthetic supplier',
+    securityLevel: 'L2_RESTRICTED',
+    managementVisible: true,
+    providerPermissionStatus: 'VERIFIED',
+    expiresAt: '2027-01-01T00:00:00Z',
+  };
+  const list = vi.fn((): Promise<unknown> =>
+    Promise.resolve({
+      items: [listed],
+      hasMore: false,
+    }),
+  );
   const ports = createTrustedExternalMetadataPorts(
-    { resolve },
+    { resolve, list },
     { now: () => now },
   );
-  return { record, resolve, readPage, ports };
+  return { record, listed, resolve, list, readPage, ports };
 }
 describe('trusted external source registry', () => {
+  it('keeps proposals disabled when a host has no management listing', async () => {
+    const f = fixture();
+    const ports = createTrustedExternalMetadataPorts(
+      { resolve: f.resolve },
+      { now: () => now },
+    );
+    expect(
+      await ports.listManagementSources({
+        context,
+        page: { offset: 0, limit: 20 },
+        signal: context.signal,
+      }),
+    ).toEqual({ items: [], hasMore: false });
+    expect(
+      await ports.validateExternalSource({
+        context,
+        sourceId,
+        actions: ['source.discover'],
+        licenseBasis: f.record.providerPermission.basis,
+        signal: context.signal,
+      }),
+    ).toBe(false);
+    expect(f.resolve).not.toHaveBeenCalled();
+  });
+  it('lists only current, safe source descriptions and never exposes an adapter', async () => {
+    const f = fixture();
+    const result = await f.ports.listManagementSources({
+      context,
+      page: { offset: 0, limit: 20 },
+      signal: context.signal,
+    });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        sourceId,
+        name: 'Synthetic station directory',
+        provider: 'Synthetic supplier',
+        providerPermissionStatus: 'VERIFIED',
+        allowedFields: ['stationCode', 'year'],
+        allowedActions: ['source.discover', 'external.directory'],
+        fromYear: 2020,
+        toYear: 2025,
+        eligibleForProposal: true,
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('readPage');
+    const steward: DataCapabilityExecutionContext = {
+      ...context,
+      authorization: {
+        ...context.authorization,
+        maxSecurityLevel: 'L0_PUBLIC',
+      },
+    };
+    const managed = await f.ports.listManagementSources({
+      context: steward,
+      page: { offset: 0, limit: 20 },
+      signal: steward.signal,
+    });
+    expect(managed.items[0]?.eligibleForProposal).toBe(true);
+    f.list.mockResolvedValueOnce({
+      items: [{ ...f.listed, tenantId: actorId }],
+      hasMore: false,
+    });
+    await expect(
+      f.ports.listManagementSources({
+        context,
+        page: { offset: 0, limit: 20 },
+        signal: context.signal,
+      }),
+    ).rejects.toThrow();
+  });
+  it('does not enable proposals for missing, expired or revoked supplier permission', async () => {
+    const f = fixture();
+    const listed = f.listed;
+    for (const status of ['PENDING', 'EXPIRED', 'REVOKED'] as const) {
+      f.list.mockResolvedValueOnce({
+        items: [{ ...listed, providerPermissionStatus: status }],
+        hasMore: false,
+      });
+      const page = await f.ports.listManagementSources({
+        context,
+        page: { offset: 0, limit: 20 },
+        signal: context.signal,
+      });
+      expect(page.items[0]).toMatchObject({
+        providerPermissionStatus: status,
+        eligibleForProposal: false,
+        allowedActions: [],
+      });
+    }
+    f.resolve.mockResolvedValueOnce(null);
+    const missing = await f.ports.listManagementSources({
+      context,
+      page: { offset: 0, limit: 20 },
+      signal: context.signal,
+    });
+    expect(missing.items[0]?.eligibleForProposal).toBe(false);
+  });
   it('matches a fixed source and current provider permission for package validation', async () => {
     const f = fixture();
     expect(
@@ -92,6 +209,29 @@ describe('trusted external source registry', () => {
         signal: context.signal,
       }),
     ).toBe(true);
+    f.resolve.mockResolvedValueOnce({ ...f.record, managementVisible: false });
+    expect(
+      await f.ports.validateExternalSource({
+        context,
+        sourceId,
+        actions: ['external.directory'],
+        licenseBasis: f.record.providerPermission.basis,
+        signal: context.signal,
+      }),
+    ).toBe(false);
+    f.resolve.mockResolvedValueOnce({
+      ...f.record,
+      managementLicenseBasis: undefined,
+    });
+    expect(
+      await f.ports.validateExternalSource({
+        context,
+        sourceId,
+        actions: ['external.directory'],
+        licenseBasis: f.record.providerPermission.basis,
+        signal: context.signal,
+      }),
+    ).toBe(false);
     expect(
       await f.ports.validateExternalSource({
         context,
@@ -149,7 +289,9 @@ describe('trusted external source registry', () => {
   });
   it('serves only listed metadata after independent WISER action and supplier checks', async () => {
     const f = fixture();
-    const executor = createExternalMetadataExecutor(f.ports.resolveReader);
+    const executor = createExternalMetadataExecutor((id, ctx) =>
+      f.ports.resolveReader(id, ctx),
+    );
     expect(await executor.execute(request, context)).toMatchObject({
       items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
     });
@@ -214,7 +356,9 @@ describe('trusted external source registry', () => {
         total: 1,
       });
     });
-    const executor = createExternalMetadataExecutor(f.ports.resolveReader);
+    const executor = createExternalMetadataExecutor((id, ctx) =>
+      f.ports.resolveReader(id, ctx),
+    );
     await expect(executor.execute(request, context)).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
@@ -234,7 +378,9 @@ describe('trusted external source registry', () => {
         total: 1,
       });
     });
-    const executor = createExternalMetadataExecutor(f.ports.resolveReader);
+    const executor = createExternalMetadataExecutor((id, ctx) =>
+      f.ports.resolveReader(id, ctx),
+    );
     await expect(executor.execute(request, context)).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
