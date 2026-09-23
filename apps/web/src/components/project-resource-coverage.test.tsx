@@ -232,10 +232,14 @@ it('shows whole-query time and spatial-record coverage without inventing reviewe
   await screen.findByText('公开水质月报');
   expect(screen.getByText('可见时间范围记录')).toBeTruthy();
   expect(screen.getByTestId('coverage-time-recorded').textContent).toBe('27');
-  expect(screen.getByText(/当前权限下未见时间范围记录/).textContent).toContain('128');
+  expect(screen.getByText(/当前权限下未见时间范围记录/).textContent).toContain(
+    '128',
+  );
   expect(screen.getByText('可见空间范围记录')).toBeTruthy();
   expect(screen.getByTestId('coverage-space-recorded').textContent).toBe('12');
-  expect(screen.getByText(/当前权限下未见空间范围记录/).textContent).toContain('143');
+  expect(screen.getByText(/当前权限下未见空间范围记录/).textContent).toContain(
+    '143',
+  );
   expect(screen.getByText('专业已审关系')).toBeTruthy();
   expect(screen.getByText('当前可用操作')).toBeTruthy();
   expect(screen.getAllByText('待统计').length).toBeGreaterThanOrEqual(2);
