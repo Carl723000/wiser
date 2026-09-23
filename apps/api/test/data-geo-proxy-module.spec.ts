@@ -37,6 +37,26 @@ const context: PlatformRequestContext = {
   traceId: 'a'.repeat(32),
 };
 
+function managedContext(): PlatformRequestContext {
+  const managed = structuredClone(context);
+  managed.authorization.resourceAccess = {
+    revision: 1,
+    fingerprint: 'b'.repeat(64),
+    scope: {
+      mode: 'managed',
+      validUntil: '2099-01-01T00:00:00Z',
+      permissions: {
+        'source.discover': [],
+        'content.read': [],
+        'original.read': [],
+        'result.export': [],
+        'external.directory': [],
+      },
+    },
+  };
+  return managed;
+}
+
 const headers = {
   authorization: 'Bearer verified-supabase-token',
   'x-wiser-tenant-id': TENANT_ID,
@@ -270,6 +290,35 @@ describe('Data Foundation governed GIS proxy', () => {
     });
   });
 
+  it.each(['wms', 'wfs', 'wcs', 'wmts'] as const)(
+    'does not forward %s service capabilities for a managed actor',
+    async (service) => {
+      const fixture = appWith({
+        resolved: managedContext(),
+        response: {
+          status: 200,
+          contentType: 'application/xml',
+          body: new TextEncoder().encode(
+            '<Capabilities><Layer>private-version-name</Layer></Capabilities>',
+          ),
+        },
+      });
+      for (const query of [
+        'request=GetCapabilities',
+        `request=GetCapabilities&versionId=${VERSION_ID}`,
+      ]) {
+        const response = await fixture.app.inject({
+          method: 'GET',
+          url: `/api/data/v1/geo/ogc/${service}?${query}`,
+          headers,
+        });
+        expect(response.statusCode).toBe(403);
+        expect(response.body).not.toContain('private-version-name');
+      }
+      expect(fixture.proxy.request).not.toHaveBeenCalled();
+    },
+  );
+
   it('fails closed and audits missing credentials, scopes, methods, and SSRF-shaped queries', async () => {
     const restricted: PlatformRequestContext = {
       ...context,
@@ -342,6 +391,64 @@ describe('Data Foundation governed GIS proxy', () => {
     });
     expect(unscoped.statusCode).toBe(404);
     expect(fixture.requests).toHaveLength(1);
+  });
+
+  it.each([
+    '/api/data/v1/geo/stac',
+    '/api/data/v1/geo/stac/search?limit=10',
+    '/api/data/v1/geo/stac/collections/current',
+    '/api/data/v1/geo/stac/collections/current/items?limit=10',
+    `/api/data/v1/geo/stac/collections/current/items/wiser-${'a'.repeat(48)}`,
+  ])(
+    'does not forward raw project-wide STAC data to a managed actor: %s',
+    async (url) => {
+      const fixture = appWith({
+        resolved: managedContext(),
+        response: {
+          status: 200,
+          contentType: 'application/json',
+          body: new TextEncoder().encode(
+            '{"id":"private-version-name","geometry":{"type":"Point","coordinates":[1,2]}}',
+          ),
+        },
+      });
+      const response = await fixture.app.inject({
+        method: 'GET',
+        url,
+        headers,
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.body).not.toContain('private-version-name');
+      expect(fixture.proxy.request).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps static STAC conformance available to a managed actor', async () => {
+    const fixture = appWith({ resolved: managedContext() });
+    const response = await fixture.app.inject({
+      method: 'GET',
+      url: '/api/data/v1/geo/stac/conformance',
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(fixture.requests[0]?.path).toBe('/conformance');
+  });
+
+  it('does not treat one permitted version as access to a project-wide STAC search', async () => {
+    const managed = managedContext();
+    if (managed.authorization.resourceAccess?.scope.mode !== 'managed')
+      throw new Error('expected managed resource scope');
+    managed.authorization.resourceAccess.scope.permissions['content.read'] = [
+      { kind: 'version', dataItemId: ACTOR_ID, versionId: VERSION_ID },
+    ];
+    const fixture = appWith({ resolved: managed });
+    const response = await fixture.app.inject({
+      method: 'GET',
+      url: '/api/data/v1/geo/stac/search?limit=10',
+      headers,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(fixture.proxy.request).not.toHaveBeenCalled();
   });
 
   it('authorizes vector versions and resolves raster authority URLs server-side', async () => {
