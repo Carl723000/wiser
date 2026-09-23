@@ -203,3 +203,40 @@ it('shows the returned processing stage without treating it as professional appr
   expect(screen.getByText('部分完成')).toBeTruthy();
   expect(screen.queryByText('已专业审核')).toBeNull();
 });
+
+it('shows whole-query time and spatial-record coverage without inventing reviewed knowledge or available actions', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        ...result,
+        summary: {
+          ...result.summary,
+          coverage: {
+            temporal: { recordedVersionCount: 27, unknownVersionCount: 128 },
+            geometry: { recordedVersionCount: 12, unknownVersionCount: 143 },
+            approvedAssertionCount: null,
+            effectiveActions: null,
+          },
+        },
+      }),
+    ),
+  );
+  render(
+    <ProjectResourceCoverage
+      locale="zh-CN"
+      tenantId={tenantId}
+      projectId={projectId}
+    />,
+  );
+  await screen.findByText('公开水质月报');
+  expect(screen.getByText('有时间范围记录')).toBeTruthy();
+  expect(screen.getByTestId('coverage-time-recorded').textContent).toBe('27');
+  expect(screen.getByText(/未记录时间范围/).textContent).toContain('128');
+  expect(screen.getByText('有空间范围记录')).toBeTruthy();
+  expect(screen.getByTestId('coverage-space-recorded').textContent).toBe('12');
+  expect(screen.getByText(/未记录空间范围/).textContent).toContain('143');
+  expect(screen.getByText('专业已审关系')).toBeTruthy();
+  expect(screen.getByText('当前可用操作')).toBeTruthy();
+  expect(screen.getAllByText('待统计').length).toBeGreaterThanOrEqual(2);
+});
