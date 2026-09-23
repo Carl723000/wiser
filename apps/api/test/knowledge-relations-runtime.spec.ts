@@ -97,18 +97,23 @@ function fixture() {
     )
       return { rows: [], rowCount: 0 };
     if (sql.startsWith('insert into knowledge.assertion('))
-      rows.set(String(v[0]), {
-        assertion_id: v[0],
-        data_item_id: item,
-        version_id: version,
-        row_version: 1,
-        mapping_version: 'v1',
-        status: 'PENDING_REVIEW',
-        created_at: v[10],
-        reviews: [],
-      });
+      for (let offset = 0; offset < v.length; offset += 11)
+        rows.set(String(v[offset]), {
+          assertion_id: v[offset],
+          data_item_id: item,
+          version_id: version,
+          row_version: 1,
+          mapping_version: 'v1',
+          status: 'PENDING_REVIEW',
+          created_at: v[offset + 10],
+          reviews: [],
+        });
     if (sql.startsWith('insert into knowledge.assertion_binding'))
-      rows.get(String(v[0]))!['candidate'] = JSON.parse(String(v[8]));
+      for (let offset = 0; offset < v.length; offset += 11)
+        Object.assign(rows.get(String(v[offset]))!, {
+          mapping_version: v[offset + 5],
+          candidate: JSON.parse(String(v[offset + 8])) as unknown,
+        });
     if (sql.startsWith('insert into knowledge.review_record'))
       (rows.get(String(v[3]))!['reviews'] as unknown[]).push({
         reviewId: v[0],
@@ -122,15 +127,23 @@ function fixture() {
         status: v[1],
         row_version: Number(v[3]) + 1,
       });
-    if (sql.startsWith('select b.*'))
+    if (sql.startsWith('select b.*')) {
+      const single = rows.get(String(v[0]));
+      const selected = sql.includes('where b.assertion_id=any(')
+        ? (v[0] as string[]).flatMap((id) => {
+            const row = rows.get(id);
+            return row ? [row] : [];
+          })
+        : sql.includes('where b.assertion_id=')
+          ? single
+            ? [single]
+            : []
+          : [...rows.values()];
       return {
-        rows: visible
-          ? ((sql.includes('where b.assertion_id=')
-              ? [rows.get(String(v[0]))].filter(Boolean)
-              : [...rows.values()]) as Record<string, unknown>[])
-          : [],
-        rowCount: rows.size,
+        rows: visible ? selected : [],
+        rowCount: visible ? selected.length : 0,
       };
+    }
     return { rows: [{}], rowCount: 1 };
   });
   const release = vi.fn();
@@ -204,6 +217,212 @@ it('replays imports and reviews through current authority and hides a withdrawn 
     code: 'NOT_FOUND',
   });
   expect(f.release).toHaveBeenCalledTimes(9);
+});
+
+it('inserts an all-new import batch in three ordered statements while preserving the result order', async () => {
+  const f = fixture();
+  const candidates = Array.from({ length: 7 }, (_, n) => ({
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: `enterprise:${7 - n}` },
+    object: { ...f.candidate.object, key: `point:${7 - n}` },
+  }));
+  const imported = (await f.call('import', {
+    ...f.input,
+    candidates,
+  })) as {
+    items: { assertionId: string; candidate: { subject: { key: string } } }[];
+    createdCount: number;
+    reusedCount: number;
+  };
+  const writes = f.query.mock.calls.filter(([sql]) =>
+    sql.startsWith('insert into knowledge.'),
+  );
+  expect(writes.map(([sql]) => sql.split('(')[0])).toEqual([
+    'insert into knowledge.evidence_fragment',
+    'insert into knowledge.assertion',
+    'insert into knowledge.assertion_binding',
+  ]);
+  expect(writes.map(([, values]) => values?.length)).toEqual([84, 77, 77]);
+  expect(imported).toMatchObject({ createdCount: 7, reusedCount: 0 });
+  expect(imported.items.map((row) => row.candidate.subject.key)).toEqual(
+    Array.from({ length: 7 }, (_, n) => `enterprise:${n + 1}`),
+  );
+  expect(new Set(imported.items.map((row) => row.assertionId)).size).toBe(7);
+});
+
+it('looks up a batch of existing relation identities once while preserving reuse, order, and conflicts', async () => {
+  const f = fixture();
+  const second = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:2' },
+    object: { ...f.candidate.object, key: 'point:2' },
+  };
+  const third = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:3' },
+    object: { ...f.candidate.object, key: 'point:3' },
+  };
+  const fourth = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:4' },
+    object: { ...f.candidate.object, key: 'point:4' },
+  };
+  const bindings = new Map<
+    string,
+    { identity_key: string; assertion_id: string; fingerprint: string }
+  >();
+  const original = f.query.getMockImplementation()!;
+  f.query.mockImplementation(async (sql, values = []) => {
+    if (sql.includes('from knowledge.assertion_binding where version_id=')) {
+      const identities = Array.isArray(values[2])
+        ? (values[2] as string[])
+        : [String(values[2])];
+      const rows = identities.flatMap((identity) => {
+        const row = bindings.get(identity);
+        return row ? [row] : [];
+      });
+      return { rows, rowCount: rows.length };
+    }
+    const result = await original(sql, values);
+    if (sql.startsWith('insert into knowledge.assertion_binding'))
+      for (let offset = 0; offset < values.length; offset += 11) {
+        const identity = String(values[offset + 6]);
+        bindings.set(identity, {
+          identity_key: identity,
+          assertion_id: String(values[offset]),
+          fingerprint: String(values[offset + 7]),
+        });
+      }
+    return result;
+  });
+  const lookupCalls = () =>
+    f.query.mock.calls.filter(([sql]) =>
+      sql.includes('from knowledge.assertion_binding where version_id='),
+    );
+  const batchLoadCalls = () =>
+    f.query.mock.calls.filter(
+      ([sql]) =>
+        sql.startsWith('select b.*') &&
+        sql.includes('where b.assertion_id=any('),
+    );
+  const initial = (await f.call('import', {
+    ...f.input,
+    candidates: [second, f.candidate],
+  })) as {
+    items: { assertionId: string; candidate: { subject: { key: string } } }[];
+    createdCount: number;
+    reusedCount: number;
+  };
+  expect(initial).toMatchObject({ createdCount: 2, reusedCount: 0 });
+  expect(lookupCalls()).toHaveLength(1);
+  expect(lookupCalls()[0]![1]?.[2]).toHaveLength(2);
+  expect(batchLoadCalls()).toHaveLength(1);
+  expect(batchLoadCalls()[0]![1]?.[0]).toHaveLength(2);
+
+  f.query.mockClear();
+  const mixed = (await f.call(
+    'import',
+    { ...f.input, candidates: [third, second, f.candidate, fourth] },
+    { ...f.context, idempotencyKey: randomUUID() },
+  )) as typeof initial;
+  expect(mixed).toMatchObject({ createdCount: 2, reusedCount: 2 });
+  expect(mixed.items.map((row) => row.candidate.subject.key)).toEqual([
+    'enterprise:1',
+    'enterprise:2',
+    'enterprise:3',
+    'enterprise:4',
+  ]);
+  expect(mixed.items.slice(0, 2).map((row) => row.assertionId)).toEqual(
+    initial.items.map((row) => row.assertionId),
+  );
+  expect(lookupCalls()).toHaveLength(1);
+  expect(lookupCalls()[0]![1]?.[2]).toHaveLength(4);
+  expect(batchLoadCalls()).toHaveLength(1);
+  expect(batchLoadCalls()[0]![1]?.[0]).toHaveLength(4);
+  expect(
+    f.query.mock.calls.filter(([sql]) =>
+      sql.startsWith('insert into knowledge.'),
+    ),
+  ).toHaveLength(6);
+
+  f.query.mockClear();
+  await expect(
+    f.call(
+      'import',
+      {
+        ...f.input,
+        candidates: [
+          third,
+          {
+            ...second,
+            qualifiers: { ...second.qualifiers, unit: 'mg/L' },
+          },
+        ],
+      },
+      { ...f.context, idempotencyKey: randomUUID() },
+    ),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(lookupCalls()).toHaveLength(1);
+  expect(batchLoadCalls()).toHaveLength(0);
+  expect(f.rows.size).toBe(4);
+});
+
+it('retains per-candidate writes when a new relation supersedes a previous assertion', async () => {
+  const f = fixture();
+  const initial = (await f.call('import', f.input)) as {
+    items: { assertionId: string }[];
+  };
+  const second = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:2' },
+    object: { ...f.candidate.object, key: 'point:2' },
+  };
+  f.query.mockClear();
+  const result = (await f.call(
+    'import',
+    {
+      ...f.input,
+      mappingVersion: 'v2',
+      candidates: [
+        second,
+        {
+          ...f.candidate,
+          qualifiers: { ...f.candidate.qualifiers, unit: 'mg/L' },
+          supersedesId: initial.items[0]!.assertionId,
+        },
+      ],
+    },
+    { ...f.context, idempotencyKey: randomUUID() },
+  )) as { createdCount: number; reusedCount: number };
+  expect(result).toMatchObject({ createdCount: 2, reusedCount: 0 });
+  expect(
+    f.query.mock.calls.filter(([sql]) =>
+      sql.startsWith('insert into knowledge.'),
+    ),
+  ).toHaveLength(6);
+});
+
+it('rejects an import when a batch-loaded assertion is hidden by row scope', async () => {
+  const f = fixture();
+  const second = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:2' },
+    object: { ...f.candidate.object, key: 'point:2' },
+  };
+  const original = f.query.getMockImplementation()!;
+  f.query.mockImplementation(async (sql, values) => {
+    const result = await original(sql, values);
+    if (
+      sql.startsWith('select b.*') &&
+      sql.includes('where b.assertion_id=any(')
+    )
+      return { rows: result.rows.slice(0, 1), rowCount: 1 };
+    return result;
+  });
+  await expect(
+    f.call('import', { ...f.input, candidates: [f.candidate, second] }),
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  expect(f.query.mock.calls.some(([sql]) => sql === 'rollback')).toBe(true);
 });
 
 it('rolls back reads on cancellation or persistence failure without exposing database errors', async () => {

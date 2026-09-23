@@ -21,7 +21,6 @@ import {
   RelationReviewInputSchema,
   RelationBatchListInputSchema,
   QuerySpecSchema,
-  type RelationAssertion,
   type RelationCandidate,
 } from '@wiser/data-contracts';
 import {
@@ -104,6 +103,110 @@ async function load(client: Client, id: string) {
   if (!rows.rows[0]) throw fail('NOT_FOUND');
   return assertion(rows.rows[0]);
 }
+async function loadBatch(client: Client, ids: readonly string[]) {
+  const result = await client.query(
+    `${SELECT} where b.assertion_id=any($1::uuid[]) and ${VISIBLE}`,
+    [ids],
+  );
+  const rowsById = new Map(
+    result.rows.map((row) => [String(row['assertion_id']), row]),
+  );
+  return ids.map((id) => {
+    const row = rowsById.get(id);
+    if (!row) throw fail('NOT_FOUND');
+    return assertion(row);
+  });
+}
+
+async function insertAllNewBatch(
+  client: Client,
+  input: { dataItemId: string; versionId: string; mappingVersion: string },
+  grouped: ReturnType<typeof groupRelationCandidates>,
+  context: DataCapabilityExecutionContext,
+  timestamp: string,
+): Promise<string[]> {
+  const ids: string[] = [];
+  const evidenceValues: unknown[] = [];
+  const assertionValues: unknown[] = [];
+  const bindingValues: unknown[] = [];
+  const scope = [
+    context.authorization.tenantId,
+    context.authorization.projectId,
+  ];
+  for (const { identity, candidate } of grouped) {
+    const id = randomUUID();
+    const evidenceId = randomUUID();
+    const first = candidate.evidence[0]!;
+    ids.push(id);
+    evidenceValues.push(
+      evidenceId,
+      ...scope,
+      input.dataItemId,
+      input.versionId,
+      first.assetId,
+      JSON.stringify({
+        kind: 'RELATION_EVIDENCE',
+        locations: candidate.evidence,
+      }),
+      first.sourceHash,
+      first.excerpt,
+      context.effectiveMaxSecurityLevel,
+      context.authorization.authzVersion,
+      timestamp,
+    );
+    assertionValues.push(
+      id,
+      ...scope,
+      evidenceId,
+      JSON.stringify(candidate.subject),
+      candidate.predicate,
+      JSON.stringify(candidate.object),
+      candidate.generation.method,
+      context.effectiveMaxSecurityLevel,
+      context.authorization.authzVersion,
+      timestamp,
+    );
+    bindingValues.push(
+      id,
+      ...scope,
+      input.dataItemId,
+      input.versionId,
+      input.mappingVersion,
+      identity,
+      createHash('sha256').update(JSON.stringify(candidate)).digest('hex'),
+      JSON.stringify(candidate),
+      context.effectiveMaxSecurityLevel,
+      context.authorization.authzVersion,
+    );
+  }
+  const evidenceTuples = grouped.map((_, index) => {
+    const offset = index * 12;
+    return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7}::jsonb,decode($${offset + 8},'hex'),$${offset + 9},$${offset + 10},$${offset + 11},$${offset + 12},$${offset + 12})`;
+  });
+  const assertionTuples = grouped.map((_, index) => {
+    const offset = index * 11;
+    return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5}::jsonb,$${offset + 6},$${offset + 7}::jsonb,null,$${offset + 8},'PENDING_REVIEW',$${offset + 9},$${offset + 10},$${offset + 11},$${offset + 11})`;
+  });
+  const bindingTuples = grouped.map((_, index) => {
+    const offset = index * 11;
+    return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7},decode($${offset + 8},'hex'),$${offset + 9}::jsonb,$${offset + 10},$${offset + 11})`;
+  });
+  // Keep table order: binding's row triggers read the matching assertion and evidence.
+  await client.query(
+    `insert into knowledge.evidence_fragment(evidence_fragment_id,tenant_id,project_id,data_item_id,version_id,asset_id,locator,content_hash,excerpt,security_level,policy_version,created_at,updated_at) values${evidenceTuples.join(',')}`,
+    evidenceValues,
+  );
+  await client.query(
+    `insert into knowledge.assertion(assertion_id,tenant_id,project_id,evidence_fragment_id,subject,predicate,object,confidence,generation_method,status,security_level,policy_version,created_at,updated_at) values${assertionTuples.join(',')}`,
+    assertionValues,
+  );
+  await client.query(
+    `insert into knowledge.assertion_binding(assertion_id,tenant_id,project_id,data_item_id,version_id,mapping_version,identity_key,fingerprint,candidate,security_level,policy_version) values${bindingTuples.join(',')}`,
+    bindingValues,
+  );
+  return ids;
+}
+
 export function createKnowledgeRelationExecutors(
   pool: PostgresDataCommandPool,
 ): readonly DataCapabilityExecutor[] {
@@ -211,93 +314,122 @@ export function createKnowledgeRelationExecutors(
             } catch {
               throw fail('STATE_CONFLICT');
             }
-            const items: RelationAssertion[] = [];
+            const existingBindings = await client.query(
+              `select identity_key,assertion_id,encode(fingerprint,'hex') fingerprint from knowledge.assertion_binding where version_id=$1::uuid and mapping_version=$2 and identity_key=any($3::text[])`,
+              [
+                input.versionId,
+                input.mappingVersion,
+                grouped.map((g) => g.identity),
+              ],
+            );
+            const bindingsByIdentity = new Map(
+              existingBindings.rows.map((row) => [
+                String(row['identity_key']),
+                row,
+              ]),
+            );
+            const itemIds: string[] = [];
             let createdCount = 0;
-            for (const { identity, candidate } of grouped) {
-              const fingerprint = createHash('sha256')
-                .update(JSON.stringify(candidate))
-                .digest('hex');
-              const old = await client.query(
-                `select assertion_id,encode(fingerprint,'hex') fingerprint from knowledge.assertion_binding where version_id=$1::uuid and mapping_version=$2 and identity_key=$3`,
-                [input.versionId, input.mappingVersion, identity],
+            if (
+              grouped.length > 1 &&
+              grouped.every(
+                ({ identity, candidate }) =>
+                  candidate.supersedesId === null &&
+                  !bindingsByIdentity.has(identity),
+              )
+            ) {
+              const ids = await insertAllNewBatch(
+                client,
+                input,
+                grouped,
+                context,
+                timestamp,
               );
-              if (old.rows[0]) {
-                if (old.rows[0]['fingerprint'] !== fingerprint)
-                  throw fail('IDEMPOTENCY_CONFLICT');
-                items.push(
-                  await load(client, String(old.rows[0]['assertion_id'])),
+              itemIds.push(...ids);
+              createdCount = ids.length;
+            } else {
+              for (const { identity, candidate } of grouped) {
+                const fingerprint = createHash('sha256')
+                  .update(JSON.stringify(candidate))
+                  .digest('hex');
+                const old = bindingsByIdentity.get(identity);
+                if (old) {
+                  if (old['fingerprint'] !== fingerprint)
+                    throw fail('IDEMPOTENCY_CONFLICT');
+                  itemIds.push(String(old['assertion_id']));
+                  continue;
+                }
+                if (candidate.supersedesId) {
+                  const previous = await load(client, candidate.supersedesId);
+                  if (
+                    previous.dataItemId !== input.dataItemId ||
+                    previous.candidate.subject.key !== candidate.subject.key ||
+                    previous.candidate.predicate !== candidate.predicate ||
+                    previous.candidate.object.key !== candidate.object.key
+                  )
+                    throw fail('STATE_CONFLICT');
+                }
+                const id = randomUUID(),
+                  evidenceId = randomUUID(),
+                  first = candidate.evidence[0]!;
+                const scope = [
+                  context.authorization.tenantId,
+                  context.authorization.projectId,
+                ];
+                await client.query(
+                  `insert into knowledge.evidence_fragment(evidence_fragment_id,tenant_id,project_id,data_item_id,version_id,asset_id,locator,content_hash,excerpt,security_level,policy_version,created_at,updated_at) values($1,$2,$3,$4,$5,$6,$7::jsonb,decode($8,'hex'),$9,$10,$11,$12,$12)`,
+                  [
+                    evidenceId,
+                    ...scope,
+                    input.dataItemId,
+                    input.versionId,
+                    first.assetId,
+                    JSON.stringify({
+                      kind: 'RELATION_EVIDENCE',
+                      locations: candidate.evidence,
+                    }),
+                    first.sourceHash,
+                    first.excerpt,
+                    context.effectiveMaxSecurityLevel,
+                    context.authorization.authzVersion,
+                    timestamp,
+                  ],
                 );
-                continue;
+                await client.query(
+                  `insert into knowledge.assertion(assertion_id,tenant_id,project_id,evidence_fragment_id,subject,predicate,object,confidence,generation_method,status,security_level,policy_version,created_at,updated_at) values($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,null,$8,'PENDING_REVIEW',$9,$10,$11,$11)`,
+                  [
+                    id,
+                    ...scope,
+                    evidenceId,
+                    JSON.stringify(candidate.subject),
+                    candidate.predicate,
+                    JSON.stringify(candidate.object),
+                    candidate.generation.method,
+                    context.effectiveMaxSecurityLevel,
+                    context.authorization.authzVersion,
+                    timestamp,
+                  ],
+                );
+                await client.query(
+                  `insert into knowledge.assertion_binding(assertion_id,tenant_id,project_id,data_item_id,version_id,mapping_version,identity_key,fingerprint,candidate,security_level,policy_version) values($1,$2,$3,$4,$5,$6,$7,decode($8,'hex'),$9::jsonb,$10,$11)`,
+                  [
+                    id,
+                    ...scope,
+                    input.dataItemId,
+                    input.versionId,
+                    input.mappingVersion,
+                    identity,
+                    fingerprint,
+                    JSON.stringify(candidate),
+                    context.effectiveMaxSecurityLevel,
+                    context.authorization.authzVersion,
+                  ],
+                );
+                itemIds.push(id);
+                createdCount++;
               }
-              if (candidate.supersedesId) {
-                const previous = await load(client, candidate.supersedesId);
-                if (
-                  previous.dataItemId !== input.dataItemId ||
-                  previous.candidate.subject.key !== candidate.subject.key ||
-                  previous.candidate.predicate !== candidate.predicate ||
-                  previous.candidate.object.key !== candidate.object.key
-                )
-                  throw fail('STATE_CONFLICT');
-              }
-              const id = randomUUID(),
-                evidenceId = randomUUID(),
-                first = candidate.evidence[0]!;
-              const scope = [
-                context.authorization.tenantId,
-                context.authorization.projectId,
-              ];
-              await client.query(
-                `insert into knowledge.evidence_fragment(evidence_fragment_id,tenant_id,project_id,data_item_id,version_id,asset_id,locator,content_hash,excerpt,security_level,policy_version,created_at,updated_at) values($1,$2,$3,$4,$5,$6,$7::jsonb,decode($8,'hex'),$9,$10,$11,$12,$12)`,
-                [
-                  evidenceId,
-                  ...scope,
-                  input.dataItemId,
-                  input.versionId,
-                  first.assetId,
-                  JSON.stringify({
-                    kind: 'RELATION_EVIDENCE',
-                    locations: candidate.evidence,
-                  }),
-                  first.sourceHash,
-                  first.excerpt,
-                  context.effectiveMaxSecurityLevel,
-                  context.authorization.authzVersion,
-                  timestamp,
-                ],
-              );
-              await client.query(
-                `insert into knowledge.assertion(assertion_id,tenant_id,project_id,evidence_fragment_id,subject,predicate,object,confidence,generation_method,status,security_level,policy_version,created_at,updated_at) values($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,null,$8,'PENDING_REVIEW',$9,$10,$11,$11)`,
-                [
-                  id,
-                  ...scope,
-                  evidenceId,
-                  JSON.stringify(candidate.subject),
-                  candidate.predicate,
-                  JSON.stringify(candidate.object),
-                  candidate.generation.method,
-                  context.effectiveMaxSecurityLevel,
-                  context.authorization.authzVersion,
-                  timestamp,
-                ],
-              );
-              await client.query(
-                `insert into knowledge.assertion_binding(assertion_id,tenant_id,project_id,data_item_id,version_id,mapping_version,identity_key,fingerprint,candidate,security_level,policy_version) values($1,$2,$3,$4,$5,$6,$7,decode($8,'hex'),$9::jsonb,$10,$11)`,
-                [
-                  id,
-                  ...scope,
-                  input.dataItemId,
-                  input.versionId,
-                  input.mappingVersion,
-                  identity,
-                  fingerprint,
-                  JSON.stringify(candidate),
-                  context.effectiveMaxSecurityLevel,
-                  context.authorization.authzVersion,
-                ],
-              );
-              items.push(await load(client, id));
-              createdCount++;
             }
+            const items = await loadBatch(client, itemIds);
             const output = {
               items,
               createdCount,
