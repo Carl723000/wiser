@@ -1,0 +1,16 @@
+begin;
+select plan(12);
+select has_table('platform_private','resource_policy_roles','Source stewardship roles are explicitly configured');
+select has_table('platform_private','resource_policy_requests','Source permission proposals are separate from published authority');
+select is((select count(*)::integer from platform_private.resource_policy_roles),0,'No publication roles are automatically granted');
+select is((select count(*)::integer from platform_private.resource_policy_requests),0,'No real source proposals are seeded');
+select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid='platform_private.resource_policy_roles'::regclass),'Source roles force RLS');
+select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid='platform_private.resource_policy_requests'::regclass),'Source proposals force RLS');
+select ok(not has_table_privilege('anon','platform_private.resource_policy_roles','SELECT'),'Anonymous cannot inspect stewardship roles');
+select ok(not has_table_privilege('authenticated','platform_private.resource_policy_roles','INSERT'),'Members cannot appoint themselves');
+select ok(not has_table_privilege('service_role','platform_private.resource_policy_roles','UPDATE'),'Generic service credentials cannot reconfigure stewardship');
+select ok(not has_table_privilege('anon','platform_private.resource_policy_requests','SELECT'),'Anonymous cannot inspect proposals');
+select ok(not has_table_privilege('authenticated','platform_private.resource_policy_requests','INSERT'),'Members cannot bypass the authenticated application workflow');
+select ok(not has_table_privilege('service_role','platform_private.resource_policy_requests','UPDATE'),'Generic service credentials cannot approve proposals');
+select * from finish();
+rollback;
