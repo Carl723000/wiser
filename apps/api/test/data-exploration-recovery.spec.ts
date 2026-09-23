@@ -62,6 +62,16 @@ describe('exploration recovery', () => {
                 };
               if (sql.includes('count(*)::int as total'))
                 return { rows: [{ total: 0 }] };
+              if (sql.includes('with refs as materialized'))
+                return {
+                  rows: [
+                    {
+                      resource_count: 0,
+                      temporal_count: 0,
+                      geometry_count: 0,
+                    },
+                  ],
+                };
               return { rows: [] };
             },
           };
