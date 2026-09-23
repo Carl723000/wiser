@@ -169,6 +169,8 @@ GeoServer、STAC API、TiTiler 与 Martin 没有宿主 published port；浏览�
 
 每次调用都要求统一 Bearer、Tenant、Project、Purpose 与 `data.geo.read`；其他 HTTP 方法返回 `405`。OGC 只接受每个 service 的只读 request/query allowlist；除 GetCapabilities 外，调用方必须给出授权的 `versionId`，API 固定 layer/type 与 Tenant/Project/Version filter。STAC 的 `current` 自动替换为当前 Tenant/Project 的确定性 collection，跨 scope collection 返回安全 `404`。
 
+启用资源级授权的项目中，原始的项目级 STAC 代理除静态 `/conformance` 外返回 `403`；OGC GetCapabilities 即使带 `versionId` 也返回 `403`。这两类上游服务目录无法可靠地按当前用户获准的版本缩小范围。单项 STAC 读取使用受控的 `/api/data/v1/stac/collections/:collectionId/items/:itemId`；已获准版本的 OGC 数据请求及矢量、栅格瓦片仍可使用。若要开放按资源过滤的 STAC 列表或服务说明，需另行定义并验证受控接口。
+
 矢量瓦片先在 data-postgres RLS 下确认该 Version 有可见 spatial extent，再调用 Martin 按版本限定的 `service.wiser_spatial_extent_mvt` source；Tenant、Project、Version、安全 ceiling 与 policy version 均由服务端注入。栅格瓦片只从权威表的可见 RAW asset 中选择 TIFF/GeoTIFF COG，再由服务端验证内容寻址 key 并生成受限 `s3://` source 给 TiTiler；客户端提交 `url`/source 会在任何上游 I/O 前返回 `422`。
 
 四个上游 origin 来自启动时校验的内部配置，禁止 userinfo/query/fragment、redirect 与动态 host。代理 query、tile coordinate、TMS、format、content type 均为严格 allowlist；默认 timeout 5 秒、响应上限 8 MiB，并只转发安全 ETag/Last-Modified。每次 ALLOWED/DENIED/FAILED 记录 `data.geo.read`、目标与 route hash；未认证拒绝只记录脱敏平台日志，不能伪造 actor audit。
