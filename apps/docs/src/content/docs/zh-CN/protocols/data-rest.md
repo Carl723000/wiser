@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: dd3cd020d4ad7bade0cd01e11c95a2aa1a60cb54
+lastReviewedCommit: d8ec3aa5a2d384700c1f79a642c56b0a934c149b
 ---
 
 ## 协议边界
@@ -282,6 +282,8 @@ Data REST 错误是扁平安全 envelope：
 ## 共享探索结果集
 
 `POST /api/data/v1/explore/query` 调用 `data.explore.query`，同时要求 `data.query.execute` 与 `data.catalog.read`。首次使用 `{"spec":{"text":"water"},"view":"resources","first":20}`；续查使用 `{"queryId":"<返回的 UUID>","view":"resources","first":20,"after":"<返回的游标>"}`。`spec` 与 `queryId` 必须二选一，续页必须引用已有结果集。响应包含 `queryId`、`spec`、建立和过期时间、授权范围内的 `totalCount`、固定版本的 `resources`、就绪状态及可选 `nextCursor`。
+
+`resources` 响应还可包含 `summary.coverage`。对重新授权后的固定资源清单，`temporal` 和 `geometry` 分别给出 `recordedVersionCount` 与 `unknownVersionCount`；两项各自划分 `summary.resourceCount`，不受当前页大小影响。同一版本只要有至少一条在 Data 行级权限下可见的范围记录就计一次，多条记录不重复；未知也包括范围不存在或不可见。该计数不证明采样时间、几何精度、坐标系或行政区／河段身份。`approvedAssertionCount` 和 `effectiveActions` 仍为 `null`，不伪造总量；授权撤销或查询过期后不能复用旧摘要。
 
 清单有效期为 30 分钟。其他用户、Purpose/安全上限/授权版本变化以及过期 ID 返回 `404`；权威成员可见性变化返回 `409`；无效条件/游标或匹配超过 10,000 个版本返回 `422`。同一匹配的用户与上下文最多保留 32 个近期清单，新查询可能淘汰更早的结果集；失效后重新执行原查询条件。投影就绪状态可独立推进。接口不接受 SQL、Cypher 或租户、Actor 覆盖字段。
 
