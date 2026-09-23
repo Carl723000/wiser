@@ -47,6 +47,7 @@ export default async function ProjectAccessPage({
   return (
     <ProjectAccessWorkspace
       locale={locale}
+      viewerId={viewer.userId}
       initial={initial}
       environmentLabel={
         process.env.WISER_ACCESS_ENVIRONMENT === 'local'

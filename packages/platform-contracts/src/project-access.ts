@@ -160,3 +160,88 @@ export const ProjectAccessInvitationsPageSchema = z.object({
   items: z.array(ProjectAccessInvitationViewSchema).max(50),
   hasMore: z.boolean(),
 });
+
+export const ProjectAccessRequestSchema = z.strictObject({
+  projectId: Id,
+  roleKey: RoleKey,
+  expiresAt: Timestamp,
+  reason: Reason,
+});
+export const ProjectAccessRequestActionSchema = z.strictObject({
+  projectId: Id,
+  requestId: Id,
+  expectedVersion: z.number().int().positive(),
+});
+export const ProjectAccessRequestDecisionSchema =
+  ProjectAccessRequestActionSchema.extend({
+    decision: z.enum(['approve', 'reject']),
+    reason: Reason,
+  });
+export const ProjectAccessRequestWithdrawalSchema =
+  ProjectAccessRequestActionSchema.extend({ reason: Reason });
+export const ProjectAccessRequestViewSchema = z.object({
+  id: Id,
+  projectId: Id,
+  applicantId: Id,
+  applicantEmail: z.string().email(),
+  roleKey: RoleKey,
+  expiresAt: Timestamp,
+  reason: Reason,
+  version: z.number().int().positive(),
+  status: z.enum([
+    'pending',
+    'withdrawn',
+    'rejected',
+    'approved',
+    'effective',
+    'execution_failed',
+    'expired',
+  ]),
+  decidedBy: Id.nullable(),
+  decisionReason: z.string().nullable(),
+  decidedAt: Timestamp.nullable(),
+  lastErrorCode: z
+    .enum([
+      'VERSION_CONFLICT',
+      'INVALID_EXPIRY',
+      'ROLE_NOT_ASSIGNABLE',
+      'PROTECTED_MEMBER',
+      'MEMBER_UNAVAILABLE',
+      'EXECUTION_UNAVAILABLE',
+    ])
+    .nullable(),
+  accessState: z.enum(['none', 'active', 'expired', 'revoked', 'changed']),
+  createdAt: Timestamp,
+});
+export const ProjectAccessRequestsPageSchema = z.object({
+  items: z.array(ProjectAccessRequestViewSchema).max(50),
+  hasMore: z.boolean(),
+});
+export const ProjectAccessEventsPageSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: Id,
+        actorId: Id,
+        subjectId: Id,
+        action: z.string(),
+        reason: z.string(),
+        createdAt: Timestamp,
+      }),
+    )
+    .max(50),
+  hasMore: z.boolean(),
+});
+export type ProjectAccessRequest = z.infer<typeof ProjectAccessRequestSchema>;
+export type ProjectAccessRequestAction = z.infer<
+  typeof ProjectAccessRequestActionSchema
+>;
+export type ProjectAccessRequestDecision = z.infer<
+  typeof ProjectAccessRequestDecisionSchema
+>;
+export type ProjectAccessRequestWithdrawal = z.infer<
+  typeof ProjectAccessRequestWithdrawalSchema
+>;
+export type ProjectAccessRequestView = z.infer<
+  typeof ProjectAccessRequestViewSchema
+>;

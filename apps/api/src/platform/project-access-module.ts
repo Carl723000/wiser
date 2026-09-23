@@ -3,6 +3,13 @@ import {
   type PostgresProjectAccessService,
 } from '@wiser/platform-auth';
 import {
+  ProjectAccessRequestSchema,
+  ProjectAccessRequestActionSchema,
+  ProjectAccessRequestDecisionSchema,
+  ProjectAccessRequestWithdrawalSchema,
+  ProjectAccessRequestViewSchema,
+  ProjectAccessRequestsPageSchema,
+  ProjectAccessEventsPageSchema,
   ProjectAccessGrantSchema,
   ProjectAccessInviteSchema,
   ProjectAccessInvitationDeliverySchema,
@@ -28,6 +35,12 @@ export type ProjectAccessHttpService = Pick<
   | 'invite'
   | 'invitations'
   | 'deliverInvitation'
+  | 'requestAccess'
+  | 'requests'
+  | 'decideRequest'
+  | 'withdrawRequest'
+  | 'executeRequest'
+  | 'events'
 >;
 const Params = z.strictObject({ projectId: PlatformUuidSchema });
 function fail(reply: FastifyReply, status: number, code: string) {
@@ -59,7 +72,9 @@ async function guarded(
             ? 400
             : error.code === 'VERSION_CONFLICT' ||
                 error.code === 'IDEMPOTENCY_CONFLICT' ||
-                error.code === 'DELIVERY_IN_PROGRESS'
+                error.code === 'DELIVERY_IN_PROGRESS' ||
+                error.code === 'REQUEST_STATE_CONFLICT' ||
+                error.code === 'REQUEST_ALREADY_PENDING'
               ? 409
               : 403;
       return fail(reply, status, error.code);
@@ -138,6 +153,88 @@ export function createProjectAccessModule(
               }),
             ),
           ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/requests',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessRequestsPageSchema.parse(
+              await service.requests({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/events',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessEventsPageSchema.parse(
+              await service.events({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.post('/api/platform/v1/access/requests', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessRequestViewSchema.parse(
+            await service.requestAccess({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRequestSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post('/api/platform/v1/access/request-decisions', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessRequestViewSchema.parse(
+            await service.decideRequest({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRequestDecisionSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post(
+        '/api/platform/v1/access/request-withdrawals',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessRequestViewSchema.parse(
+              await service.withdrawRequest({
+                token,
+                idempotencyKey: PlatformUuidSchema.parse(
+                  request.headers['idempotency-key'],
+                ),
+                command: ProjectAccessRequestWithdrawalSchema.parse(
+                  request.body,
+                ),
+              }),
+            ),
+          ),
+      );
+      app.post('/api/platform/v1/access/request-executions', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessRequestViewSchema.parse(
+            await service.executeRequest({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRequestActionSchema.parse(request.body),
+            }),
+          ),
+        ),
       );
       app.post('/api/platform/v1/access/grants', (request, reply) =>
         guarded(request, reply, async (token) =>

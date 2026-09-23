@@ -8,11 +8,13 @@ import {
 } from '@wiser/platform-contracts';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './project-access-workspace.module.css';
+import { ProjectAccessRequests } from './project-access-requests';
 import { ProjectInvitations } from './project-invitations';
 type Props = {
   locale: Locale;
   initial: { items: readonly ProjectAccessProjectView[]; hasMore: boolean };
   environmentLabel: string;
+  viewerId: string;
 };
 function formText(form: FormData, key: string): string {
   const value = form.get(key);
@@ -197,11 +199,12 @@ export function ProjectAccessWorkspace({
   locale,
   initial,
   environmentLabel,
+  viewerId,
 }: Props) {
   const t = getDictionary(locale).projectAccess;
   const [projects, setProjects] = useState(initial);
   const [projectId, setProjectId] = useState(initial.items[0]?.projectId ?? '');
-  const [view, setView] = useState<'mine' | 'members'>('mine');
+  const [view, setView] = useState<'mine' | 'members' | 'approvals'>('mine');
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectLoading, setProjectLoading] = useState(false);
@@ -337,6 +340,7 @@ export function ProjectAccessWorkspace({
       {projectLoading ? <p role="status">{t.loading}</p> : null}
       <div className={styles.layout}>
         <aside className={styles.projects} aria-label={t.choose}>
+          <h2 className={styles.sideTitle}>{t.project}</h2>
           {projects.items.map((p) => (
             <button
               key={p.projectId}
@@ -369,6 +373,12 @@ export function ProjectAccessWorkspace({
         <section className={styles.content}>
           {project ? (
             <>
+              <div className={styles.projectHeading}>
+                <span>{t.project}</span>
+                <strong>
+                  {locale === 'zh-CN' ? project.nameZh : project.nameEn}
+                </strong>
+              </div>
               <nav className={styles.tabs} aria-label={t.title}>
                 <button
                   aria-pressed={view === 'mine'}
@@ -384,29 +394,57 @@ export function ProjectAccessWorkspace({
                     {t.members}
                   </button>
                 ) : null}
+                {project.canApprove ? (
+                  <button
+                    aria-pressed={view === 'approvals'}
+                    onClick={() => setView('approvals')}
+                  >
+                    {t.approvals}
+                  </button>
+                ) : null}
               </nav>
-              <h2>{view === 'mine' ? t.mine : t.members}</h2>
+              <h2>
+                {view === 'mine'
+                  ? t.mine
+                  : view === 'members'
+                    ? t.members
+                    : t.approvals}
+              </h2>
               {view === 'mine' ? (
                 <>
                   <dl className={styles.facts}>
                     <div>
                       <dt>{t.status}</dt>
                       <dd>
-                        {statusLabel(
-                          project.memberStatus === 'active' &&
+                        <span
+                          className={styles.badge}
+                          data-status={
+                            project.memberStatus === 'active' &&
                             project.roles.length === 0
-                            ? null
-                            : project.memberStatus,
-                          t,
-                        )}
+                              ? 'unknown'
+                              : (project.memberStatus ?? 'unknown')
+                          }
+                        >
+                          {statusLabel(
+                            project.memberStatus === 'active' &&
+                              project.roles.length === 0
+                              ? null
+                              : project.memberStatus,
+                            t,
+                          )}
+                        </span>
                       </dd>
                     </div>
                     <div>
                       <dt>{t.role}</dt>
                       <dd>
-                        {project.roles
-                          .map((r) => roleLabel(r, t))
-                          .join(' / ') || t.noRole}
+                        {project.roles.length
+                          ? project.roles.map((r) => (
+                              <span className={styles.roleBadge} key={r}>
+                                {roleLabel(r, t)}
+                              </span>
+                            ))
+                          : t.noRole}
                       </dd>
                     </div>
                     <div>
@@ -423,7 +461,28 @@ export function ProjectAccessWorkspace({
                     <p>{t.expiryHint}</p>
                     <p>{t.readScope}</p>
                   </details>
+                  <button
+                    onClick={() =>
+                      void findProjects(projectSearch, projectPage)
+                    }
+                  >
+                    {t.retry}
+                  </button>
+                  <ProjectAccessRequests
+                    key={project.projectId}
+                    locale={locale}
+                    project={project}
+                    viewerId={viewerId}
+                  />
                 </>
+              ) : view === 'approvals' ? (
+                <ProjectAccessRequests
+                  key={project.projectId}
+                  locale={locale}
+                  project={project}
+                  viewerId={viewerId}
+                  review
+                />
               ) : (
                 <>
                   <form
@@ -471,16 +530,30 @@ export function ProjectAccessWorkspace({
                                 <span>{m.email}</span>
                               </td>
                               <td>
-                                {m.roles
-                                  .map((r) => roleLabel(r.roleKey, t))
-                                  .join(' / ') || t.noRole}
+                                {m.roles.length
+                                  ? m.roles.map((r) => (
+                                      <span
+                                        className={styles.roleBadge}
+                                        key={r.roleKey}
+                                      >
+                                        {roleLabel(r.roleKey, t)}
+                                      </span>
+                                    ))
+                                  : t.noRole}
                               </td>
                               <td>
                                 {m.expiresAt
                                   ? new Date(m.expiresAt).toLocaleString(locale)
                                   : t.noExpiry}
                               </td>
-                              <td>{statusLabel(m.status, t)}</td>
+                              <td>
+                                <span
+                                  className={styles.badge}
+                                  data-status={m.status}
+                                >
+                                  {statusLabel(m.status, t)}
+                                </span>
+                              </td>
                               <td>
                                 {m.protected ? (
                                   <span>{t.protected}</span>

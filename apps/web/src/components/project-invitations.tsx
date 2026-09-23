@@ -273,10 +273,16 @@ export function ProjectInvitations({
               <tr key={item.id}>
                 <td>{item.email}</td>
                 <td>
-                  {item.roleKey === 'data-reader' ? t.readRole : item.roleKey}
+                  <span className={styles.roleBadge}>
+                    {item.roleKey === 'data-reader' ? t.readRole : item.roleKey}
+                  </span>
                 </td>
                 <td>{new Date(item.expiresAt).toLocaleString(locale)}</td>
-                <td>{status(item)}</td>
+                <td>
+                  <span className={styles.badge} data-status={item.status}>
+                    {status(item)}
+                  </span>
+                </td>
                 <td>
                   {item.deliveryMode === 'existing'
                     ? words.existing

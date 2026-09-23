@@ -190,3 +190,169 @@
 .table td:last-child {
   min-width: 120px;
 }
+
+/* Shared semantic tokens preserve the same state hierarchy in both themes. */
+.heading {
+  border-left: 4px solid var(--accent);
+  padding-left: 1rem;
+}
+.sideTitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.4rem;
+}
+.projectHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+.projectHeading > span {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+.projectHeading > strong {
+  font-size: 1.15rem;
+}
+.projects > button {
+  text-align: left;
+}
+.projects > button[aria-pressed='true'] {
+  box-shadow: inset 4px 0 0 var(--accent-on-fill);
+}
+.facts > div {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.facts > div:last-child {
+  border-top: 3px solid var(--accent);
+}
+.table {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.table th {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+.table tr:hover td {
+  background: var(--surface-raised);
+}
+.workspace .badge,
+.workspace .roleBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: normal;
+}
+.workspace .roleBadge {
+  color: var(--accent);
+  background: var(--surface-raised);
+  margin: 0.15rem 0.25rem 0.15rem 0;
+}
+.badge {
+  background: var(--surface-raised);
+}
+.badge::before {
+  content: '•';
+  flex-shrink: 0;
+}
+.badge[data-status='active'],
+.badge[data-status='effective'],
+.badge[data-status='granted'] {
+  color: var(--success-strong);
+  background: var(--success-soft);
+  border-color: var(--success);
+}
+.badge[data-status='active']::before,
+.badge[data-status='effective']::before,
+.badge[data-status='granted']::before {
+  content: '✓';
+}
+.badge[data-status='pending'],
+.badge[data-status='approved'],
+.badge[data-status='sending'],
+.badge[data-status='invited'],
+.badge[data-status='changed'] {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+}
+.badge[data-status='pending']::before,
+.badge[data-status='approved']::before,
+.badge[data-status='sending']::before {
+  content: '◷';
+}
+.badge[data-status='execution_failed'],
+.badge[data-status='failed'],
+.badge[data-status='rejected'] {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+.badge[data-status='execution_failed']::before,
+.badge[data-status='failed']::before,
+.badge[data-status='rejected']::before {
+  content: '!';
+}
+.flow {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-raised);
+  border-left: 3px solid var(--accent);
+  font-size: 0.9rem;
+}
+.workspace details {
+  margin: 0.6rem 0;
+}
+.workspace summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.workspace summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace [role='alert'] {
+  padding: 0.65rem;
+  border-left: 3px solid var(--danger);
+  background: var(--danger-soft);
+}
+
+.content h2 {
+  margin: 1.25rem 0 0.8rem;
+  font-size: 1.2rem;
+  font-weight: 650;
+}
+.editor h3 {
+  margin: 0 0 0.7rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+.editor form.search {
+  display: flex;
+  max-width: none;
+  margin-top: 1rem;
+}
+.workspace .roleBadge,
+.workspace .badge {
+  white-space: nowrap;
+}
+.table td:first-child {
+  min-width: 150px;
+  max-width: 230px;
+}
+
+.facts .roleBadge {
+  max-width: 100%;
+  white-space: normal;
+}

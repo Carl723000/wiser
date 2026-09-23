@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  ProjectAccessRequestSchema,
+  ProjectAccessRequestActionSchema,
+  ProjectAccessRequestDecisionSchema,
+  ProjectAccessRequestWithdrawalSchema,
+  type ProjectAccessRequest,
+  type ProjectAccessRequestAction,
+  type ProjectAccessRequestDecision,
+  type ProjectAccessRequestWithdrawal,
+  type ProjectAccessRequestView,
+  type ProjectAccessEventView,
   ProjectAccessGrantSchema,
   ProjectAccessInviteSchema,
   ProjectAccessInvitationDeliverySchema,
@@ -41,7 +51,10 @@ export type ProjectAccessErrorCode =
   | 'IDEMPOTENCY_CONFLICT'
   | 'MEMBER_UNAVAILABLE'
   | 'INVITATION_UNAVAILABLE'
-  | 'DELIVERY_IN_PROGRESS';
+  | 'DELIVERY_IN_PROGRESS'
+  | 'REQUEST_UNAVAILABLE'
+  | 'REQUEST_STATE_CONFLICT'
+  | 'REQUEST_ALREADY_PENDING';
 export class ProjectAccessError extends Error {
   constructor(readonly code: ProjectAccessErrorCode) {
     super(code);
@@ -68,6 +81,57 @@ interface ProjectRow {
   requests_enabled: boolean;
   now: Date;
 }
+interface RequestRow {
+  id: string;
+  project_id: string;
+  applicant_id: string;
+  applicant_email: string;
+  role_key: string;
+  expires_at: Date;
+  reason: string;
+  version: number;
+  status: Exclude<ProjectAccessRequestView['status'], 'expired'>;
+  decided_by: string | null;
+  decision_reason: string | null;
+  decided_at: Date | null;
+  last_error_code: ProjectAccessRequestView['lastErrorCode'];
+  created_at: Date;
+  requested_member_version: number;
+  access_state: ProjectAccessRequestView['accessState'];
+  now: Date;
+}
+const REQUEST_SELECT = `select q.*,r.role_key,u.email applicant_email,statement_timestamp() now,
+ case when q.status<>'effective' then 'none'
+ when q.expires_at<=statement_timestamp() or m.expires_at<=statement_timestamp() or tm.expires_at<=statement_timestamp() then 'expired'
+ when m.status is distinct from 'active' or tm.status is distinct from 'active' or a.status<>'active' then 'revoked'
+ when m.effective_at>statement_timestamp() or tm.effective_at>statement_timestamp() or m.membership_version<>q.applied_member_version or r.status<>'active' or not exists(select 1 from platform.role_bindings b where b.project_id=q.project_id and b.actor_id=q.applicant_id and b.role_id=q.role_id and b.status='active' and b.effective_at<=statement_timestamp() and (b.expires_at is null or b.expires_at>statement_timestamp())) then 'changed'
+ else 'active' end access_state
+ from platform_private.project_access_requests q join platform.roles r on r.id=q.role_id join platform.actors a on a.id=q.applicant_id join auth.users u on u.id=a.auth_user_id join platform.projects p on p.id=q.project_id
+ left join platform.project_memberships m on m.project_id=q.project_id and m.actor_id=q.applicant_id left join platform.tenant_memberships tm on tm.tenant_id=p.tenant_id and tm.actor_id=q.applicant_id`;
+function requestView(row: RequestRow): ProjectAccessRequestView {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    applicantId: row.applicant_id,
+    applicantEmail: row.applicant_email,
+    roleKey: row.role_key,
+    expiresAt: row.expires_at.toISOString(),
+    reason: row.reason,
+    version: Number(row.version),
+    status:
+      ['pending', 'approved', 'execution_failed'].includes(row.status) &&
+      row.expires_at <= row.now
+        ? 'expired'
+        : row.status,
+    decidedBy: row.decided_by,
+    decisionReason: row.decision_reason,
+    decidedAt: row.decided_at?.toISOString() ?? null,
+    lastErrorCode: row.last_error_code,
+    accessState: row.access_state,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
 interface InvitationRow {
   id: string;
   email: string;
@@ -629,12 +693,405 @@ export class PostgresProjectAccessService {
       );
     });
   }
+  async #requestRow(
+    client: Client,
+    projectId: string,
+    requestId: string,
+  ): Promise<RequestRow> {
+    const result = await client.query<RequestRow>(
+      REQUEST_SELECT + ' where q.project_id=$1 and q.id=$2',
+      [projectId, requestId],
+    );
+    if (!result.rows[0]) throw new ProjectAccessError('REQUEST_UNAVAILABLE');
+    return result.rows[0];
+  }
+  async #approver(
+    client: Client,
+    human: VerifiedSupabaseJwtClaims,
+    project: ProjectRow,
+  ) {
+    const context = await this.#context(client, human, project);
+    if (!context?.scopes.includes('platform.access.approve'))
+      throw new ProjectAccessError('NOT_AUTHORIZED');
+    return context;
+  }
+  async #requestRole(
+    client: Client,
+    project: ProjectRow,
+    roleKey: string,
+    expiresAt: string,
+  ) {
+    const result = await client.query<{ id: string; max_days: number }>(
+      `select r.id,ar.max_days from platform_private.project_access_roles ar join platform.roles r on r.id=ar.role_id where ar.project_id=$1 and r.role_key=$2 and r.status='active' and not exists(select 1 from platform.role_scopes s where s.role_id=r.id and s.scope like 'platform.%')`,
+      [project.id, roleKey],
+    );
+    const role = result.rows[0];
+    if (!role) throw new ProjectAccessError('ROLE_NOT_ASSIGNABLE');
+    const expiry = Date.parse(expiresAt);
+    if (
+      expiry <= project.now.getTime() ||
+      expiry > project.now.getTime() + role.max_days * 86400000
+    )
+      throw new ProjectAccessError('INVALID_EXPIRY');
+    return role;
+  }
+  async requestAccess(
+    input: WriteInput<ProjectAccessRequest>,
+  ): Promise<ProjectAccessRequestView> {
+    const command = ProjectAccessRequestSchema.parse(input.command);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, command.projectId);
+      if (!project.requests_enabled)
+        throw new ProjectAccessError('NOT_AUTHORIZED');
+      return this.#write(
+        client,
+        human,
+        project,
+        input.idempotencyKey,
+        'request',
+        command,
+        async () => {
+          const role = await this.#requestRole(
+            client,
+            project,
+            command.roleKey,
+            command.expiresAt,
+          );
+          const open = await client.query(
+            `select id from platform_private.project_access_requests where project_id=$1 and applicant_id=$2 and role_id=$3 and status in ('pending','approved','execution_failed') and expires_at>statement_timestamp() limit 1`,
+            [project.id, human.userId, role.id],
+          );
+          if (open.rows.length)
+            throw new ProjectAccessError('REQUEST_ALREADY_PENDING');
+          const member = await this.#member(client, project.id, human.userId);
+          const id = randomUUID();
+          await client.query(
+            `insert into platform_private.project_access_requests(id,project_id,applicant_id,role_id,expires_at,reason,requested_member_version) values($1,$2,$3,$4,$5,$6,$7)`,
+            [
+              id,
+              project.id,
+              human.userId,
+              role.id,
+              command.expiresAt,
+              command.reason,
+              member?.version ?? 0,
+            ],
+          );
+          const result = requestView(
+            await this.#requestRow(client, project.id, id),
+          );
+          await this.#audit(
+            client,
+            human,
+            project,
+            id,
+            'request',
+            command.reason,
+            null,
+            result,
+            'platform.access.request',
+          );
+          return result;
+        },
+      );
+    });
+  }
+  async requests(
+    input: SessionInput & { projectId: string; page: ProjectAccessPage },
+  ): Promise<{ items: ProjectAccessRequestView[]; hasMore: boolean }> {
+    const page = ProjectAccessPageSchema.parse(input.page);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, input.projectId),
+        context = await this.#context(client, human, project);
+      const all = context?.scopes.includes('platform.access.approve') ?? false;
+      // A former member may still read their own request history; other applicants never leak.
+      const rows = await client.query<RequestRow>(
+        REQUEST_SELECT +
+          ` where q.project_id=$1 and ($2::boolean or q.applicant_id=$3) and (u.email ilike '%'||$4||'%' or q.reason ilike '%'||$4||'%') order by q.created_at desc,q.id limit $5 offset $6`,
+        [
+          project.id,
+          all,
+          human.userId,
+          page.search,
+          page.limit + 1,
+          page.offset,
+        ],
+      );
+      return {
+        items: rows.rows.slice(0, page.limit).map(requestView),
+        hasMore: rows.rows.length > page.limit,
+      };
+    });
+  }
+  async decideRequest(
+    input: WriteInput<ProjectAccessRequestDecision>,
+  ): Promise<ProjectAccessRequestView> {
+    const command = ProjectAccessRequestDecisionSchema.parse(input.command);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, command.projectId),
+        context = await this.#approver(client, human, project);
+      return this.#write(
+        client,
+        human,
+        project,
+        input.idempotencyKey,
+        'decide-request',
+        command,
+        async () => {
+          const current = await this.#requestRow(
+            client,
+            project.id,
+            command.requestId,
+          );
+          if (current.applicant_id === human.userId)
+            throw new ProjectAccessError('SELF_CHANGE_FORBIDDEN');
+          if (Number(current.version) !== command.expectedVersion)
+            throw new ProjectAccessError('VERSION_CONFLICT');
+          if (current.status !== 'pending')
+            throw new ProjectAccessError('REQUEST_STATE_CONFLICT');
+          if (current.expires_at <= project.now)
+            throw new ProjectAccessError('INVALID_EXPIRY');
+          if (command.decision === 'approve')
+            await this.#grantRole(
+              client,
+              human,
+              project,
+              context,
+              {
+                actorId: current.applicant_id,
+                roleKey: current.role_key,
+                expiresAt: current.expires_at.toISOString(),
+              },
+              'approve',
+            );
+          await client.query(
+            `update platform_private.project_access_requests set status=$2,decided_by=$3,decision_reason=$4,decided_at=statement_timestamp(),updated_at=statement_timestamp(),version=version+1 where id=$1`,
+            [
+              current.id,
+              command.decision === 'approve' ? 'approved' : 'rejected',
+              human.userId,
+              command.reason,
+            ],
+          );
+          const result = requestView(
+            await this.#requestRow(client, project.id, current.id),
+          );
+          await this.#audit(
+            client,
+            human,
+            project,
+            current.id,
+            command.decision,
+            command.reason,
+            requestView(current),
+            result,
+            'platform.access.approve',
+          );
+          return result;
+        },
+      );
+    });
+  }
+  async withdrawRequest(
+    input: WriteInput<ProjectAccessRequestWithdrawal>,
+  ): Promise<ProjectAccessRequestView> {
+    const command = ProjectAccessRequestWithdrawalSchema.parse(input.command);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, command.projectId);
+      return this.#write(
+        client,
+        human,
+        project,
+        input.idempotencyKey,
+        'withdraw-request',
+        command,
+        async () => {
+          const current = await this.#requestRow(
+            client,
+            project.id,
+            command.requestId,
+          );
+          if (current.applicant_id !== human.userId)
+            throw new ProjectAccessError('REQUEST_UNAVAILABLE');
+          if (Number(current.version) !== command.expectedVersion)
+            throw new ProjectAccessError('VERSION_CONFLICT');
+          if (
+            !['pending', 'approved', 'execution_failed'].includes(
+              current.status,
+            )
+          )
+            throw new ProjectAccessError('REQUEST_STATE_CONFLICT');
+          await client.query(
+            `update platform_private.project_access_requests set status='withdrawn',version=version+1,updated_at=statement_timestamp() where id=$1`,
+            [current.id],
+          );
+          const result = requestView(
+            await this.#requestRow(client, project.id, current.id),
+          );
+          await this.#audit(
+            client,
+            human,
+            project,
+            current.id,
+            'withdraw',
+            command.reason,
+            requestView(current),
+            result,
+            'platform.access.request',
+          );
+          return result;
+        },
+      );
+    });
+  }
+  async executeRequest(
+    input: WriteInput<ProjectAccessRequestAction>,
+  ): Promise<ProjectAccessRequestView> {
+    const command = ProjectAccessRequestActionSchema.parse(input.command);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, command.projectId),
+        context = await this.#approver(client, human, project);
+      return this.#write(
+        client,
+        human,
+        project,
+        input.idempotencyKey,
+        'execute-request',
+        command,
+        async () => {
+          const current = await this.#requestRow(
+            client,
+            project.id,
+            command.requestId,
+          );
+          if (current.applicant_id === human.userId)
+            throw new ProjectAccessError('SELF_CHANGE_FORBIDDEN');
+          if (Number(current.version) !== command.expectedVersion)
+            throw new ProjectAccessError('VERSION_CONFLICT');
+          if (
+            current.status !== 'approved' &&
+            current.status !== 'execution_failed'
+          )
+            throw new ProjectAccessError('REQUEST_STATE_CONFLICT');
+          // The deciding approver explicitly executes their own still-authorized decision.
+          if (current.decided_by !== human.userId)
+            throw new ProjectAccessError('NOT_AUTHORIZED');
+          await client.query('savepoint apply_request');
+          let lastError: ProjectAccessRequestView['lastErrorCode'] = null;
+          try {
+            const member = await this.#grantMember(
+              client,
+              human,
+              project,
+              context,
+              {
+                projectId: project.id,
+                actorId: current.applicant_id,
+                roleKey: current.role_key,
+                expiresAt: current.expires_at.toISOString(),
+                reason: current.decision_reason!,
+                expectedVersion: Number(current.requested_member_version),
+              },
+              'approve',
+            );
+            await client.query(
+              `update platform_private.project_access_requests set status='effective',applied_member_version=$2,last_error_code=null,version=version+1,updated_at=statement_timestamp() where id=$1`,
+              [current.id, member.version],
+            );
+            await client.query('release savepoint apply_request');
+          } catch (error) {
+            await client.query('rollback to savepoint apply_request');
+            await client.query('release savepoint apply_request');
+            const code =
+              error instanceof ProjectAccessError
+                ? error.code
+                : 'EXECUTION_UNAVAILABLE';
+            if (
+              code === 'NOT_AUTHENTICATED' ||
+              code === 'NOT_AUTHORIZED' ||
+              code === 'SELF_CHANGE_FORBIDDEN'
+            )
+              throw error;
+            lastError = [
+              'VERSION_CONFLICT',
+              'INVALID_EXPIRY',
+              'ROLE_NOT_ASSIGNABLE',
+              'PROTECTED_MEMBER',
+              'MEMBER_UNAVAILABLE',
+            ].includes(code)
+              ? (code as ProjectAccessRequestView['lastErrorCode'])
+              : 'EXECUTION_UNAVAILABLE';
+            await client.query(
+              `update platform_private.project_access_requests set status='execution_failed',last_error_code=$2,version=version+1,updated_at=statement_timestamp() where id=$1`,
+              [current.id, lastError],
+            );
+          }
+          const result = requestView(
+            await this.#requestRow(client, project.id, current.id),
+          );
+          await this.#audit(
+            client,
+            human,
+            project,
+            current.id,
+            lastError ? 'execute-failed' : 'execute',
+            current.decision_reason!,
+            requestView(current),
+            result,
+            'platform.access.approve',
+          );
+          return result;
+        },
+      );
+    });
+  }
+  async events(
+    input: SessionInput & { projectId: string; page: ProjectAccessPage },
+  ): Promise<{ items: ProjectAccessEventView[]; hasMore: boolean }> {
+    const page = ProjectAccessPageSchema.parse(input.page);
+    return this.#transaction(input.token, async (client, human) => {
+      const project = await this.#project(client, input.projectId),
+        context = await this.#context(client, human, project);
+      if (
+        !context?.scopes.some(
+          (x) =>
+            x === 'platform.membership.manage' ||
+            x === 'platform.access.approve',
+        )
+      )
+        throw new ProjectAccessError('NOT_AUTHORIZED');
+      const rows = await client.query<{
+        id: string;
+        actor_id: string;
+        subject_id: string;
+        action: string;
+        reason: string;
+        created_at: Date;
+      }>(
+        `select id,actor_id,subject_id,action,reason,created_at from platform_private.project_access_events where project_id=$1 and (reason ilike '%'||$2||'%' or action ilike '%'||$2||'%') order by created_at desc,id limit $3 offset $4`,
+        [project.id, page.search, page.limit + 1, page.offset],
+      );
+      return {
+        items: rows.rows.slice(0, page.limit).map((x) => ({
+          id: x.id,
+          actorId: x.actor_id,
+          subjectId: x.subject_id,
+          action: x.action,
+          reason: x.reason,
+          createdAt: x.created_at.toISOString(),
+        })),
+        hasMore: rows.rows.length > page.limit,
+      };
+    });
+  }
+
   async #grantRole(
     client: Client,
     human: VerifiedSupabaseJwtClaims,
     project: ProjectRow,
     context: AuthorizedContext,
     command: Pick<ProjectAccessGrant, 'actorId' | 'roleKey' | 'expiresAt'>,
+    action: 'manage' | 'approve' = 'manage',
   ) {
     const roleResult = await client.query<{
       id: string;
@@ -663,7 +1120,7 @@ export class PostgresProjectAccessService {
     const error = checkProjectGrant({
       actorId: human.userId,
       targetActorId: command.actorId,
-      action: 'manage',
+      action,
       scopes: context.scopes,
       role: {
         key: role.role_key,
@@ -686,6 +1143,7 @@ export class PostgresProjectAccessService {
     project: ProjectRow,
     context: AuthorizedContext,
     command: ProjectAccessGrant,
+    action: 'manage' | 'approve' = 'manage',
   ) {
     const role = await this.#grantRole(
       client,
@@ -693,6 +1151,7 @@ export class PostgresProjectAccessService {
       project,
       context,
       command,
+      action,
     );
     const previous = await this.#member(client, project.id, command.actorId);
     if ((previous?.version ?? 0) !== command.expectedVersion)
@@ -775,6 +1234,9 @@ export class PostgresProjectAccessService {
       command.reason,
       previous,
       result,
+      action === 'approve'
+        ? 'platform.access.approve'
+        : 'platform.membership.manage',
     );
     return result;
   }
@@ -787,6 +1249,7 @@ export class PostgresProjectAccessService {
     reason: string,
     before: unknown,
     after: unknown,
+    capability = 'platform.membership.manage',
   ) {
     const eventId = randomUUID();
     await client.query(
@@ -805,7 +1268,7 @@ export class PostgresProjectAccessService {
     const safeContext = JSON.stringify({ eventId, subjectId, action });
     await client.query(
       `insert into platform_private.authorization_audit_events(actor_id,tenant_id,project_id,capability,purpose,decision,reason_code,resource_type,resource_id,context)
-       values($1,$2,$3,'platform.membership.manage','project-access','allowed',$4,'project-member',$5,$6::jsonb)`,
+       values($1,$2,$3,$7,'project-access','allowed',$4,'project-member',$5,$6::jsonb)`,
       [
         human.userId,
         project.tenant_id,
@@ -813,6 +1276,7 @@ export class PostgresProjectAccessService {
         action,
         subjectId,
         safeContext,
+        capability,
       ],
     );
     await client.query(
