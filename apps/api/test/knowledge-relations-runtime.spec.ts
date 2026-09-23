@@ -206,6 +206,100 @@ it('replays imports and reviews through current authority and hides a withdrawn 
   expect(f.release).toHaveBeenCalledTimes(9);
 });
 
+it('looks up a batch of existing relation identities once while preserving reuse, order, and conflicts', async () => {
+  const f = fixture();
+  const second = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:2' },
+    object: { ...f.candidate.object, key: 'point:2' },
+  };
+  const third = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:3' },
+    object: { ...f.candidate.object, key: 'point:3' },
+  };
+  const bindings = new Map<
+    string,
+    { identity_key: string; assertion_id: string; fingerprint: string }
+  >();
+  const original = f.query.getMockImplementation()!;
+  f.query.mockImplementation(async (sql, values = []) => {
+    if (sql.includes('from knowledge.assertion_binding where version_id=')) {
+      const identities = Array.isArray(values[2])
+        ? (values[2] as string[])
+        : [String(values[2])];
+      const rows = identities.flatMap((identity) => {
+        const row = bindings.get(identity);
+        return row ? [row] : [];
+      });
+      return { rows, rowCount: rows.length };
+    }
+    const result = await original(sql, values);
+    if (sql.startsWith('insert into knowledge.assertion_binding')) {
+      const identity = String(values[6]);
+      bindings.set(identity, {
+        identity_key: identity,
+        assertion_id: String(values[0]),
+        fingerprint: String(values[7]),
+      });
+    }
+    return result;
+  });
+  const lookupCalls = () =>
+    f.query.mock.calls.filter(([sql]) =>
+      sql.includes('from knowledge.assertion_binding where version_id='),
+    );
+  const initial = (await f.call('import', {
+    ...f.input,
+    candidates: [second, f.candidate],
+  })) as {
+    items: { assertionId: string; candidate: { subject: { key: string } } }[];
+    createdCount: number;
+    reusedCount: number;
+  };
+  expect(initial).toMatchObject({ createdCount: 2, reusedCount: 0 });
+  expect(lookupCalls()).toHaveLength(1);
+  expect(lookupCalls()[0]![1]?.[2]).toHaveLength(2);
+
+  f.query.mockClear();
+  const mixed = (await f.call(
+    'import',
+    { ...f.input, candidates: [third, second, f.candidate] },
+    { ...f.context, idempotencyKey: randomUUID() },
+  )) as typeof initial;
+  expect(mixed).toMatchObject({ createdCount: 1, reusedCount: 2 });
+  expect(mixed.items.map((row) => row.candidate.subject.key)).toEqual([
+    'enterprise:1',
+    'enterprise:2',
+    'enterprise:3',
+  ]);
+  expect(mixed.items.slice(0, 2).map((row) => row.assertionId)).toEqual(
+    initial.items.map((row) => row.assertionId),
+  );
+  expect(lookupCalls()).toHaveLength(1);
+  expect(lookupCalls()[0]![1]?.[2]).toHaveLength(3);
+
+  f.query.mockClear();
+  await expect(
+    f.call(
+      'import',
+      {
+        ...f.input,
+        candidates: [
+          third,
+          {
+            ...second,
+            qualifiers: { ...second.qualifiers, unit: 'mg/L' },
+          },
+        ],
+      },
+      { ...f.context, idempotencyKey: randomUUID() },
+    ),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(lookupCalls()).toHaveLength(1);
+  expect(f.rows.size).toBe(3);
+});
+
 it('rolls back reads on cancellation or persistence failure without exposing database errors', async () => {
   const f = fixture();
   await f.call('import', f.input);
