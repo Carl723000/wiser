@@ -9,6 +9,15 @@ where not exists (
   select 1 from pg_catalog.pg_roles where rolname = 'wiser_data_runtime'
 ) \gexec
 
+-- Dedicated metadata reader: no content-table grants and no inherited runtime
+-- privileges when the API switches to this role inside a private transaction.
+select format(
+  'create role wiser_data_metadata NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION'
+)
+where not exists (
+  select 1 from pg_catalog.pg_roles where rolname = 'wiser_data_metadata'
+) \gexec
+
 select format(
   'create role wiser_data_api LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION',
   :'api_password'
@@ -34,6 +43,7 @@ where not exists (
 ) \gexec
 
 alter role wiser_data_runtime NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+alter role wiser_data_metadata NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
 
 select format(
   'alter role wiser_data_api LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION',
@@ -52,6 +62,7 @@ select format(
 
 grant wiser_data_runtime to wiser_data_api;
 grant wiser_data_runtime to wiser_data_worker;
+grant wiser_data_metadata to wiser_data_api with inherit false, set true;
 
 alter role wiser_data_api set search_path = public;
 alter role wiser_data_api set statement_timeout = '120s';
@@ -64,6 +75,7 @@ alter role wiser_data_gis set statement_timeout = '10s';
 alter role wiser_data_gis set idle_in_transaction_session_timeout = '10s';
 
 grant connect on database wiser_data to wiser_data_runtime;
+grant connect on database wiser_data to wiser_data_metadata;
 grant connect on database wiser_data to wiser_data_gis;
 grant usage on schema service to wiser_data_gis;
 grant execute on function service.wiser_spatial_extent_mvt(
@@ -190,5 +202,31 @@ do $$ begin
 end $$;
 
 revoke all on service.analysis_amap_geometry from wiser_data_runtime;
+
+-- Only these columns may be read by the management catalog. RLS still limits
+-- tenant, project, security level and policy version. No asset, evidence,
+-- manifest, source contact or search-index grant is given. The authorization
+-- scope is read only to exclude ineligible versions and is never returned.
+revoke all on all tables in schema
+  catalog, ingestion, quality, lineage, knowledge, service, security, event
+from wiser_data_metadata;
+grant usage on schema catalog, security to wiser_data_metadata;
+grant select (
+  tenant_id, project_id, data_item_id, name, source_organization,
+  publication_status, acceptance_status, security_level, policy_version,
+  authorization_scope
+) on catalog.data_item to wiser_data_metadata;
+grant select (
+  tenant_id, project_id, data_item_id, version_id, version_number,
+  publication_status, acceptance_status, security_level, policy_version,
+  processing_stage, committed_at
+) on catalog.data_item_version to wiser_data_metadata;
+grant execute on function security.resource_scope_legacy() to wiser_data_metadata;
+grant execute on function security.resource_version_members() to wiser_data_metadata;
+grant execute on function security.authorized_row(uuid,uuid,text,bigint) to wiser_data_metadata;
+grant execute on function security.current_tenant_id(),
+  security.current_project_id(), security.current_max_security_level(),
+  security.current_policy_version() to wiser_data_metadata;
+grant execute on function security.security_rank(text) to wiser_data_metadata;
 
 commit;

@@ -1,6 +1,8 @@
 import {
   ResourcePolicyRequestsQuerySchema,
   ResourcePolicyRequestsPageSchema,
+  ResourceManagementCatalogQuerySchema,
+  ResourceManagementCatalogPageSchema,
   ResourcePolicyProposalSchema,
   ResourcePolicyDecisionSchema,
   ResourcePolicyActionSchema,
@@ -38,6 +40,7 @@ import type { WiserApiModule } from './modules.js';
 export type ResourceAdministrationHttpService = Pick<
   PostgresResourceAdministrationService,
   | 'sourcePolicyRequests'
+  | 'managementCatalog'
   | 'proposeSourcePolicy'
   | 'decideSourcePolicy'
   | 'withdrawSourcePolicy'
@@ -125,6 +128,19 @@ export function createResourceAdministrationModule(
                 token,
                 projectId: Params.parse(request.params).projectId,
                 page: ResourcePolicyRequestsQuerySchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/management-catalog',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ResourceManagementCatalogPageSchema.parse(
+              await service.managementCatalog({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ResourceManagementCatalogQuerySchema.parse(request.query),
               }),
             ),
           ),

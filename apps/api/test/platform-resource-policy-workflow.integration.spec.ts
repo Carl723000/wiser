@@ -86,9 +86,43 @@ describe.skipIf(!url)(
         ) !== null,
       ),
     );
+    const catalogResource = {
+      dataItemId: randomUUID(),
+      versionId: randomUUID(),
+    };
+    const listManagementCatalog = vi.fn<
+      NonNullable<ResourceAdministrationOptions['listManagementCatalog']>
+    >((input) => {
+      if (
+        consumeResourceManagementPermit(
+          input.managementPermit,
+          input.context,
+          [],
+          [],
+        ) === null
+      ) throw Error('No management permit');
+      return Promise.resolve({
+        items: [{
+          ...catalogResource,
+          name: 'Synthetic published source',
+          sourceOrganization: 'Synthetic provider',
+          versionNumber: 1,
+          securityLevel: 'L1_INTERNAL',
+          processingStage: 'RAW',
+          publicationStatus: 'PUBLISHED',
+          acceptanceStatus: 'PASSED',
+          policyId: null,
+          expectedPolicyVersion: 0,
+        }],
+        hasMore: false,
+        checkedAt: new Date().toISOString(),
+        managementRoleOptions: [],
+      });
+    });
     const service = new PostgresResourceAdministrationService({
       pool: txPool,
       validatePackage,
+      listManagementCatalog,
       verifyHuman: (token) => {
         const key = token as keyof typeof actors;
         return Promise.resolve(
@@ -154,6 +188,7 @@ describe.skipIf(!url)(
     beforeEach(async () => {
       inspectionTime = null;
       validatePackage.mockClear();
+      listManagementCatalog.mockClear();
       await client.query('savepoint source_case');
     });
     afterEach(async () => {
@@ -172,6 +207,41 @@ describe.skipIf(!url)(
       );
       await expect(submit()).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
       expect(validatePackage).not.toHaveBeenCalled();
+    });
+    it('lists only for currently appointed staff and returns the current fixed-version policy', async () => {
+      await expect(service.managementCatalog({
+        token: 'reader', projectId: project,
+        page: { offset: 0, limit: 20, search: '' },
+      })).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      expect(listManagementCatalog).not.toHaveBeenCalled();
+      const first = await service.managementCatalog({
+        token: 'owner', projectId: project,
+        page: { offset: 0, limit: 20, search: 'Synthetic' },
+      });
+      expect(first.items).toMatchObject([{ ...catalogResource,
+        policyId: null, expectedPolicyVersion: 0,
+      }]);
+      expect(first.managementRoleOptions).toContain('platform-owner');
+      const command = {
+        ...proposal(),
+        resource: { kind: 'version' as const, ...catalogResource },
+      };
+      const request = await submit(command);
+      await decide(request.id);
+      const updated = await service.managementCatalog({
+        token: 'owner', projectId: project,
+        page: { offset: 0, limit: 20, search: '' },
+      });
+      expect(updated.items).toMatchObject([{ ...catalogResource,
+        policyId: command.policyId, expectedPolicyVersion: 1,
+      }]);
+      await client.query(
+        "update platform_private.resource_policy_roles set active=false where role_key='platform-owner'",
+      );
+      await expect(service.managementCatalog({
+        token: 'owner', projectId: project,
+        page: { offset: 0, limit: 20, search: '' },
+      })).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
     });
     it('registers an immutable proposal idempotently without granting access', async () => {
       const input = {
@@ -198,7 +268,8 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query(
-            'select * from platform_private.resource_policy_versions',
+            'select * from platform_private.resource_policy_versions where policy_id=$1',
+            [input.command.policyId],
           )
         ).rowCount,
       ).toBe(0);
@@ -298,7 +369,8 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query(
-            'select * from platform_private.resource_policy_versions',
+            'select * from platform_private.resource_policy_versions where policy_id=any($1::uuid[])',
+            [[first.policyId, second.policyId]],
           )
         ).rowCount,
       ).toBe(0);
@@ -321,7 +393,8 @@ describe.skipIf(!url)(
         expect(
           (
             await client.query(
-              'select * from platform_private.resource_policy_versions',
+              'select * from platform_private.resource_policy_versions where policy_id=$1',
+              [request.policyId],
             )
           ).rowCount,
         ).toBe(0);
@@ -543,14 +616,16 @@ describe.skipIf(!url)(
       expect(
         (
           await client.query(
-            'select * from platform_private.resource_policy_versions',
+            'select * from platform_private.resource_policy_versions where policy_id=$1',
+            [command.policyId],
           )
         ).rowCount,
       ).toBe(1);
       expect(
         (
           await client.query(
-            'select * from platform_private.resource_policy_revocations',
+            'select * from platform_private.resource_policy_revocations where policy_id=$1',
+            [command.policyId],
           )
         ).rowCount,
       ).toBe(1);

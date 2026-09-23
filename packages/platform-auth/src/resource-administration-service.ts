@@ -5,6 +5,8 @@ import {
   ResourcePolicyActionSchema,
   ResourcePolicyRevokeSchema,
   ResourcePolicyRequestsQuerySchema,
+  ResourceManagementCatalogQuerySchema,
+  ResourceManagementCatalogPageSchema,
   type ResourcePolicyProposal,
   type ResourcePolicyDecision,
   type ResourcePolicyAction,
@@ -12,10 +14,13 @@ import {
   type ResourcePolicyRequestsQuery,
   type ResourcePolicyRequestView,
   type ResourcePolicyRequestsPage,
+  type ResourceManagementCatalogQuery,
+  type ResourceManagementCatalogPage,
   type ResourcePolicyRevokeReceipt,
 } from '@wiser/platform-contracts';
 import {
   assertResourceManagementPolicy,
+  issueResourceManagementPermit,
   type ResourceManagementPermit,
 } from './resource-management-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -76,6 +81,13 @@ export interface ResourceAdministrationOptions {
     signal: AbortSignal;
     managementPermit?: ResourceManagementPermit;
   }) => Promise<boolean>;
+  /** Fixed-column Data catalog port for separately appointed source staff. */
+  readonly listManagementCatalog?: (input: {
+    context: PlatformRequestContext;
+    page: ResourceManagementCatalogQuery;
+    signal: AbortSignal;
+    managementPermit?: ResourceManagementPermit;
+  }) => Promise<ResourceManagementCatalogPage>;
 }
 export { ResourceAdministrationError } from './resource-administration-error.js';
 import {
@@ -121,6 +133,92 @@ export class PostgresResourceAdministrationService {
         new ResourcePolicyStore(session, this.#options.validatePackage).list(
           page.data,
         ),
+      ['platform.membership.manage', 'platform.access.approve'],
+    );
+  }
+  managementCatalog(input: {
+    token: string;
+    projectId: string;
+    page: ResourceManagementCatalogQuery;
+  }): Promise<ResourceManagementCatalogPage> {
+    const page = ResourceManagementCatalogQuerySchema.safeParse(input.page);
+    if (!page.success) fail('VALIDATION_FAILED');
+    return this.#transaction(
+      input.token,
+      input.projectId,
+      async (session) => {
+        await new ResourcePolicyStore(
+          session,
+          this.#options.validatePackage,
+        ).requireAuthority('read');
+        if (!this.#options.listManagementCatalog)
+          fail('RESOURCE_UNAVAILABLE');
+        const permit = issueResourceManagementPermit(
+          session.context,
+          [],
+          [],
+          new Date(Date.now() + 5000).toISOString(),
+          'management-catalog',
+        );
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const catalog = await Promise.race([
+            this.#options.listManagementCatalog({
+              context: session.context,
+              page: page.data,
+              signal: controller.signal,
+              managementPermit: permit,
+            }),
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(() => {
+                controller.abort();
+                reject(new ResourceAdministrationError('RESOURCE_UNAVAILABLE'));
+              }, 5000);
+            }),
+          ]);
+          const keys = catalog.items.map(
+            (item) =>
+              `v:${item.dataItemId.toLowerCase()}:${item.versionId.toLowerCase()}`,
+          );
+          const policyRows = await session.client.query<{
+              resource_key: string;
+              policy_id: string;
+              version: number;
+            }>(
+              `select distinct on (resource_key) resource_key,policy_id,version
+               from platform_private.resource_policy_versions
+               where project_id=$1 and resource_key=any($2::text[])
+               order by resource_key,version desc`,
+              [session.project.id, keys],
+            );
+          const roleRows = await session.client.query<{ role_key: string }>(
+              `select role_key from platform_private.resource_policy_roles
+               where project_id=$1 and active and can_propose order by role_key`,
+              [session.project.id],
+            );
+          const latest = new Map(
+            policyRows.rows.map((row) => [row.resource_key, row]),
+          );
+          return ResourceManagementCatalogPageSchema.parse({
+            ...catalog,
+            items: catalog.items.map((item) => {
+              const policy = latest.get(
+                `v:${item.dataItemId.toLowerCase()}:${item.versionId.toLowerCase()}`,
+              );
+              return {
+                ...item,
+                policyId: policy?.policy_id ?? null,
+                expectedPolicyVersion: policy?.version ?? 0,
+              };
+            }),
+            managementRoleOptions: roleRows.rows.map((row) => row.role_key),
+          });
+        } finally {
+          if (timer) clearTimeout(timer);
+          controller.abort();
+        }
+      },
       ['platform.membership.manage', 'platform.access.approve'],
     );
   }

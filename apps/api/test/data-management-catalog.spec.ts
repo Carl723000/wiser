@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { issueResourceManagementPermit } from '@wiser/platform-auth';
+import { assertResourceManagementPolicy } from '@wiser/platform-auth';
 import { createDataManagementCatalogReader } from '../src/data-foundation/management-catalog.js';
 
 function fixture() {
@@ -49,12 +49,32 @@ function fixture() {
   const read = createDataManagementCatalogReader({ connect });
   const page = { offset: 0, limit: 20, search: 'river' };
   const permit = () =>
-    issueResourceManagementPermit(
-      context,
+    assertResourceManagementPolicy(
+      {
+        context,
+        client: {
+          release() {},
+          query: <Row>() =>
+            Promise.resolve({
+              rows: [{
+                snapshot: {
+                  mode: 'managed',
+                  tenantId: context.authorization.tenantId,
+                  projectId: context.authorization.projectId,
+                  actorId,
+                  purpose: context.authorization.purpose,
+                  now: new Date().toISOString(),
+                  revision: 1,
+                  grants: [],
+                  limits: [],
+                },
+              }] as Row[],
+              rowCount: 1,
+            }),
+        },
+      },
       [],
       [],
-      new Date(Date.now() + 5000).toISOString(),
-      'management-catalog',
     );
   return { context, read, page, permit, query, connect, release };
 }
@@ -66,7 +86,7 @@ describe('separately appointed management metadata catalog', () => {
       f.read({ context: f.context, page: f.page, signal: new AbortController().signal }),
     ).rejects.toThrow();
     expect(f.connect).not.toHaveBeenCalled();
-    const permit = f.permit();
+    const permit = await f.permit();
     await expect(
       f.read({
         context: {
@@ -83,7 +103,7 @@ describe('separately appointed management metadata catalog', () => {
 
   it('uses a private read-only metadata role and returns whitelisted columns only', async () => {
     const f = fixture(),
-      permit = f.permit();
+      permit = await f.permit();
     const page = await f.read({
       context: f.context,
       page: f.page,
@@ -98,6 +118,7 @@ describe('separately appointed management metadata catalog', () => {
     expect(statements).toContain('begin read only');
     expect(statements).toContain('set local role wiser_data_metadata');
     expect(statements.some((sql) => sql.includes("set_config('wiser.resource_scope','',true)"))).toBe(true);
+    expect(statements.join('\n')).toContain('length(trim(i.authorization_scope))>0');
     expect(statements.join('\n')).not.toMatch(/catalog\.asset|knowledge\.evidence_fragment/);
     expect(f.release).toHaveBeenCalledOnce();
     await expect(

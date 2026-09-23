@@ -84,6 +84,14 @@ function fixture() {
     decidedAt: null,
   };
   const service = {
+    managementCatalog: vi.fn(() =>
+      Promise.resolve({
+        items: [],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+        managementRoleOptions: [],
+      }),
+    ),
     sourcePolicyRequests: vi.fn(() =>
       Promise.resolve({
         items: [{ ...sourcePolicy, publicationState: 'none' as const }],
@@ -156,6 +164,29 @@ function fixture() {
   return { app, service, batch, sourcePolicy };
 }
 describe('resource administration HTTP boundary', () => {
+  it('requires a human token and bounded query for the private management catalog', async () => {
+    const { app, service } = fixture();
+    const url = `/api/platform/v1/access/projects/${project}/management-catalog`;
+    expect((await app.inject({ url })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ url: `${url}?limit=21`, headers: auth })).statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ url: `${url}?unexpected=true`, headers: auth })).statusCode,
+    ).toBe(400);
+    expect(service.managementCatalog).not.toHaveBeenCalled();
+    const response = await app.inject({
+      url: `${url}?search=river&offset=1&limit=10`,
+      headers: auth,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(service.managementCatalog).toHaveBeenCalledWith({
+      token: 'verified-human',
+      projectId: project,
+      page: { offset: 1, limit: 10, search: 'river' },
+    });
+  });
   it('requires a bearer token and bounds definition listings', async () => {
     const { app, service } = fixture();
     const url = `/api/platform/v1/access/projects/${project}/resource-definitions?kind=package`;

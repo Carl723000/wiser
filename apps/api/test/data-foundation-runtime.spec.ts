@@ -180,6 +180,7 @@ describe('Data Foundation production runtime composition', () => {
     );
     expect(resourceAdministrationModule).toHaveBeenCalledWith(
       validateResourcePackage,
+      undefined,
     );
     expect(
       runtime.modules.some(

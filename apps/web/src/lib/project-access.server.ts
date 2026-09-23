@@ -1,6 +1,8 @@
 import 'server-only';
 import {
   ResourcePolicyRequestsQuerySchema,
+  ResourceManagementCatalogQuerySchema,
+  ResourceManagementCatalogPageSchema,
   ResourcePolicyProposalSchema,
   ResourcePolicyDecisionSchema,
   ResourcePolicyActionSchema,
@@ -9,6 +11,7 @@ import {
   ResourcePolicyRequestViewSchema,
   ResourcePolicyRevokeReceiptSchema,
   type ResourcePolicyRequestsQuery,
+  type ResourceManagementCatalogQuery,
   type ResourcePolicyProposal,
   type ResourcePolicyDecision,
   type ResourcePolicyAction,
@@ -207,6 +210,19 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    managementCatalog(id: string, input: ResourceManagementCatalogQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourceManagementCatalogQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        search: p.search,
+      });
+      return call(
+        `projects/${id}/management-catalog?${query}`,
+        ResourceManagementCatalogPageSchema,
+      );
+    },
     sourcePolicyRequests(id: string, input: ResourcePolicyRequestsQuery) {
       PlatformUuidSchema.parse(id);
       const p = ResourcePolicyRequestsQuerySchema.parse(input);

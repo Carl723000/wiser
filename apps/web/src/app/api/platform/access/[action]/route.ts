@@ -1,5 +1,6 @@
 import {
   ResourcePolicyRequestsQuerySchema,
+  ResourceManagementCatalogQuerySchema,
   ResourcePolicyProposalSchema,
   ResourcePolicyDecisionSchema,
   ResourcePolicyActionSchema,
@@ -50,6 +51,30 @@ export async function GET(
   context: Context,
 ): Promise<Response> {
   const { action } = await context.params;
+  if (action === 'management-catalog') {
+    const params = new URL(request.url).searchParams;
+    if (
+      request.url.length > 8192 ||
+      new Set(params.keys()).size !== [...params.keys()].length
+    )
+      return fail(400, 'VALIDATION_FAILED');
+    const { projectId, ...input } = Object.fromEntries(params);
+    const project = PlatformUuidSchema.safeParse(projectId),
+      page = ResourceManagementCatalogQuerySchema.safeParse(input);
+    if (!project.success || !page.success)
+      return fail(400, 'VALIDATION_FAILED');
+    try {
+      return Response.json(
+        await getProjectAccessClient().managementCatalog(
+          project.data,
+          page.data,
+        ),
+        { headers },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  }
   if (action === 'source-policy-requests') {
     const params = new URL(request.url).searchParams;
     if (

@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 const client = {
+  managementCatalog: vi.fn(),
   sourcePolicyRequests: vi.fn(),
   proposeSourcePolicy: vi.fn(),
   decideSourcePolicy: vi.fn(),
@@ -24,6 +25,27 @@ vi.mock('./project-access.server', () => ({
 }));
 import { POST, GET } from '../app/api/platform/access/[action]/route';
 const context = (action: string) => ({ params: Promise.resolve({ action }) });
+it('forwards only bounded private management-catalog searches', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  client.managementCatalog.mockResolvedValue({
+    items: [], hasMore: false, checkedAt: '2026-09-23T00:00:00Z',
+    managementRoleOptions: [],
+  });
+  const path = `http://wiser.test/api/platform/access/management-catalog?projectId=${id}`;
+  for (const query of ['&limit=21', '&token=caller', '&search=a&search=b']) {
+    expect((await GET(new Request(path + query), context('management-catalog'))).status).toBe(400);
+  }
+  expect(client.managementCatalog).not.toHaveBeenCalled();
+  const response = await GET(
+    new Request(path + '&search=river&offset=1&limit=10'),
+    context('management-catalog'),
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+  expect(client.managementCatalog).toHaveBeenCalledWith(id, {
+    search: 'river', offset: 1, limit: 10,
+  });
+});
 it('forwards bounded resource definitions and preserves the fixed preset version', async () => {
   const projectId = '11111111-1111-4111-8111-111111111111';
   client.definitions.mockResolvedValue({

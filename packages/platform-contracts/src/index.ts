@@ -220,3 +220,5 @@ export * from './resource-grants.ts';
 export * from './resource-policy-limits.ts';
 
 export * from './resource-policy-administration.ts';
+
+export * from './resource-management-catalog.ts';

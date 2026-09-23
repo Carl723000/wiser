@@ -42,6 +42,7 @@ import {
 } from './postgres-command-executors.js';
 import { createPostgresDataReadRuntime } from './postgres-read-executors.js';
 import { createDataResourcePackageValidator } from './resource-package-validator.js';
+import { createDataManagementCatalogReader } from './management-catalog.js';
 import type { ResourceAdministrationOptions } from '@wiser/platform-auth';
 import {
   Neo4jGraphQueryPort,
@@ -91,6 +92,7 @@ interface ExecutorRuntime {
 interface ReadExecutorRuntime extends ExecutorRuntime {
   readonly audit: DataCapabilityAuditPort;
   readonly validateResourcePackage?: ResourceAdministrationOptions['validatePackage'];
+  readonly listManagementCatalog?: ResourceAdministrationOptions['listManagementCatalog'];
 }
 
 export interface DataFoundationRuntimeFactories {
@@ -208,6 +210,7 @@ const defaultFactories: DataFoundationRuntimeFactories = {
     return {
       ...createPostgresDataReadRuntime(pg),
       validateResourcePackage: createDataResourcePackageValidator(pg),
+      listManagementCatalog: createDataManagementCatalogReader(pg),
     };
   },
   createCommandRuntime(pool, objectStore) {
@@ -405,6 +408,7 @@ export function createDataFoundationRuntimeFromEnvironment(
         ? [
             platformAuth.resourceAdministrationModule(
               read.validateResourcePackage,
+              read.listManagementCatalog,
             ),
           ]
         : []),
