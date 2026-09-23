@@ -1,6 +1,11 @@
 import { expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 const client = {
+  sourcePolicyRequests: vi.fn(),
+  proposeSourcePolicy: vi.fn(),
+  decideSourcePolicy: vi.fn(),
+  withdrawSourcePolicy: vi.fn(),
+  revokeSourcePolicy: vi.fn(),
   grants: vi.fn(),
   revokeGrant: vi.fn(),
   renewGrant: vi.fn(),
@@ -239,5 +244,117 @@ it('bounds resource grant queries and protects revocation and renewal from cross
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
     expect(method).toHaveBeenCalledWith(command, projectId);
+  }
+});
+
+it('validates source stewardship reads and all commands without accepting caller authority', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const request = (body: unknown) =>
+    new Request('http://wiser.test/api/platform/access/source-policy-decide', {
+      method: 'POST',
+      headers: {
+        origin: 'http://wiser.test',
+        host: 'wiser.test',
+        'content-type': 'application/json',
+        'idempotency-key': id,
+      },
+      body: JSON.stringify(body),
+    });
+  client.sourcePolicyRequests.mockResolvedValue({
+    items: [],
+    hasMore: false,
+    canPropose: false,
+    canApprove: true,
+    checkedAt: new Date().toISOString(),
+  });
+  const page = await GET(
+    new Request(
+      `http://wiser.test/api/platform/access/source-policy-requests?projectId=${id}&status=pending`,
+    ),
+    context('source-policy-requests'),
+  );
+  expect(page.status).toBe(200);
+  expect(client.sourcePolicyRequests).toHaveBeenCalledWith(id, {
+    offset: 0,
+    limit: 20,
+    status: 'pending',
+  });
+  expect(page.headers.get('cache-control')).toBe('private, no-store');
+  for (const query of [
+    '&limit=21',
+    '&canApprove=true',
+    '&status=pending&status=published',
+  ]) {
+    expect(
+      (
+        await GET(
+          new Request(
+            `http://wiser.test/api/platform/access/source-policy-requests?projectId=${id}${query}`,
+          ),
+          context('source-policy-requests'),
+        )
+      ).status,
+    ).toBe(400);
+  }
+  const common = {
+    projectId: id,
+    requestId: id,
+    expectedVersion: 1,
+    reason: 'Approved research scope',
+  };
+  const proposal = {
+    projectId: id,
+    policyId: id,
+    expectedPolicyVersion: 0,
+    resource: { kind: 'version', dataItemId: id, versionId: id },
+    allowedActions: ['content.read'],
+    managementRoles: ['data-manager'],
+    licenseBasis: 'Public redistribution permission',
+    startsAt: '2026-09-23T00:00:00Z',
+    expiresAt: '2026-10-23T00:00:00Z',
+    maxGrantDays: 7,
+    reason: 'Approved research scope',
+  };
+  const commands = [
+    {
+      action: 'source-policy-propose',
+      fn: client.proposeSourcePolicy,
+      body: proposal,
+    },
+    {
+      action: 'source-policy-decide',
+      fn: client.decideSourcePolicy,
+      body: { ...common, decision: 'publish' },
+    },
+    {
+      action: 'source-policy-withdraw',
+      fn: client.withdrawSourcePolicy,
+      body: common,
+    },
+    {
+      action: 'source-policy-revoke',
+      fn: client.revokeSourcePolicy,
+      body: {
+        projectId: id,
+        policyId: id,
+        policyVersion: 1,
+        reason: common.reason,
+      },
+    },
+  ];
+  for (const command of commands) {
+    command.fn.mockResolvedValue({ accepted: true });
+    expect(
+      (await POST(request(command.body), context(command.action))).status,
+    ).toBe(200);
+    expect(command.fn).toHaveBeenCalledWith(command.body, id);
+    expect(
+      (
+        await POST(
+          request({ ...command.body, canApprove: true }),
+          context(command.action),
+        )
+      ).status,
+    ).toBe(400);
   }
 });

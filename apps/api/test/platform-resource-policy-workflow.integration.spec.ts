@@ -450,6 +450,16 @@ describe.skipIf(!url)(
       });
       expect(page.items).toHaveLength(1);
       expect(page.hasMore).toBe(true);
+      const publishedPage = () =>
+        service.sourcePolicyRequests({
+          token: 'approver',
+          projectId: project,
+          page: { offset: 0, limit: 20, status: 'published' },
+        });
+      expect((await publishedPage()).items[0]).toMatchObject({
+        status: 'published',
+        publicationState: 'active',
+      });
       const input = {
         token: 'owner',
         idempotencyKey: randomUUID(),
@@ -467,6 +477,10 @@ describe.skipIf(!url)(
         status: 'revoked',
       });
       expect(await service.revokeSourcePolicy(input)).toEqual(receipt);
+      expect((await publishedPage()).items[0]).toMatchObject({
+        status: 'published',
+        publicationState: 'revoked',
+      });
       expect(
         (
           await client.query(
