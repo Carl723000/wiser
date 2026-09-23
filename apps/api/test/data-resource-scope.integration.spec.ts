@@ -1,3 +1,4 @@
+import { assertResourceManagementPolicy } from '../../../packages/platform-auth/src/resource-management-policy.js';
 import { z } from 'zod';
 import { createDataResourcePackageValidator } from '../src/data-foundation/resource-package-validator.js';
 import { PostgresProjectionReadAuthority } from '../src/data-foundation/query-adapters.js';
@@ -197,6 +198,84 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           },
         }),
       ).toBe(false);
+      // Independently authorized management must not require a personal content grant.
+      const manager = structuredClone(packageInput.context);
+      manager.authorization.scopes = ['platform.membership.manage'];
+      manager.authorization.roles = ['source-steward'];
+      manager.authorization.resourceAccess!.scope.permissions['content.read'] =
+        [];
+      const now = new Date(),
+        end = new Date(now.getTime() + 3600000);
+      const managementPermit = await assertResourceManagementPolicy(
+        {
+          context: manager,
+          client: {
+            release() {},
+            query: async <Row>() => ({
+              rows: [
+                {
+                  snapshot: {
+                    mode: 'managed',
+                    tenantId: tenant,
+                    projectId: project,
+                    actorId: actor,
+                    purpose: manager.authorization.purpose,
+                    revision: 1,
+                    now: now.toISOString(),
+                    grants: [],
+                    limits: [
+                      {
+                        id: randomUUID(),
+                        version: 1,
+                        tenantId: tenant,
+                        projectId: project,
+                        resource: packageInput.command.resources[0],
+                        allowedActions: ['content.read'],
+                        managementRoles: ['source-steward'],
+                        licenseBasis: 'Synthetic independent permit',
+                        status: 'active',
+                        startsAt: new Date(
+                          now.getTime() - 3600000,
+                        ).toISOString(),
+                        expiresAt: end.toISOString(),
+                        maxGrantDays: 1,
+                      },
+                    ],
+                  },
+                },
+              ] as Row[],
+              rowCount: 1,
+            }),
+          },
+        },
+        packageInput.command.resources,
+        packageInput.command.allowedActions,
+      );
+      const managementRequest = {
+        ...packageInput,
+        context: manager,
+        managementPermit,
+      };
+      expect(await validatePackage(managementRequest)).toBe(true);
+      expect(
+        manager.authorization.resourceAccess!.scope.permissions['content.read'],
+      ).toEqual([]);
+      const managerCatalog = createPostgresDataReadRuntime(
+        runtimePool,
+      ).executors.find((e) => e.id === 'data.catalog.search')!;
+      await expect(
+        managerCatalog.execute(
+          { query: 'Synthetic', includeTotal: true, first: 10 },
+          {
+            ...context,
+            ...manager,
+            authorization: {
+              ...manager.authorization,
+              scopes: ['data.catalog.read'],
+            },
+          },
+        ),
+      ).resolves.toMatchObject({ totalCount: 0, items: [] });
       const projectionAuthority = new PostgresProjectionReadAuthority({
         pool: runtimePool,
       });

@@ -87,6 +87,13 @@ describe('Data package validation lifecycle', () => {
     for (const value of cases) expect(await f.validate(value)).toBe(false);
     expect(f.connect).not.toHaveBeenCalled();
   });
+  it('does not substitute a personal reading grant for a source-management authorization', async () => {
+    const f = fixture(),
+      request = input();
+    request.context.authorization.scopes.push('platform.membership.manage');
+    expect(await f.validate(request)).toBe(false);
+    expect(f.connect).not.toHaveBeenCalled();
+  });
   it('validates all immutable pairs with one authority query without exposing member rows', async () => {
     const f = fixture(),
       request = input();
