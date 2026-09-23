@@ -1,156 +1,82 @@
 import { randomUUID } from 'node:crypto';
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  afterEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
 import {
-  PostgresResourceAdministrationService,
-  consumeResourceManagementPermit,
-  type PlatformDelegationTransactionPool,
-  type ResourceAdministrationOptions,
+  compileResourceAccessScope,
+  createPostgresResourceAuthorityLoader,
 } from '@wiser/platform-auth';
+import { ResourceAccessAuthoritySnapshotSchema } from '@wiser/platform-contracts';
+
 const url = process.env['WISER_RESOURCE_TEST_DATABASE_URL'];
-const project = 'b2000000-0000-4000-8000-000000000001',
-  tenant = 'b1000000-0000-4000-8000-000000000001';
-const actors = {
-  owner: '10000000-0000-4000-8000-000000000005',
-  approver: '10000000-0000-4000-8000-000000000002',
-  reader: '10000000-0000-4000-8000-000000000001',
+const project = randomUUID();
+const tenant = 'b1000000-0000-4000-8000-000000000001';
+const owner = '10000000-0000-4000-8000-000000000005';
+const reader = '10000000-0000-4000-8000-000000000001';
+const resource = {
+  kind: 'version' as const,
+  dataItemId: randomUUID(),
+  versionId: randomUUID(),
 };
-const sessions = {
-  owner: randomUUID(),
-  approver: randomUUID(),
-  reader: randomUUID(),
-};
-const proposal = () => ({
-  projectId: project,
-  policyId: randomUUID(),
-  expectedPolicyVersion: 0,
-  resource: {
-    kind: 'version' as const,
-    dataItemId: randomUUID(),
-    versionId: randomUUID(),
+const policyId = randomUUID(),
+  packageId = randomUUID(),
+  presetId = randomUUID();
+const context = {
+  principal: {
+    actorId: reader,
+    actorType: 'human' as const,
+    authenticationMethod: 'supabase_jwt' as const,
+    authUserId: reader,
+    sessionId: randomUUID(),
   },
-  allowedActions: ['content.read' as const],
-  managementRoles: ['platform-owner'],
-  licenseBasis: 'Synthetic source permission evidence',
-  startsAt: new Date(Date.now() - 60000).toISOString(),
-  expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
-  maxGrantDays: 7,
-  reason: 'Synthetic source registration',
-});
+  authorization: {
+    tenantId: tenant,
+    projectId: project,
+    purpose: 'research',
+    roles: ['data-reader'],
+    scopes: ['data.catalog.read'],
+    maxSecurityLevel: 'L0_PUBLIC' as const,
+    authzVersion: 1,
+  },
+  traceId: 'b'.repeat(32),
+};
 describe.skipIf(!url)(
-  'source stewardship application workflow in isolated control storage',
+  'trusted source policy in a disposable control database',
   () => {
     const pool = new Pool({ connectionString: url, max: 1 });
     let client: PoolClient;
-    const txPool: PlatformDelegationTransactionPool = {
-      connect: () =>
-        Promise.resolve({
-          async query<Row>(sql: string, values: readonly unknown[] = []) {
-            const text = /^begin\b/i.test(sql)
-              ? 'savepoint source_service'
-              : /^commit\b/i.test(sql)
-                ? 'release savepoint source_service'
-                : /^rollback$/i.test(sql)
-                  ? 'rollback to savepoint source_service'
-                  : sql;
-            const result = await client.query(text, [...values]);
-            return { rows: result.rows as Row[], rowCount: result.rowCount };
-          },
-          release() {},
-        }),
-    };
-    const validatePackage = vi.fn<
-      ResourceAdministrationOptions['validatePackage']
-    >((input) =>
-      Promise.resolve(
-        consumeResourceManagementPermit(
-          input.managementPermit,
-          input.context,
-          input.command.resources,
-          input.command.allowedActions,
-        ) !== null,
-      ),
+    const load = createPostgresResourceAuthorityLoader(
+      async (text, values) => ({
+        rows: (await client.query(text, [...values])).rows,
+      }),
     );
-    const service = new PostgresResourceAdministrationService({
-      pool: txPool,
-      validatePackage,
-      verifyHuman: (token) => {
-        const key = token as keyof typeof actors;
-        return Promise.resolve(
-          actors[key]
-            ? { userId: actors[key], sessionId: sessions[key] }
-            : null,
-        );
-      },
-    });
-    const submit = (command = proposal(), token = 'owner') =>
-      service.proposeSourcePolicy({
-        token,
-        idempotencyKey: randomUUID(),
-        command,
-      });
-    const decide = (
-      id: string,
-      decision: 'publish' | 'reject' = 'publish',
-      token = 'approver',
-      version = 1,
-    ) =>
-      service.decideSourcePolicy({
-        token,
-        idempotencyKey: randomUUID(),
-        command: {
-          projectId: project,
-          requestId: id,
-          expectedVersion: version,
-          decision,
-          reason: 'Independent synthetic review',
-        },
-      });
+    const scope = async () => {
+      const { revision: _revision, ...input } =
+        ResourceAccessAuthoritySnapshotSchema.parse(await load(context));
+      return compileResourceAccessScope(input);
+    };
     beforeAll(async () => {
       client = await pool.connect();
       await client.query('begin');
-      for (const key of Object.keys(actors) as (keyof typeof actors)[])
-        await client.query(
-          'insert into auth.sessions(id,user_id) values($1,$2)',
-          [sessions[key], actors[key]],
-        );
+      await client.query(
+        "insert into platform.projects(id,tenant_id,slug,name_zh_cn,name_en,created_by_actor_id) values($1,$2,$3,'来源策略隔离测试','Isolated source policy test',$4)",
+        [project, tenant, `policy-${project}`, owner],
+      );
       await client.query(
         'insert into platform_private.resource_access_settings(project_id,tenant_id,enabled_by) values($1,$2,$3)',
-        [project, tenant, actors.owner],
-      );
-      const role = randomUUID();
-      await client.query(
-        "insert into platform.roles(id,role_key,system_id,max_security_level) values($1,'source-reviewer-test','platform','L0_PUBLIC')",
-        [role],
+        [project, tenant, owner],
       );
       await client.query(
-        "insert into platform.role_scopes(role_id,scope) values($1,'platform.access.approve')",
-        [role],
+        "insert into platform_private.resource_package_versions(project_id,package_id,version,name,resources,allowed_actions,license_basis,created_by) values($1,$2,1,'Synthetic package',$3,array['content.read','original.read'],'Package text is not a trusted source license',$4)",
+        [project, packageId, JSON.stringify([resource]), owner],
       );
       await client.query(
-        'insert into platform.role_bindings(actor_id,tenant_id,project_id,role_id,created_by_actor_id) values($1,$2,$3,$4,$5)',
-        [actors.approver, tenant, project, role, actors.owner],
+        "insert into platform_private.resource_preset_versions(project_id,preset_id,version,name,actions,max_days,approval_level,created_by) values($1,$2,1,'Synthetic preset',array['content.read','original.read'],30,'ordinary',$3)",
+        [project, presetId, owner],
       );
       await client.query(
-        "insert into platform_private.resource_policy_roles(project_id,role_key,can_propose,can_approve,configured_by,reason) values($1,'platform-owner',true,true,$2,'Synthetic explicit appointment'),($1,'source-reviewer-test',false,true,$2,'Synthetic independent appointment')",
-        [project, actors.owner],
+        "insert into platform_private.resource_grants(project_id,actor_id,package_id,package_version,preset_id,preset_version,purpose,starts_at,expires_at,created_by,approved_by,reason) values($1,$2,$3,1,$4,1,'research',now()-interval '1 minute',now()+interval '1 day',$5,$5,'Synthetic policy regression')",
+        [project, reader, packageId, presetId, owner],
       );
-    });
-    beforeEach(async () => {
-      validatePackage.mockClear();
-      await client.query('savepoint source_case');
-    });
-    afterEach(async () => {
-      await client.query('rollback to savepoint source_case');
     });
     afterAll(async () => {
       if (client) {
@@ -159,239 +85,97 @@ describe.skipIf(!url)(
       }
       await pool.end();
     });
-    it('requires explicit stewardship beyond ordinary membership management', async () => {
-      await client.query(
-        "update platform_private.resource_policy_roles set active=false where role_key='platform-owner'",
+    const publish = async (
+      version: number,
+      actions: string[],
+      expired = false,
+    ) =>
+      client.query(
+        `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by) values($1,$2,$3,$4,$5,array['data-steward'],'Synthetic independently approved source policy',now()-interval '2 days',case when $8 then now()-interval '1 hour' else now()+interval '10 days' end,30,$6,$7)`,
+        [
+          project,
+          policyId,
+          version,
+          JSON.stringify(resource),
+          actions,
+          reader,
+          owner,
+          expired,
+        ],
       );
-      await expect(submit()).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
-      expect(validatePackage).not.toHaveBeenCalled();
-    });
-    it('registers an immutable proposal idempotently without granting access', async () => {
-      const input = {
-        token: 'owner',
-        idempotencyKey: randomUUID(),
-        command: proposal(),
-      };
-      const first = await service.proposeSourcePolicy(input);
-      expect(first).toMatchObject({
-        status: 'pending',
-        version: 1,
-        applicantId: actors.owner,
+    it('denies a managed grant without trusted source policy despite package license text', async () => {
+      expect(await load(context)).toMatchObject({
+        mode: 'managed',
+        limits: [],
       });
-      expect(await service.proposeSourcePolicy(input)).toEqual(first);
-      await expect(
-        service.proposeSourcePolicy({
-          ...input,
-          command: {
-            ...input.command,
-            licenseBasis: 'Changed source license evidence',
-          },
+      expect(await scope()).toMatchObject({
+        permissions: { 'content.read': [], 'original.read': [] },
+      });
+    });
+    it('intersects grant actions with the current exact-resource source policy', async () => {
+      await publish(1, ['content.read']);
+      expect(await scope()).toMatchObject({
+        permissions: { 'content.read': [resource], 'original.read': [] },
+      });
+      expect(
+        await load({
+          ...context,
+          authorization: { ...context.authorization, tenantId: randomUUID() },
         }),
-      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
-      expect(
-        (
-          await client.query(
-            'select * from platform_private.resource_policy_versions',
-          )
-        ).rowCount,
-      ).toBe(0);
-      expect(
-        (await client.query('select * from platform_private.resource_grants'))
-          .rowCount,
-      ).toBe(0);
-      expect(
-        (
-          await client.query(
-            'select * from platform_private.resource_access_events where subject_id=$1',
-            [first.id],
-          )
-        ).rowCount,
-      ).toBe(1);
+      ).toBeNull();
     });
-    it('rejects caller-supplied authority and ordinary-reader administration', async () => {
-      await expect(
-        submit({ ...proposal(), approvedBy: actors.owner } as ReturnType<
-          typeof proposal
-        >),
-      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
-      await expect(submit(proposal(), 'reader')).rejects.toMatchObject({
-        code: 'NOT_AUTHORIZED',
+    it('uses the latest policy and does not fall back to an earlier broader license', async () => {
+      await publish(2, ['source.discover']);
+      expect(await load(context)).toMatchObject({
+        limits: [{ id: policyId, version: 2 }],
       });
-      await expect(
-        service.sourcePolicyRequests({
-          token: 'reader',
-          projectId: project,
-          page: { offset: 0, limit: 20 },
-        }),
-      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      expect(await scope()).toMatchObject({
+        permissions: { 'content.read': [], 'original.read': [] },
+      });
     });
-    it('requires independent review and publishes exactly the submitted evidence', async () => {
-      const command = proposal();
-      const request = await submit(command);
-      await expect(
-        decide(request.id, 'publish', 'owner'),
-      ).rejects.toMatchObject({ code: 'SELF_CHANGE_FORBIDDEN' });
-      const published = await decide(request.id);
-      expect(published).toMatchObject({
-        status: 'published',
-        version: 2,
-        publishedVersion: 1,
-        decidedBy: actors.approver,
+    it('does not revive prior permission after current source policy expires', async () => {
+      await publish(3, ['content.read', 'original.read'], true);
+      expect(await scope()).toMatchObject({
+        permissions: { 'content.read': [], 'original.read': [] },
       });
-      const result = (
-        await client.query(
-          'select * from platform_private.resource_policy_versions where policy_id=$1',
-          [command.policyId],
-        )
-      ).rows[0];
-      expect(result).toMatchObject({
-        resource: command.resource,
-        license_basis: command.licenseBasis,
-        created_by: actors.owner,
-        approved_by: actors.approver,
-      });
-      expect(validatePackage).toHaveBeenCalledTimes(2);
-      expect(
-        (await client.query('select * from platform_private.resource_grants'))
-          .rowCount,
-      ).toBe(0);
     });
-    it('rejects or withdraws without creating authority, and refuses stale and terminal decisions', async () => {
-      const first = await submit();
-      await expect(
-        decide(first.id, 'reject', 'approver', 2),
-      ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
-      expect(await decide(first.id, 'reject')).toMatchObject({
-        status: 'rejected',
-      });
-      const second = await submit();
-      expect(
-        await service.withdrawSourcePolicy({
-          token: 'owner',
-          idempotencyKey: randomUUID(),
-          command: {
-            projectId: project,
-            requestId: second.id,
-            expectedVersion: 1,
-            reason: 'Synthetic withdrawal reason',
-          },
-        }),
-      ).toMatchObject({ status: 'withdrawn' });
-      await expect(
-        decide(second.id, 'publish', 'approver', 2),
-      ).rejects.toMatchObject({ code: 'REQUEST_STATE_CONFLICT' });
-      expect(
-        (
-          await client.query(
-            'select * from platform_private.resource_policy_versions',
-          )
-        ).rowCount,
-      ).toBe(0);
-    });
-    it.each(['role', 'session'])(
-      'rechecks the original applicant %s before publication',
-      async (kind) => {
-        const request = await submit();
-        if (kind === 'role')
-          await client.query(
-            "update platform_private.resource_policy_roles set can_propose=false where role_key='platform-owner'",
-          );
-        else
-          await client.query('delete from auth.sessions where id=$1', [
-            sessions.owner,
-          ]);
-        await expect(decide(request.id)).rejects.toMatchObject({
-          code: 'AUTHORITY_CHANGED',
-        });
-        expect(
-          (
-            await client.query(
-              'select * from platform_private.resource_policy_versions',
-            )
-          ).rowCount,
-        ).toBe(0);
-      },
-    );
-    it('rechecks source metadata and preserves pending state when it becomes unavailable', async () => {
-      const request = await submit();
-      validatePackage.mockResolvedValueOnce(false);
-      await expect(decide(request.id)).rejects.toMatchObject({
-        code: 'RESOURCE_UNAVAILABLE',
-      });
-      expect(
-        (
-          await client.query(
-            'select status from platform_private.resource_policy_requests where id=$1',
-            [request.id],
-          )
-        ).rows[0],
-      ).toEqual({ status: 'pending' });
-    });
-    it('detects a competing publication and preserves policy identity across updates', async () => {
-      const command = proposal(),
-        first = await submit(command),
-        second = await submit(command);
-      await decide(first.id);
-      await expect(decide(second.id)).rejects.toMatchObject({
-        code: 'VERSION_CONFLICT',
-      });
-      await expect(
-        submit({
-          ...command,
-          policyId: randomUUID(),
-          expectedPolicyVersion: 1,
-        }),
-      ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
-      const revision = await submit({
-        ...command,
-        expectedPolicyVersion: 1,
-        licenseBasis: 'Revised synthetic license evidence',
-      });
-      expect(await decide(revision.id)).toMatchObject({ publishedVersion: 2 });
-    });
-    it('provides bounded review lists and append-only revocation without deleting publication history', async () => {
-      const command = proposal(),
-        request = await submit(command);
-      await decide(request.id);
-      await submit();
-      const page = await service.sourcePolicyRequests({
-        token: 'approver',
-        projectId: project,
-        page: { offset: 0, limit: 1 },
-      });
-      expect(page.items).toHaveLength(1);
-      expect(page.hasMore).toBe(true);
-      const input = {
-        token: 'owner',
-        idempotencyKey: randomUUID(),
-        command: {
-          projectId: project,
-          policyId: command.policyId,
-          policyVersion: 1,
-          reason: 'Synthetic source revocation',
+    it('reflects source revocation immediately while preserving grant and policy history', async () => {
+      await publish(4, ['content.read', 'original.read']);
+      expect(await scope()).toMatchObject({
+        permissions: {
+          'content.read': [resource],
+          'original.read': [resource],
         },
-      };
-      const receipt = await service.revokeSourcePolicy(input);
-      expect(receipt).toMatchObject({
-        policyId: command.policyId,
-        policyVersion: 1,
-        status: 'revoked',
       });
-      expect(await service.revokeSourcePolicy(input)).toEqual(receipt);
+      const before = ResourceAccessAuthoritySnapshotSchema.parse(
+        await load(context),
+      ).revision;
+      await client.query(
+        "insert into platform_private.resource_policy_revocations(project_id,policy_id,version,revoked_by,reason) values($1,$2,4,$3,'Synthetic supplier revocation')",
+        [project, policyId, owner],
+      );
+      expect(await load(context)).toMatchObject({
+        revision: before + 1,
+        limits: [{ version: 4, status: 'revoked' }],
+      });
+      expect(await scope()).toMatchObject({
+        permissions: { 'content.read': [], 'original.read': [] },
+      });
       expect(
         (
-          await client.query(
-            'select * from platform_private.resource_policy_versions',
+          await client.query<{ n: number }>(
+            'select count(*)::int n from platform_private.resource_policy_versions where project_id=$1 and policy_id=$2',
+            [project, policyId],
           )
-        ).rowCount,
-      ).toBe(1);
-      expect(
-        (
-          await client.query(
-            'select * from platform_private.resource_policy_revocations',
-          )
-        ).rowCount,
-      ).toBe(1);
+        ).rows[0]?.n,
+      ).toBe(4);
     });
+    it('fails closed rather than truncating more than 10000 current source policies', async () => {
+      await client.query(
+        "insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by) select $1,gen_random_uuid(),1,jsonb_build_object('kind','external-source','sourceId','synthetic-overflow-'||n),array['source.discover'],array['data-steward'],'Synthetic bounded policy check',now(),now()+interval '1 day',1,$2,$3 from generate_series(1,10000) n",
+        [project, reader, owner],
+      );
+      expect(await load(context)).toBeNull();
+    }, 30000);
   },
 );
