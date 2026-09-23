@@ -122,15 +122,17 @@ function fixture() {
         status: v[1],
         row_version: Number(v[3]) + 1,
       });
-    if (sql.startsWith('select b.*'))
+    if (sql.startsWith('select b.*')) {
+      const selected = sql.includes('where b.assertion_id=any(')
+        ? (v[0] as string[]).map((id) => rows.get(id)).filter(Boolean)
+        : sql.includes('where b.assertion_id=')
+          ? [rows.get(String(v[0]))].filter(Boolean)
+          : [...rows.values()];
       return {
-        rows: visible
-          ? ((sql.includes('where b.assertion_id=')
-              ? [rows.get(String(v[0]))].filter(Boolean)
-              : [...rows.values()]) as Record<string, unknown>[])
-          : [],
-        rowCount: rows.size,
+        rows: visible ? selected : [],
+        rowCount: visible ? selected.length : 0,
       };
+    }
     return { rows: [{}], rowCount: 1 };
   });
   const release = vi.fn();
@@ -249,6 +251,12 @@ it('looks up a batch of existing relation identities once while preserving reuse
     f.query.mock.calls.filter(([sql]) =>
       sql.includes('from knowledge.assertion_binding where version_id='),
     );
+  const batchLoadCalls = () =>
+    f.query.mock.calls.filter(
+      ([sql]) =>
+        sql.startsWith('select b.*') &&
+        sql.includes('where b.assertion_id=any('),
+    );
   const initial = (await f.call('import', {
     ...f.input,
     candidates: [second, f.candidate],
@@ -260,6 +268,8 @@ it('looks up a batch of existing relation identities once while preserving reuse
   expect(initial).toMatchObject({ createdCount: 2, reusedCount: 0 });
   expect(lookupCalls()).toHaveLength(1);
   expect(lookupCalls()[0]![1]?.[2]).toHaveLength(2);
+  expect(batchLoadCalls()).toHaveLength(1);
+  expect(batchLoadCalls()[0]![1]?.[0]).toHaveLength(2);
 
   f.query.mockClear();
   const mixed = (await f.call(
@@ -278,6 +288,8 @@ it('looks up a batch of existing relation identities once while preserving reuse
   );
   expect(lookupCalls()).toHaveLength(1);
   expect(lookupCalls()[0]![1]?.[2]).toHaveLength(3);
+  expect(batchLoadCalls()).toHaveLength(1);
+  expect(batchLoadCalls()[0]![1]?.[0]).toHaveLength(3);
 
   f.query.mockClear();
   await expect(
@@ -297,7 +309,31 @@ it('looks up a batch of existing relation identities once while preserving reuse
     ),
   ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
   expect(lookupCalls()).toHaveLength(1);
+  expect(batchLoadCalls()).toHaveLength(0);
   expect(f.rows.size).toBe(3);
+});
+
+it('rejects an import when a batch-loaded assertion is hidden by row scope', async () => {
+  const f = fixture();
+  const second = {
+    ...f.candidate,
+    subject: { ...f.candidate.subject, key: 'enterprise:2' },
+    object: { ...f.candidate.object, key: 'point:2' },
+  };
+  const original = f.query.getMockImplementation()!;
+  f.query.mockImplementation(async (sql, values) => {
+    const result = await original(sql, values);
+    if (
+      sql.startsWith('select b.*') &&
+      sql.includes('where b.assertion_id=any(')
+    )
+      return { rows: result.rows.slice(0, 1), rowCount: 1 };
+    return result;
+  });
+  await expect(
+    f.call('import', { ...f.input, candidates: [f.candidate, second] }),
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  expect(f.query.mock.calls.some(([sql]) => sql === 'rollback')).toBe(true);
 });
 
 it('rolls back reads on cancellation or persistence failure without exposing database errors', async () => {
