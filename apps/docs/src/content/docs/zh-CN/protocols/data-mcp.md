@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 ---
 
 ## 只做 HTTP 适配
@@ -205,6 +205,8 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 ## 共享探索
 
 `data_explore_query` 通过 `POST /api/data/v1/explore/query` 调用 `data.explore.query`。首次使用 `{"spec":{"text":"water"},"view":"resources","first":20}`，续查引用返回的 `queryId`，将 `nextCursor` 传入 `after`。API 固定已发布版本，清单有效期最长 30 分钟，每次调用重新授权所属用户和上下文。MCP Gateway 不访问结果集数据库。`NOT_PARSED` 和空分析数量表示登记就绪情况，不能用来推断没有观测数据。
+
+`resources` 结果可原样转发受权 HTTP 响应的 `summary.coverage`。`temporal` 和 `geometry` 分别用 `recordedVersionCount`、`unknownVersionCount` 统计当前可见的全部固定版本，不受返回页大小影响。有行级权限下可见的范围记录时，同一版本只计一次；记录缺失或隐藏均为未知。这不证明采样日期、精确几何、坐标系或地点身份。`approvedAssertionCount` 与 `effectiveActions` 保持 `null`；MCP 不自行推断，也不在查询过期或撤权后复用旧结果。
 
 `data.analysis.create` 接收已发布的 `dataItemId` / `versionId` 和幂等键，原子创建带审计的操作与持久化分析任务，不改变来源登记与质量声明。REST：`POST /api/data/v1/analyses`；GraphQL：`createDataAnalysis(input: JSON!)`；MCP：`data_analysis_create`。需要 `data.ingestion.write` 与 `data.catalog.read` 权限；通过返回的操作 ID 查询进度。
 

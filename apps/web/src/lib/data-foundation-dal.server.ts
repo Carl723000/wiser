@@ -1085,14 +1085,23 @@ export async function proxyDataFoundationGeoRequest(
   });
 }
 
-export async function getDataFoundationDal(): Promise<DataFoundationDal> {
+export async function getDataFoundationDal(scope?: {
+  readonly tenantId: string;
+  readonly projectId: string;
+}): Promise<DataFoundationDal> {
   await connection();
   const config = loadDataFoundationWebConfig(process.env);
   if (config === null) {
     throw new DataFoundationApiError('configuration', 503);
   }
+  if (scope) {
+    validateUuid(scope.tenantId);
+    validateUuid(scope.projectId);
+  }
   return createDataFoundationDal({
-    config,
+    config: scope
+      ? { ...config, tenantId: scope.tenantId, projectId: scope.projectId }
+      : config,
     createAuthClient: async () =>
       (await createWiserServerSupabaseClient()) as DataFoundationAuthClient | null,
   });

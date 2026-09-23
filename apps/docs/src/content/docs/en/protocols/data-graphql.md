@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 ---
 
 ## Endpoint and authority contract
@@ -180,6 +180,8 @@ Queries can retry with the same cursor. A mutation retries only with the same id
 ## Shared exploration
 
 `dataExplore(input: JSON!): JSON!` invokes `data.explore.query` with the same strict `QuerySpec`, user-bound `queryId`, immutable version membership, expiry and resource envelope as REST. It requires `data.query.execute` and `data.catalog.read`; the field has the same elevated complexity weight as `dataQuery`. Use `{spec:{text:"water"},view:"resources",first:20}` initially, then the returned `queryId` and `nextCursor`.
+
+For `view: "resources"`, the shared JSON response may include `summary.coverage`: `temporal` and `geometry` each partition the reauthorized, pinned `summary.resourceCount` into `recordedVersionCount` and `unknownVersionCount`, regardless of page size. Each version with at least one RLS-visible extent counts once; absent or hidden extent records remain unknown. This does not certify sampling time, geometry precision, CRS, or named place identity. `approvedAssertionCount` and `effectiveActions` are `null` until separately verified. GraphQL does not compute or cache another coverage total; an expired or revoked query cannot reuse the old result.
 
 `data.analysis.create` accepts an existing published `dataItemId` / `versionId` and an idempotency key. It creates an audited operation and a durable analysis job atomically; source registration and its quality declaration remain unchanged. REST: `POST /api/data/v1/analyses`; GraphQL: `createDataAnalysis(input: JSON!)`; MCP: `data_analysis_create`. Required scopes are `data.ingestion.write` and `data.catalog.read`. Poll the returned operation for completion.
 

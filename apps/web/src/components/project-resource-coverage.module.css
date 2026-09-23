@@ -1,0 +1,190 @@
+.coverage {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.heading,
+.active,
+.freshness,
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.heading h3 {
+  margin: 0;
+}
+.heading,
+.freshness {
+  color: var(--text-secondary);
+}
+.filters {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.filters label {
+  flex: 1;
+  min-width: min(220px, 100%);
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+.metrics > div {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  padding: 1rem;
+  border-radius: 8px;
+}
+.metrics dt {
+  color: var(--text-secondary);
+}
+.metrics dd {
+  margin: 0.5rem 0 0;
+  font-size: clamp(1.25rem, 2vw, 1.9rem);
+  font-weight: 700;
+  color: var(--text-strong);
+}
+.coverageStatus {
+  display: grid;
+  gap: 0.55rem;
+}
+.coverageStatus .heading h3 {
+  font-size: 1rem;
+}
+.secondaryMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+.secondaryMetrics > div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.secondaryMetrics dt,
+.secondaryMetrics small {
+  color: var(--text-secondary);
+}
+.secondaryMetrics dd {
+  margin: 0.35rem 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+.distributions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.distributions h3 {
+  font-size: 1rem;
+}
+.statuses {
+  display: grid;
+  gap: 0.5rem;
+}
+.statuses button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: start;
+}
+.active {
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.table {
+  max-height: 34rem;
+  overflow: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.table table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: start;
+}
+.table th,
+.table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+}
+.table th {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.table td:first-child {
+  min-width: 170px;
+  max-width: 320px;
+}
+.table td:first-child button {
+  text-align: start;
+}
+.badge {
+  display: inline-block;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.badge[data-state='READY'] {
+  color: var(--success-text);
+  background: var(--success-surface);
+}
+.badge[data-state='INVALID'],
+.badge[data-state='CRS_UNVERIFIED'] {
+  color: var(--warning-text);
+  background: var(--warning-surface);
+}
+.details {
+  padding: 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.details dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.details dd {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+.error {
+  border-left: 3px solid var(--danger-text);
+  padding: 0.75rem;
+  background: var(--danger-surface);
+}
+@media (max-width: 900px) {
+  .metrics,
+  .secondaryMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 540px) {
+  .distributions,
+  .details dl,
+  .secondaryMetrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .metrics > div {
+    padding: 0.7rem;
+  }
+}

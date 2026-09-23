@@ -33,11 +33,13 @@ export function ProjectAccessRequests({
   project,
   viewerId,
   review = false,
+  initialApplicationOpen = false,
 }: {
   locale: Locale;
   project: ProjectAccessProjectView;
   viewerId: string;
   review?: boolean;
+  initialApplicationOpen?: boolean;
 }) {
   const t = getDictionary(locale).projectAccess,
     w = t.request;
@@ -51,7 +53,9 @@ export function ProjectAccessRequests({
     [error, setError] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(false),
-    [open, setOpen] = useState(false);
+    [open, setOpen] = useState(
+      initialApplicationOpen && !review && project.requestsEnabled,
+    );
   const [selected, setSelected] = useState<{
     item: ProjectAccessRequestView;
     action: Action;
