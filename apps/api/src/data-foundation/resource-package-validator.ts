@@ -5,10 +5,29 @@ import {
 import {
   PlatformRequestContextSchema,
   ResourcePackageCommandSchema,
+  type PlatformRequestContext,
+  type ResourceAccessAction,
 } from '@wiser/platform-contracts';
+import { z } from 'zod';
 import type { QueryAdapterPgPool } from './query-adapters.js';
+const SourceId = z.string().uuid();
+
+/** A trusted host port. It must resolve a registered source and current provider
+ * permission for this project and requested actions; a platform policy alone is
+ * never evidence that the provider has granted access. */
+export interface ExternalSourcePackageValidatorPort {
+  validateExternalSource(input: {
+    context: PlatformRequestContext;
+    sourceId: string;
+    actions: readonly ResourceAccessAction[];
+    licenseBasis: string;
+    policyWindow?: { readonly startsAt: string; readonly expiresAt: string };
+    signal: AbortSignal;
+  }): Promise<boolean>;
+}
 export function createDataResourcePackageValidator(
   pool: QueryAdapterPgPool,
+  external?: ExternalSourcePackageValidatorPort,
 ): ResourceAdministrationOptions['validatePackage'] {
   return async (input) => {
     const context = PlatformRequestContextSchema.safeParse(input.context);
@@ -25,10 +44,32 @@ export function createDataResourcePackageValidator(
       )
     )
       return false;
-    // External sources require their own registered description/permit port.
-    // Never infer provider permission from a local Data item or a user-entered URL.
+    const sources = command.data.resources.filter(
+      (ref) => ref.kind === 'external-source',
+    );
+    const versions = command.data.resources.filter(
+      (ref) => ref.kind === 'version',
+    );
+    // Resource packages are homogeneous. A source action cannot be silently
+    // applied to a local version, and content/export actions cannot be applied
+    // to a provider directory.
+    if (sources.length && versions.length) return false;
     if (
-      command.data.resources.some((ref) => ref.kind !== 'version') ||
+      sources.length &&
+      (!external ||
+        command.data.allowedActions.some(
+          (action) =>
+            action !== 'source.discover' && action !== 'external.directory',
+        ) ||
+        sources.some(
+          (source) =>
+            !SourceId.safeParse(source.sourceId).success ||
+            source.sourceId !== source.sourceId.toLowerCase(),
+        ))
+    )
+      return false;
+    if (
+      versions.length &&
       command.data.allowedActions.includes('external.directory')
     )
       return false;
@@ -39,6 +80,26 @@ export function createDataResourcePackageValidator(
       command.data.allowedActions,
     );
     if (!validUntil) return false;
+    if (sources.length) {
+      try {
+        for (const source of sources) {
+          if (input.signal.aborted || Date.parse(validUntil) <= Date.now())
+            return false;
+          const valid = await external!.validateExternalSource({
+            context: context.data,
+            sourceId: source.sourceId,
+            actions: command.data.allowedActions,
+            licenseBasis: command.data.licenseBasis,
+            ...(input.policyWindow ? { policyWindow: input.policyWindow } : {}),
+            signal: input.signal,
+          });
+          if (!valid) return false;
+        }
+        return !input.signal.aborted && Date.parse(validUntil) > Date.now();
+      } catch {
+        return false;
+      }
+    }
     const client = await pool.connect();
     try {
       await client.query('begin read only');

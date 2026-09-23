@@ -100,20 +100,23 @@ describe.skipIf(!url)(
           [],
           [],
         ) === null
-      ) throw Error('No management permit');
+      )
+        throw Error('No management permit');
       return Promise.resolve({
-        items: [{
-          ...catalogResource,
-          name: 'Synthetic published source',
-          sourceOrganization: 'Synthetic provider',
-          versionNumber: 1,
-          securityLevel: 'L1_INTERNAL',
-          processingStage: 'RAW',
-          publicationStatus: 'PUBLISHED',
-          acceptanceStatus: 'PASSED',
-          policyId: null,
-          expectedPolicyVersion: 0,
-        }],
+        items: [
+          {
+            ...catalogResource,
+            name: 'Synthetic published source',
+            sourceOrganization: 'Synthetic provider',
+            versionNumber: 1,
+            securityLevel: 'L1_INTERNAL',
+            processingStage: 'RAW',
+            publicationStatus: 'PUBLISHED',
+            acceptanceStatus: 'PASSED',
+            policyId: null,
+            expectedPolicyVersion: 0,
+          },
+        ],
         hasMore: false,
         checkedAt: new Date().toISOString(),
         managementRoleOptions: [],
@@ -209,18 +212,22 @@ describe.skipIf(!url)(
       expect(validatePackage).not.toHaveBeenCalled();
     });
     it('lists only for currently appointed staff and returns the current fixed-version policy', async () => {
-      await expect(service.managementCatalog({
-        token: 'reader', projectId: project,
-        page: { offset: 0, limit: 20, search: '' },
-      })).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      await expect(
+        service.managementCatalog({
+          token: 'reader',
+          projectId: project,
+          page: { offset: 0, limit: 20, search: '' },
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
       expect(listManagementCatalog).not.toHaveBeenCalled();
       const first = await service.managementCatalog({
-        token: 'owner', projectId: project,
+        token: 'owner',
+        projectId: project,
         page: { offset: 0, limit: 20, search: 'Synthetic' },
       });
-      expect(first.items).toMatchObject([{ ...catalogResource,
-        policyId: null, expectedPolicyVersion: 0,
-      }]);
+      expect(first.items).toMatchObject([
+        { ...catalogResource, policyId: null, expectedPolicyVersion: 0 },
+      ]);
       expect(first.managementRoleOptions).toContain('platform-owner');
       const command = {
         ...proposal(),
@@ -229,19 +236,27 @@ describe.skipIf(!url)(
       const request = await submit(command);
       await decide(request.id);
       const updated = await service.managementCatalog({
-        token: 'owner', projectId: project,
+        token: 'owner',
+        projectId: project,
         page: { offset: 0, limit: 20, search: '' },
       });
-      expect(updated.items).toMatchObject([{ ...catalogResource,
-        policyId: command.policyId, expectedPolicyVersion: 1,
-      }]);
+      expect(updated.items).toMatchObject([
+        {
+          ...catalogResource,
+          policyId: command.policyId,
+          expectedPolicyVersion: 1,
+        },
+      ]);
       await client.query(
         "update platform_private.resource_policy_roles set active=false where role_key='platform-owner'",
       );
-      await expect(service.managementCatalog({
-        token: 'owner', projectId: project,
-        page: { offset: 0, limit: 20, search: '' },
-      })).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      await expect(
+        service.managementCatalog({
+          token: 'owner',
+          projectId: project,
+          page: { offset: 0, limit: 20, search: '' },
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
     });
     it('registers an immutable proposal idempotently without granting access', async () => {
       const input = {
@@ -406,6 +421,30 @@ describe.skipIf(!url)(
       await expect(decide(request.id)).rejects.toMatchObject({
         code: 'RESOURCE_UNAVAILABLE',
       });
+      expect(
+        (
+          await client.query(
+            'select status from platform_private.resource_policy_requests where id=$1',
+            [request.id],
+          )
+        ).rows[0],
+      ).toEqual({ status: 'pending' });
+    });
+    it('rechecks the original source policy window at publication after supplier terms change', async () => {
+      const command = proposal();
+      const request = await submit(command);
+      validatePackage.mockImplementationOnce((input) => {
+        expect(input.policyWindow).toEqual({
+          startsAt: command.startsAt,
+          expiresAt: command.expiresAt,
+        });
+        // The trusted supplier check now rejects the old end date.
+        return Promise.resolve(false);
+      });
+      await expect(decide(request.id)).rejects.toMatchObject({
+        code: 'RESOURCE_UNAVAILABLE',
+      });
+      expect(validatePackage).toHaveBeenCalledTimes(2);
       expect(
         (
           await client.query(

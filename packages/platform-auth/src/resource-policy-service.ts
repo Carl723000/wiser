@@ -209,6 +209,10 @@ export class ResourcePolicyStore {
             reason: command.reason,
           },
           managementPermit,
+          policyWindow: {
+            startsAt: command.startsAt,
+            expiresAt: command.expiresAt,
+          },
           signal: controller.signal,
         }),
         new Promise<boolean>((_, reject) => {

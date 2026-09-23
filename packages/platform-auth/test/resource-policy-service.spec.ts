@@ -110,6 +110,10 @@ it('fails closed before recording a source proposal when metadata verification f
   await expect(f.store.propose(proposal)).rejects.toMatchObject({
     code: 'RESOURCE_UNAVAILABLE',
   });
+  expect(f.validate.mock.calls[0]?.[0].policyWindow).toEqual({
+    startsAt: proposal.startsAt,
+    expiresAt: proposal.expiresAt,
+  });
   expect(f.calls.some((sql) => /^(insert|update|delete)/.test(sql))).toBe(
     false,
   );

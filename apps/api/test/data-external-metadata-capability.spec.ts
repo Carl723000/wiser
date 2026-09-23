@@ -464,3 +464,46 @@ it('requires both managed source action and provider permission', async () => {
   ).toBe(403);
   expect(readPage).not.toHaveBeenCalled();
 });
+it('selects a trusted source reader after scope checks, without treating a missing source as empty', async () => {
+  const { createExternalMetadataExecutor } =
+    await import('../src/data-foundation/external-metadata-executor.js');
+  const resolver = vi.fn((): Promise<ExternalMetadataReader | undefined> =>
+    Promise.resolve(
+      new ExternalMetadataReader({
+        access: { resolve: () => Promise.resolve(structuredClone(grant)) },
+        provider: {
+          readPage: () =>
+            Promise.resolve({
+              items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
+              total: 1,
+            }),
+        },
+        now: () => Date.parse('2026-09-20T00:00:00Z'),
+      }),
+    ),
+  );
+  const executor = createExternalMetadataExecutor(resolver);
+  const managed = resourceContext(true);
+  const execution = {
+    ...managed,
+    effectiveMaxSecurityLevel: 'L2_RESTRICTED' as const,
+    auditLevel: 'STANDARD' as const,
+    timeoutMs: 30000,
+    signal: new AbortController().signal,
+  };
+  expect(await executor.execute(input, execution)).toMatchObject({
+    items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
+  });
+  expect(resolver).toHaveBeenCalledWith(sourceId, execution);
+  await expect(
+    executor.execute(input, {
+      ...execution,
+      authorization: resourceContext(false).authorization,
+    }),
+  ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  expect(resolver).toHaveBeenCalledOnce();
+  resolver.mockResolvedValueOnce(undefined);
+  await expect(executor.execute(input, execution)).rejects.toMatchObject({
+    code: 'EXTERNAL_SOURCE_UNCONFIGURED',
+  });
+});

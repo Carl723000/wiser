@@ -80,6 +80,8 @@ export interface ResourceAdministrationOptions {
     command: ResourcePackageCommand;
     signal: AbortSignal;
     managementPermit?: ResourceManagementPermit;
+    /** Internal policy dates; source proposals must remain inside supplier terms. */
+    policyWindow?: { readonly startsAt: string; readonly expiresAt: string };
   }) => Promise<boolean>;
   /** Fixed-column Data catalog port for separately appointed source staff. */
   readonly listManagementCatalog?: (input: {
@@ -151,8 +153,7 @@ export class PostgresResourceAdministrationService {
           session,
           this.#options.validatePackage,
         ).requireAuthority('read');
-        if (!this.#options.listManagementCatalog)
-          fail('RESOURCE_UNAVAILABLE');
+        if (!this.#options.listManagementCatalog) fail('RESOURCE_UNAVAILABLE');
         const permit = issueResourceManagementPermit(
           session.context,
           [],
@@ -182,21 +183,21 @@ export class PostgresResourceAdministrationService {
               `v:${item.dataItemId.toLowerCase()}:${item.versionId.toLowerCase()}`,
           );
           const policyRows = await session.client.query<{
-              resource_key: string;
-              policy_id: string;
-              version: number;
-            }>(
-              `select distinct on (resource_key) resource_key,policy_id,version
+            resource_key: string;
+            policy_id: string;
+            version: number;
+          }>(
+            `select distinct on (resource_key) resource_key,policy_id,version
                from platform_private.resource_policy_versions
                where project_id=$1 and resource_key=any($2::text[])
                order by resource_key,version desc`,
-              [session.project.id, keys],
-            );
+            [session.project.id, keys],
+          );
           const roleRows = await session.client.query<{ role_key: string }>(
-              `select role_key from platform_private.resource_policy_roles
+            `select role_key from platform_private.resource_policy_roles
                where project_id=$1 and active and can_propose order by role_key`,
-              [session.project.id],
-            );
+            [session.project.id],
+          );
           const latest = new Map(
             policyRows.rows.map((row) => [row.resource_key, row]),
           );

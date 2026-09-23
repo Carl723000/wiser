@@ -58,7 +58,115 @@ function fixture() {
     validate: createDataResourcePackageValidator({ connect }),
   };
 }
+function externalRequest(): Input {
+  const request = input();
+  request.command.resources = [
+    { kind: 'external-source', sourceId: randomUUID() },
+  ];
+  request.command.allowedActions = ['source.discover', 'external.directory'];
+  return request;
+}
 describe('Data package validation lifecycle', () => {
+  it('validates a registered external source and verified provider licence through a separate trusted port', async () => {
+    const f = fixture();
+    const request = await authorizeManagementMetadata(externalRequest());
+    request.policyWindow = {
+      startsAt: '2026-01-01T00:00:00Z',
+      expiresAt: '2027-01-01T00:00:00Z',
+    };
+    const validateExternalSource = vi.fn(() => Promise.resolve(true));
+    const validate = createDataResourcePackageValidator(
+      { connect: f.connect },
+      { validateExternalSource },
+    );
+    expect(await validate(request)).toBe(true);
+    expect(validateExternalSource).toHaveBeenCalledOnce();
+    const source = request.command.resources[0]!;
+    if (source.kind !== 'external-source') throw new Error('Invalid fixture');
+    expect(validateExternalSource).toHaveBeenCalledWith({
+      context: request.context,
+      sourceId: source.sourceId,
+      actions: request.command.allowedActions,
+      licenseBasis: request.command.licenseBasis,
+      policyWindow: request.policyWindow,
+      signal: request.signal,
+    });
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+  it('rejects unknown, unlicensed, malformed or cross-action external sources without Data reads', async () => {
+    const f = fixture();
+    const validateExternalSource = vi.fn(() => Promise.resolve(false));
+    const validate = createDataResourcePackageValidator(
+      { connect: f.connect },
+      { validateExternalSource },
+    );
+    expect(
+      await validate(await authorizeManagementMetadata(externalRequest())),
+    ).toBe(false);
+    const accepted = await authorizeManagementMetadata(externalRequest());
+    validateExternalSource.mockResolvedValue(true);
+    accepted.command.resources = [
+      { kind: 'external-source', sourceId: 'unregistered-slug' },
+    ];
+    expect(await validate(accepted)).toBe(false);
+    const mixed = await authorizeManagementMetadata(externalRequest());
+    mixed.command.resources.push({
+      kind: 'version',
+      dataItemId: randomUUID(),
+      versionId: randomUUID(),
+    });
+    expect(await validate(mixed)).toBe(false);
+    const crossAction = await authorizeManagementMetadata(externalRequest());
+    crossAction.command.allowedActions = ['content.read'];
+    expect(await validate(crossAction)).toBe(false);
+    expect(validateExternalSource).toHaveBeenCalledTimes(1);
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+  it('discards external validation after revocation, cancellation or permit expiry', async () => {
+    const f = fixture();
+    const controller = new AbortController();
+    const validateExternalSource = vi.fn(() => {
+      controller.abort();
+      return Promise.resolve(true);
+    });
+    const validate = createDataResourcePackageValidator(
+      { connect: f.connect },
+      { validateExternalSource },
+    );
+    const request = await authorizeManagementMetadata({
+      ...externalRequest(),
+      signal: controller.signal,
+    });
+    expect(await validate(request)).toBe(false);
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+  it('requires every source in a package to pass its current provider-permission check', async () => {
+    const f = fixture();
+    const request = externalRequest();
+    request.command.resources.push({
+      kind: 'external-source',
+      sourceId: randomUUID(),
+    });
+    const validateExternalSource = vi
+      .fn(() => Promise.resolve(true))
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const validate = createDataResourcePackageValidator(
+      { connect: f.connect },
+      { validateExternalSource },
+    );
+    expect(await validate(await authorizeManagementMetadata(request))).toBe(
+      false,
+    );
+    expect(validateExternalSource).toHaveBeenCalledTimes(2);
+    validateExternalSource.mockRejectedValue(
+      new Error('private provider grant'),
+    );
+    expect(
+      await validate(await authorizeManagementMetadata(externalRequest())),
+    ).toBe(false);
+    expect(f.connect).not.toHaveBeenCalled();
+  });
   it('does not query the database for invalid, cancelled, external or wrong-project input', async () => {
     const f = fixture(),
       request = input();
