@@ -289,17 +289,15 @@ it('routes resource lifecycle commands with the session identity, exact grant ID
 
 it('transports source stewardship with fresh identity, fixed versions and strict response validation', async () => {
   const id = '11111111-1111-4111-8111-111111111111';
-  const fetch = vi
-    .fn<typeof globalThis.fetch>()
-    .mockResolvedValue(
-      Response.json({
-        items: [],
-        hasMore: false,
-        canPropose: true,
-        canApprove: false,
-        checkedAt: '2026-09-23T00:00:00Z',
-      }),
-    );
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      items: [],
+      hasMore: false,
+      canPropose: true,
+      canApprove: false,
+      checkedAt: '2026-09-23T00:00:00Z',
+    }),
+  );
   const client = createProjectAccessClient({
     origin,
     token: () => Promise.resolve('session'),
@@ -365,7 +363,7 @@ it('transports source stewardship with fresh identity, fixed versions and strict
   expect(
     fetch.mock.calls
       .slice(1)
-      .map(([u]) => new URL(String(u)).pathname.split('/').at(-1)),
+      .map(([u]) => new URL(address(u) ?? '').pathname.split('/').at(-1)),
   ).toEqual(['propose', 'decide', 'withdraw', 'revoke']);
   for (const [, init] of fetch.mock.calls.slice(1))
     expect(init).toMatchObject({

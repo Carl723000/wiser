@@ -86,7 +86,8 @@ function fixture() {
   const service = {
     sourcePolicyRequests: vi.fn(() =>
       Promise.resolve({
-        items: [sourcePolicy],
+        items: [{ ...sourcePolicy, publicationState: 'none' as const }],
+        checkedAt: '2026-09-23T00:00:00Z',
         hasMore: false,
         canPropose: true,
         canApprove: false,

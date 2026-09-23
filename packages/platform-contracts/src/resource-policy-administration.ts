@@ -68,10 +68,24 @@ export const ResourcePolicyRequestsQuerySchema = z.strictObject({
   status: ResourcePolicyRequestViewSchema.shape.status.optional(),
 });
 export const ResourcePolicyRequestsPageSchema = z.strictObject({
-  items: z.array(ResourcePolicyRequestViewSchema).max(20),
+  items: z
+    .array(
+      ResourcePolicyRequestViewSchema.extend({
+        publicationState: z.enum([
+          'none',
+          'scheduled',
+          'active',
+          'expired',
+          'revoked',
+          'superseded',
+        ]),
+      }),
+    )
+    .max(20),
   hasMore: z.boolean(),
   canPropose: z.boolean(),
   canApprove: z.boolean(),
+  checkedAt: Time,
 });
 export const ResourcePolicyRevokeReceiptSchema = z.strictObject({
   policyId: Id,

@@ -1,5 +1,18 @@
 import 'server-only';
 import {
+  ResourcePolicyRequestsQuerySchema,
+  ResourcePolicyProposalSchema,
+  ResourcePolicyDecisionSchema,
+  ResourcePolicyActionSchema,
+  ResourcePolicyRevokeSchema,
+  ResourcePolicyRequestsPageSchema,
+  ResourcePolicyRequestViewSchema,
+  ResourcePolicyRevokeReceiptSchema,
+  type ResourcePolicyRequestsQuery,
+  type ResourcePolicyProposal,
+  type ResourcePolicyDecision,
+  type ResourcePolicyAction,
+  type ResourcePolicyRevoke,
   ResourceGrantsQuerySchema,
   ResourceGrantsPageSchema,
   ResourceGrantRevokeCommandSchema,
@@ -194,6 +207,51 @@ export function createProjectAccessClient(options: {
     });
   }
   return {
+    sourcePolicyRequests(id: string, input: ResourcePolicyRequestsQuery) {
+      PlatformUuidSchema.parse(id);
+      const p = ResourcePolicyRequestsQuerySchema.parse(input);
+      const query = new URLSearchParams({
+        offset: String(p.offset),
+        limit: String(p.limit),
+        ...(p.status ? { status: p.status } : {}),
+      });
+      return call(
+        `projects/${id}/source-policy-requests?${query}`,
+        ResourcePolicyRequestsPageSchema,
+      );
+    },
+    proposeSourcePolicy(command: ResourcePolicyProposal, key: string) {
+      return call(
+        'source-policies/propose',
+        ResourcePolicyRequestViewSchema,
+        ResourcePolicyProposalSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    decideSourcePolicy(command: ResourcePolicyDecision, key: string) {
+      return call(
+        'source-policies/decide',
+        ResourcePolicyRequestViewSchema,
+        ResourcePolicyDecisionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    withdrawSourcePolicy(command: ResourcePolicyAction, key: string) {
+      return call(
+        'source-policies/withdraw',
+        ResourcePolicyRequestViewSchema,
+        ResourcePolicyActionSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
+    revokeSourcePolicy(command: ResourcePolicyRevoke, key: string) {
+      return call(
+        'source-policies/revoke',
+        ResourcePolicyRevokeReceiptSchema,
+        ResourcePolicyRevokeSchema.parse(command),
+        PlatformUuidSchema.parse(key),
+      );
+    },
     grants(id: string, input: ResourceGrantsQuery) {
       PlatformUuidSchema.parse(id);
       const p = ResourceGrantsQuerySchema.parse(input);

@@ -113,7 +113,9 @@ it('keeps uncertain retries idempotent, requires a reason and refreshes after in
   expect(new Headers(calls[0].headers).get('idempotency-key')).toBe(
     new Headers(calls[1].headers).get('idempotency-key'),
   );
-  expect(JSON.parse(String(calls[1].body))).toEqual({
+  expect(
+    JSON.parse(typeof calls[1].body === 'string' ? calls[1].body : ''),
+  ).toEqual({
     projectId: id(1),
     requestId: id(3),
     expectedVersion: 1,
@@ -157,4 +159,31 @@ it('discards a late previous project result and clears data on denial', async ()
     expect(screen.queryByText('公开河流水文资料使用许可')).toBeNull(),
   );
   expect(screen.queryByRole('button', { name: '发布许可' })).toBeNull();
+});
+it('does not offer revocation to an approval-only steward', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      Promise.resolve(
+        Response.json({
+          ...page([
+            {
+              ...row,
+              status: 'published',
+              publicationState: 'active',
+              publishedVersion: 1,
+              version: 2,
+            },
+          ]),
+          canPropose: false,
+          canApprove: true,
+        }),
+      ),
+    ),
+  );
+  render(
+    <ProjectSourcePolicies projectId={id(1)} viewerId={id(2)} locale="zh-CN" />,
+  );
+  await screen.findByText('公开河流水文资料使用许可');
+  expect(screen.queryByRole('button', { name: '撤销许可' })).toBeNull();
 });

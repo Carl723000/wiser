@@ -54,10 +54,13 @@ describe.skipIf(!url)(
   () => {
     const pool = new Pool({ connectionString: url, max: 1 });
     let client: PoolClient;
+    let inspectionTime: Date | null = null;
     const txPool: PlatformDelegationTransactionPool = {
       connect: () =>
         Promise.resolve({
           async query<Row>(sql: string, values: readonly unknown[] = []) {
+            if (sql === 'select statement_timestamp() now' && inspectionTime)
+              return { rows: [{ now: inspectionTime }] as Row[], rowCount: 1 };
             const text = /^begin\b/i.test(sql)
               ? 'savepoint source_service'
               : /^commit\b/i.test(sql)
@@ -149,6 +152,7 @@ describe.skipIf(!url)(
       );
     });
     beforeEach(async () => {
+      inspectionTime = null;
       validatePackage.mockClear();
       await client.query('savepoint source_case');
     });
@@ -437,6 +441,61 @@ describe.skipIf(!url)(
       } finally {
         await app.close();
       }
+    });
+    it('evaluates scheduled, expired and superseded publication states at the server check time', async () => {
+      const command = {
+        ...proposal(),
+        startsAt: new Date(Date.now() + 86400000).toISOString(),
+      };
+      const request = await submit(command);
+      await decide(request.id);
+      const read = () =>
+        service.sourcePolicyRequests({
+          token: 'approver',
+          projectId: project,
+          page: { offset: 0, limit: 20, status: 'published' },
+        });
+      expect((await read()).items[0]).toMatchObject({
+        publicationState: 'scheduled',
+      });
+      inspectionTime = new Date(command.expiresAt);
+      const expired = await read();
+      expect(expired.checkedAt).toBe(inspectionTime.toISOString());
+      expect(expired.items[0]).toMatchObject({
+        status: 'published',
+        publicationState: 'expired',
+      });
+      inspectionTime = null;
+      const newer = await submit({
+        ...command,
+        expectedPolicyVersion: 1,
+        startsAt: proposal().startsAt,
+      });
+      await decide(newer.id);
+      const current = await read();
+      expect(current.items.find((x) => x.id === request.id)).toMatchObject({
+        publicationState: 'superseded',
+      });
+      expect(current.items.find((x) => x.id === newer.id)).toMatchObject({
+        publicationState: 'active',
+      });
+      await service.revokeSourcePolicy({
+        token: 'owner',
+        idempotencyKey: randomUUID(),
+        command: {
+          projectId: project,
+          policyId: command.policyId,
+          policyVersion: 2,
+          reason: 'Synthetic newer permission revocation',
+        },
+      });
+      const revoked = await read();
+      expect(revoked.items.find((x) => x.id === request.id)).toMatchObject({
+        publicationState: 'superseded',
+      });
+      expect(revoked.items.find((x) => x.id === newer.id)).toMatchObject({
+        publicationState: 'revoked',
+      });
     });
     it('provides bounded review lists and append-only revocation without deleting publication history', async () => {
       const command = proposal(),

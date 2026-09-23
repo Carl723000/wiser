@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: 0a9941d0823e10a05d19b9a8f294e17af846ab4d
+lastReviewedCommit: cc766b69
 ---
 
 ## Two frontend applications
@@ -254,6 +254,10 @@ The opt-in account menu opens `/[locale]/account/access` for personal access and
 The normal `account/access` workspace opens an access overview and reads resource coverage for the selected tenant/project through the same-origin `GET /api/platform/resources` adapter. The server-only DAL forwards the verified current session to Data Foundation; selecting context never confers membership, Data scopes or resource access. Query parameters cannot provide an actor, grant or token. Counts and readiness distributions come from the full server-owned query manifest, while each resource page is bounded to 20 rows. Pagination retains the query identifier; filters create a new query. Project changes, denied access, expiry and failed refresh clear old content; aborted earlier requests cannot repopulate it. Unknown analysis totals remain unavailable.
 
 Resource rows distinguish content, spatial and graph readiness and expose fixed-version details. Optional counting explanations reuse keyboard/touch-accessible contextual help. Chinese/English, theme and narrow-screen acceptance use the same authenticated page. This coverage surface does not itself grant access, infer professional approval, or establish cross-resource temporal coverage.
+
+## Source permission review
+
+The source-permission tab uses the verified-session proxy for bounded proposal history and independent publication, rejection, withdrawal and revocation. The server separately checks explicit stewardship appointments. Historical decisions and current permission states remain distinct, with their check time. Project changes, denied refreshes and page hiding clear retained rows; known term boundaries trigger rechecks. Uncertain mutation retries retain the same idempotency key. Source registration and a management-metadata picker remain separate integration work; this review surface grants no personal reading access.
 
 ## Resource package and preset definitions
 

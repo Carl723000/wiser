@@ -109,19 +109,40 @@ export class ResourcePolicyStore {
     page: ResourcePolicyRequestsQuery,
   ): Promise<ResourcePolicyRequestsPage> {
     const rights = await this.requireAuthority('read');
-    const result = await this.session.client.query<RequestRow>(
-      'select * from platform_private.resource_policy_requests where project_id=$1 and ($2::text is null or status=$2) order by created_at desc,id desc offset $3 limit $4',
+    const now = (
+      await this.session.client.query<{ now: Date }>(
+        'select statement_timestamp() now',
+      )
+    ).rows[0]!.now;
+    const result = await this.session.client.query<
+      RequestRow & {
+        publication_state: ResourcePolicyRequestsPage['items'][number]['publicationState'];
+      }
+    >(
+      `select r.*, case
+        when r.status<>'published' then 'none'
+        when exists(select 1 from platform_private.resource_policy_versions v where v.project_id=r.project_id and v.policy_id=r.policy_id and v.version>r.published_version) then 'superseded'
+        when exists(select 1 from platform_private.resource_policy_revocations x where x.project_id=r.project_id and x.policy_id=r.policy_id and x.version=r.published_version) then 'revoked'
+        when r.expires_at<=$5 then 'expired'
+        when r.starts_at>$5 then 'scheduled'
+        else 'active' end publication_state
+       from platform_private.resource_policy_requests r where project_id=$1 and ($2::text is null or status=$2) order by created_at desc,id desc offset $3 limit $4`,
       [
         this.session.project.id,
         page.status ?? null,
         page.offset,
         page.limit + 1,
+        now,
       ],
     );
     return ResourcePolicyRequestsPageSchema.parse({
       ...rights,
-      items: result.rows.slice(0, page.limit).map(view),
+      items: result.rows.slice(0, page.limit).map((row) => ({
+        ...view(row),
+        publicationState: row.publication_state,
+      })),
       hasMore: result.rows.length > page.limit,
+      checkedAt: now.toISOString(),
     });
   }
   async #current(command: ResourcePolicyProposal) {

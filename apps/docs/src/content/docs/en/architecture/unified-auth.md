@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: e11dd07b
+lastReviewedCommit: cc766b69
 ---
 
 ## One identity authority
@@ -251,3 +251,5 @@ Resource preview fingerprints also bind the selected source-policy identities an
 Source stewardship uses explicit per-project `resource_policy_roles` appointments in addition to live membership-management or approval scopes. Existing administrators are not automatically appointed; seed grants nobody. The source proposal queue is bounded to 20 records and exposes only the declared request view. Commands record actor-scoped idempotency and append audit events. The applicant cannot approve their own proposal. Publication rechecks the original applicant's live direct session and current appointment, both applicant/reviewer metadata visibility, exact source identity/version and accepted, published Data facts. It records the immutable policy and decision in one control transaction; read-only Data validation is not a distributed write. No personal content grant is created. Rejection/withdrawal leave no source permission; revocation appends history and invalidates current authority. Provider sources remain fail-closed until the provider registry port is connected.
 
 The existing authenticated resource-administration module now serves GET `/api/platform/v1/access/projects/:projectId/source-policy-requests` and POST `/api/platform/v1/access/source-policies/{propose,decide,withdraw,revoke}`. Commands reject caller-supplied authority, require an idempotency key and retain no-store responses; roles are configured only by trusted maintenance. These endpoints are not public registration and do not perform scientific review. The browser workflow is separately accepted.
+
+Request lists return a server check time and a publication state derived from immutable policy versions, revocations and the permission term. Newer publication supersedes an older record even when that newer policy is revoked; the old policy never becomes effective again. Historical decision receipts stay unchanged. Publication/rejection belongs to the independently appointed approval role; withdrawal and revocation require the source proposal/management role, and withdrawal also requires the original applicant. Web controls follow those same distinctions.

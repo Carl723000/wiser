@@ -1,4 +1,9 @@
 import {
+  ResourcePolicyRequestsQuerySchema,
+  ResourcePolicyProposalSchema,
+  ResourcePolicyDecisionSchema,
+  ResourcePolicyActionSchema,
+  ResourcePolicyRevokeSchema,
   ResourceGrantsQuerySchema,
   ResourceGrantRevokeCommandSchema,
   ResourceGrantRenewCommandSchema,
@@ -45,6 +50,30 @@ export async function GET(
   context: Context,
 ): Promise<Response> {
   const { action } = await context.params;
+  if (action === 'source-policy-requests') {
+    const params = new URL(request.url).searchParams;
+    if (
+      request.url.length > 8192 ||
+      new Set(params.keys()).size !== [...params.keys()].length
+    )
+      return fail(400, 'VALIDATION_FAILED');
+    const { projectId, ...input } = Object.fromEntries(params);
+    const project = PlatformUuidSchema.safeParse(projectId),
+      page = ResourcePolicyRequestsQuerySchema.safeParse(input);
+    if (!project.success || !page.success)
+      return fail(400, 'VALIDATION_FAILED');
+    try {
+      return Response.json(
+        await getProjectAccessClient().sourcePolicyRequests(
+          project.data,
+          page.data,
+        ),
+        { headers },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  }
   if (action === 'resource-grants') {
     const { projectId, ...input } = Object.fromEntries(
       new URL(request.url).searchParams,
@@ -139,6 +168,10 @@ export async function POST(
   if (!isSameOriginRequest(request)) return fail(403, 'NOT_AUTHORIZED');
   const { action } = await context.params;
   if (
+    action !== 'source-policy-propose' &&
+    action !== 'source-policy-decide' &&
+    action !== 'source-policy-withdraw' &&
+    action !== 'source-policy-revoke' &&
     action !== 'resource-grant-revoke' &&
     action !== 'resource-grant-renew' &&
     action !== 'grant' &&
@@ -202,6 +235,38 @@ export async function POST(
   if (!key.success) return fail(400, 'VALIDATION_FAILED');
   try {
     const client = getProjectAccessClient();
+    if (action === 'source-policy-propose') {
+      const command = ResourcePolicyProposalSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.proposeSourcePolicy(command.data, key.data),
+        { headers },
+      );
+    }
+    if (action === 'source-policy-decide') {
+      const command = ResourcePolicyDecisionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.decideSourcePolicy(command.data, key.data),
+        { headers },
+      );
+    }
+    if (action === 'source-policy-withdraw') {
+      const command = ResourcePolicyActionSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.withdrawSourcePolicy(command.data, key.data),
+        { headers },
+      );
+    }
+    if (action === 'source-policy-revoke') {
+      const command = ResourcePolicyRevokeSchema.safeParse(body);
+      if (!command.success) return fail(400, 'VALIDATION_FAILED');
+      return Response.json(
+        await client.revokeSourcePolicy(command.data, key.data),
+        { headers },
+      );
+    }
     if (action === 'resource-grant-revoke') {
       const command = ResourceGrantRevokeCommandSchema.safeParse(body);
       if (!command.success) return fail(400, 'VALIDATION_FAILED');
