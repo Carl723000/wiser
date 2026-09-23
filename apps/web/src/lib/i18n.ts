@@ -1896,11 +1896,34 @@ const zhCN = {
     emailPlaceholder: 'name@organization.example',
     password: '密码',
     passwordPlaceholder: '输入账户密码',
-    passwordHint: '请使用组织管理员分配的账户密码。',
+    passwordHint: '受邀用户请先通过邀请链接设置本人密码。',
     submit: '登录',
     accountNote: '账户与成员关系由组织管理员统一管理。',
     securityNote: '登录由 WISER 统一身份服务保护。',
     signedOutNotice: '已安全退出当前浏览器会话。',
+    passwordSetNotice: '密码已保存，请使用新密码登录。',
+    invitation: {
+      title: '接受 WISER 邀请',
+      description: '确认邀请后设置本人密码，项目资料仍按管理员授予的范围显示。',
+      confirmation: '仅在此邀请发送给你本人时继续。继续后会切换到受邀账户。',
+      accept: '确认邀请并继续',
+      invalidTitle: '邀请链接无效或已过期',
+      unavailableTitle: '邀请暂不可用',
+      recovery: '请联系邀请人重新发送邀请；已设置密码的用户可以直接登录。',
+      unavailable: '暂时无法完成邀请，请稍后重试或联系邀请人。',
+    },
+    ownPassword: {
+      title: '设置本人密码',
+      description: '保存后重新登录，已有项目权限保持不变。',
+      password: '新密码',
+      confirmation: '再次输入新密码',
+      hint: '至少12个字符，两次输入须一致。',
+      save: '保存密码并重新登录',
+      signout: '密码已保存，但未能完成退出。请先退出当前会话，再用新密码登录。',
+      fields: '请填写至少12个字符的密码，并确保两次输入一致。',
+      unavailable:
+        '暂时无法确认密码是否保存。请尝试使用新密码登录；若无效，可重新设置。',
+    },
     errors: {
       fields: '请填写有效邮箱和密码。',
       credentials: '邮箱或密码未通过验证，请重新输入。',
@@ -4328,11 +4351,41 @@ const en: typeof zhCN = {
     emailPlaceholder: 'name@organization.example',
     password: 'Password',
     passwordPlaceholder: 'Enter your account password',
-    passwordHint: 'Use the account password provided by your organization.',
+    passwordHint:
+      'If invited, follow your invitation link to set your own password.',
     submit: 'Sign in',
     accountNote: 'Accounts and memberships are managed by your organization.',
     securityNote: 'Sign-in is protected by WISER unified identity.',
     signedOutNotice: 'This browser session has been signed out securely.',
+    passwordSetNotice: 'Password saved. Sign in with your new password.',
+    invitation: {
+      title: 'Accept your WISER invitation',
+      description:
+        'Confirm your invitation and set your own password. Project access still follows your assigned permissions.',
+      confirmation:
+        'Continue only if this invitation was sent to you. This will switch to the invited account.',
+      accept: 'Accept invitation and continue',
+      invalidTitle: 'Invitation link is invalid or expired',
+      unavailableTitle: 'Invitation temporarily unavailable',
+      recovery:
+        'Ask the inviter for a new invitation, or sign in if you have already set your password.',
+      unavailable:
+        'The invitation could not be completed. Retry later or contact the inviter.',
+    },
+    ownPassword: {
+      title: 'Set your own password',
+      description:
+        'Sign in again after saving. Your existing project permissions stay unchanged.',
+      password: 'New password',
+      confirmation: 'Confirm new password',
+      hint: 'Use at least 12 characters and enter the same password twice.',
+      save: 'Save password and sign in again',
+      signout:
+        'Your password was saved, but sign-out could not be completed. Sign out and then sign in with your new password.',
+      fields: 'Use at least 12 characters and enter the same password twice.',
+      unavailable:
+        'We could not confirm whether the password was saved. Try signing in with the new password; if it fails, set it again.',
+    },
     errors: {
       fields: 'Enter a valid email address and password.',
       credentials: 'The email or password could not be verified. Try again.',

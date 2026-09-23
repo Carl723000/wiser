@@ -70,6 +70,9 @@ export async function CurrentUserControl({
           {viewer.email ?? dictionary.auth.signedIn}
         </span>
       </span>
+      <Link className={styles.authAction} href={`/${locale}/account/password`}>
+        {dictionary.auth.ownPassword.title}
+      </Link>
       <form action={`/${locale}/auth/sign-out`} method="post">
         <button className={styles.authAction} type="submit">
           {dictionary.auth.signOut}

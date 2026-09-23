@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
 ---
 
 ## 单一身份源
@@ -34,6 +34,16 @@ Fastify 提供 `/api/platform/v1/me` 安全投影与委托命令面。`WISER_AUT
 Web 使用 `@supabase/ssr` 建立 Browser/Server Client 与 Next.js `proxy.ts`。Proxy 在响应产生前调用 `getClaims()`，刷新后的 Cookie 同时写回 request/response，并设置 `private, no-store`。`/[locale]` Portal、登录与 Auth transport 允许匿名访问；其他 locale 产品路由缺少已验证 authenticated claims 时，Proxy 保留目标地址并跳到同语言登录页。双语密码登录、PKCE callback、仅 POST 的本地退出，以及共享 Shell 的当前 Session 状态使用同一 Session 边界。所有 continuation target 都被规范到当前语言；离开 WISER origin 或重新进入 Auth endpoint 的地址一律拒绝；所有 Auth 响应均不可缓存。
 
 委托凭据严格解析 `wdc1.<key-id>.<secret>`，使用 Node 安全随机源分别生成 128-bit locator 与 256-bit secret，数据库只保存经过域隔离的 HMAC-SHA-256。JSON key ring 只接受至少 256-bit 的规范无填充 base64url key，指定一个 active key 负责新签发，同时保留旧 key 支持轮换期验证；任何配置错误都 fail closed，且不会回显秘密。delegated principal Resolver、PostgreSQL 单查询 adapter 与事务 create/issue/rotate/revoke service 都在默认进程 runtime 中组合。
+
+## 受邀读者与本人设密
+
+邀请继续使用既有 Supabase Auth 权威。`GET /[locale]/auth/invite?token_hash=...` 仅显示确认页，用户明确提交后才由 `POST /[locale]/auth/accept` 消费邀请。服务端只接受 invite 类型，核对同源 Origin 与新的已认证 claims，然后移除 hash 跳转到 `/[locale]/account/password`。邮件扫描或仅打开落地页不会消耗邀请；失效、过期与重复使用显示统一的恢复提示，不暴露上游错误。
+
+由已有获授权管理员配置 Supabase 的**邀请邮件模板**，指向已部署的 HTTPS WISER `/zh-CN/auth/invite?token_hash={{ .TokenHash }}`，英文使用 `/en/auth/invite`。默认携带 fragment 的邀请链接不能直接交给仅处理 PKCE 的旧回调，因为邀请人与接收人并不共享 PKCE 校验器；原 PKCE 登录流程保留。部署时须从访问日志、分析与错误报告中移除 `token_hash` 等认证查询值，不把真实邀请链接放入工单。认证页面使用 no-referrer，认证响应不缓存；单次邀请链接在使用或过期前仍属于凭据。
+
+已登录用户可从账户区进入设密页。`POST /[locale]/auth/password` 核对同源 Origin、已验证 claims 与实时 `getUser()` 的同一身份，要求两次密码一致且为12–4096个字符，仅调用 Supabase `updateUser({password})`，提供方密码和安全要求仍生效。成功后退出本地会话再登录，不宣称同时撤销其他设备会话。不使用管理密钥、不操作成员或角色、不新增公开注册或管理员后台。设密不会授予租户、项目或资料权限；这些继续由管理员通过既有控制面另行管理。
+
+本地验收使用隔离合成身份，不发送真实邀请邮件。真实邮件投递、部署后的邀请模板、代理 Origin、目标成员授权及接收人本人体验仍需单独获授权验收。
 
 ## 控制面模型
 

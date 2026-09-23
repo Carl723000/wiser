@@ -11,6 +11,7 @@ interface LoginPageProps {
   readonly searchParams: Promise<{
     readonly next?: string | readonly string[];
     readonly reason?: string | readonly string[];
+    readonly passwordSet?: string | readonly string[];
     readonly signedOut?: string | readonly string[];
   }>;
 }
@@ -51,6 +52,7 @@ export default async function LoginPage({
   const dictionary = getDictionary(locale);
   const next = safeLocalizedRedirect(first(query.next), locale);
   const reason = authReason(first(query.reason));
+  const passwordSet = first(query.passwordSet) === '1';
   const signedOut = first(query.signedOut) === '1';
 
   return (
@@ -99,6 +101,11 @@ export default async function LoginPage({
           </p>
         ) : null}
 
+        {reason === null && passwordSet ? (
+          <p className={styles.success} role="status">
+            {dictionary.auth.passwordSetNotice}
+          </p>
+        ) : null}
         <form
           className={styles.form}
           action={`/${locale}/auth/login`}

@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 02345029
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
 ---
 
 ## 两个前端应用
@@ -67,6 +67,8 @@ Supabase 模式中，Portal、登录和 Auth transport 公开；其他 locale �
 页面默认使用 Server Component。只有浏览器交互、浏览器 API 或局部状态需要时才增加 Client Component；不要因为父页面包含交互就把取数和身份逻辑下放到浏览器。
 
 Portal 与 Docs 提供双语智能体接入复制操作，使用服务端配置的公开 `WISER_AGENT_SETUP_URL`。剪贴板权限被拒绝时显示可选择的指令，复制成功只表示指令已复制，不附带凭据或项目数据。[智能体接入协议](/protocols/agent-setup/) 定义发行校验和独立的连接验证。生产 Docs 页面预渲染，因此构建时也需要目标公开地址。
+
+邀请确认页为 `/[locale]/auth/invite`，仅通过 POST `/auth/accept` 接受邀请；受保护的 `/[locale]/account/password` 通过 POST `/auth/password` 保存本人密码。共用账户区提供设密入口，复用登录样式与双语字典。邀请模板与安全边界见[统一身份说明](/architecture/unified-auth/)。
 
 ## Agent EXCON 读模型
 

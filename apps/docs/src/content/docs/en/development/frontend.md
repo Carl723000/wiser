@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 02345029
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
 ---
 
 ## Two frontend applications
@@ -67,6 +67,8 @@ In Supabase mode, Portal, sign-in, and Auth transport routes are public. Other l
 Pages are Server Components by default. Add a Client Component only for browser interaction, browser APIs, or local state. Do not move data access and identity logic into the browser merely because a parent view contains an interaction.
 
 Portal and Docs expose a localized Agent setup copy action backed by the server-configured public `WISER_AGENT_SETUP_URL`. Clipboard denial reveals selectable instructions; success reports only that copying completed. No credential or project data is attached to the prompt. The [Agent setup protocol](/en/protocols/agent-setup/) defines release verification and the separate connection check. Production Docs need the intended URL at build time because their pages are prerendered.
+
+Invitation confirmation lives at `/[locale]/auth/invite` with POST-only acceptance at `/auth/accept`; the protected `/[locale]/account/password` uses POST `/auth/password`. The shared account control links to self-password setup. These pages reuse the login styles and locale dictionaries; see [invited-reader security requirements](/en/architecture/unified-auth/).
 
 ## Agent EXCON read models
 
