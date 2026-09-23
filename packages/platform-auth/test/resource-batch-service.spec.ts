@@ -72,7 +72,38 @@ function fixture() {
   const writes: string[] = [];
   const query = <Row>(sql: string, values: readonly unknown[] = []) => {
     let rows: unknown[] = [];
-    if (sql.startsWith('select id from platform_private.resource_batches'))
+    if (sql.includes('current_policies as'))
+      rows = [
+        {
+          snapshot: {
+            mode: 'managed',
+            tenantId: session.context.authorization.tenantId,
+            projectId,
+            actorId,
+            purpose: 'web-console',
+            now: now.toISOString(),
+            revision: 1,
+            grants: [],
+            limits: [
+              {
+                id: randomUUID(),
+                version: 1,
+                tenantId: session.context.authorization.tenantId,
+                projectId,
+                resource: definition.resources[0],
+                allowedActions: ['content.read'],
+                managementRoles: ['manager'],
+                licenseBasis: 'Synthetic source permission',
+                status: 'active',
+                startsAt: '2026-09-22T00:00:00Z',
+                expiresAt: '2026-10-01T00:00:00Z',
+                maxGrantDays: 30,
+              },
+            ],
+          },
+        },
+      ];
+    else if (sql.startsWith('select id from platform_private.resource_batches'))
       rows = [{ id: batch.id }, { id: randomUUID() }];
     else if (sql.includes('select statement_timestamp() now')) rows = [{ now }];
     else if (sql.startsWith('select p.package_id')) rows = [definition];
@@ -120,7 +151,7 @@ function fixture() {
         purpose: 'web-console',
         maxSecurityLevel: 'L1_INTERNAL',
         roles: ['manager'],
-        scopes: ['data.catalog.read'],
+        scopes: ['data.catalog.read', 'platform.membership.manage'],
         authzVersion: 1,
       },
       traceId: 'a'.repeat(32),

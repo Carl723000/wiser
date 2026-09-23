@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
+lastReviewedCommit: 5853a28e6c9b9d5e86265c0e4446d38e44acb788
 ---
 
 ## One identity authority
@@ -243,3 +243,5 @@ The Resource grants tab lists the signed-in member’s records; managers can sel
 Managed projects now load trusted source-policy ceilings in the same control-database statement as grants, revocations, the revision and time. Immutable `resource_policy_versions` bind one exact resource to a monotonic identity/version chain, permitted actions, management roles, license evidence and validity; an independent approval identity is required. Append-only `resource_policy_revocations` invalidate the current version without deleting history. Both tables are private, force RLS, deny generic client/service-role access, and advance the project authority revision.
 
 The loader always supplies policy limits in managed mode: missing, expired, future or revoked current policy denies the affected resource. It selects the latest published version without falling back to older permissions and fails closed above 10,000 current resource policies. Member and delegator grants are intersected with those limits. Legacy projects retain existing behavior; the migration seeds no policy or project activation. Apply the control migration before updating API services. Management policy publication, management metadata access and the related UI remain a separate integration gate: package-entered license text is never a trusted source policy.
+
+Resource-package creation checks current source permission before Data validation: the operator must hold a permitted management role, every requested action must be allowed, and the source permission must be active. Batch preview, approval and execution check the proposed period against source validity and maximum grant duration. Execution also rechecks the recorded approver's current source-management role. Revocation or narrower management eligibility stops new approval/execution without deleting historical records. Project/settings locks serialize these checks with source-policy changes. Source-management eligibility neither requires nor creates personal content grants; the existing Data validator still additionally applies personal read scope until its separate management-metadata adapter is integrated. Rejection, withdrawal and revocation remain possible without extending source permission.

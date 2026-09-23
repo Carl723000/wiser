@@ -179,9 +179,14 @@ describe.skipIf(!url)(
         await client.query('rollback to savepoint source_term_test');
       }
     });
-    it.each(['approve', 'execute'] as const)(
-      'rechecks revoked source permission before %s',
-      async (stage) => {
+    it.each([
+      ['approve', 'revoked'],
+      ['execute', 'revoked'],
+      ['approve', 'role'],
+      ['execute', 'role'],
+    ] as const)(
+      'rechecks source permission before %s after %s changes',
+      async (stage, change) => {
         await client.query('savepoint source_revocation_test');
         try {
           const pending = await service.previewBatch({
@@ -203,10 +208,18 @@ describe.skipIf(!url)(
                   command: { ...action, decision: 'approve' },
                 })
               : pending;
-          await client.query(
-            `insert into platform_private.resource_policy_revocations(project_id,policy_id,version,revoked_by,reason) select project_id,policy_id,version,$2,'Synthetic source revocation' from platform_private.resource_policy_versions where project_id=$1 and resource=$3::jsonb`,
-            [project, owner, JSON.stringify(resource)],
-          );
+          if (change === 'role')
+            await client.query(
+              `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by)
+            select project_id,policy_id,version+1,resource,allowed_actions,array['platform-owner'],license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by
+            from platform_private.resource_policy_versions where project_id=$1 and resource=$2::jsonb`,
+              [project, JSON.stringify(resource)],
+            );
+          else
+            await client.query(
+              `insert into platform_private.resource_policy_revocations(project_id,policy_id,version,revoked_by,reason) select project_id,policy_id,version,$2,'Synthetic source revocation' from platform_private.resource_policy_versions where project_id=$1 and resource=$3::jsonb`,
+              [project, owner, JSON.stringify(resource)],
+            );
           const result =
             stage === 'approve'
               ? service.decideBatch({
@@ -729,6 +742,17 @@ describe.skipIf(!url)(
           packageId: randomUUID(),
           resources: [{ ...resource, versionId: randomUUID() }],
         };
+        await client.query(
+          `insert into platform_private.resource_policy_versions(project_id,policy_id,version,resource,allowed_actions,management_roles,license_basis,starts_at,expires_at,max_grant_days,created_by,approved_by)
+          values($1,$2,1,$3,array['content.read'],array['platform-owner','batch-approver-test'],'Synthetic independently approved source',now()-interval '1 day',now()+interval '60 days',10,$4,$5)`,
+          [
+            project,
+            randomUUID(),
+            JSON.stringify(fresh.resources[0]),
+            reader,
+            owner,
+          ],
+        );
         await service.savePackage({
           token: 'owner',
           command: fresh,

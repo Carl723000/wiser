@@ -1,3 +1,4 @@
+import { assertResourceManagementPolicy } from './resource-management-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   ResourceGrantsQuerySchema,
@@ -505,6 +506,11 @@ export class PostgresResourceAdministrationService {
             'package',
             command.packageId,
             command.expectedVersion,
+          );
+          await assertResourceManagementPolicy(
+            session,
+            command.resources,
+            command.allowedActions,
           );
           const controller = new AbortController();
           let timer: ReturnType<typeof setTimeout> | undefined;

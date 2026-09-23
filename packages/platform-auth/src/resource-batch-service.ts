@@ -1,3 +1,4 @@
+import { assertResourceManagementPolicy } from './resource-management-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   ResourceBatchViewSchema,
@@ -388,6 +389,15 @@ export class ResourceBatchStore {
       fail('VALIDATION_FAILED');
     const members = await this.#members(command.actorIds, end);
     if (members.length !== command.actorIds.length) fail('MEMBERSHIP_CHANGED');
+    await assertResourceManagementPolicy(
+      this.session,
+      d.resources,
+      d.actions as ResourceAccessAction[],
+      {
+        startsAt: command.startsAt,
+        expiresAt: command.expiresAt,
+      },
+    );
     await this.#validate(d, command.reason);
     const id = randomUUID();
     await this.session.client.query(
@@ -455,6 +465,15 @@ export class ResourceBatchStore {
     if (command.decision === 'approve') {
       this.#current(b);
       if (b.valid_until <= (await this.#now())) fail('PREVIEW_EXPIRED');
+      await assertResourceManagementPolicy(
+        this.session,
+        b.resources,
+        b.actions as ResourceAccessAction[],
+        {
+          startsAt: b.starts_at.toISOString(),
+          expiresAt: b.expires_at.toISOString(),
+        },
+      );
       await this.#important(this.session.human.userId, b.approval_level);
       const members = await this.session.client.query<Member>(
         'select * from platform_private.resource_batch_members where batch_id=$1 order by ordinal',
@@ -516,6 +535,35 @@ export class ResourceBatchStore {
     if (!approval?.scopes.includes('platform.access.approve'))
       fail('AUTHORITY_CHANGED');
     await this.#important(b.decided_by, b.approval_level);
+    const window = {
+      startsAt: b.starts_at.toISOString(),
+      expiresAt: b.expires_at.toISOString(),
+    };
+    await assertResourceManagementPolicy(
+      this.session,
+      b.resources,
+      b.actions as ResourceAccessAction[],
+      window,
+    );
+    await assertResourceManagementPolicy(
+      {
+        client: this.session.client,
+        context: {
+          ...this.session.context,
+          principal: {
+            actorType: 'human',
+            actorId: b.decided_by,
+            authUserId: b.decided_by,
+            sessionId: b.decided_session_id,
+            authenticationMethod: 'supabase_jwt',
+          },
+          authorization: approval,
+        },
+      },
+      b.resources,
+      b.actions as ResourceAccessAction[],
+      window,
+    );
     await this.#validate(b, command.reason);
     const original = (
       await this.session.client.query<Member>(
