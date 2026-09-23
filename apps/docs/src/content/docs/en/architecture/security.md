@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-23
-lastReviewedCommit: e943670149002e53b1386ec4cb906ce368c1ad15
+lastReviewedCommit: dc301397
 ---
 
 ## Separate four data classes
@@ -100,3 +100,5 @@ Access requests also remain in the private forced-RLS control plane. Approval is
 ## Bounded resource batch storage
 
 `06_resource_batches.sql` stores immutable fixed-version batch snapshots, at most fifty explicitly numbered recipients, append-only per-recipient attempts and important-approval role policy in the private control plane. Pending requests produce no grants. State changes require increasing versions; applicants and recipients cannot approve their own batch. Approval freezes recipients, purpose and expiry. Successful receipts must reference a grant matching the approved resource/preset versions and recipient; success cannot be repeated. No approver or request is seeded. Runtime review, current membership, provider and Data validity checks remain mandatory; these storage constraints alone do not enable a batch workflow.
+
+Source-policy workflow storage (`20260923065331_resource_policy_administration.sql`) adds explicit project stewardship role configuration and immutable proposals. It grants no stewardship roles or source permissions by default. Proposals begin pending, require optimistic state transitions, retain their submitted evidence, and cannot be deleted or reopened after a terminal decision. Publication must refer to an exactly matching immutable policy, including independent approver and applicant identities. Withdrawal creates no permission. Both tables force RLS and deny direct anonymous, authenticated and generic service-role access. Configuring stewardship remains a trusted maintenance operation; runtime authorization, HTTP and UI acceptance are separate from these storage checks.
