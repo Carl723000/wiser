@@ -132,3 +132,74 @@ it('ignores a late previous-project response after scope changes', async () => {
   await waitFor(() => expect(screen.queryByText('公开水质月报')).toBeNull());
   expect(screen.getByText('第二项目资料')).toBeTruthy();
 });
+
+it('filters registration type on the server and opens the exact visible resource version', async () => {
+  const filtered = {
+    ...result,
+    totalCount: 7,
+    resources: [{ ...source, kind: 'DATASET_INTERFACE' }],
+    summary: {
+      ...result.summary,
+      resourceCount: 7,
+      analyzedResourceCount: 7,
+      records: [{ status: 'READY', count: 7 }],
+      spatial: [{ status: 'NO_SPATIAL_DATA', count: 7 }],
+    },
+  };
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json(result))
+    .mockResolvedValueOnce(Response.json(filtered));
+  vi.stubGlobal('fetch', fetch);
+  render(
+    <ProjectResourceCoverage
+      locale="zh-CN"
+      tenantId={tenantId}
+      projectId={projectId}
+    />,
+  );
+  await screen.findByText('公开水质月报');
+  fireEvent.change(screen.getByRole('combobox', { name: '登记类型' }), {
+    target: { value: 'DATASET_INTERFACE' },
+  });
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  const request = new URL(String(fetch.mock.calls[1][0]), 'http://wiser.test');
+  expect(request.searchParams.get('kind')).toBe('DATASET_INTERFACE');
+  expect(request.searchParams.has('queryId')).toBe(false);
+  await waitFor(() =>
+    expect(screen.getByTestId('coverage-resource-total').textContent).toBe('7'),
+  );
+  expect(screen.getAllByText('数据接口').length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: '公开水质月报' }));
+  expect(
+    screen.getByRole('link', { name: '打开固定版本' }).getAttribute('href'),
+  ).toBe(`/zh-CN/data-foundation/catalog/${tenantId}?version=${projectId}`);
+});
+
+it('shows the returned processing stage without treating it as professional approval', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        ...result,
+        resources: [
+          {
+            ...source,
+            analysis: { analysisId: queryId, status: 'PARTIAL' },
+          },
+        ],
+      }),
+    ),
+  );
+  render(
+    <ProjectResourceCoverage
+      locale="zh-CN"
+      tenantId={tenantId}
+      projectId={projectId}
+    />,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: '公开水质月报' }));
+  expect(screen.getByText('解析处理状态')).toBeTruthy();
+  expect(screen.getByText('部分完成')).toBeTruthy();
+  expect(screen.queryByText('已专业审核')).toBeNull();
+});

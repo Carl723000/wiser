@@ -1,17 +1,22 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   ExplorationResultSchema,
   type ExplorationResult,
   type ExplorationReadiness,
+  type QuerySpec,
 } from '@wiser/data-contracts';
+import { catalogHref } from '@/lib/catalog-route';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { ContextHelp } from './context-help';
 import styles from './project-resource-coverage.module.css';
 
 type Props = { locale: Locale; tenantId: string; projectId: string };
+type ResourceKind = NonNullable<QuerySpec['kinds']>[number];
 type Filters = {
   text?: string;
+  kind?: ResourceKind;
   records?: ExplorationReadiness;
   spatial?: ExplorationReadiness;
 };
@@ -23,6 +28,7 @@ function Coverage({ locale, tenantId, projectId }: Props) {
   const dictionary = getDictionary(locale);
   const t = dictionary.resourceCoverage;
   const states = dictionary.dataFoundation.explorer.readiness;
+  const kinds = dictionary.dataFoundation.explorer.kinds;
   const [filters, setFilters] = useState<Filters>({});
   const [cursor, setCursor] = useState<Cursor>({});
   const [previous, setPrevious] = useState<Cursor[]>([]);
@@ -121,6 +127,29 @@ function Coverage({ locale, tenantId, projectId }: Props) {
             maxLength={512}
           />
         </label>
+        <label>
+          {dictionary.dataFoundation.explorer.kindLabel}
+          <select
+            value={filters.kind ?? ''}
+            onChange={(event) =>
+              query({
+                ...filters,
+                kind: event.target.value
+                  ? (event.target.value as ResourceKind)
+                  : undefined,
+              })
+            }
+          >
+            <option value="">
+              {dictionary.dataFoundation.explorer.allKinds}
+            </option>
+            {Object.entries(kinds).map(([kind, label]) => (
+              <option key={kind} value={kind}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="submit">{t.searchButton}</button>
         <button type="button" onClick={() => query(filters)}>
           {t.refresh}
@@ -132,6 +161,7 @@ function Coverage({ locale, tenantId, projectId }: Props) {
             {t.filtered}:{' '}
             {[
               filters.text,
+              filters.kind && kinds[filters.kind],
               filters.records && states[filters.records],
               filters.spatial && states[filters.spatial],
             ]
@@ -218,6 +248,7 @@ function Coverage({ locale, tenantId, projectId }: Props) {
                   <tr>
                     <th>{t.source}</th>
                     <th>{t.provider}</th>
+                    <th>{dictionary.dataFoundation.explorer.kindLabel}</th>
                     <th>{t.content}</th>
                     <th>{t.spatial}</th>
                     <th>{t.graph}</th>
@@ -239,6 +270,7 @@ function Coverage({ locale, tenantId, projectId }: Props) {
                         </button>
                       </td>
                       <td>{r.provider || t.unknownProvider}</td>
+                      <td>{kinds[r.kind as ResourceKind] ?? t.unknownKind}</td>
                       {(['records', 'spatial', 'graph'] as const).map(
                         (kind) => (
                           <td key={kind}>
@@ -271,6 +303,20 @@ function Coverage({ locale, tenantId, projectId }: Props) {
                   <dd>{details.provider || t.unknownProvider}</dd>
                 </div>
                 <div>
+                  <dt>{dictionary.dataFoundation.explorer.kindLabel}</dt>
+                  <dd>
+                    {kinds[details.kind as ResourceKind] ?? t.unknownKind}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t.processingStatus}</dt>
+                  <dd>
+                    {details.analysis
+                      ? t.processingStates[details.analysis.status]
+                      : t.processingUnknown}
+                  </dd>
+                </div>
+                <div>
                   <dt>{t.version}</dt>
                   <dd>{details.versionId}</dd>
                 </div>
@@ -287,6 +333,16 @@ function Coverage({ locale, tenantId, projectId }: Props) {
                   <dd>{number(details.featureCount)}</dd>
                 </div>
               </dl>
+              <Link
+                href={catalogHref(
+                  locale,
+                  details.dataItemId,
+                  details.versionId,
+                )}
+                prefetch={false}
+              >
+                {t.openVersion}
+              </Link>
               {details.limitations.length ? (
                 <>
                   <h4>{t.limitations}</h4>
