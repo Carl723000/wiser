@@ -153,6 +153,49 @@
   gap: 1rem;
   max-width: 600px;
 }
+.sourceCatalogList {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+}
+.sourceCatalogList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+.sourceCatalogList li > div {
+  display: grid;
+  gap: 0.25rem;
+}
+.sourceCatalogList span {
+  color: var(--text-secondary);
+}
+.sourceChoiceGrid,
+.sourceDates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.sourceChoiceGrid {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.sourceChoiceGrid label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.sourceDates label {
+  flex: 1 1 170px;
+}
 .feedback {
   color: var(--danger);
 }

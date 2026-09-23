@@ -13,6 +13,7 @@ import { ProjectInvitations } from './project-invitations';
 import { ProjectResourceCoverage } from './project-resource-coverage';
 import { ProjectResourceGrants } from './project-resource-grants';
 import { ProjectResourceBatches } from './project-resource-batches';
+import { ProjectSourcePolicies } from './project-source-policies';
 import { ProjectResourceDefinitions } from './project-resource-definitions';
 type Props = {
   locale: Locale;
@@ -217,6 +218,7 @@ export function ProjectAccessWorkspace({
     | 'presets'
     | 'batches'
     | 'grants'
+    | 'sources'
   >('overview');
   const [projectPage, setProjectPage] = useState(0);
   const [projectSearch, setProjectSearch] = useState('');
@@ -458,24 +460,36 @@ export function ProjectAccessWorkspace({
                     </button>
                   </>
                 ) : null}
+                {project.resourceAccessEnabled &&
+                (project.canManage || project.canApprove) ? (
+                  <button
+                    aria-pressed={view === 'sources'}
+                    onClick={() => setView('sources')}
+                  >
+                    {getDictionary(locale).sourcePolicies.title}
+                  </button>
+                ) : null}
               </nav>
               <h2>
-                {view === 'grants'
-                  ? getDictionary(locale).resourceGrants.title
-                  : view === 'batches'
-                    ? getDictionary(locale).resourceBatches.title
-                    : view === 'overview'
-                      ? t.overview
-                      : view === 'mine'
-                        ? t.mine
-                        : view === 'members'
-                          ? t.members
-                          : view === 'packages'
-                            ? getDictionary(locale).resourceDefinitions.packages
-                            : view === 'presets'
+                {view === 'sources'
+                  ? getDictionary(locale).sourcePolicies.title
+                  : view === 'grants'
+                    ? getDictionary(locale).resourceGrants.title
+                    : view === 'batches'
+                      ? getDictionary(locale).resourceBatches.title
+                      : view === 'overview'
+                        ? t.overview
+                        : view === 'mine'
+                          ? t.mine
+                          : view === 'members'
+                            ? t.members
+                            : view === 'packages'
                               ? getDictionary(locale).resourceDefinitions
-                                  .presets
-                              : t.approvals}
+                                  .packages
+                              : view === 'presets'
+                                ? getDictionary(locale).resourceDefinitions
+                                    .presets
+                                : t.approvals}
               </h2>
               {view === 'overview' ? (
                 <ProjectResourceCoverage
@@ -563,6 +577,12 @@ export function ProjectAccessWorkspace({
                     </button>
                   ) : null}
                 </>
+              ) : view === 'sources' ? (
+                <ProjectSourcePolicies
+                  projectId={project.projectId}
+                  viewerId={viewerId}
+                  locale={locale}
+                />
               ) : view === 'grants' ? (
                 <ProjectResourceGrants
                   key={project.projectId}

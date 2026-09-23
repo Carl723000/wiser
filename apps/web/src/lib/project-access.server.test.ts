@@ -286,3 +286,156 @@ it('routes resource lifecycle commands with the session identity, exact grant ID
     });
   }
 });
+
+it('transports source stewardship with fresh identity, fixed versions and strict response validation', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      items: [],
+      hasMore: false,
+      canPropose: true,
+      canApprove: false,
+      checkedAt: '2026-09-23T00:00:00Z',
+    }),
+  );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('session'),
+    fetch,
+  });
+  const page = await client.sourcePolicyRequests(id, {
+    offset: 0,
+    limit: 20,
+    status: 'pending',
+  });
+  expect(page.canApprove).toBe(false);
+  expect(address(fetch.mock.calls[0][0])).toContain(
+    `/projects/${id}/source-policy-requests?`,
+  );
+  expect(fetch.mock.calls[0][1]).toMatchObject({
+    cache: 'no-store',
+    headers: { Authorization: 'Bearer session' },
+  });
+  const proposal = {
+    projectId: id,
+    policyId: id,
+    expectedPolicyVersion: 0,
+    resource: { kind: 'version' as const, dataItemId: id, versionId: id },
+    allowedActions: ['content.read' as const],
+    managementRoles: ['data-manager'],
+    licenseBasis: 'Public redistribution permission',
+    startsAt: '2026-09-23T00:00:00Z',
+    expiresAt: '2026-10-23T00:00:00Z',
+    maxGrantDays: 7,
+    reason: 'Approved research scope',
+  };
+  const row = {
+    ...proposal,
+    id,
+    applicantId: id,
+    status: 'pending',
+    version: 1,
+    decidedBy: null,
+    decisionReason: null,
+    publishedVersion: null,
+    createdAt: proposal.startsAt,
+    decidedAt: null,
+  };
+  fetch.mockImplementation(() => Promise.resolve(Response.json(row)));
+  await client.proposeSourcePolicy(proposal, id);
+  const common = {
+    projectId: id,
+    requestId: id,
+    expectedVersion: 1,
+    reason: proposal.reason,
+  };
+  await client.decideSourcePolicy({ ...common, decision: 'reject' }, id);
+  await client.withdrawSourcePolicy(common, id);
+  fetch.mockImplementation(() =>
+    Promise.resolve(
+      Response.json({ policyId: id, policyVersion: 1, status: 'revoked' }),
+    ),
+  );
+  await client.revokeSourcePolicy(
+    { projectId: id, policyId: id, policyVersion: 1, reason: proposal.reason },
+    id,
+  );
+  expect(
+    fetch.mock.calls
+      .slice(1)
+      .map(([u]) => new URL(address(u) ?? '').pathname.split('/').at(-1)),
+  ).toEqual(['propose', 'decide', 'withdraw', 'revoke']);
+  for (const [, init] of fetch.mock.calls.slice(1))
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: { 'Idempotency-Key': id },
+    });
+  fetch.mockImplementation(() =>
+    Promise.resolve(
+      Response.json({ ...row, unexpectedCredential: 'never-render' }),
+    ),
+  );
+  await expect(client.withdrawSourcePolicy(common, id)).rejects.toMatchObject({
+    code: 'ACCESS_UNAVAILABLE',
+  });
+});
+
+it('reads the management catalog through a freshly verified session and rejects malformed metadata', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const item = {
+    dataItemId: id,
+    versionId: id,
+    name: 'River source',
+    sourceOrganization: 'Synthetic provider',
+    versionNumber: 1,
+    securityLevel: 'L0_PUBLIC',
+    processingStage: 'RAW',
+    publicationStatus: 'PUBLISHED',
+    acceptanceStatus: 'PASSED',
+    policyId: null,
+    expectedPolicyVersion: 0,
+  };
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [item],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+        managementRoleOptions: ['platform-owner'],
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        items: [{ ...item, sourceContact: 'must not cross this port' }],
+        hasMore: false,
+        checkedAt: '2026-09-23T00:00:00Z',
+        managementRoleOptions: [],
+      }),
+    );
+  const client = createProjectAccessClient({
+    origin,
+    token: () => Promise.resolve('fresh-human-session'),
+    fetch,
+  });
+  const page = await client.managementCatalog(id, {
+    offset: 0,
+    limit: 20,
+    search: 'River',
+  });
+  expect(page.items[0]).toMatchObject({ dataItemId: id, versionId: id });
+  expect(address(fetch.mock.calls[0]?.[0])).toContain(
+    `/projects/${id}/management-catalog?`,
+  );
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+    cache: 'no-store',
+    headers: { Authorization: 'Bearer fresh-human-session' },
+  });
+  await expect(
+    client.managementCatalog(id, {
+      offset: 0,
+      limit: 20,
+      search: '',
+    }),
+  ).rejects.toMatchObject({ message: 'ACCESS_UNAVAILABLE' });
+});

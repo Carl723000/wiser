@@ -164,6 +164,27 @@ export async function assertResourceManagementPolicy(
       ...selected.map((limit) => Date.parse(limit.expiresAt)),
     ),
   ).toISOString();
+  return issueResourceManagementPermit(
+    context,
+    resources,
+    actions,
+    validUntil,
+    policyFingerprint,
+  );
+}
+
+/** Internal trusted port only. Source stewardship may validate metadata before a policy exists;
+ * its caller must first check an explicit live stewardship appointment. */
+export function issueResourceManagementPermit(
+  context: PlatformRequestContext,
+  resources: ResourcePackageCommand['resources'],
+  actions: ResourcePackageCommand['allowedActions'],
+  deadline: string,
+  policyFingerprint: string,
+): ResourceManagementPermit {
+  const validUntil = new Date(
+    Math.min(Date.parse(deadline), Date.now() + 5000),
+  ).toISOString();
   const permit: ResourceManagementPermit = Object.freeze({
     kind: 'resource-management-metadata',
     policyFingerprint,
