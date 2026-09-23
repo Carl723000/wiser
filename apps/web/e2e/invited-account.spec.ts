@@ -19,7 +19,7 @@ for (const [locale, title, action, invalid] of [
     await expect(page.getByRole('button', { name: action })).toBeVisible();
     await expect(page.locator('meta[name="referrer"]')).toHaveAttribute(
       'content',
-      'no-referrer',
+      'strict-origin',
     );
     // Opening the invitation must not consume it or submit a form.
     await expect(page).toHaveURL(/\/auth\/invite\?token_hash=/);
@@ -34,6 +34,19 @@ for (const [locale, title, action, invalid] of [
     ).toBe(true);
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
     await expect(page.getByRole('button', { name: action })).toBeVisible();
+    // Exercise the native form: no-referrer would turn Origin into null.
+    let submitted: Record<string, string> | undefined;
+    await page.route(`**/${locale}/auth/accept`, async (route) => {
+      submitted = route.request().headers();
+      await route.fulfill({
+        status: 200,
+        body: 'Synthetic submission captured',
+      });
+    });
+    const origin = new URL(page.url()).origin;
+    await page.getByRole('button', { name: action }).click();
+    await expect.poll(() => submitted?.origin).toBe(origin);
+    expect(submitted?.referer).toBe(`${origin}/`);
     await page.goto(`/${locale}/auth/invite?reason=invalid`);
     await expect(page.getByRole('heading', { name: invalid })).toBeVisible();
     await expect(page.getByRole('button', { name: action })).toHaveCount(0);

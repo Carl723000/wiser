@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
+lastReviewedCommit: d99f4419798d4a88aa2717ad7346d9dec9601ef0
 ---
 
 ## Two frontend applications
@@ -246,3 +246,5 @@ Both entry routes retain the streamed operational/status section after URL norma
 Reference Web browser tests wait for the Data Foundation workspace to respond before starting UI interactions. This compiles the graph workspace during server readiness, rather than consuming the existing navigation timeout with on-demand development compilation. The readiness budget is 120 seconds; navigation, locale, theme and content assertions remain unchanged. Reference runs retain `next dev`: production mode forbids the reference suite’s disabled-auth configuration. This does not establish live API or deployed-environment acceptance.
 
 The root unit/coverage runner defaults to two workers to bound DOM and coverage contention on development hosts with preview services. Test deadlines, assertions and coverage thresholds are unchanged. Use an explicit Vitest `--maxWorkers` value for a measured concurrency experiment; a focused pass does not replace full verification.
+
+The opt-in account menu opens `/[locale]/account/access` for personal access and authorized project member actions. See [Unified Auth](/en/architecture/unified-auth/#project-access-workspace) for configuration and real-session acceptance. It retains the existing shell, locale and theme; it is not a new peer business system.

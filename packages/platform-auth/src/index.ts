@@ -8,6 +8,13 @@ import {
   type PlatformRequestContext,
 } from '@wiser/platform-contracts';
 
+export {
+  PostgresProjectAccessService,
+  ProjectAccessError,
+  type ProjectAccessErrorCode,
+  type ProjectAccessServiceOptions,
+} from './project-access-service.js';
+
 export interface VerifiedSupabaseJwtClaims {
   readonly userId: string;
   readonly sessionId: string;

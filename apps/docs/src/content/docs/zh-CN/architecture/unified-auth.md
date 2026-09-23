@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
+lastReviewedCommit: 703a77a401fa978b75ee14ed6c76e1fee8af5697
 ---
 
 ## 单一身份源
@@ -39,7 +39,7 @@ Web 使用 `@supabase/ssr` 建立 Browser/Server Client 与 Next.js `proxy.ts`�
 
 邀请继续使用既有 Supabase Auth 权威。`GET /[locale]/auth/invite?token_hash=...` 仅显示确认页，用户明确提交后才由 `POST /[locale]/auth/accept` 消费邀请。服务端只接受 invite 类型，核对同源 Origin 与新的已认证 claims，然后移除 hash 跳转到 `/[locale]/account/password`。邮件扫描或仅打开落地页不会消耗邀请；失效、过期与重复使用显示统一的恢复提示，不暴露上游错误。
 
-由已有获授权管理员配置 Supabase 的**邀请邮件模板**，指向已部署的 HTTPS WISER `/zh-CN/auth/invite?token_hash={{ .TokenHash }}`，英文使用 `/en/auth/invite`。默认携带 fragment 的邀请链接不能直接交给仅处理 PKCE 的旧回调，因为邀请人与接收人并不共享 PKCE 校验器；原 PKCE 登录流程保留。部署时须从访问日志、分析与错误报告中移除 `token_hash` 等认证查询值，不把真实邀请链接放入工单。认证页面使用 no-referrer，认证响应不缓存；单次邀请链接在使用或过期前仍属于凭据。
+由已有获授权管理员配置 Supabase 的**邀请邮件模板**，指向已部署的 HTTPS WISER `/zh-CN/auth/invite?token_hash={{ .TokenHash }}`，英文使用 `/en/auth/invite`。默认携带 fragment 的邀请链接不能直接交给仅处理 PKCE 的旧回调，因为邀请人与接收人并不共享 PKCE 校验器；原 PKCE 登录流程保留。部署时须从访问日志、分析与错误报告中移除 `token_hash` 等认证查询值，不把真实邀请链接放入工单。邀请和设密页面使用 `strict-origin`，原生表单保留可核验的 Origin，Referer 只含站点来源、不含路径或令牌；接受/设密响应仍使用 no-referrer 且不缓存。文档级 no-referrer 会把原生表单 Origin 变为 null，不能为此放宽同源检查；单次邀请链接在使用或过期前仍属于凭据。
 
 已登录用户可从账户区进入设密页。`POST /[locale]/auth/password` 核对同源 Origin、已验证 claims 与实时 `getUser()` 的同一身份，要求两次密码一致且为12–4096个字符，仅调用 Supabase `updateUser({password})`，提供方密码和安全要求仍生效。成功后退出本地会话再登录，不宣称同时撤销其他设备会话。不使用管理密钥、不操作成员或角色、不新增公开注册或管理员后台。设密不会授予租户、项目或资料权限；这些继续由管理员通过既有控制面另行管理。
 
@@ -165,3 +165,35 @@ data-postgres 只保存 Tenant、Project、Actor UUID 与策略版本，不复�
 - 越权 Scope、Purpose、安全等级、字段或导出量。
 - RLS 对 anon、authenticated、API、Worker 和迁移角色的隔离。
 - 浏览器、MCP、日志和 Telemetry 中不存在任何服务器秘密。
+
+## 项目管理授权规则边界
+
+纯函数形式的项目授权规则区分`platform.membership.manage`与`platform.access.approve`。项目管理或资料读取权限本身不代表转授权权。授予角色必须有明确的可分配角色配置，角色为有效的普通业务角色，期限有界且不超过配置及管理员有效权限期限，安全等级不高于管理员。含平台权限的角色不能通过该流程分配。禁止给自己授权或自行批准；普通成员撤销操作不能移除管理岗位，其变更仍由受控维护流程办理，同时保护最后一个管理员和其他管理岗位。
+
+此规则是实现基础，尚不代表新增管理接口已经部署。传输与持久化层仍须验证实时直接人类Session，在事务内重新加载当前项目授权，并处理并发、重试和审计。规则不读取用户可编辑metadata、不新建身份源、不授予资料级下载权限，也不改变既有Data鉴权。
+
+## 项目成员 API
+
+应用 Supabase 项目访问迁移后，显式设置 `WISER_PROJECT_ACCESS_ENABLED=true` 才注册 `/api/platform/v1/access/projects`、该前缀下的 `/projects/:projectId/members`，以及 POST `/grants`、`/revocations`。默认关闭，原入口不变。每次操作重新验证真人 Session、项目权限和可分配角色；service-role 与代理委托不能充当真人管理员。分页最多50条，拒绝未知命令字段，响应只返回声明字段且禁止缓存。
+
+私有项目策略限定可分配角色和最长天数；开发 seed 配置本地管理员 scope 与 data-reader 策略，但默认不开放项目发现。迁移不会自动给现有部署增加管理员或开放项目。普通成员入口禁止改自己的权限，也不能借新增成员激活既有租户管理角色。成员期限约束该项目内全部角色的使用；撤权保留 Auth 账号和租户成员，只撤销指定项目及其角色绑定，重新激活不会复活其他旧授权。
+
+事务内串行锁定项目、比较成员版本、核对幂等键和内容哈希，推进有效授权版本，并一起写入成员历史、既有授权审计和 Control Outbox。重放返回原命令回执，页面须再查询当前成员状态，不能把旧回执当作当前有效权限。审计与幂等记录不可改写。邀请投递见下节；申请审批仍是独立实现切片。
+
+## 项目访问工作区
+
+Web和API同时启用上述开关后，从“账户”打开 `/[locale]/account/access`。页面要求刚刚核验的真人Session。“我的访问”显示本人的有效角色和成员期限；仅有active成员记录而无有效角色时，不表示能够访问。“成员与权限”仅向当前项目有管理权的人开放，支持受限搜索、分页、角色及期限调整和项目撤权。Web同源接口转发当前Session，写操作检查同源、JSON及体积上限，响应也有大小限制；不会回退到固定令牌或管理员凭据。写操作沿用固定幂等键及成员版本，提交后或权限失败时清除旧列表并重新查询。
+
+`WISER_ACCESS_ENVIRONMENT=local`只标注维护者明确配置的本机演示，其余显示当前站点；它不选择数据库，也不跨环境同步账号。Web连接的Supabase实例与内部API必须属于同一套演示环境。“账户”折叠菜单同时保留本人密码和退出操作，支持键盘并避免在窄屏挤占主导航。
+
+真实会话浏览器验收使用 `apps/web/playwright.access.config.ts`，必须显式指定loopback预览地址。从受忽略env提供 `WISER_ACCESS_E2E_` 对应地址、管理员/查阅者邮箱及密码、项目ID；只使用可丢弃合成成员，检查会修改期限并撤销查阅者。含登录操作的检查不保存trace、截图或录屏。普通参考页面测试跳过这套独立真实Auth用例，跳过不算真实权限验收。
+
+## 可恢复的项目邀请
+
+管理员通过 `POST /api/platform/v1/access/invitations` 登记邀请，再明确调用 `POST /api/platform/v1/access/invitation-deliveries` 办理（命令均携带项目ID）；通过 `GET /api/platform/v1/access/projects/:projectId/invitations` 查询记录。列表受项目权限与分页限制且不缓存。页面提供邮箱、获准角色、期限、原因，以及刷新、重试和单独的账号接受状态。“授权办理完成”是历史回执；到期或撤销后的有效权限仍以当前成员及资源鉴权为准。
+
+先应用 `20260922094832_project_access_invitation_delivery.sql`。发送要求同时开启项目访问能力与仅 API 使用的 `WISER_PROJECT_INVITATION_ENABLED=true`，配置服务端 `SUPABASE_SERVICE_ROLE_KEY` 和固定 `WISER_PROJECT_ACCESS_WEB_ORIGIN`（loopback 外必须 HTTPS）。将 Auth Site URL 指向对应 WISER 站点，并参考 `supabase/templates/project-invite.html` 配置邀请邮件；仓库不会悄悄改写既有邮件设置。真实人员邀请前另验 SMTP、代理 Origin 与日志脱敏，管理密钥不得交给浏览器。
+
+登记先提交，再调用 Auth。投递前保存带版本的办理状态，外部请求八秒超时且不跟随跳转，返回后重新核对真人会话、项目权限、角色策略、期限及 Auth 身份与邮箱，再在事务内一起授权和记录审计/outbox。已确认的既有账号直接复用、不再发邀请邮件。失败不表示已授权或邮件送达；提供方超时可能是结果未知。明确重试时重读版本，处理中至少等待60秒才可重新办理；同一幂等操作不会重复发起投递，不承诺跨服务邮件绝对只发一次。授权失败也保留 Auth 账号。
+
+接受状态从 Auth 邮箱确认事实读回，与投递、授权处理分开。本地测试邮箱走通不代表外网真实邮件验收。双语原生表单回归检查准确的非空 Origin 与仅站点来源的 Referer。

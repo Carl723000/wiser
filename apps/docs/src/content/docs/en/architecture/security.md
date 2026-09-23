@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-07
-lastReviewedCommit: 626cfd1c22e8c24fb38306520c4e9433a5984151
+lastReviewedAt: 2026-09-22
+lastReviewedCommit: d99f4419798d4a88aa2717ad7346d9dec9601ef0
 ---
 
 ## Separate four data classes
@@ -86,3 +86,7 @@ Normal `docker compose down` preserves data. Volume deletion requires a separate
 - [ ] Downloads are short-lived and authorization-bound.
 - [ ] RLS, SQL transactions, and negative state-machine tests pass on real PostgreSQL.
 - [ ] Live AI calls are not required to merge a change.
+
+## Project access control records
+
+`04_project_access.sql` and its CLI-generated migration add private, forced-RLS project settings, assignable roles, invitations, idempotency receipts and immutable member events. No direct client or service-role table grants are added. Settings default to closed discovery. These are control-plane records, not a second identity store or Data Foundation migration. The optional `WISER_ACCESS_TEST_DATABASE_URL` integration suite must target a disposable migrated and seeded Supabase database; run pgTAP before integration fixtures. Never run a reset against the existing developer or shared instance.

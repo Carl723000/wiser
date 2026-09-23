@@ -57,6 +57,35 @@ export async function CurrentUserControl({
     );
   }
 
+  if (process.env.WISER_PROJECT_ACCESS_ENABLED === 'true') {
+    return (
+      <details className={styles.accountMenu}>
+        <summary className={styles.authAction}>
+          {dictionary.projectAccess.account}
+        </summary>
+        <div className={styles.accountPanel}>
+          <p>{viewer.email ?? dictionary.auth.signedIn}</p>
+          <Link
+            className={styles.authAction}
+            href={`/${locale}/account/access`}
+          >
+            {dictionary.projectAccess.title}
+          </Link>
+          <Link
+            className={styles.authAction}
+            href={`/${locale}/account/password`}
+          >
+            {dictionary.auth.ownPassword.title}
+          </Link>
+          <form action={`/${locale}/auth/sign-out`} method="post">
+            <button className={styles.authAction} type="submit">
+              {dictionary.auth.signOut}
+            </button>
+          </form>
+        </div>
+      </details>
+    );
+  }
   return (
     <div className={styles.authControl}>
       <span

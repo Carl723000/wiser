@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-09-22
-lastReviewedCommit: 4f0c1abb3e918387b744d66af8cdbb935c468b6f
+lastReviewedCommit: 703a77a401fa978b75ee14ed6c76e1fee8af5697
 ---
 
 ## One identity authority
@@ -39,7 +39,7 @@ Delegated credentials strictly parse `wdc1.<key-id>.<secret>`, generate independ
 
 Invitations use the existing Supabase Auth authority. The Web invitation landing page `GET /[locale]/auth/invite?token_hash=...` is read-only: the user explicitly submits its confirmation form to `POST /[locale]/auth/accept`. That handler accepts only an invite OTP, requires the exact same Origin, verifies the new authenticated claims, and redirects without the hash to `/[locale]/account/password`. Merely scanning or opening the landing link does not consume the invite. Expired/replayed links expose a stable recovery message rather than upstream errors.
 
-Configure the Supabase **invite email template**, under the existing administrator's authority, to link to the deployed HTTPS WISER `/zh-CN/auth/invite?token_hash={{ .TokenHash }}` (or `/en/auth/invite`). Do not send the default implicit fragment link to the PKCE-only callback: the inviting administrator and recipient do not share a PKCE verifier. Keep the existing PKCE callback for its existing login flow. Deployment must redact `token_hash` and other authentication query values from access logs, analytics and error reports; never attach real invitation URLs to support tickets. Auth pages set no-referrer and authenticated responses are non-cacheable. The single-use email link remains a credential until consumed or expired.
+Configure the Supabase **invite email template**, under the existing administrator's authority, to link to the deployed HTTPS WISER `/zh-CN/auth/invite?token_hash={{ .TokenHash }}` (or `/en/auth/invite`). Do not send the default implicit fragment link to the PKCE-only callback: the inviting administrator and recipient do not share a PKCE verifier. Keep the existing PKCE callback for its existing login flow. Deployment must redact `token_hash` and other authentication query values from access logs, analytics and error reports; never attach real invitation URLs to support tickets. Invitation and password pages use `strict-origin`: native form POSTs retain a verifiable Origin while Referer never includes the path or token. Acceptance/password responses remain no-referrer and non-cacheable. A no-referrer document would make native form Origin null; do not weaken the same-origin guard to work around it. The single-use email link remains a credential until consumed or expired.
 
 The signed-in user can open the password page from the account control. `POST /[locale]/auth/password` requires the same Origin, verified claims and a matching live `getUser()` result, validates matching 12–4096 character passwords, and calls only Supabase `updateUser({password})`. Provider password/security requirements still apply. Success signs out the local session and returns to sign-in; this does not claim to revoke other devices. No service-role key, member/role operation, public registration or administrative account-management interface is involved. Password setup never grants a Tenant, Project or data permission. Administrators manage those separately through the existing control plane.
 
@@ -165,3 +165,35 @@ data-postgres stores only Tenant, Project, and Actor UUIDs plus a policy version
 - Excess scope, purpose, security level, fields, or export volume.
 - RLS isolation for anon, authenticated, API, worker, and migration roles.
 - No server secret in browsers, MCP, logs, or telemetry.
+
+## Project management policy boundary
+
+The pure project-access policy distinguishes `platform.membership.manage` from `platform.access.approve`. A project-management or data-read scope alone never permits delegation. Grants require an explicit assignable-role policy, an active ordinary business role, a bounded expiry within that policy and the manager's effective authority, and a security ceiling no higher than the manager's. Roles carrying platform scopes cannot be assigned through this workflow. Self-grants and self-approval are denied; management members cannot be removed through the ordinary member-removal action. Their lifecycle remains a trusted maintenance operation, protecting the last administrator as well as other management positions.
+
+The opt-in project-access transport and PostgreSQL service verify a live direct human Session, load current scoped facts inside the transaction, and protect concurrency, retries and audit. The policy does not read user metadata, create an identity store, grant dataset-specific download rights or change existing Data authorization.
+
+## Project member API
+
+After applying the Supabase project-access migration, `WISER_PROJECT_ACCESS_ENABLED=true` registers `/api/platform/v1/access/projects`, project-scoped `/projects/:projectId/members`, and the POST `/grants` and `/revocations` commands under that prefix. The switch is off by default and disabled deployments retain their previous routes. The API never accepts service-role or delegated identities as human administrators. Pagination is bounded at 50; unknown command fields are rejected; responses allowlist public fields and are private/no-store.
+
+An explicit private role policy controls assignable roles and maximum days. New seeds configure the local owner scopes and a data-reader policy but leave project discovery disabled; existing deployments receive no automatic manager or discovery grants. Administrators cannot modify themselves or activate tenant management roles through ordinary project membership. Membership expiry limits all project role use. Revocation affects that project, retains the Auth account and tenant membership, and revokes project bindings. Reactivation does not revive other old grants.
+
+Commands recheck authority, serialize on the project, compare membership versions, enforce actor-scoped idempotency, advance the effective authorization version, and atomically append member history, authorization audit and Control Outbox. A replay returns the original command receipt; clients must reload current membership before showing effective access. The audit and idempotency rows are immutable. Invitation delivery is described below; the approval workflow remains a separate implementation slice.
+
+## Project access workspace
+
+With the same feature switch enabled on Web and API, the Account menu opens `/[locale]/account/access`. A freshly verified human Session is required. My access shows the current user's effective roles and membership expiry; an active membership row without effective roles is not presented as usable access. Members & permissions is available only for projects with management authority, with scoped search, paging, role/expiry changes and project revocation. The same-origin Web transport forwards the current Session, enforces same-origin JSON writes and bounded request/response bodies, and never falls back to a static or administrative credential. Each command carries a stable idempotency key and expected membership version; the member list is cleared and reloaded after mutations or permission failures.
+
+`WISER_ACCESS_ENVIRONMENT=local` labels an explicitly configured local demonstration; otherwise the page labels the current site. It does not select a database or synchronize accounts. Web uses its configured Supabase instance and internal API origin. Keep those together when preparing an isolated preview. The Account menu also retains own-password and sign-out actions in a keyboard-accessible disclosure, avoiding overlapping primary navigation on narrow displays.
+
+Real-session browser checks use `apps/web/playwright.access.config.ts` against an explicitly supplied loopback origin. Supply the `WISER_ACCESS_E2E_` origin, manager/reader email and password, and project ID from an ignored environment. Use only disposable synthetic members: the checks change expiry and revoke the reader. Trace, screenshots and video are disabled during credential-bearing checks. The normal reference-browser suite skips this separate integration fixture; its absence is not a real-Auth acceptance result.
+
+## Recoverable project invitations
+
+Managers register invitations under `POST /api/platform/v1/access/invitations`, then explicitly dispatch `POST /api/platform/v1/access/invitation-deliveries` (both carry a project ID); `GET /api/platform/v1/access/projects/:projectId/invitations` lists records. Listing is scoped, bounded and no-store. The Web workspace offers email, configured role, expiry and reason, plus refresh/retry and separate account-acceptance status. “Grant completed” is a historical receipt; current membership and resource authorization remain authoritative after expiry or revocation.
+
+Apply `20260922094832_project_access_invitation_delivery.sql`. Sending requires both the project-access flag and API-only `WISER_PROJECT_INVITATION_ENABLED=true`, a server-only `SUPABASE_SERVICE_ROLE_KEY`, and a fixed `WISER_PROJECT_ACCESS_WEB_ORIGIN` (HTTPS outside loopback). Configure Auth Site URL for that WISER origin and its invite template using `supabase/templates/project-invite.html`; the repository does not silently change existing mail configuration. Validate SMTP, proxy Origin and log redaction before inviting real people. Never expose the administrative key to Web clients.
+
+Registration commits before any Auth request. Delivery records a versioned claim, uses an eight-second provider timeout without redirects, and then rechecks the human Session, project authority, role policy, expiry and exact Auth identity/email binding before an atomic grant plus audit/outbox. Existing confirmed accounts are reused without another invitation email. Failure never implies a grant or confirmed delivery; a provider timeout may be an unknown outcome. Explicit retry reloads the current version; an in-progress delivery cannot be reclaimed for 60 seconds. Actor-scoped idempotency prevents repeated dispatch for the same operation; no distributed exactly-once email guarantee is claimed. The account is preserved if authorization fails.
+
+Acceptance is read back from Auth email confirmation, separately from sending and grant processing. Local mail-capture acceptance is an isolated integration result, not proof of external delivery. The native-form browser regression checks a non-null exact Origin and origin-only Referer in both locales.

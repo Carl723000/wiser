@@ -204,3 +204,5 @@ export const PlatformAgentExchangeViewSchema = z.strictObject({
 export type PlatformAgentExchangeView = z.infer<
   typeof PlatformAgentExchangeViewSchema
 >;
+
+export * from './project-access.ts';

@@ -279,6 +279,9 @@ importers:
       '@wiser/data-contracts':
         specifier: workspace:*
         version: link:../../packages/data-contracts
+      '@wiser/platform-contracts':
+        specifier: workspace:*
+        version: link:../../packages/platform-contracts
       echarts:
         specifier: 6.1.0
         version: 6.1.0
