@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildProjectAccessBootstrapPlan } from '../src/platform/project-access-bootstrap.js';
+import { runProjectAccessBootstrap } from '../src/platform/project-access-bootstrap-runtime.js';
 
 const input = {
   sourceProjectSlug: 'yongding-lab',
@@ -107,4 +111,25 @@ describe('project access bootstrap plan', () => {
       buildProjectAccessBootstrapPlan(input, '2026-09-01T00:00:00.000Z'),
     ).toThrow();
   });
+});
+
+it('rejects a readable maintenance configuration before opening a database connection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'wiser-access-bootstrap-'));
+  const file = join(directory, 'config.json');
+  try {
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...input,
+        tenantSlug: 'wiser-local',
+        maintenanceActorId: '10000000-0000-4000-8000-000000000005',
+      }),
+      { mode: 0o644 },
+    );
+    await expect(runProjectAccessBootstrap(file, false)).rejects.toThrow(
+      'Private configuration file required',
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
