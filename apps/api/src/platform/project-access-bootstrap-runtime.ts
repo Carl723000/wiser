@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { lstat, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Client, type ClientBase } from 'pg';
 import { z } from 'zod';
@@ -451,8 +451,16 @@ async function ensureBinding(
 }
 
 export async function runProjectAccessBootstrap(file: string, apply: boolean) {
+  const privateFile = resolve(file);
+  const fileStat = await lstat(privateFile);
+  if (
+    !fileStat.isFile() ||
+    (fileStat.mode & 0o077) !== 0 ||
+    (process.getuid !== undefined && fileStat.uid !== process.getuid())
+  )
+    throw new Error('Private configuration file required');
   const config = BootstrapConfig.parse(
-    JSON.parse(await readFile(resolve(file), 'utf8')),
+    JSON.parse(await readFile(privateFile, 'utf8')),
   );
   const databaseUrl = process.env['DATABASE_URL'];
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
