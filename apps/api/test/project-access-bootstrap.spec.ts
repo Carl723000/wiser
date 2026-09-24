@@ -3,7 +3,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildProjectAccessBootstrapPlan } from '../src/platform/project-access-bootstrap.js';
-import { runProjectAccessBootstrap } from '../src/platform/project-access-bootstrap-runtime.js';
+import {
+  runProjectAccessBootstrap,
+  verifyReusablePreviewRole,
+} from '../src/platform/project-access-bootstrap-runtime.js';
 
 const input = {
   sourceProjectSlug: 'yongding-lab',
@@ -132,4 +135,37 @@ it('rejects a readable maintenance configuration before opening a database conne
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+it('rejects a preview role that gained a publishing scope or a different ceiling', () => {
+  const expected = [
+    'data.catalog.read',
+    'data.geo.read',
+    'data.graph.read',
+    'data.knowledge.read',
+    'data.query',
+    'data.query.execute',
+    'data.search.execute',
+  ];
+  expect(() =>
+    verifyReusablePreviewRole({
+      systemId: 'data',
+      securityLevel: 'L3_CONFIDENTIAL',
+      scopes: expected,
+    }),
+  ).not.toThrow();
+  expect(() =>
+    verifyReusablePreviewRole({
+      systemId: 'data',
+      securityLevel: 'L3_CONFIDENTIAL',
+      scopes: [...expected, 'data.publish'],
+    }),
+  ).toThrow('Original preview role differs');
+  expect(() =>
+    verifyReusablePreviewRole({
+      systemId: 'platform',
+      securityLevel: 'L3_CONFIDENTIAL',
+      scopes: expected,
+    }),
+  ).toThrow('Original preview role differs');
 });
