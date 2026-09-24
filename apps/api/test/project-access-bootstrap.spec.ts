@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { buildProjectAccessBootstrapPlan } from '../src/platform/project-access-bootstrap.js';
 import {
   runProjectAccessBootstrap,
+  sameExpiry,
   verifyReusablePreviewRole,
 } from '../src/platform/project-access-bootstrap-runtime.js';
 
@@ -168,4 +169,13 @@ it('rejects a preview role that gained a publishing scope or a different ceiling
       scopes: expected,
     }),
   ).toThrow('Original preview role differs');
+});
+
+it('keeps an existing appointment only when its expiry exactly matches', () => {
+  const approved = '2026-09-30T23:00:00.000Z';
+  expect(sameExpiry(new Date(approved), approved)).toBe(true);
+  expect(sameExpiry(new Date('2026-10-01T00:00:00.000Z'), approved)).toBe(
+    false,
+  );
+  expect(sameExpiry(null, approved)).toBe(false);
 });

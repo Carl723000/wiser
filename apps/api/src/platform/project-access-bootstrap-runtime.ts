@@ -50,7 +50,32 @@ type RoleRow = IdRow & {
   status: string;
 };
 
-function sameExpiry(actual: Date | null, intended: string) {
+const PREVIEW_SCOPES = [
+  'data.catalog.read',
+  'data.geo.read',
+  'data.graph.read',
+  'data.knowledge.read',
+  'data.query',
+  'data.query.execute',
+  'data.search.execute',
+] as const;
+
+export function verifyReusablePreviewRole(input: {
+  readonly systemId: string;
+  readonly securityLevel: string;
+  readonly scopes: readonly string[];
+}) {
+  if (
+    input.systemId !== 'data' ||
+    input.securityLevel !== 'L3_CONFIDENTIAL' ||
+    JSON.stringify([...input.scopes].sort()) !== JSON.stringify(PREVIEW_SCOPES)
+  )
+    throw new Error(
+      'Original preview role differs from approved configuration',
+    );
+}
+
+export function sameExpiry(actual: Date | null, intended: string) {
   return actual?.getTime() === Date.parse(intended);
 }
 
@@ -103,11 +128,18 @@ async function audit(
   );
 }
 
-async function requireTenant(db: Db, slug: string, maintenanceActorId: string) {
+async function requireTenant(
+  db: Db,
+  slug: string,
+  sourceProjectSlug: string,
+  maintenanceActorId: string,
+) {
   const result = await db.query<IdRow>(
     `select t.id from platform.tenants t
-     join platform.tenant_memberships m on m.tenant_id=t.id and m.actor_id=$2
-     join platform.role_bindings b on b.tenant_id=t.id and b.actor_id=$2 and b.status='active'
+     join platform.projects p on p.tenant_id=t.id and p.slug=$2 and p.status='active'
+     join platform.tenant_memberships m on m.tenant_id=t.id and m.actor_id=$3
+     join platform.role_bindings b on b.tenant_id=t.id and b.actor_id=$3 and b.status='active'
+       and (b.project_id is null or b.project_id=p.id)
      join platform.roles r on r.id=b.role_id and r.status='active'
      join platform.role_scopes s on s.role_id=r.id and s.scope='platform.project.manage'
      where t.slug=$1 and t.status='active' and m.status='active'
@@ -116,7 +148,7 @@ async function requireTenant(db: Db, slug: string, maintenanceActorId: string) {
        and b.effective_at<=statement_timestamp()
        and (b.expires_at is null or b.expires_at>statement_timestamp())
      limit 1`,
-    [slug, maintenanceActorId],
+    [slug, sourceProjectSlug, maintenanceActorId],
   );
   if (!result.rows[0])
     throw new Error('Maintenance actor lacks live project authority');
@@ -483,6 +515,7 @@ export async function runProjectAccessBootstrap(file: string, apply: boolean) {
     const tenantId = await requireTenant(
       client,
       config.tenantSlug,
+      plan.sourceProjectSlug,
       config.maintenanceActorId,
     );
     const source = await requireProject(
@@ -497,11 +530,20 @@ export async function runProjectAccessBootstrap(file: string, apply: boolean) {
     );
     if (sourceResourceSetting.rows.length)
       throw new Error('Source project resource mode changed; replan');
-    const preview = await client.query<IdRow>(
-      `select id from platform.roles where role_key='data-project-preview'
+    const preview = await client.query<RoleRow>(
+      `select id,role_key,system_id,max_security_level,status from platform.roles where role_key='data-project-preview'
        and status='active'`,
     );
     if (!preview.rows[0]) throw new Error('Original preview role unavailable');
+    const previewScopes = await client.query<{ scope: string }>(
+      `select scope from platform.role_scopes where role_id=$1 order by scope`,
+      [preview.rows[0].id],
+    );
+    verifyReusablePreviewRole({
+      systemId: preview.rows[0].system_id,
+      securityLevel: preview.rows[0].max_security_level,
+      scopes: previewScopes.rows.map((row) => row.scope),
+    });
     const actors = new Map<string, string>();
     for (const assignment of plan.assignments) {
       if (!actors.has(assignment.email))
@@ -555,7 +597,7 @@ export async function runProjectAccessBootstrap(file: string, apply: boolean) {
       preview.rows[0].id,
       config.maintenanceActorId,
     );
-    const changedActors = new Set<string>();
+    const changedActors = new Map<string, Set<string>>();
     for (const assignment of plan.assignments) {
       const projectId = projects.get(assignment.projectSlug)!;
       const actorId = actors.get(assignment.email)!;
@@ -575,14 +617,22 @@ export async function runProjectAccessBootstrap(file: string, apply: boolean) {
         expiresAt: assignment.expiresAt,
         creatorId: config.maintenanceActorId,
       });
-      if (memberCreated || roleCreated) changedActors.add(actorId);
+      if (memberCreated || roleCreated) {
+        if (!changedActors.has(actorId)) changedActors.set(actorId, new Set());
+        changedActors.get(actorId)!.add(projectId);
+      }
     }
-    for (const actorId of changedActors)
-      await client.query(
-        `update platform.actors set authz_version=authz_version+1,
-         updated_at=statement_timestamp() where id=$1`,
-        [actorId],
-      );
+    for (const [actorId, projectIds] of changedActors)
+      for (const projectId of projectIds)
+        await client.query(
+          `update platform.actors a set authz_version=greatest(a.authz_version,
+           (select version from platform.projects where id=$2),
+           (select version from platform.tenants where id=$3),
+           (select membership_version from platform.project_memberships where project_id=$2 and actor_id=$1),
+           (select membership_version from platform.tenant_memberships where tenant_id=$3 and actor_id=$1))+1,
+           updated_at=statement_timestamp() where a.id=$1`,
+          [actorId, projectId, tenantId],
+        );
     if (apply) await client.query('commit');
     else await client.query('rollback');
     return {
