@@ -26,12 +26,17 @@ const input = {
 
 describe('project access bootstrap plan', () => {
   it('separates the three demo duties and keeps the source project untouched', () => {
-    const plan = buildProjectAccessBootstrapPlan(input, '2026-09-24T00:00:00.000Z');
+    const plan = buildProjectAccessBootstrapPlan(
+      input,
+      '2026-09-24T00:00:00.000Z',
+    );
     expect(plan.projects.map((project) => project.slug)).toEqual([
       'access-demo',
       'black-odor-trial',
     ]);
-    expect(plan.assignments.filter((item) => item.projectSlug === 'access-demo')).toEqual([
+    expect(
+      plan.assignments.filter((item) => item.projectSlug === 'access-demo'),
+    ).toEqual([
       {
         projectSlug: 'access-demo',
         email: 'first@example.test',
@@ -51,7 +56,9 @@ describe('project access bootstrap plan', () => {
         expiresAt: input.demo.expiresAt,
       },
     ]);
-    expect(plan.assignments.filter((item) => item.projectSlug === 'yongding-lab')).toEqual([
+    expect(
+      plan.assignments.filter((item) => item.projectSlug === 'yongding-lab'),
+    ).toEqual([
       {
         projectSlug: 'yongding-lab',
         email: 'researcher@example.test',
@@ -59,19 +66,22 @@ describe('project access bootstrap plan', () => {
         expiresAt: input.researcher.expiresAt,
       },
     ]);
-    expect(plan.roles.find((role) => role.key === 'access-demo-manager')?.scopes).toEqual([
-      'platform.membership.manage',
-    ]);
-    expect(plan.roles.find((role) => role.key === 'access-demo-approver')?.scopes).toEqual([
-      'platform.access.approve',
-    ]);
-    expect(plan.roles.find((role) => role.key === 'researcher-read-delegate')?.scopes).toContain(
-      'platform.delegation.manage',
+    expect(
+      plan.roles.find((role) => role.key === 'access-demo-manager')?.scopes,
+    ).toEqual(['platform.membership.manage']);
+    expect(
+      plan.roles.find((role) => role.key === 'access-demo-approver')?.scopes,
+    ).toEqual(['platform.access.approve']);
+    expect(
+      plan.roles.find((role) => role.key === 'researcher-read-delegate')
+        ?.scopes,
+    ).toContain('platform.delegation.manage');
+    expect(
+      plan.roles.find((role) => role.key === 'intake-submitter')?.scopes,
+    ).toContain('data.ingestion.write');
+    expect(plan.roles.flatMap((role) => role.scopes)).not.toContain(
+      'data.publish',
     );
-    expect(plan.roles.find((role) => role.key === 'intake-submitter')?.scopes).toContain(
-      'data.ingestion.write',
-    );
-    expect(plan.roles.flatMap((role) => role.scopes)).not.toContain('data.publish');
     expect(plan.roles.flatMap((role) => role.scopes)).not.toContain(
       'platform.project.manage',
     );
