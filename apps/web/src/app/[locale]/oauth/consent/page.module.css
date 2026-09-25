@@ -1,0 +1,148 @@
+.main {
+  width: min(calc(100% - 3rem), 1080px);
+  margin: 0 auto;
+  padding: clamp(2.5rem, 7vw, 6rem) 0;
+}
+
+.heading {
+  max-width: 720px;
+  margin-bottom: 2rem;
+}
+.eyebrow,
+.tenant {
+  color: var(--accent-strong);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+.heading h1 {
+  margin: 0.5rem 0 1rem;
+  color: var(--text-strong);
+  font-family: var(--display);
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 1.05;
+}
+.heading p,
+.client p,
+.notice p,
+.projectNote {
+  color: var(--text-secondary);
+}
+.client,
+.notice,
+.project {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+.client {
+  margin-bottom: 2rem;
+}
+.client h2,
+.project h3 {
+  margin: 0 0 0.5rem;
+  color: var(--text-strong);
+}
+.client dl {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+}
+.client dl div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.25fr) 1fr;
+  gap: 0.75rem;
+}
+.client dt {
+  color: var(--text-tertiary);
+}
+.client dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.caution {
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+.projects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  gap: 1rem;
+}
+.project {
+  display: grid;
+  align-content: start;
+}
+.project .tenant {
+  margin: 0 0 0.35rem;
+}
+.fields {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.fields label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.fields select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0.5rem;
+  color: var(--text-strong);
+  background: var(--surface);
+  font: inherit;
+}
+.projectNote {
+  font-size: 0.86rem;
+}
+.project button,
+.deny button {
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font: inherit;
+  font-weight: 760;
+  cursor: pointer;
+}
+.project button {
+  border: 1px solid var(--action-primary-bg);
+  color: var(--action-primary-text);
+  background: var(--action-primary-bg);
+}
+.deny {
+  margin-top: 1.5rem;
+}
+.deny button {
+  border: 1px solid var(--border-strong);
+  color: var(--text-strong);
+  background: var(--surface-raised);
+}
+.error {
+  padding: 1rem;
+  border: 1px solid var(--danger, #b64444);
+  border-radius: 8px;
+  color: var(--text-strong);
+}
+.main button:focus-visible,
+.main select:focus-visible,
+.main a:focus-visible {
+  outline: 3px solid var(--accent-strong);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .main {
+    width: min(calc(100% - 2rem), 1080px);
+  }
+  .client dl div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

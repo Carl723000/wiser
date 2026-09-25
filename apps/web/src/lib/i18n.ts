@@ -2371,6 +2371,41 @@ const zhCN = {
   },
   auth: {
     metaTitle: '登录',
+    agentConsent: {
+      eyebrow: '智能体连接',
+      title: '授权外部客户端访问 WISER',
+      description:
+        '请核对客户端和访问范围。只有你选择的一个项目会获得限时授权。',
+      clientRequest: '此客户端正在请求代表你访问 WISER。',
+      callback: '返回客户端',
+      requestedScopes: '请求的身份范围',
+      noScopes: '未列出',
+      caution: '请只授权你信任的客户端。授权可在有效期结束前撤销。',
+      projectsTitle: '选择一个获准项目',
+      noProjects:
+        '当前账户没有可授权的项目。你可以拒绝此次请求，或联系项目管理员。',
+      mode: '允许的操作',
+      modes: { query: '查询资料', ingest: '查询和录入资料' },
+      securityLevel: '最高资料级别',
+      levels: {
+        L0_PUBLIC: '公开',
+        L1_INTERNAL: '内部',
+        L2_RESTRICTED: '受限',
+        L3_CONFIDENTIAL: '保密',
+      },
+      duration: '有效期',
+      fifteenMinutes: '15 分钟',
+      oneHour: '1 小时',
+      projectScope: '实际操作仍受你当前的项目权限和资料许可约束。',
+      approve: '同意授权此项目',
+      deny: '拒绝授权',
+      retry: '授权未完成。请核对项目和权限后重试，或拒绝此次请求。',
+      unavailableTitle: '无法显示授权请求',
+      unavailable:
+        '请求可能已过期，或当前项目权限不允许授权。请从客户端重新发起连接。',
+      invalid: '授权请求无效。请从客户端重新发起连接。',
+      returnHome: '返回 WISER',
+    },
     signIn: '登录 WISER',
     signOut: '退出',
     signedIn: '已登录',
@@ -5364,6 +5399,45 @@ const en: typeof zhCN = {
   },
   auth: {
     metaTitle: 'Sign in',
+    agentConsent: {
+      eyebrow: 'AGENT CONNECTION',
+      title: 'Authorize an external client',
+      description:
+        'Review the client and access scope. Only the one project you choose receives a time-limited grant.',
+      clientRequest: 'This client requests access to WISER on your behalf.',
+      callback: 'Return to client',
+      requestedScopes: 'Requested identity scopes',
+      noScopes: 'None listed',
+      caution:
+        'Authorize only clients you trust. You can revoke access before the grant expires.',
+      projectsTitle: 'Choose one permitted project',
+      noProjects:
+        'Your account has no project eligible for this connection. Deny the request or contact a project administrator.',
+      mode: 'Permitted actions',
+      modes: { query: 'Query data', ingest: 'Query and ingest data' },
+      securityLevel: 'Highest data level',
+      levels: {
+        L0_PUBLIC: 'Public',
+        L1_INTERNAL: 'Internal',
+        L2_RESTRICTED: 'Restricted',
+        L3_CONFIDENTIAL: 'Confidential',
+      },
+      duration: 'Duration',
+      fifteenMinutes: '15 minutes',
+      oneHour: '1 hour',
+      projectScope:
+        'Your current project access and data permissions still apply to every operation.',
+      approve: 'Authorize this project',
+      deny: 'Deny access',
+      retry:
+        'Authorization did not finish. Check the project and permissions, then retry or deny the request.',
+      unavailableTitle: 'Cannot show this request',
+      unavailable:
+        'The request may have expired, or your project access does not allow authorization. Start again from the client.',
+      invalid:
+        'The authorization request is invalid. Start again from the client.',
+      returnHome: 'Return to WISER',
+    },
     signIn: 'Sign in to WISER',
     signOut: 'Sign out',
     signedIn: 'Signed in',

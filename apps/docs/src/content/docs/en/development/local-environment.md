@@ -67,6 +67,8 @@ GeoServer, STAC API, TiTiler, and Martin have no host port. They are reachable o
 
 Web and API use host ports `3100` and `3101` in both Compose and standalone development. Compose keeps their internal ports at `3000` and `3001`. Reference browser tests use `3200`, the standalone EXCON Lab defaults to `3201`, and standalone MCP HTTP defaults to `3004`. Supabase Auth redirects use the Web origin on `3100`; no local port override is required.
 
+The public OAuth deployment worktree sets `supabase/config.toml` Site URL, external Auth URL, and JWT issuer to the public HTTPS `:7100` origins. The table above still describes isolated local development. Do not use this public configuration for a standalone localhost sign-in test; configure local URLs and callbacks in a separate local worktree while retaining the public settings in the deployment worktree. The router allows the exact public Auth discovery path, and the published MCP resource is the public `/mcp` URL, separate from container transport addresses.
+
 ## Standalone application commands
 
 Start only what you need in separate terminals:

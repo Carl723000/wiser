@@ -51,11 +51,11 @@ export AGENT_EXCON_API_KEY=<configured-excon-key>
 
 Data Tools never send `AGENT_EXCON_API_KEY`, so a Data-only local process may use a placeholder. Before invoking `excon_*`, replace it with a real credential bound to one RunAgent. It cannot substitute for `DATA_API_BEARER_TOKEN`, or vice versa.
 
-| Verification layer | Credential                                          | Sole responsibility                             |
-| ------------------ | --------------------------------------------------- | ----------------------------------------------- |
-| MCP HTTP transport | `DATA_MCP_BEARER_TOKEN`                             | Permit `POST /mcp`                              |
-| Agent EXCON module | `AGENT_EXCON_API_KEY`                               | Bind `excon_*` downstream calls to one RunAgent |
-| Data module        | `DATA_API_BEARER_TOKEN` plus Tenant/Project/Purpose | Authorize `data_*` downstream context           |
+| Verification layer               | Credential                                          | Sole responsibility                             |
+| -------------------------------- | --------------------------------------------------- | ----------------------------------------------- |
+| MCP HTTP transport (static mode) | `DATA_MCP_BEARER_TOKEN`                             | Permit `POST /mcp`                              |
+| Agent EXCON module               | `AGENT_EXCON_API_KEY`                               | Bind `excon_*` downstream calls to one RunAgent |
+| Data module                      | `DATA_API_BEARER_TOKEN` plus Tenant/Project/Purpose | Authorize `data_*` downstream context           |
 
 One Gateway request can discover both modules, but neither the transport principal nor one system principal gains the other system's permissions.
 
@@ -70,7 +70,7 @@ One Gateway registers EXCON and Data modules together. Their API bearers and ide
 
 ## Streamable HTTP
 
-Compose exposes the stateless endpoint at `http://127.0.0.1:13004/mcp`. For a standalone start, keep the EXCON/Data API configuration above and add:
+The following static compatibility mode exposes the stateless endpoint at `http://127.0.0.1:13004/mcp`. For a standalone start, keep the EXCON/Data API configuration above and add:
 
 ```bash
 export DATA_MCP_BEARER_TOKEN=<random-secret-at-least-16-characters>
@@ -87,6 +87,10 @@ The two credentials have different jobs:
 2. `DATA_API_BEARER_TOKEN` is the unified WISER identity for downstream REST requests.
 
 Never place either token in a query, Tool argument, Resource URI, log, telemetry, or Git. `GET /health/live` and `/health/ready` are unauthenticated and non-cacheable. Graceful shutdown makes readiness false before draining requests. Every `/mcp` request gets a fresh server/transport; the boundary does not issue or resume MCP sessions.
+
+### Public OAuth mode
+
+The port 7100 deployment sets `WISER_MCP_AUTH_MODE=oauth`. Its public resource is `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`. An anonymous request receives 401 and `WWW-Authenticate` pointing to protected resource metadata; the authorization server uses public issuer `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`. The client uses OAuth authorization code with PKCE S256 and the existing user's browser consent. This mode does not use the static `DATA_MCP_BEARER_TOKEN` or a fixed downstream `DATA_API_BEARER_TOKEN` for client requests. Each bearer request is exchanged by the API for a short-lived, Project-bound credential, then only Data Tools and `wiser_connection` are registered for that connection. Query and ingestion remain subject to the selected mode and live Project/resource permissions; publication is not granted. End-to-end client acceptance is still **BLOCKED** pending personal browser and real MCP client tests. See [Unified Auth](/en/architecture/unified-auth/) and [the connection guide](/en/development/wiser-data-guide/).
 
 ## The 33 Tools
 

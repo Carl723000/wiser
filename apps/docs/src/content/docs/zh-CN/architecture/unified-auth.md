@@ -107,6 +107,12 @@ API 同时配置 `WISER_AGENT_MCP_RESOURCE`（精确的公开 `/mcp` URL）与 `
 
 这些路由通过经过验证的 Session、持久化授权或 OAuth 绑定确定项目所有权。交换与撤销仅接受空 JSON body；所有写操作要求 UUID `Idempotency-Key`。入口统一校验输入和输出 schema，限制请求 body 为 16 KiB，并返回 no-store 响应和受控错误。数据库或 provider 故障不会暴露上游细节，管理视图不返回 credential。
 
+### 7100 公网 OAuth 部署
+
+当前部署启用了 GoTrue OAuth 2.1、动态客户端注册与 `platform_private.agent_access_token_hook`。Web 的 `/oauth/consent` 把授权请求送到已登录的双语页面；页面先通过 Supabase 关联当前 human，再从 WISER API 读取可授权项目。用户必须明确选择一个项目、模式、级别和期限，或拒绝。项目授权先提交，随后 Supabase 才批准授权码。MCP 发现元数据中的 resource 为 `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`，issuer 为 `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`。Auth 反代只允许 `/auth/v1` 和精确的 `/.well-known/oauth-authorization-server/auth/v1`；后者在反代内改写到 Kong 的 Auth 路由，不开放 Kong 的 REST/Storage。
+
+截至 2026-09-26，公网发现、PKCE 授权入口、动态注册、匿名 401 和浏览器登录重定向已核验。本人浏览器授权/拒绝、真实 MCP 客户端令牌交换、项目隔离与撤销效果仍需联调，因此端到端状态为 **BLOCKED**。认证 API 的 `disable_signup=false` 与“不提供公众自行注册”的文案冲突；关闭注册前须核对邀请和现有账户开通流程。
+
 ## 请求处理
 
 ```text
