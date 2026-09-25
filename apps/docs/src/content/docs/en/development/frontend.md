@@ -56,6 +56,7 @@ See [Product interface and content design](/en/development/product-experience/) 
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | WISER Portal               | `/[locale]`; anonymous visitors may read the platform and system introduction                                    |
 | Unified identity           | `/[locale]/login`, `/[locale]/auth/login`, `/[locale]/auth/callback`, `/[locale]/auth/sign-out`                  |
+| Agent OAuth consent        | `/oauth/consent` entry, `/[locale]/oauth/consent` page, and `/[locale]/oauth/consent/decision` form              |
 | Agent EXCON scenarios      | `/[locale]/scenarios`, `/[locale]/scenarios/[scenarioId]`                                                        |
 | Agent EXCON runs           | `/[locale]/runs`, `/[locale]/runs/[runId]`, plus `collaboration`, `diagnostics`, `trace`, and `replay` subroutes |
 | Data Foundation overview   | `/[locale]/data-foundation`                                                                                      |
@@ -63,6 +64,8 @@ See [Product interface and content design](/en/development/product-experience/) 
 | Data Foundation detail     | `catalog/[dataItemId]`, `ingestions/[ingestionId]`, `operations/[operationId]`, and `lineage/[dataItemId]`       |
 
 In Supabase mode, Portal, sign-in, and Auth transport routes are public. Other localized product routes require verified authenticated claims in Proxy; anonymous requests retain their target and redirect to locale sign-in. `WISER_AUTH_MODE=off` remains a local reference-preview mode only.
+
+The public OAuth entry keeps its browser redirect relative to the Web origin. The localized consent page needs a verified user Session and reads eligible Projects from the WISER API after Supabase associates the authorization request with that user. Form decisions check `WISER_PUBLIC_WEB_ORIGIN` in production, then revalidate the selected Project, mode, level, and duration server-side. Approval creates the bounded WISER grant before Supabase issues an authorization code; denial creates no grant.
 
 Pages are Server Components by default. Add a Client Component only for browser interaction, browser APIs, or local state. Do not move data access and identity logic into the browser merely because a parent view contains an interaction.
 

@@ -67,6 +67,8 @@ GeoServer、STAC API、TiTiler 与 Martin 没有 host port；只能由统一 Aut
 
 Compose 与独立开发都使用 Web `3100`、API `3101` 作为宿主机入口；Compose 内部端口仍为 `3000`、`3001`。浏览器参考测试使用 `3200`，独立 EXCON Lab 默认使用 `3201`，独立 MCP HTTP 默认使用 `3004`。Supabase Auth 回调使用 Web 的 `3100` 地址，无需本机端口覆盖配置。
 
+现网 OAuth 部署工作树的 `supabase/config.toml` 已把 Site URL、外部 Auth URL 和 JWT issuer 指向公网 HTTPS `:7100`；上表仍描述独立本机开发端口。不要把该现网配置直接用于独立 localhost 登录测试；在单独的本机工作树中设置相应的本机 URL 与回调，部署工作树保留公网配置。现网 Auth 标准发现路径经路由器精确放行，MCP resource 为公网 `/mcp`，与容器内部 transport 地址分开。
+
 ## 单应用命令
 
 在不同终端中按需启动：

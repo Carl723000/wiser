@@ -107,6 +107,12 @@ Agent HTTP routes are enabled when the API receives both `WISER_AGENT_MCP_RESOUR
 
 These routes determine project ownership from the verified Session, persisted consent or OAuth binding. Exchange and revoke accept only an empty JSON body; all mutations require a UUID `Idempotency-Key`. Input/output schemas, 16 KiB request-body limits, no-store responses and controlled errors apply throughout. Database or provider failures expose no upstream details. Management views never return credentials.
 
+### Public OAuth deployment on port 7100
+
+The current deployment enables the GoTrue OAuth 2.1 server, dynamic client registration, and `platform_private.agent_access_token_hook`. Web `/oauth/consent` leads to the authenticated bilingual consent page. It first associates the authorization request with the human through Supabase, then reads eligible Projects from the WISER API. The user explicitly chooses one Project, mode, security ceiling, and duration, or denies access. WISER commits the bounded Project grant before Supabase approves the authorization code. MCP metadata publishes `https://mcp.wiser.thuenv.tiangong.world:7100/mcp` as the resource and `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1` as the issuer. The Auth proxy allows only `/auth/v1` and the exact `/.well-known/oauth-authorization-server/auth/v1` path; it rewrites the latter to Kong's Auth route without exposing Kong REST or Storage.
+
+As of 2026-09-26, public discovery, the PKCE authorization entry, dynamic registration, anonymous 401, and the browser sign-in redirect have been checked. Personal browser approval/denial, a real MCP client's token exchange, Project isolation, and revocation remain to be jointly tested, so end-to-end status is **BLOCKED**. The Auth API currently reports `disable_signup=false`; this conflicts with copy claiming public self-registration is unavailable. Confirm the invitation and account provisioning workflow before changing signup controls.
+
 ## Request processing
 
 ```text

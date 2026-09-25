@@ -56,6 +56,7 @@ Portal、导航层级、产品命名和用户文案见[产品界面与内容设�
 | ---------------------- | ------------------------------------------------------------------------------------------------------ |
 | WISER Portal           | `/[locale]`；允许匿名查看平台与系统介绍                                                                |
 | 统一身份               | `/[locale]/login`、`/[locale]/auth/login`、`/[locale]/auth/callback`、`/[locale]/auth/sign-out`        |
+| Agent OAuth 授权       | `/oauth/consent` 入口、`/[locale]/oauth/consent` 页面与 `decision` 表单路由                            |
 | Agent EXCON 场景       | `/[locale]/scenarios`、`/[locale]/scenarios/[scenarioId]`                                              |
 | Agent EXCON 运行       | `/[locale]/runs`、`/[locale]/runs/[runId]` 及 `collaboration`、`diagnostics`、`trace`、`replay` 子路由 |
 | Data Foundation 总览   | `/[locale]/data-foundation`                                                                            |
@@ -63,6 +64,8 @@ Portal、导航层级、产品命名和用户文案见[产品界面与内容设�
 | Data Foundation 详情   | `catalog/[dataItemId]`、`ingestions/[ingestionId]`、`operations/[operationId]`、`lineage/[dataItemId]` |
 
 Supabase 模式中，Portal、登录和 Auth transport 公开；其他 locale 产品路由要求 Proxy 取得已验证的 authenticated claims，否则保留目标地址并跳转到同语言登录页。`WISER_AUTH_MODE=off` 只保留本机 reference 预览。
+
+公网 OAuth 入口使用相对 Web 地址跳转。双语授权页要求有效的用户 Session；Supabase 先把授权请求关联到该用户，WISER API 再返回可授权项目。生产表单仅接受 `WISER_PUBLIC_WEB_ORIGIN`，并在服务端重验项目、模式、级别与期限。同意时先创建有边界的 WISER 授权，再由 Supabase 签发授权码；拒绝时不创建项目授权。
 
 页面默认使用 Server Component。只有浏览器交互、浏览器 API 或局部状态需要时才增加 Client Component；不要因为父页面包含交互就把取数和身份逻辑下放到浏览器。
 

@@ -74,6 +74,8 @@ The default complete stack is ready only after the command succeeds. It neither 
 | MCP Streamable HTTP   | `http://127.0.0.1:13004/mcp`               |
 | Supabase Studio       | `http://127.0.0.1:56323`                   |
 
+These are isolated local development endpoints. The public OAuth deployment worktree uses HTTPS `:7100` in `supabase/config.toml`; use a separate local worktree with local Auth URLs and callbacks for this fixture workflow. See [the public data access and sample trial entry guide](/en/development/wiser-data-guide/).
+
 Sign in with the local fixture account:
 
 ```text
