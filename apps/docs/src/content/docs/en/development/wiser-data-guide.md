@@ -17,7 +17,7 @@ checkPaths:
   - apps/mcp/src/**
   - supabase/config.toml
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: c0ba77f3
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## Web links
@@ -54,4 +54,6 @@ An MCP client supporting OAuth 2.1 authorization code and PKCE S256 connects in 
 
 ### Self-registration status
 
-Production `/auth/v1/settings` reports `disable_signup=false`; running GoTrue also has `GOTRUE_DISABLE_SIGNUP=false` with email sign-in enabled. The absence of a public signup page does not mean the Auth API blocks self-registration. Earlier copy claiming no public self-registration is therefore unverified. This change did not alter signup controls without first checking invitation and account provisioning workflows, and it did not create a test account.
+Public self-registration was disabled on 2026-09-26 at the deployment owner's explicit request. Production `/auth/v1/settings` returns `disable_signup=true`; persistent GoTrue configuration sets `GOTRUE_DISABLE_SIGNUP=true`, matching `[auth] enable_signup=false` in the repository. A public `POST /auth/v1/signup` returned `422 signup_disabled`. The check contained no password and created no test account.
+
+Email/password sign-in for existing accounts remains enabled. Account, Session, Project and membership counts were unchanged. Contact the Project maintainer for an authorized account-provisioning or invitation workflow; account activation does not grant Project access automatically. These checks do not replace personal sign-in, email invitation or real MCP client end-to-end acceptance.
