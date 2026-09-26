@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Auth links contain one-time credentials; never log development request URLs.
+  logging: false,
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
   experimental: {
     useTypeScriptCli: true,

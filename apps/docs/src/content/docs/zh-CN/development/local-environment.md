@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
+lastReviewedCommit: e5eef1040b814c154288f24349ff7f0fd4034dcd
 ---
 
 ## 运行模式
@@ -90,6 +90,8 @@ Data Foundation Web 使用 Supabase SSR Session，完整栈会为 Data smoke 和
 ### 如何取得本机身份
 
 仓库 Auth 配置已关闭公众自行注册；保留邮箱认证以供已有账户登录。本机 fixture 登录、经授权的管理员邀请与公众注册入口分别处理。已由 Compose 管理的现网 Auth 还须在持久运行配置中设置 `GOTRUE_DISABLE_SIGNUP=true`，并只重建 Auth 服务；仅修改 `supabase/config.toml` 不会改变已运行的容器。
+
+CLI 邀请模板读取 `apps/web/public/auth-email-templates/invite.html`；Compose 管理的 GoTrue 须通过 `GOTRUE_MAILER_TEMPLATES_INVITE` 获取部署后 Web 的 `/auth-email-templates/invite.html`。投递前核对实际生成的邮件、公网邀请链接及访问日志隐私。当前共享服务器的 SMTP 仍为内部 Mailpit 收件服务，只能证明内部邮件已生成，不能证明送达外部收件人。
 
 - 人类开发者在 `/zh-CN/login` 使用 quick-start 的 seed operator 登录，Web 通过 Supabase Session 访问 Platform 与 Data 页面。
 - Agent/服务 delegated credential 由有 `platform.delegation.manage` 的 Supabase 人类通过 `/api/platform/v1/delegations` 创建、签发、轮换和撤销；明文只返回一次。

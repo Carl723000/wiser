@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
+lastReviewedCommit: e5eef1040b814c154288f24349ff7f0fd4034dcd
 ---
 
 ## Separate four data classes
@@ -69,6 +69,8 @@ WISER Web consumes safe DTOs from an observability gateway, not raw Tempo, Loki,
 Host-side Codex sign-in never enters shared containers. Do not bake `~/.codex`, access tokens, or API keys into images or Event payloads. CI defaults to the fake provider; opt-in online tests use a least-privilege secret.
 
 Logs may retain provider, model, latency, token count, and safe correlation IDs, but never raw credentials. Uploaded content and model output remain untrusted data rather than executable system instructions.
+
+Invitation hashes, OAuth codes and tokens in authentication URLs must also stay out of access logs. Web disables Next.js development request logging with `logging: false`. For the self-hosted Kong gateway, persist `KONG_PROXY_ACCESS_LOG=off` and `KONG_ADMIN_ACCESS_LOG=off`, or use a reviewed format that excludes query values. Keep router logs and error reporting free of authentication URLs. Before sending a valid invitation, probe every hop with a harmless marker and check both stdout and stderr; never use a real credential as the logging probe.
 
 ## Compose security
 
