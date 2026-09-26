@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
+lastReviewedCommit: e5eef1040b814c154288f24349ff7f0fd4034dcd
 ---
 
 ## Runtime modes
@@ -90,6 +90,8 @@ The shared MCP process always initializes its EXCON HTTP client. Even Data-only 
 ### Obtaining local identity
 
 The checked-in Auth configuration disables public self-registration. Keep email authentication enabled for existing users; local fixture login and authorized administrative invitations are separate from the public signup endpoint. A deployed Compose Auth instance also needs `GOTRUE_DISABLE_SIGNUP=true` in its persistent runtime configuration and a targeted Auth recreation; editing `supabase/config.toml` alone does not change an already-running container.
+
+The CLI invite template uses `apps/web/public/auth-email-templates/invite.html`. Compose-managed GoTrue instead fetches the deployed Web `/auth-email-templates/invite.html` URL through `GOTRUE_MAILER_TEMPLATES_INVITE`. Verify the actual generated message, public invitation URL and access-log privacy before delivery. The current shared server still uses its internal Mailpit SMTP sink; that proves internal mail generation only, not delivery to an external recipient.
 
 - A human developer signs in at `/en/login` with the seeded operator from Quick start. Web uses the Supabase session for Platform and Data pages.
 - A Supabase human with `platform.delegation.manage` creates, issues, rotates, and revokes Agent/service delegated credentials through `/api/platform/v1/delegations`; plaintext is returned once.

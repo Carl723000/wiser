@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-23
-lastReviewedCommit: cc766b69
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: e5eef1040b814c154288f24349ff7f0fd4034dcd
 ---
 
 ## 单一身份源
@@ -44,6 +44,8 @@ Web 使用 `@supabase/ssr` 建立 Browser/Server Client 与 Next.js `proxy.ts`�
 已登录用户可从账户区进入设密页。`POST /[locale]/auth/password` 核对同源 Origin、已验证 claims 与实时 `getUser()` 的同一身份，要求两次密码一致且为12–4096个字符，仅调用 Supabase `updateUser({password})`，提供方密码和安全要求仍生效。成功后退出本地会话再登录，不宣称同时撤销其他设备会话。不使用管理密钥、不操作成员或角色、不新增公开注册或管理员后台。设密不会授予租户、项目或资料权限；这些继续由管理员通过既有控制面另行管理。
 
 本地验收使用隔离合成身份，不发送真实邀请邮件。真实邮件投递、部署后的邀请模板、代理 Origin、目标成员授权及接收人本人体验仍需单独获授权验收。
+
+邀请模板的唯一原件位于 `apps/web/public/auth-email-templates/invite.html`，由 Web 的 `/auth-email-templates/invite.html` 提供。Supabase CLI 通过 `[auth.email.template.invite]` 读取同一文件；Compose 管理的 GoTrue 则须将 `GOTRUE_MAILER_TEMPLATES_INVITE` 指向部署后的 HTTPS 模板地址。仅挂载文件不会生效，GoTrue 通过 HTTP 获取模板；获取失败可能回退默认邮件，因此须核对模板正文及实际生成的邀请链接。
 
 ## 控制面模型
 
@@ -111,7 +113,7 @@ API 同时配置 `WISER_AGENT_MCP_RESOURCE`（精确的公开 `/mcp` URL）与 `
 
 当前部署启用了 GoTrue OAuth 2.1、动态客户端注册与 `platform_private.agent_access_token_hook`。Web 的 `/oauth/consent` 把授权请求送到已登录的双语页面；页面先通过 Supabase 关联当前 human，再从 WISER API 读取可授权项目。用户必须明确选择一个项目、模式、级别和期限，或拒绝。项目授权先提交，随后 Supabase 才批准授权码。MCP 发现元数据中的 resource 为 `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`，issuer 为 `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`。Auth 反代只允许 `/auth/v1` 和精确的 `/.well-known/oauth-authorization-server/auth/v1`；后者在反代内改写到 Kong 的 Auth 路由，不开放 Kong 的 REST/Storage。
 
-截至 2026-09-26，公网发现、PKCE 授权入口、动态注册、匿名 401 和浏览器登录重定向已核验。本人浏览器授权/拒绝、真实 MCP 客户端令牌交换、项目隔离与撤销效果仍需联调，因此端到端状态为 **BLOCKED**。认证 API 的 `disable_signup=false` 与“不提供公众自行注册”的文案冲突；关闭注册前须核对邀请和现有账户开通流程。
+截至 2026-09-26，公网发现、PKCE 授权入口、动态注册、匿名 401 和浏览器登录重定向已核验。本人浏览器授权/拒绝、真实 MCP 客户端令牌交换、项目隔离与撤销效果仍需联调，因此端到端状态为 **BLOCKED**。公众自行注册已关闭：现网认证 API 返回 `disable_signup=true`，公众注册请求得到 `signup_disabled`。已有邮箱密码登录保持开启；管理员邀请仍须分别验证邮件投递与收件人接受。
 
 ## 请求处理
 
@@ -200,7 +202,7 @@ Web和API同时启用上述开关后，从“账户”打开 `/[locale]/account/
 
 管理员通过 `POST /api/platform/v1/access/invitations` 登记邀请，再明确调用 `POST /api/platform/v1/access/invitation-deliveries` 办理（命令均携带项目ID）；通过 `GET /api/platform/v1/access/projects/:projectId/invitations` 查询记录。列表受项目权限与分页限制且不缓存。页面提供邮箱、获准角色、期限、原因，以及刷新、重试和单独的账号接受状态。“授权办理完成”是历史回执；到期或撤销后的有效权限仍以当前成员及资源鉴权为准。
 
-先应用 `20260922094832_project_access_invitation_delivery.sql`。发送要求同时开启项目访问能力与仅 API 使用的 `WISER_PROJECT_INVITATION_ENABLED=true`，配置服务端 `SUPABASE_SERVICE_ROLE_KEY` 和固定 `WISER_PROJECT_ACCESS_WEB_ORIGIN`（loopback 外必须 HTTPS）。将 Auth Site URL 指向对应 WISER 站点，并参考 `supabase/templates/project-invite.html` 配置邀请邮件；仓库不会悄悄改写既有邮件设置。真实人员邀请前另验 SMTP、代理 Origin 与日志脱敏，管理密钥不得交给浏览器。
+先应用 `20260922094832_project_access_invitation_delivery.sql`。发送要求同时开启项目访问能力与仅 API 使用的 `WISER_PROJECT_INVITATION_ENABLED=true`，配置服务端 `SUPABASE_SERVICE_ROLE_KEY` 和固定 `WISER_PROJECT_ACCESS_WEB_ORIGIN`（loopback 外必须 HTTPS）。将 Auth Site URL 指向对应 WISER 站点，并参考 `apps/web/public/auth-email-templates/invite.html` 配置邀请邮件；仓库不会悄悄改写既有邮件设置。真实人员邀请前另验 SMTP、代理 Origin 与日志脱敏，管理密钥不得交给浏览器。
 
 登记先提交，再调用 Auth。投递前保存带版本的办理状态，外部请求八秒超时且不跟随跳转，返回后重新核对真人会话、项目权限、角色策略、期限及 Auth 身份与邮箱，再在事务内一起授权和记录审计/outbox。已确认的既有账号直接复用、不再发邀请邮件。失败不表示已授权或邮件送达；提供方超时可能是结果未知。明确重试时重读版本，处理中至少等待60秒才可重新办理；同一幂等操作不会重复发起投递，不承诺跨服务邮件绝对只发一次。授权失败也保留 Auth 账号。
 
