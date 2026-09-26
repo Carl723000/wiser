@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 02345029
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: cc766b69
 ---
 
 ## Two frontend applications
@@ -56,6 +56,7 @@ See [Product interface and content design](/en/development/product-experience/) 
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | WISER Portal               | `/[locale]`; anonymous visitors may read the platform and system introduction                                    |
 | Unified identity           | `/[locale]/login`, `/[locale]/auth/login`, `/[locale]/auth/callback`, `/[locale]/auth/sign-out`                  |
+| Agent OAuth consent        | `/oauth/consent` entry, `/[locale]/oauth/consent` page, and `/[locale]/oauth/consent/decision` form              |
 | Agent EXCON scenarios      | `/[locale]/scenarios`, `/[locale]/scenarios/[scenarioId]`                                                        |
 | Agent EXCON runs           | `/[locale]/runs`, `/[locale]/runs/[runId]`, plus `collaboration`, `diagnostics`, `trace`, and `replay` subroutes |
 | Data Foundation overview   | `/[locale]/data-foundation`                                                                                      |
@@ -64,9 +65,13 @@ See [Product interface and content design](/en/development/product-experience/) 
 
 In Supabase mode, Portal, sign-in, and Auth transport routes are public. Other localized product routes require verified authenticated claims in Proxy; anonymous requests retain their target and redirect to locale sign-in. `WISER_AUTH_MODE=off` remains a local reference-preview mode only.
 
+The public OAuth entry keeps its browser redirect relative to the Web origin. The localized consent page needs a verified user Session and reads eligible Projects from the WISER API after Supabase associates the authorization request with that user. Form decisions check `WISER_PUBLIC_WEB_ORIGIN` in production, then revalidate the selected Project, mode, level, and duration server-side. Approval creates the bounded WISER grant before Supabase issues an authorization code; denial creates no grant.
+
 Pages are Server Components by default. Add a Client Component only for browser interaction, browser APIs, or local state. Do not move data access and identity logic into the browser merely because a parent view contains an interaction.
 
 Portal and Docs expose a localized Agent setup copy action backed by the server-configured public `WISER_AGENT_SETUP_URL`. Clipboard denial reveals selectable instructions; success reports only that copying completed. No credential or project data is attached to the prompt. The [Agent setup protocol](/en/protocols/agent-setup/) defines release verification and the separate connection check. Production Docs need the intended URL at build time because their pages are prerendered.
+
+Invitation confirmation lives at `/[locale]/auth/invite` with POST-only acceptance at `/auth/accept`; the protected `/[locale]/account/password` uses POST `/auth/password`. The shared account control links to self-password setup. These pages reuse the login styles and locale dictionaries; see [invited-reader security requirements](/en/architecture/unified-auth/).
 
 ## Agent EXCON read models
 
@@ -244,3 +249,25 @@ Both entry routes retain the streamed operational/status section after URL norma
 Reference Web browser tests wait for the Data Foundation workspace to respond before starting UI interactions. This compiles the graph workspace during server readiness, rather than consuming the existing navigation timeout with on-demand development compilation. The readiness budget is 120 seconds; navigation, locale, theme and content assertions remain unchanged. Reference runs retain `next dev`: production mode forbids the reference suite’s disabled-auth configuration. This does not establish live API or deployed-environment acceptance.
 
 The root unit/coverage runner defaults to two workers to bound DOM and coverage contention on development hosts with preview services. Test deadlines, assertions and coverage thresholds are unchanged. Use an explicit Vitest `--maxWorkers` value for a measured concurrency experiment; a focused pass does not replace full verification.
+
+The opt-in account menu opens `/[locale]/account/access` for personal access and authorized project member actions. See [Unified Auth](/en/architecture/unified-auth/#project-access-workspace) for configuration and real-session acceptance. It retains the existing shell, locale and theme; it is not a new peer business system.
+
+## Project resource coverage
+
+The normal `account/access` workspace opens an access overview and reads resource coverage for the selected tenant/project through the same-origin `GET /api/platform/resources` adapter. The server-only DAL forwards the verified current session to Data Foundation; selecting context never confers membership, Data scopes or resource access. Query parameters cannot provide an actor, grant or token. Counts and readiness distributions come from the full server-owned query manifest, while each resource page is bounded to 20 rows. Pagination retains the query identifier; filters create a new query. Project changes, denied access, expiry and failed refresh clear old content; aborted earlier requests cannot repopulate it. Unknown analysis totals remain unavailable.
+
+Resource rows distinguish content, spatial and graph readiness and expose fixed-version details. Optional counting explanations reuse keyboard/touch-accessible contextual help. Chinese/English, theme and narrow-screen acceptance use the same authenticated page. This coverage surface does not itself grant access, infer professional approval, or establish cross-resource temporal coverage.
+
+## Source permission review
+
+The source-permission tab uses the verified-session proxy for bounded proposal history and independent publication, rejection, withdrawal and revocation. The server separately checks explicit stewardship appointments. Historical decisions and current permission states remain distinct, with their check time. Project changes, denied refreshes and page hiding clear retained rows; known term boundaries trigger rechecks. Uncertain mutation retries retain the same idempotency key. Source registration and a management-metadata picker remain separate integration work; this review surface grants no personal reading access.
+
+## Resource package and preset definitions
+
+Managed projects expose resource-package and preset tabs only to current project managers. The live projects response carries the optional `resourceAccessEnabled` flag; its absence preserves existing navigation. Both tables retrieve at most 20 latest definitions per page. Package creation selects explicit fixed versions from the current authorized coverage query, retains selections across pages and deduplicates exact item/version pairs. It never selects unread pages or grants access. Preset updates create an immutable version and retain the expected previous version.
+
+The same-origin adapter verifies session, origin, bounded input and idempotency keys before forwarding definitions. Ambiguous retries keep an identical command key; changed inputs get a new key. Project changes and failed authorization clear retained definitions and close editors. Successful saves explicitly distinguish stored definitions from effective member grants. Creation remains unavailable while the current definition list is loading or denied.
+
+The resource-enabled project workbench includes a batch-access tab for managers and approval reviewers. Managers select only explicitly loaded members and immutable package/preset versions; approval-only users see review controls without member-management controls. Applicant/recipient self-approval controls are absent, while the server independently enforces the rule. Preview, approval and execution statuses remain distinct, receipts retain per-recipient history, and retries reuse unchanged command keys (including fixed preview timestamps). Project changes abort stale requests. The same verified-session BFF handles bounded lists and all four batch actions.
+
+Batch member details show frozen differences by action, with an explicit unknown state for older previews. Changed grants prompt a fresh application; current effective access is never inferred from a historical receipt.

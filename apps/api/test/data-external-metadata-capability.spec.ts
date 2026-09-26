@@ -400,3 +400,110 @@ describe('external metadata through the platform capability boundary', () => {
     });
   });
 });
+
+function resourceContext(allowed: boolean, expires = '2099-01-01T00:00:00Z') {
+  const copy = structuredClone(context);
+  copy.authorization.resourceAccess = {
+    revision: 1,
+    fingerprint: 'a'.repeat(64),
+    scope: {
+      mode: 'managed',
+      validUntil: expires,
+      permissions: {
+        'content.read': [],
+        'original.read': [],
+        'result.export': [],
+        'source.discover': [{ kind: 'external-source', sourceId }],
+        'external.directory': allowed
+          ? [{ kind: 'external-source', sourceId }]
+          : [],
+      },
+    },
+  };
+  return copy;
+}
+it.each(['missing-action', 'wrong-source', 'expired'] as const)(
+  'rejects managed external %s despite valid provider permission',
+  async (scenario) => {
+    const { app, resolver, readPage } = await setup();
+    const managed = resourceContext(
+      scenario !== 'missing-action',
+      scenario === 'expired' ? '2000-01-01T00:00:00Z' : undefined,
+    );
+    if (
+      scenario === 'wrong-source' &&
+      managed.authorization.resourceAccess?.scope.mode === 'managed'
+    )
+      managed.authorization.resourceAccess.scope.permissions[
+        'external.directory'
+      ] = [{ kind: 'external-source', sourceId: actorId }];
+    resolver.resolve.mockResolvedValue(managed);
+    const response = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(readPage).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('SYNTHETIC-A');
+  },
+);
+it('requires both managed source action and provider permission', async () => {
+  const { app, resolver, resolve, readPage } = await setup();
+  resolver.resolve.mockResolvedValue(resourceContext(true));
+  const response = await app.inject({ method: 'POST', url, headers, payload });
+  expect(response.statusCode).toBe(200);
+  expect(response.json<unknown>()).toMatchObject({
+    items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
+  });
+  resolve.mockResolvedValue(null);
+  readPage.mockClear();
+  expect(
+    (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
+  ).toBe(403);
+  expect(readPage).not.toHaveBeenCalled();
+});
+it('selects a trusted source reader after scope checks, without treating a missing source as empty', async () => {
+  const { createExternalMetadataExecutor } =
+    await import('../src/data-foundation/external-metadata-executor.js');
+  const resolver = vi.fn((): Promise<ExternalMetadataReader | undefined> =>
+    Promise.resolve(
+      new ExternalMetadataReader({
+        access: { resolve: () => Promise.resolve(structuredClone(grant)) },
+        provider: {
+          readPage: () =>
+            Promise.resolve({
+              items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
+              total: 1,
+            }),
+        },
+        now: () => Date.parse('2026-09-20T00:00:00Z'),
+      }),
+    ),
+  );
+  const executor = createExternalMetadataExecutor(resolver);
+  const managed = resourceContext(true);
+  const execution = {
+    ...managed,
+    effectiveMaxSecurityLevel: 'L2_RESTRICTED' as const,
+    auditLevel: 'STANDARD' as const,
+    timeoutMs: 30000,
+    signal: new AbortController().signal,
+  };
+  expect(await executor.execute(input, execution)).toMatchObject({
+    items: [{ stationCode: 'SYNTHETIC-A', year: 2024 }],
+  });
+  expect(resolver).toHaveBeenCalledWith(sourceId, execution);
+  await expect(
+    executor.execute(input, {
+      ...execution,
+      authorization: resourceContext(false).authorization,
+    }),
+  ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  expect(resolver).toHaveBeenCalledOnce();
+  resolver.mockResolvedValueOnce(undefined);
+  await expect(executor.execute(input, execution)).rejects.toMatchObject({
+    code: 'EXTERNAL_SOURCE_UNCONFIGURED',
+  });
+});

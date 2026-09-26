@@ -1,0 +1,267 @@
+import {
+  ProjectAccessError,
+  type PostgresProjectAccessService,
+} from '@wiser/platform-auth';
+import {
+  ProjectAccessRequestSchema,
+  ProjectAccessRequestActionSchema,
+  ProjectAccessRequestDecisionSchema,
+  ProjectAccessRequestWithdrawalSchema,
+  ProjectAccessRequestViewSchema,
+  ProjectAccessRequestsPageSchema,
+  ProjectAccessEventsPageSchema,
+  ProjectAccessGrantSchema,
+  ProjectAccessInviteSchema,
+  ProjectAccessInvitationDeliverySchema,
+  ProjectAccessInvitationViewSchema,
+  ProjectAccessInvitationsPageSchema,
+  ProjectAccessMemberViewSchema,
+  ProjectAccessMembersPageSchema,
+  ProjectAccessProjectsPageSchema,
+  ProjectAccessPageSchema,
+  ProjectAccessRevokeSchema,
+  PlatformUuidSchema,
+} from '@wiser/platform-contracts';
+import { z } from 'zod';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { WiserApiModule } from './modules.js';
+
+export type ProjectAccessHttpService = Pick<
+  PostgresProjectAccessService,
+  | 'projects'
+  | 'members'
+  | 'grant'
+  | 'revoke'
+  | 'invite'
+  | 'invitations'
+  | 'deliverInvitation'
+  | 'requestAccess'
+  | 'requests'
+  | 'decideRequest'
+  | 'withdrawRequest'
+  | 'executeRequest'
+  | 'events'
+>;
+const Params = z.strictObject({ projectId: PlatformUuidSchema });
+function fail(reply: FastifyReply, status: number, code: string) {
+  return reply.status(status).send({ code });
+}
+async function guarded(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  work: (token: string) => Promise<unknown>,
+) {
+  reply.header('Cache-Control', 'private, no-store');
+  const header = request.headers.authorization;
+  const token =
+    typeof header === 'string'
+      ? /^Bearer ([^\s]+)$/.exec(header)?.[1]
+      : undefined;
+  if (!token) return fail(reply, 401, 'NOT_AUTHENTICATED');
+  try {
+    return await work(token);
+  } catch (error) {
+    if (error instanceof z.ZodError)
+      return fail(reply, 400, 'VALIDATION_FAILED');
+    if (error instanceof ProjectAccessError) {
+      const status =
+        error.code === 'NOT_AUTHENTICATED'
+          ? 401
+          : error.code === 'VALIDATION_FAILED' ||
+              error.code === 'INVALID_EXPIRY'
+            ? 400
+            : error.code === 'VERSION_CONFLICT' ||
+                error.code === 'IDEMPOTENCY_CONFLICT' ||
+                error.code === 'DELIVERY_IN_PROGRESS' ||
+                error.code === 'REQUEST_STATE_CONFLICT' ||
+                error.code === 'REQUEST_ALREADY_PENDING'
+              ? 409
+              : 403;
+      return fail(reply, status, error.code);
+    }
+    return fail(reply, 503, 'ACCESS_UNAVAILABLE');
+  }
+}
+export function createProjectAccessModule(
+  service: ProjectAccessHttpService,
+): WiserApiModule {
+  return {
+    id: 'platform.project-access',
+    register(app) {
+      app.get('/api/platform/v1/access/projects', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessProjectsPageSchema.parse(
+            await service.projects({
+              token,
+              page: ProjectAccessPageSchema.parse(request.query),
+            }),
+          ),
+        ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/members',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessMembersPageSchema.parse(
+              await service.members({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/invitations',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessInvitationsPageSchema.parse(
+              await service.invitations({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.post('/api/platform/v1/access/invitations', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessInvitationViewSchema.parse(
+            await service.invite({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessInviteSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post(
+        '/api/platform/v1/access/invitation-deliveries',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessInvitationViewSchema.parse(
+              await service.deliverInvitation({
+                token,
+                idempotencyKey: PlatformUuidSchema.parse(
+                  request.headers['idempotency-key'],
+                ),
+                command: ProjectAccessInvitationDeliverySchema.parse(
+                  request.body,
+                ),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/requests',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessRequestsPageSchema.parse(
+              await service.requests({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.get(
+        '/api/platform/v1/access/projects/:projectId/events',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessEventsPageSchema.parse(
+              await service.events({
+                token,
+                projectId: Params.parse(request.params).projectId,
+                page: ProjectAccessPageSchema.parse(request.query),
+              }),
+            ),
+          ),
+      );
+      app.post('/api/platform/v1/access/requests', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessRequestViewSchema.parse(
+            await service.requestAccess({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRequestSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post('/api/platform/v1/access/request-decisions', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessRequestViewSchema.parse(
+            await service.decideRequest({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRequestDecisionSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post(
+        '/api/platform/v1/access/request-withdrawals',
+        (request, reply) =>
+          guarded(request, reply, async (token) =>
+            ProjectAccessRequestViewSchema.parse(
+              await service.withdrawRequest({
+                token,
+                idempotencyKey: PlatformUuidSchema.parse(
+                  request.headers['idempotency-key'],
+                ),
+                command: ProjectAccessRequestWithdrawalSchema.parse(
+                  request.body,
+                ),
+              }),
+            ),
+          ),
+      );
+      app.post('/api/platform/v1/access/request-executions', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessRequestViewSchema.parse(
+            await service.executeRequest({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRequestActionSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post('/api/platform/v1/access/grants', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessMemberViewSchema.parse(
+            await service.grant({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessGrantSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+      app.post('/api/platform/v1/access/revocations', (request, reply) =>
+        guarded(request, reply, async (token) =>
+          ProjectAccessMemberViewSchema.parse(
+            await service.revoke({
+              token,
+              idempotencyKey: PlatformUuidSchema.parse(
+                request.headers['idempotency-key'],
+              ),
+              command: ProjectAccessRevokeSchema.parse(request.body),
+            }),
+          ),
+        ),
+      );
+    },
+  };
+}

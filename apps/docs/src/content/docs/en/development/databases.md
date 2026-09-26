@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 5afd0a3
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: e11dd07b
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -200,3 +200,29 @@ See PostgreSQL's [RLS integrity boundary](https://www.postgresql.org/docs/curren
 ### Server-owned business membership storage
 
 Migration `0029_exploration_membership.sql` adds nullable `business_pins` to the existing owner-scoped exploration snapshot and saved-view tables. It stores only assertion UUID/version pairs, separately from the bounded client specification. Existing rows remain null and unchanged. The database rejects malformed, duplicate or oversized memberships (100,000 pairs / 8 MiB maximum); this is a storage guard, not a claimed query/render capacity. Forced RLS, immutable snapshot contents and saved-view one-way revocation continue to apply to the whole row. `packages/data-infra/test/migrations/exploration-membership.spec.ts` exercises 2,033 synthetic members, six scope boundaries and mutation rejection in a disposable database. This storage slice alone does not enable project-wide business queries, change existing capability limits, approve knowledge or load external observations. API use and client integration require separate verification.
+
+## Project access control records
+
+`04_project_access.sql` and its CLI-generated migration add private, forced-RLS project settings, assignable roles, invitations, idempotency receipts and immutable member events. No direct client or service-role table grants are added. Settings default to closed discovery. These are control-plane records, not a second identity store or Data Foundation migration. The optional `WISER_ACCESS_TEST_DATABASE_URL` integration suite must target a disposable migrated and seeded Supabase database; run pgTAP before integration fixtures. Never run a reset against the existing developer or shared instance.
+
+## Immutable resource authority
+
+`05_resource_access.sql` adds private forced-RLS settings, immutable package/preset versions, grants, separate revocations and audit events. Existing projects remain legacy unless explicitly configured; seed data does not enable managed mode or issue new grants. Settings cannot be deleted to restore broad legacy access. Changes advance a project resource revision, while package/action and duration constraints bind every grant to exact versions. Browser and generic service roles receive no direct table access. Run the new pgTAP suite and complete reset/lint/advisor gates only in a disposable instance. API management, provider ceilings and Data outlet enforcement remain required before enabling this mode for real users.
+
+## Resource membership read policies
+
+`0030_resource_read_scope.sql` adds restrictive SELECT policies without altering stored business rows or existing write policies. The scope is transaction-local and derived from verified control authority; it is not client input. Version membership is an uncorrelated set, permitting hashed scans rather than per-record grant decoding. `packages/data-infra/test/migrations/resource-access.spec.ts`, under `WISER_DATA_PG_INTEGRATION=1` and a disposable `DATA_TEST_DATABASE_URL`, checks a non-BYPASSRLS role, full metadata and direct child reads, parsed records and geometry, exact version pairs, base-security intersection, separate originals/exports, discovery denial, malformed/expired contexts and rollback. All synthetic fixtures and temporary role grants roll back. Apply using the checked-sum Data runner; never reset an existing preview database for this test. These tests establish the storage foundation, not completed API/projection enforcement.
+
+Resource batch migration `20260922213413_resource_batches.sql` + `20260922214035_resource_batch_indexes.sql` follows immutable resource authority. Validate `12_resource_batches.test.sql` in the disposable control instance; preserve existing identity and resource histories.
+
+Migration `20260922214718_resource_batch_member_versions.sql` stores separate tenant-membership and actor authority versions alongside the project-member snapshot. Null historical values require a new preview; they are not backfilled from current permissions.
+
+`20260922220953_resource_batch_withdrawal_audit.sql` adds an explicit withdrawal audit action; request snapshots and earlier events remain immutable.
+
+Migration `20260922225842_resource_batch_diff.sql` adds immutable recipient grant-difference snapshots and fingerprints. Null historical snapshots are intentionally not backfilled.
+
+`07_resource_source_policy.sql` records independently approved immutable source-policy versions and append-only revocations. Apply CLI migrations `20260923032250_resource_source_policy.sql` then `20260923033546_resource_policy_reference_guard.sql` before the updated API. The latter validates resource fields before UUID normalization and uses the indexed identity for version-chain checks. Run `13_resource_source_policy.test.sql` on a clean disposable seed, followed by the real control-loader integration tests. No source license or managed project is seeded.
+
+Source-policy workflow storage (`20260923065331_resource_policy_administration.sql`) adds explicit project stewardship role configuration and immutable proposals. It grants no stewardship roles or source permissions by default. Proposals begin pending, require optimistic state transitions, retain their submitted evidence, and cannot be deleted or reopened after a terminal decision. Publication must refer to an exactly matching immutable policy, including independent approver and applicant identities. Withdrawal creates no permission. Both tables force RLS and deny direct anonymous, authenticated and generic service-role access. Configuring stewardship remains a trusted maintenance operation; runtime authorization, HTTP and UI acceptance are separate from these storage checks.
+
+Apply `20260923070909_resource_policy_workflow_audit.sql` after source proposal storage. It adds explicit proposal, publication, rejection, withdrawal and source revocation audit actions without rewriting prior events. The source workflow integration suite uses rollback-only synthetic identities; published facts, current authorization and UI acceptance remain distinct.

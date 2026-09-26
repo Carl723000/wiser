@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-20
-lastReviewedCommit: 5afd0a3
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: e11dd07b
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -200,3 +200,29 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 ### 服务端业务成员清单存储
 
 追加迁移`0029_exploration_membership.sql`在既有查询快照和保存视图中增加可空的`business_pins`，只保存断言UUID与版本对，与有大小限制的客户端条件分开。旧行继续为null，不回填或改写。数据库拒绝格式错误、重复或超限清单（最多100,000对／8 MiB）；这是存储保护上限，不是已验证的查询或绘图能力。整行强制RLS、快照不可改写及保存视图单向撤销约束同样覆盖新列。`packages/data-infra/test/migrations/exploration-membership.spec.ts`在独立合成库验证2,033个成员、六项作用域隔离及修改拒绝。本存储切片本身尚未启用项目全景查询，不修改既有协议上限，不批准知识或导入外部观测；API和网页接续另行验证。
+
+## 项目访问控制记录
+
+`04_project_access.sql` 与 CLI 生成的迁移新增私有、强制 RLS 的项目设置、可分配角色、邀请、幂等回执及不可变成员事件，不为浏览器或 service-role 增加直读权限。项目发现默认关闭。这些记录属于控制面，不另建身份库，也不进入 Data Foundation 迁移历史。`WISER_ACCESS_TEST_DATABASE_URL` 集成套件仅可连接已迁移并加载 seed 的可丢弃 Supabase 测试库；先运行 pgTAP，再加入集成测试身份。不得重置现有开发或共享实例。
+
+## 固定版本资源授权
+
+`05_resource_access.sql` 增加私有、强制RLS的项目配置、固定版本资源包与预设、授权、独立撤销记录及审计事件。既有项目未显式配置时保留原规则；种子不启用受管理模式、不自动发出资源授权。配置不能通过删除恢复为旧宽权限。变更推进项目资源修订号，资料包动作上限与预设期限在数据库内约束授权，资源和策略始终引用固定版本。浏览器与通用服务角色没有直接表权限。新增pgTAP及完整重置、lint、advisor仅对可丢弃实例执行。真实用户启用前还须完成业务API、供方上限及Data各出口的执行检查。
+
+## 资源范围读取策略
+
+`0030_resource_read_scope.sql` 新增限制型 SELECT 策略，不改既有业务数据与写入策略。范围由可信控制权威编译后设置在当前事务内，不能接受客户端直接提供。版本成员作为非关联集合参与筛选，允许数据库采用哈希扫描，避免每条记录重复解析授权。`packages/data-infra/test/migrations/resource-access.spec.ts` 通过 `WISER_DATA_PG_INTEGRATION=1` 与可丢弃的 `DATA_TEST_DATABASE_URL` 验证无 BYPASSRLS 角色、完整元数据及子表直接读取、解析记录与几何、精确版本组合、安全等级交集、查看与原件及导出分权、来源发现拒绝、无效或过期范围和事务回滚。全部合成夹具及临时角色授权回滚。使用 Data 校验和迁移器应用，不为测试重置既有预览数据库。这些检查证明存储层基础，不代表 API 与投影授权已全部接通。
+
+批量办理迁移 `20260922213413_resource_batches.sql` + `20260922214035_resource_batch_indexes.sql`接续资源权威迁移；在隔离控制库运行`12_resource_batches.test.sql`，保留既有身份和资源历史。
+
+迁移`20260922214718_resource_batch_member_versions.sql`为成员快照补充独立的租户成员版本与主体授权版本。历史空值要求重新预览，不以当前权限推算旧批准范围。
+
+`20260922220953_resource_batch_withdrawal_audit.sql`补充明确的撤回审计动作，申请快照和既有事件保持不可变。
+
+`20260922225842_resource_batch_diff.sql`为成员预览增加不可变授权差异及指纹，历史空值不从当前权限回填。
+
+`07_resource_source_policy.sql`记录独立审批的不可变来源许可版本及追加式撤销。先顺序应用CLI迁移`20260923032250_resource_source_policy.sql`、`20260923033546_resource_policy_reference_guard.sql`，再更新API。后者先校验资料字段再规范UUID，按有索引的身份检查版本链。对干净的可丢弃种子库运行`13_resource_source_policy.test.sql`，再运行真实控制库加载测试；种子不授予来源许可，也不启用受管项目。
+
+来源许可流程存储（`20260923065331_resource_policy_administration.sql`）增加明确的项目办理/审批岗位配置及不可改写的申请。迁移默认不授予岗位或来源许可。申请从待审批开始，状态变化须递增版本，提交依据保留，不允许删除或在终态后重开。发布回执必须对应内容、申请人和独立审批人均一致的不可变许可版本。撤回不产生权限。两张表均强制RLS，匿名、登录用户和通用服务角色不能直接访问。岗位配置仍属受控维护操作；运行时鉴权、HTTP和页面验收与本次存储验证分开。
+
+来源申请存储之后应用 `20260923070909_resource_policy_workflow_audit.sql`，增加登记、发布、拒绝、撤回及来源撤销的明确审计动作，不改既有事件。流程集成测试只使用可回滚的合成身份；已发布事实、当前有效权限与页面验收分开记录。

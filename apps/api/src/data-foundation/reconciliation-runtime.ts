@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -78,6 +79,11 @@ async function scope(client: Client, context: DataCapabilityExecutionContext) {
       context.authorization.purpose,
       String(context.timeoutMs),
     ],
+  );
+  await applyResourceReadScope(
+    client,
+    context.authorization,
+    context.resourceReadAction,
   );
 }
 async function authorize(

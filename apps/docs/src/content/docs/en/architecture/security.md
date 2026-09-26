@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-07
-lastReviewedCommit: 626cfd1c22e8c24fb38306520c4e9433a5984151
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## Separate four data classes
@@ -39,6 +39,8 @@ This page covers WISER-wide identity, database, secret, and telemetry boundaries
 Never send full fact objects to a browser or participant and rely on the UI to hide fields. Isolation starts in the server-side query.
 
 ## Supabase and RLS
+
+Public self-registration is disabled with `[auth] enable_signup=false` and the deployed `GOTRUE_DISABLE_SIGNUP=true`. Email authentication stays enabled for existing accounts. Account provisioning and invitations require an authorized maintenance workflow; creating an account never grants Project membership by itself.
 
 Supabase Auth is the only WISER authority for users, sessions, Tenants, Projects, Memberships, and delegated identities; Data Foundation never creates a second Auth system. `platform` and `platform_private` are not exposed to the Data API. anon/authenticated Schema, Table, Sequence, and Function privileges are revoked by default, and every table enables `FORCE ROW LEVEL SECURITY` as defense in depth.
 
@@ -86,3 +88,19 @@ Normal `docker compose down` preserves data. Volume deletion requires a separate
 - [ ] Downloads are short-lived and authorization-bound.
 - [ ] RLS, SQL transactions, and negative state-machine tests pass on real PostgreSQL.
 - [ ] Live AI calls are not required to merge a change.
+
+## Project access control records
+
+`04_project_access.sql` and its CLI-generated migration add private, forced-RLS project settings, assignable roles, invitations, idempotency receipts and immutable member events. No direct client or service-role table grants are added. Settings default to closed discovery. These are control-plane records, not a second identity store or Data Foundation migration. The optional `WISER_ACCESS_TEST_DATABASE_URL` integration suite must target a disposable migrated and seeded Supabase database; run pgTAP before integration fixtures. Never run a reset against the existing developer or shared instance.
+
+Access requests also remain in the private forced-RLS control plane. Approval is independent of the applicant and is not itself a grant. Current reviewer authority, configured role bounds and membership versions are rechecked at execution; original audit receipts remain immutable after withdrawal, expiry or revocation.
+
+## Immutable resource authority
+
+`05_resource_access.sql` adds private forced-RLS settings, immutable package/preset versions, grants, separate revocations and audit events. Existing projects remain legacy unless explicitly configured; seed data does not enable managed mode or issue new grants. Settings cannot be deleted to restore broad legacy access. Changes advance a project resource revision, while package/action and duration constraints bind every grant to exact versions. Browser and generic service roles receive no direct table access. Run the new pgTAP suite and complete reset/lint/advisor gates only in a disposable instance. API management, provider ceilings and Data outlet enforcement remain required before enabling this mode for real users.
+
+## Bounded resource batch storage
+
+`06_resource_batches.sql` stores immutable fixed-version batch snapshots, at most fifty explicitly numbered recipients, append-only per-recipient attempts and important-approval role policy in the private control plane. Pending requests produce no grants. State changes require increasing versions; applicants and recipients cannot approve their own batch. Approval freezes recipients, purpose and expiry. Successful receipts must reference a grant matching the approved resource/preset versions and recipient; success cannot be repeated. No approver or request is seeded. Runtime review, current membership, provider and Data validity checks remain mandatory; these storage constraints alone do not enable a batch workflow.
+
+Source-policy workflow storage (`20260923065331_resource_policy_administration.sql`) adds explicit project stewardship role configuration and immutable proposals. It grants no stewardship roles or source permissions by default. Proposals begin pending, require optimistic state transitions, retain their submitted evidence, and cannot be deleted or reopened after a terminal decision. Publication must refer to an exactly matching immutable policy, including independent approver and applicant identities. Withdrawal creates no permission. Both tables force RLS and deny direct anonymous, authenticated and generic service-role access. Configuring stewardship remains a trusted maintenance operation; runtime authorization, HTTP and UI acceptance are separate from these storage checks.

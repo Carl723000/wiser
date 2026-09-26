@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 02345029
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: c0ba77f364bb77b6a36067f59907edf620abb155
 ---
 
 # WISER Web / 产品前端
@@ -27,13 +27,14 @@ Portal 提供“让智能体接入 WISER”复制入口，使用公开的 `WISER
 
 ## Routes / 路由
 
-| System                | Chinese entry            | English entry         |
-| --------------------- | ------------------------ | --------------------- |
-| WISER Portal          | `/zh-CN`                 | `/en`                 |
-| Platform sign-in      | `/zh-CN/login`           | `/en/login`           |
-| Data Foundation       | `/zh-CN/data-foundation` | `/en/data-foundation` |
-| Agent EXCON scenarios | `/zh-CN/scenarios`       | `/en/scenarios`       |
-| Agent EXCON runs      | `/zh-CN/runs`            | `/en/runs`            |
+| System                  | Chinese entry            | English entry         |
+| ----------------------- | ------------------------ | --------------------- |
+| WISER Portal            | `/zh-CN`                 | `/en`                 |
+| Project access (opt-in) | `/zh-CN/account/access`  | `/en/account/access`  |
+| Platform sign-in        | `/zh-CN/login`           | `/en/login`           |
+| Data Foundation         | `/zh-CN/data-foundation` | `/en/data-foundation` |
+| Agent EXCON scenarios   | `/zh-CN/scenarios`       | `/en/scenarios`       |
+| Agent EXCON runs        | `/zh-CN/runs`            | `/en/runs`            |
 
 Run pages include overview, collaboration, replay, trace, and diagnostics. Data routes include catalog, ingestion, quality, lineage, search, knowledge, graph, GIS/map, operations, and capabilities.
 
@@ -149,3 +150,11 @@ Spatial presentation uses the existing complete, bounded HTTP map query and exac
 Mixed business review queries display an explicit scope label while preserving each assertion’s actual status. Record-to-graph navigation retains the same authorized query; this UI never approves a pending relationship.
 
 The normal Data Foundation entry shares the server exploration loader and opens the authorized current project graph with approved and pending relationships distinguished. Explicit searches and saved topics retain their scope; overview diagnostics stream below the workspace and never substitute a demonstration case.
+
+## Project access verification / 项目访问验收
+
+The opt-in account workspace and its isolated real-session browser checks are documented in [Unified Auth](../docs/src/content/docs/en/architecture/unified-auth.md#project-access-workspace) / [统一身份](../docs/src/content/docs/zh-CN/architecture/unified-auth.md#项目访问工作区). It manages only the connected environment. Apply its migration and explicit role policy before enabling both API and Web; the UI never exposes Auth administrative credentials. / 后台只管理所连接环境，页面不能替代迁移和明确授权；邀请需另配服务端邮件与模板，审批通过后仍须显式执行授权；办理结果与当前有效权限分开显示。
+
+The normal account access workspace opens project resource coverage through verified-session HTTP reads, whole-query summaries and bounded resource pages. Selected project context is reauthorized by the API. / 正常账户权限工作区通过已验证会话读取所选项目资料覆盖，采用完整查询汇总和有界资源分页；项目上下文仍由API重新授权。
+
+Managed project managers can create fixed-version resource packages from authorized coverage and versioned presets in the same workspace. Saving definitions does not grant access. / 已启用资源管理的项目管理员可在同一工作区从获准清单创建固定版本资源包及权限预设；保存定义不等于授予权限。

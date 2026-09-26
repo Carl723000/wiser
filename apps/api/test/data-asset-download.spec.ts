@@ -41,7 +41,7 @@ afterEach(async () => {
 });
 
 describe('governed version asset download', () => {
-  function downloadApp() {
+  function downloadApp(requestContext: PlatformRequestContext = context) {
     const assetContentFetch = vi.fn(() =>
       Promise.resolve(
         new Response('source bytes', {
@@ -61,7 +61,7 @@ describe('governed version asset download', () => {
       logger: false,
       modules: [
         createDataFoundationRestModule({
-          resolver: { resolve: () => Promise.resolve(context) },
+          resolver: { resolve: () => Promise.resolve(requestContext) },
           handler: { execute: () => Promise.resolve({}) },
           assetDownload,
           assetContentFetch,
@@ -95,6 +95,47 @@ describe('governed version asset download', () => {
       internal: true,
     });
     expect(assetContentFetch).toHaveBeenCalledOnce();
+  });
+
+  it('proxies managed downloads on the original route without a storage redirect', async () => {
+    const managed = structuredClone(context);
+    managed.authorization.resourceAccess = {
+      revision: 1,
+      fingerprint: 'a'.repeat(64),
+      scope: {
+        mode: 'managed',
+        validUntil: '2099-01-01T00:00:00Z',
+        permissions: {
+          'source.discover': [],
+          'content.read': [],
+          'result.export': [],
+          'external.directory': [],
+          'original.read': [
+            { kind: 'version', dataItemId: ACTOR_ID, versionId: VERSION_ID },
+          ],
+        },
+      },
+    };
+    const { app, assetDownload } = downloadApp(managed);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/tenants/${TENANT_ID}/projects/${PROJECT_ID}/versions/${VERSION_ID}/assets/${ASSET_ID}`,
+      headers: {
+        authorization: 'Bearer verified-token',
+        'x-wiser-tenant-id': TENANT_ID,
+        'x-wiser-project-id': PROJECT_ID,
+        'x-wiser-purpose': 'operate',
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe('source bytes');
+    expect(response.headers.location).toBeUndefined();
+    expect(assetDownload.createDownload).toHaveBeenCalledWith({
+      context: managed,
+      versionId: VERSION_ID,
+      assetId: ASSET_ID,
+      internal: true,
+    });
   });
 
   it('returns an empty unsatisfiable range response with a truthful content length', async () => {
@@ -277,3 +318,47 @@ describe('governed version asset download', () => {
     });
   });
 });
+
+it.each(['', '/content'])(
+  'withholds asset %s delivery when permission is revoked during signing',
+  async (suffix) => {
+    let current = structuredClone(context);
+    const app = buildApp({
+      logger: false,
+      modules: [
+        createDataFoundationRestModule({
+          resolver: { resolve: () => Promise.resolve(current) },
+          handler: { execute: () => Promise.resolve({}) },
+          assetDownload: {
+            createDownload: () => {
+              current = {
+                ...current,
+                authorization: { ...current.authorization, authzVersion: 8 },
+              };
+              return Promise.resolve({
+                url: 'http://127.0.0.1:18333/never-release',
+                expiresAt: '2099-01-01T00:00:00Z',
+              });
+            },
+          },
+          assetContentFetch: () =>
+            Promise.resolve(new Response('not-to-release')),
+        }),
+      ],
+    });
+    apps.push(app);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/tenants/${TENANT_ID}/projects/${PROJECT_ID}/versions/${VERSION_ID}/assets/${ASSET_ID}${suffix}`,
+      headers: {
+        authorization: 'Bearer test',
+        'x-wiser-tenant-id': TENANT_ID,
+        'x-wiser-project-id': PROJECT_ID,
+        'x-wiser-purpose': 'operate',
+      },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.headers.location).toBeUndefined();
+    expect(response.body).not.toContain('not-to-release');
+  },
+);

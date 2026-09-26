@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 46cd150396b22e873ae44fc87c869174ce3d7b19
 ---
 
 ## 入口与权威契约
@@ -181,6 +181,8 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 
 `dataExplore(input: JSON!): JSON!` 调用 `data.explore.query`，与 REST 共享严格 `QuerySpec`、绑定用户的 `queryId`、固定版本成员、有效期与资源响应。要求 `data.query.execute` 和 `data.catalog.read`，复杂度权重与 `dataQuery` 相同。首次输入 `{spec:{text:"water"},view:"resources",first:20}`，后续使用返回的 `queryId`，并将 `nextCursor` 传入 `after`。
 
+`view: "resources"` 的共享 JSON 响应可包含 `summary.coverage`：`temporal` 和 `geometry` 分别以 `recordedVersionCount`、`unknownVersionCount` 划分重新授权后的固定 `summary.resourceCount`，不受当前页大小影响。同一版本有至少一条行级权限下可见的范围记录只计一次；记录缺失或隐藏均为未知，不等于采样时间、几何精度、坐标系或地名身份已核实。`approvedAssertionCount` 与 `effectiveActions` 尚为 `null`。GraphQL 不另算或缓存覆盖总量，过期或撤权查询不能复用旧结果。
+
 `data.analysis.create` 接收已发布的 `dataItemId` / `versionId` 和幂等键，原子创建带审计的操作与持久化分析任务，不改变来源登记与质量声明。REST：`POST /api/data/v1/analyses`；GraphQL：`createDataAnalysis(input: JSON!)`；MCP：`data_analysis_create`。需要 `data.ingestion.write` 与 `data.catalog.read` 权限；通过返回的操作 ID 查询进度。
 
 探索契约 1.1 将已完成的分析批次与已发布版本共同固定。`view: "records"` 必须提供 `queryId` 和 `versionId`，返回逐资产字段定义、稳定的记录/要素 ID 及有界分页。`view: "map"` 复用同一结果集，支持可选的 WGS84 `[west,south,east,north]` 范围。游标绑定视图与过滤条件。要纳入原查询之后完成的分析，需要重新运行查询条件。数量表示已索引记录，资源就绪状态与覆盖信息同时披露未解析来源。
@@ -268,3 +270,15 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 关系列表1.7新增可选的`pageMode: "BOUNDED_PROJECT"`，`first`最多500，仅适用于已有项目业务`queryId`。每页仍核查清单所有者、到期、当前来源与证据权限及固定关系版本。单条关系不会被截断；完整结果（关系、总数和游标）的UTF-8 JSON最多1 MiB，单条超限时校验失败，不返回空续页。传输协议的外层封装不包含在此结果预算内。
 
 未指定新模式时保持100条上限及原行为，1.6发现模式原样归档，更早版本不变。客户端先发现1.7能力再启用，不支持时使用旧路径。固定项目清单不代替每页鉴权；此改动减少往返次数，不改变全范围校验成本，实际性能须另行测量。
+
+## 资源范围适配边界
+
+可信 SQL 适配器保留既有公开输入和未启用项目的事务行为，接收服务内部编译的授权范围，在计数和分页前执行限制。目录游标绑定资源授权指纹，范围变化后的旧游标报 INVALID_DATA_CURSOR。既有探索清单只要有固定成员失去访问权限，仍按原契约报 CONFLICT；缺少所需交集的导出同样拒绝。内部导出动作不能由请求 JSON 指定。平台运行时已提供实时资源授权，资源办理端到端验收仍待接续。
+
+受管项目的联合／语义检索向各后端传递最多1000个获准内容版本；仅有来源发现权限时不返回正文命中。搜索游标绑定资源权限指纹，结果发布前按资料、版本和证据的精确组合回查Data PostgreSQL行级权限、发布状态及跨来源依据可见性；缺少权威回验适配器时拒绝返回。
+
+受管图扩展及路径查询对每个节点和关系应用内容版本范围，不向Neo4j传递完整授权快照，并在返回图谱前回查Data PostgreSQL中的节点与原文依据。端点可读不代表关系证据可读；内容权限为空时不查询投影。
+
+REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解析权限；原件内容在取得上游响应后、发送字节前再核验。主体、项目、用途、动作、成员修订或资源范围变化时停止返回，包括请求期间启用受管策略的情况。已提交的命令不会因响应拒绝而自动回滚，须沿用幂等与审计记录对账。受管项目的原件路由统一代理传输，不返回存储签名链接。每个内容块在上游读取后重新核验权限；权限变化或不可用时取消后续传输。已经交付的字节无法收回。未启用资源策略的旧重定向链接仍保留既有短有效期，本机制不能单独撤销这些链接。
+
+受管项目仅放行明确列出的资源感知能力。入库、操作状态/事件、对账及维护命令在进入未受资源限制的执行器前返回FORBIDDEN；其资源感知流程仍待完成。外部目录调用须有对应来源、未过期的external.directory授权，并同时满足供方许可。未启用项目保留既有能力门禁。

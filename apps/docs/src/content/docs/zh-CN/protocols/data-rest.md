@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 46cd150396b22e873ae44fc87c869174ce3d7b19
 ---
 
 ## 协议边界
@@ -169,6 +169,8 @@ GeoServer、STAC API、TiTiler 与 Martin 没有宿主 published port；浏览�
 
 每次调用都要求统一 Bearer、Tenant、Project、Purpose 与 `data.geo.read`；其他 HTTP 方法返回 `405`。OGC 只接受每个 service 的只读 request/query allowlist；除 GetCapabilities 外，调用方必须给出授权的 `versionId`，API 固定 layer/type 与 Tenant/Project/Version filter。STAC 的 `current` 自动替换为当前 Tenant/Project 的确定性 collection，跨 scope collection 返回安全 `404`。
 
+启用资源级授权的项目中，原始的项目级 STAC 代理除静态 `/conformance` 外返回 `403`；OGC GetCapabilities 即使带 `versionId` 也返回 `403`。这两类上游服务目录无法可靠地按当前用户获准的版本缩小范围。单项 STAC 读取使用受控的 `/api/data/v1/stac/collections/:collectionId/items/:itemId`；已获准版本的 OGC 数据请求及矢量、栅格瓦片仍可使用。若要开放按资源过滤的 STAC 列表或服务说明，需另行定义并验证受控接口。
+
 矢量瓦片先在 data-postgres RLS 下确认该 Version 有可见 spatial extent，再调用 Martin 按版本限定的 `service.wiser_spatial_extent_mvt` source；Tenant、Project、Version、安全 ceiling 与 policy version 均由服务端注入。栅格瓦片只从权威表的可见 RAW asset 中选择 TIFF/GeoTIFF COG，再由服务端验证内容寻址 key 并生成受限 `s3://` source 给 TiTiler；客户端提交 `url`/source 会在任何上游 I/O 前返回 `422`。
 
 四个上游 origin 来自启动时校验的内部配置，禁止 userinfo/query/fragment、redirect 与动态 host。代理 query、tile coordinate、TMS、format、content type 均为严格 allowlist；默认 timeout 5 秒、响应上限 8 MiB，并只转发安全 ETag/Last-Modified。每次 ALLOWED/DENIED/FAILED 记录 `data.geo.read`、目标与 route hash；未认证拒绝只记录脱敏平台日志，不能伪造 actor audit。
@@ -280,6 +282,8 @@ Data REST 错误是扁平安全 envelope：
 ## 共享探索结果集
 
 `POST /api/data/v1/explore/query` 调用 `data.explore.query`，同时要求 `data.query.execute` 与 `data.catalog.read`。首次使用 `{"spec":{"text":"water"},"view":"resources","first":20}`；续查使用 `{"queryId":"<返回的 UUID>","view":"resources","first":20,"after":"<返回的游标>"}`。`spec` 与 `queryId` 必须二选一，续页必须引用已有结果集。响应包含 `queryId`、`spec`、建立和过期时间、授权范围内的 `totalCount`、固定版本的 `resources`、就绪状态及可选 `nextCursor`。
+
+`resources` 响应还可包含 `summary.coverage`。对重新授权后的固定资源清单，`temporal` 和 `geometry` 分别给出 `recordedVersionCount` 与 `unknownVersionCount`；两项各自划分 `summary.resourceCount`，不受当前页大小影响。同一版本只要有至少一条在 Data 行级权限下可见的范围记录就计一次，多条记录不重复；未知也包括范围不存在或不可见。该计数不证明采样时间、几何精度、坐标系或行政区／河段身份。`approvedAssertionCount` 和 `effectiveActions` 仍为 `null`，不伪造总量；授权撤销或查询过期后不能复用旧摘要。
 
 清单有效期为 30 分钟。其他用户、Purpose/安全上限/授权版本变化以及过期 ID 返回 `404`；权威成员可见性变化返回 `409`；无效条件/游标或匹配超过 10,000 个版本返回 `422`。同一匹配的用户与上下文最多保留 32 个近期清单，新查询可能淘汰更早的结果集；失效后重新执行原查询条件。投影就绪状态可独立推进。接口不接受 SQL、Cypher 或租户、Actor 覆盖字段。
 
@@ -394,3 +398,15 @@ Data REST 错误是扁平安全 envelope：
 关系列表1.7新增可选的`pageMode: "BOUNDED_PROJECT"`，`first`最多500，仅适用于已有项目业务`queryId`。每页仍核查清单所有者、到期、当前来源与证据权限及固定关系版本。单条关系不会被截断；完整结果（关系、总数和游标）的UTF-8 JSON最多1 MiB，单条超限时校验失败，不返回空续页。传输协议的外层封装不包含在此结果预算内。
 
 未指定新模式时保持100条上限及原行为，1.6发现模式原样归档，更早版本不变。客户端先发现1.7能力再启用，不支持时使用旧路径。固定项目清单不代替每页鉴权；此改动减少往返次数，不改变全范围校验成本，实际性能须另行测量。
+
+## 资源范围适配边界
+
+可信 SQL 适配器保留既有公开输入和未启用项目的事务行为，接收服务内部编译的授权范围，在计数和分页前执行限制。目录游标绑定资源授权指纹，范围变化后的旧游标报 INVALID_DATA_CURSOR。既有探索清单只要有固定成员失去访问权限，仍按原契约报 CONFLICT；缺少所需交集的导出同样拒绝。内部导出动作不能由请求 JSON 指定。平台运行时已提供实时资源授权，资源办理端到端验收仍待接续。
+
+受管项目的联合／语义检索向各后端传递最多1000个获准内容版本；仅有来源发现权限时不返回正文命中。搜索游标绑定资源权限指纹，结果发布前按资料、版本和证据的精确组合回查Data PostgreSQL行级权限、发布状态及跨来源依据可见性；缺少权威回验适配器时拒绝返回。
+
+受管图扩展及路径查询对每个节点和关系应用内容版本范围，不向Neo4j传递完整授权快照，并在返回图谱前回查Data PostgreSQL中的节点与原文依据。端点可读不代表关系证据可读；内容权限为空时不查询投影。
+
+REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解析权限；原件内容在取得上游响应后、发送字节前再核验。主体、项目、用途、动作、成员修订或资源范围变化时停止返回，包括请求期间启用受管策略的情况。已提交的命令不会因响应拒绝而自动回滚，须沿用幂等与审计记录对账。受管项目的原件路由统一代理传输，不返回存储签名链接。每个内容块在上游读取后重新核验权限；权限变化或不可用时取消后续传输。已经交付的字节无法收回。未启用资源策略的旧重定向链接仍保留既有短有效期，本机制不能单独撤销这些链接。
+
+受管项目仅放行明确列出的资源感知能力。入库、操作状态/事件、对账及维护命令在进入未受资源限制的执行器前返回FORBIDDEN；其资源感知流程仍待完成。外部目录调用须有对应来源、未过期的external.directory授权，并同时满足供方许可。未启用项目保留既有能力门禁。

@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import {
   loadBusinessRelations,
   storedBusinessMembership,
@@ -10,6 +11,7 @@ import {
   loadExplorationReadiness,
   explorationReadinessSummary,
 } from './exploration-readiness.js';
+import { loadExplorationResourceCoverage } from './exploration-resource-coverage.js';
 import { queryProvenanceGraph } from './exploration-graph.js';
 import { randomUUID } from 'node:crypto';
 import { queryAnalysisView } from './exploration-views.js';
@@ -135,6 +137,11 @@ export class PostgresExplorationExecutor {
         context.authorization.purpose,
         String(context.timeoutMs),
       ]);
+      await applyResourceReadScope(
+        client,
+        context.authorization,
+        context.resourceReadAction,
+      );
       const queryId =
         input.queryId ??
         (await this.create(client, input.spec!, context, input.baseQueryId));
@@ -253,6 +260,10 @@ export class PostgresExplorationExecutor {
         input.first + 1,
       ]);
       const readiness = await loadExplorationReadiness(client, visibleRefs);
+      const coverage = await loadExplorationResourceCoverage(
+        client,
+        visibleRefs,
+      );
       const resources = page.rows.slice(0, input.first).map((row) => {
         const manifest = z
           .record(z.string(), z.unknown())
@@ -300,7 +311,10 @@ export class PostgresExplorationExecutor {
         createdAt: snapshot.created_at.toISOString(),
         expiresAt: snapshot.expires_at.toISOString(),
         view: 'resources',
-        summary: explorationReadinessSummary(visibleRefs, readiness),
+        summary: {
+          ...explorationReadinessSummary(visibleRefs, readiness),
+          coverage,
+        },
         totalCount: visibleRefs.length,
         resources,
         ...(page.rows.length > input.first

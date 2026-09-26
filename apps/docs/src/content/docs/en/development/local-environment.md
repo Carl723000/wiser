@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: c05533c0502c2b05cb8f09480463d7f7fc36308d
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 5b28eea8d6e7754b16f00761b69df181b5e4ee93
 ---
 
 ## Runtime modes
@@ -67,6 +67,8 @@ GeoServer, STAC API, TiTiler, and Martin have no host port. They are reachable o
 
 Web and API use host ports `3100` and `3101` in both Compose and standalone development. Compose keeps their internal ports at `3000` and `3001`. Reference browser tests use `3200`, the standalone EXCON Lab defaults to `3201`, and standalone MCP HTTP defaults to `3004`. Supabase Auth redirects use the Web origin on `3100`; no local port override is required.
 
+The public OAuth deployment worktree sets `supabase/config.toml` Site URL, external Auth URL, and JWT issuer to the public HTTPS `:7100` origins. The table above still describes isolated local development. Do not use this public configuration for a standalone localhost sign-in test; configure local URLs and callbacks in a separate local worktree while retaining the public settings in the deployment worktree. The router allows the exact public Auth discovery path, and the published MCP resource is the public `/mcp` URL, separate from container transport addresses.
+
 ## Standalone application commands
 
 Start only what you need in separate terminals:
@@ -86,6 +88,8 @@ Data Foundation Web uses the Supabase SSR session, and the complete stack inject
 The shared MCP process always initializes its EXCON HTTP client. Even Data-only MCP work configures a non-empty `AGENT_EXCON_API_KEY` plus complete `DATA_*`. Data Tools never send that EXCON key, so a local placeholder can satisfy Data-only process configuration; it is not unified identity and cannot call `excon_*`.
 
 ### Obtaining local identity
+
+The checked-in Auth configuration disables public self-registration. Keep email authentication enabled for existing users; local fixture login and authorized administrative invitations are separate from the public signup endpoint. A deployed Compose Auth instance also needs `GOTRUE_DISABLE_SIGNUP=true` in its persistent runtime configuration and a targeted Auth recreation; editing `supabase/config.toml` alone does not change an already-running container.
 
 - A human developer signs in at `/en/login` with the seeded operator from Quick start. Web uses the Supabase session for Platform and Data pages.
 - A Supabase human with `platform.delegation.manage` creates, issues, rotates, and revokes Agent/service delegated credentials through `/api/platform/v1/delegations`; plaintext is returned once.

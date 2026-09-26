@@ -554,3 +554,31 @@
     transition: none;
   }
 }
+
+.accountMenu {
+  position: relative;
+}
+.accountPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(300px, calc(100vw - 32px));
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: var(--shadow-soft);
+}
+.accountPanel p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.accountPanel form {
+  display: grid;
+}
+.accountMenu summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}

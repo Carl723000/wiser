@@ -1423,3 +1423,20 @@ from platform.project_memberships as member
 where member.project_id = 'b2000000-0000-4000-8000-000000000001'
   and member.actor_id <> '10000000-0000-4000-8000-000000000005'
 on conflict (id) do nothing;
+
+-- Local synthetic owner only. Production enables management through an explicit maintenance grant.
+insert into platform.role_scopes (role_id,scope) values
+ ('b3000000-0000-4000-8000-000000000001','platform.membership.manage'),
+ ('b3000000-0000-4000-8000-000000000001','platform.access.approve')
+on conflict do nothing;
+insert into platform_private.project_access_settings(project_id,requests_enabled)
+ values('b2000000-0000-4000-8000-000000000001',false) on conflict do nothing;
+insert into platform_private.project_access_roles(project_id,role_id,max_days)
+ values('b2000000-0000-4000-8000-000000000001','b3000000-0000-4000-8000-000000000005',30)
+ on conflict do nothing;
+
+-- Resource policies remain opt-in: do not enable resource_access_settings or issue
+-- resource grants for existing seed identities. Isolated resource tests create
+-- their own rolled-back managed policy fixtures after checking this default.
+
+-- Batch approvals and recipient lists are created only by isolated acceptance fixtures; no approver-role policy is seeded.

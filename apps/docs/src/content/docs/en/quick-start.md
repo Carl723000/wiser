@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 94e74c99cba4677216553949fd65781ddda4eb04
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 5b28eea8d6e7754b16f00761b69df181b5e4ee93
 ---
 
 This page covers the first complete run only. See the [local development environment](/en/development/local-environment/) for standalone frontend/backend commands, every port, environment variables, and troubleshooting.
@@ -73,6 +73,8 @@ The default complete stack is ready only after the command succeeds. It neither 
 | GraphQL               | `POST http://127.0.0.1:3101/graphql`       |
 | MCP Streamable HTTP   | `http://127.0.0.1:13004/mcp`               |
 | Supabase Studio       | `http://127.0.0.1:56323`                   |
+
+These are isolated local development endpoints. The public OAuth deployment worktree uses HTTPS `:7100` in `supabase/config.toml`; use a separate local worktree with local Auth URLs and callbacks for this fixture workflow. See [the public data access and sample trial entry guide](/en/development/wiser-data-guide/).
 
 Sign in with the local fixture account:
 

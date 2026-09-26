@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ResourceAccessContextSchema } from './resource-access.ts';
 
 export const PlatformUuidSchema = z.string().uuid();
 
@@ -115,6 +116,7 @@ export const AuthorizedContextSchema = z.strictObject({
   purpose: PlatformPurposeSchema,
   maxSecurityLevel: PlatformSecurityLevelSchema,
   authzVersion: z.number().int().nonnegative(),
+  resourceAccess: ResourceAccessContextSchema.optional(),
 });
 export type AuthorizedContext = z.infer<typeof AuthorizedContextSchema>;
 
@@ -204,3 +206,20 @@ export const PlatformAgentExchangeViewSchema = z.strictObject({
 export type PlatformAgentExchangeView = z.infer<
   typeof PlatformAgentExchangeViewSchema
 >;
+
+export * from './project-access.ts';
+
+export * from './resource-access.ts';
+
+export * from './resource-administration.ts';
+
+export * from './resource-batch.ts';
+
+export * from './resource-grants.ts';
+
+export * from './resource-policy-limits.ts';
+
+export * from './resource-policy-administration.ts';
+
+export * from './resource-management-catalog.ts';
+export * from './resource-external-sources.ts';

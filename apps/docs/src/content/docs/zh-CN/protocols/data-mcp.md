@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 76e69aab3e9c8c2f0c1ef037e587a175d557ccaa
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 ---
 
 ## 只做 HTTP 适配
@@ -51,11 +51,11 @@ export AGENT_EXCON_API_KEY=<configured-excon-key>
 
 Data Tool 不会发送 `AGENT_EXCON_API_KEY`，因此 Data-only 本机进程可以使用占位值；一旦调用 `excon_*`，该值必须换成绑定具体 RunAgent 的真实 credential。它与 `DATA_API_BEARER_TOKEN` 不能互相替代。
 
-| 验证层             | Credential                                       | 只负责                                  |
-| ------------------ | ------------------------------------------------ | --------------------------------------- |
-| MCP HTTP transport | `DATA_MCP_BEARER_TOKEN`                          | 允许调用 `POST /mcp`                    |
-| Agent EXCON module | `AGENT_EXCON_API_KEY`                            | 绑定一个 RunAgent 的 `excon_*` 下游请求 |
-| Data module        | `DATA_API_BEARER_TOKEN` + Tenant/Project/Purpose | `data_*` 下游授权上下文                 |
+| 验证层                         | Credential                                       | 只负责                                  |
+| ------------------------------ | ------------------------------------------------ | --------------------------------------- |
+| MCP HTTP transport（静态模式） | `DATA_MCP_BEARER_TOKEN`                          | 允许调用 `POST /mcp`                    |
+| Agent EXCON module             | `AGENT_EXCON_API_KEY`                            | 绑定一个 RunAgent 的 `excon_*` 下游请求 |
+| Data module                    | `DATA_API_BEARER_TOKEN` + Tenant/Project/Purpose | `data_*` 下游授权上下文                 |
 
 一个 Gateway request 可以发现两个模块，但不能把 transport 或某系统 principal 提升成另一系统的权限。
 
@@ -70,7 +70,7 @@ pnpm --filter @wiser/mcp start
 
 ## Streamable HTTP
 
-Compose 在 `http://127.0.0.1:13004/mcp` 运行无状态入口。独立启动时保留上面的 EXCON/Data API 配置，并追加：
+以下静态兼容模式由 Compose 在 `http://127.0.0.1:13004/mcp` 运行无状态入口。独立启动时保留上面的 EXCON/Data API 配置，并追加：
 
 ```bash
 export DATA_MCP_BEARER_TOKEN=<random-secret-at-least-16-characters>
@@ -87,6 +87,10 @@ pnpm --filter @wiser/mcp start:http
 2. `DATA_API_BEARER_TOKEN` 是下游 REST 请求的统一 WISER identity。
 
 禁止把任一 token 放进 query、Tool 参数、Resource URI、日志、Telemetry 或 Git。`GET /health/live` 与 `/health/ready` 无需认证且禁止缓存；优雅关闭先让 ready 变为 false，再排空在途请求。每个 `/mcp` 请求创建新 server/transport，当前入口不签发或恢复 MCP session。
+
+### 公网 OAuth 模式
+
+7100 现网设置 `WISER_MCP_AUTH_MODE=oauth`，公网资源为 `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`。匿名请求得到 401 和指向受保护资源元数据的 `WWW-Authenticate`，授权服务器的公网 issuer 为 `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`。客户端使用 OAuth 授权码、PKCE S256 与现有用户的浏览器同意。此模式的客户端请求不使用静态 `DATA_MCP_BEARER_TOKEN` 或固定的下游 `DATA_API_BEARER_TOKEN`。API 对每次 Bearer 请求交换短期、绑定项目的 credential；当前连接只注册 Data Tools 和 `wiser_connection`。查询与入库仍受所选模式、实时项目及资料权限约束，不授予发布能力。本人浏览器与真实 MCP 客户端联调完成前，端到端状态仍为 **BLOCKED**。见[统一身份](/architecture/unified-auth/)与[接入指南](/development/wiser-data-guide/)。
 
 ## 36 个 Tools
 
@@ -205,6 +209,8 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 ## 共享探索
 
 `data_explore_query` 通过 `POST /api/data/v1/explore/query` 调用 `data.explore.query`。首次使用 `{"spec":{"text":"water"},"view":"resources","first":20}`，续查引用返回的 `queryId`，将 `nextCursor` 传入 `after`。API 固定已发布版本，清单有效期最长 30 分钟，每次调用重新授权所属用户和上下文。MCP Gateway 不访问结果集数据库。`NOT_PARSED` 和空分析数量表示登记就绪情况，不能用来推断没有观测数据。
+
+`resources` 结果可原样转发受权 HTTP 响应的 `summary.coverage`。`temporal` 和 `geometry` 分别用 `recordedVersionCount`、`unknownVersionCount` 统计当前可见的全部固定版本，不受返回页大小影响。有行级权限下可见的范围记录时，同一版本只计一次；记录缺失或隐藏均为未知。这不证明采样日期、精确几何、坐标系或地点身份。`approvedAssertionCount` 与 `effectiveActions` 保持 `null`；MCP 不自行推断，也不在查询过期或撤权后复用旧结果。
 
 `data.analysis.create` 接收已发布的 `dataItemId` / `versionId` 和幂等键，原子创建带审计的操作与持久化分析任务，不改变来源登记与质量声明。REST：`POST /api/data/v1/analyses`；GraphQL：`createDataAnalysis(input: JSON!)`；MCP：`data_analysis_create`。需要 `data.ingestion.write` 与 `data.catalog.read` 权限；通过返回的操作 ID 查询进度。
 

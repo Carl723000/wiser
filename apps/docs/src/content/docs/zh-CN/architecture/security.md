@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-07
-lastReviewedCommit: 626cfd1c22e8c24fb38306520c4e9433a5984151
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## 四类数据必须分开
@@ -39,6 +39,8 @@ lastReviewedCommit: 626cfd1c22e8c24fb38306520c4e9433a5984151
 浏览器和参训智能体永远不能接收完整事实对象，再依赖前端隐藏字段。服务端必须从查询源头隔离数据。
 
 ## Supabase 与 RLS
+
+通过 `[auth] enable_signup=false` 和现网 `GOTRUE_DISABLE_SIGNUP=true` 关闭公众自行注册，已有账户的邮箱认证保持开启。账户开通与邀请须经授权的维护流程；创建账户本身不授予项目成员权限。
 
 - Supabase Auth 是全 WISER 唯一的用户、Session、Tenant、Project、Membership 与委托身份权威；Data Foundation 不创建第二套 Auth。
 - `platform` 与 `platform_private` 不暴露给 Data API，默认撤销 anon/authenticated 的 Schema、Table、Sequence 和 Function 权限，并对所有表启用 `FORCE ROW LEVEL SECURITY` 作为纵深防御。
@@ -96,3 +98,19 @@ Supabase 镜像作为一个兼容版本集合锁定，gateway 配置与该集合
 - [ ] 下载链接短期有效并绑定对象权限。
 - [ ] RLS、SQL 事务和状态机负向测试在真实 PostgreSQL 上通过。
 - [ ] 在线 AI 测试不是合并请求的必需条件。
+
+## 项目访问控制记录
+
+`04_project_access.sql` 与 CLI 生成的迁移新增私有、强制 RLS 的项目设置、可分配角色、邀请、幂等回执及不可变成员事件，不为浏览器或 service-role 增加直读权限。项目发现默认关闭。这些记录属于控制面，不另建身份库，也不进入 Data Foundation 迁移历史。`WISER_ACCESS_TEST_DATABASE_URL` 集成套件仅可连接已迁移并加载 seed 的可丢弃 Supabase 测试库；先运行 pgTAP，再加入集成测试身份。不得重置现有开发或共享实例。
+
+访问申请同样保存在私有、强制RLS的控制面。审批人与申请人独立，批准本身不等于授权。执行时重新检查审批人权限、角色策略与成员版本；撤回、到期及撤权保留不可改写的审计回执。
+
+## 固定版本资源授权
+
+`05_resource_access.sql` 增加私有、强制RLS的项目配置、固定版本资源包与预设、授权、独立撤销记录及审计事件。既有项目未显式配置时保留原规则；种子不启用受管理模式、不自动发出资源授权。配置不能通过删除恢复为旧宽权限。变更推进项目资源修订号，资料包动作上限与预设期限在数据库内约束授权，资源和策略始终引用固定版本。浏览器与通用服务角色没有直接表权限。新增pgTAP及完整重置、lint、advisor仅对可丢弃实例执行。真实用户启用前还须完成业务API、供方上限及Data各出口的执行检查。
+
+## 有界资源批量办理存储
+
+`06_resource_batches.sql`在私有控制面保存固定版本的批次快照、最多50位明确编号的成员、逐人追加办理回执及重要审批岗位配置。待批记录不产生授权；状态变化必须递增版本。申请人及受益成员不能批准自己的批次，批准后不得新增成员或修改用途、期限。成功回执必须指向与批准资料包、预设版本及成员一致的授权，同一成员不能重复成功执行。迁移不指定审批人，也不生成申请。运行时仍须核验当前岗位、成员、供方许可与Data有效性，不能仅凭存储约束声称批量流程已开放。
+
+来源许可流程存储（`20260923065331_resource_policy_administration.sql`）增加明确的项目办理/审批岗位配置及不可改写的申请。迁移默认不授予岗位或来源许可。申请从待审批开始，状态变化须递增版本，提交依据保留，不允许删除或在终态后重开。发布回执必须对应内容、申请人和独立审批人均一致的不可变许可版本。撤回不产生权限。两张表均强制RLS，匿名、登录用户和通用服务角色不能直接访问。岗位配置仍属受控维护操作；运行时鉴权、HTTP和页面验收与本次存储验证分开。

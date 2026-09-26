@@ -1,4 +1,8 @@
 import {
+  ResourceAccessContextSchema,
+  type ResourceAccessContext,
+} from '@wiser/platform-contracts';
+import {
   DATA_CAPABILITY_REGISTRY,
   type DataCapabilityId,
   type SecurityLevel,
@@ -34,6 +38,7 @@ const SECURITY_RANK: Readonly<Record<SecurityLevel, number>> = {
 };
 
 export interface SpecialQueryScope {
+  readonly resourceAccess?: ResourceAccessContext;
   readonly tenantId: string;
   readonly projectId: string;
   readonly maxSecurityLevel: SecurityLevel;
@@ -64,7 +69,20 @@ export interface SpecialSearchOrchestrator {
   search(request: unknown): Promise<unknown>;
 }
 
+export type ProjectionEvidenceReference = {
+  readonly evidenceId: string;
+  readonly dataItemId?: string;
+  readonly versionId?: string;
+};
+export interface ProjectionReadAuthority {
+  assertVisible(
+    request: ScopedSpecialQueryRequest,
+    references: readonly ProjectionEvidenceReference[],
+  ): Promise<void>;
+}
+
 export interface SpecialQueryExecutorOptions {
+  readonly projectionAuthority?: ProjectionReadAuthority;
   readonly search: SpecialSearchOrchestrator;
   readonly data: DataStructuredQueryPort;
   readonly graph: GraphQueryPort;
@@ -96,16 +114,101 @@ export class SpecialQueryExecutorError extends Error {
 }
 
 interface ValidatedGraphOutput {
-  readonly nodes: readonly { readonly securityLevel: SecurityLevel }[];
+  readonly nodes: readonly {
+    readonly entityId: string;
+    readonly dataItemId: string;
+    readonly versionId: string;
+    readonly evidenceId: string;
+    readonly securityLevel: SecurityLevel;
+  }[];
+  readonly edges: readonly {
+    readonly evidenceId: string;
+    readonly fromEntityId: string;
+    readonly toEntityId: string;
+  }[];
 }
 
 interface ValidatedSearchPage {
   readonly items: readonly {
     readonly dataItemId: string;
+    readonly versionId: string;
+    readonly evidenceId: string;
     readonly score: number;
     readonly securityLevel: SecurityLevel;
   }[];
   readonly nextCursor?: string;
+}
+
+function managedSearchPins(context: DataCapabilityExecutionContext) {
+  if (context.authorization.resourceAccess === undefined) return undefined;
+  const parsed = ResourceAccessContextSchema.safeParse(
+    context.authorization.resourceAccess,
+  );
+  if (
+    !parsed.success ||
+    parsed.data.scope.mode !== 'managed' ||
+    (parsed.data.scope.validUntil !== null &&
+      Date.parse(parsed.data.scope.validUntil) <= Date.now())
+  )
+    throw executorError('UNAUTHORIZED_BACKEND_RESULT');
+  return parsed.data.scope.permissions['content.read'].filter(
+    (ref) => ref.kind === 'version',
+  );
+}
+
+async function authorizedSearch(
+  options: SpecialQueryExecutorOptions,
+  input: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+): Promise<ValidatedSearchPage> {
+  const pins = managedSearchPins(context);
+  // An empty version filter means unrestricted to legacy search backends.
+  if (pins?.length === 0) return { items: [] };
+  if (pins && !options.projectionAuthority)
+    throw executorError('BACKEND_UNAVAILABLE');
+  const output = await options.search.search({
+    tenantId: context.authorization.tenantId,
+    projectId: context.authorization.projectId,
+    query: input.query,
+    maxSecurityLevel: context.effectiveMaxSecurityLevel,
+    policyVersion: context.authorization.authzVersion,
+    businessDomains: input.businessDomains,
+    securityLevels: input.securityLevels,
+    sources: input.sources,
+    allowedExcerptFields: EXCERPT_FIELDS,
+    first: input.first,
+    after: input.after,
+    ...(pins
+      ? {
+          versionIds: [...new Set(pins.map((pin) => pin.versionId))],
+          resourceFingerprint:
+            context.authorization.resourceAccess!.fingerprint,
+        }
+      : {}),
+  });
+  const page = validatedSearchPage(output, context.effectiveMaxSecurityLevel);
+  if (pins) {
+    if (
+      page.items.some(
+        (item) =>
+          !pins.some(
+            (pin) =>
+              pin.versionId === item.versionId &&
+              pin.dataItemId === item.dataItemId,
+          ),
+      )
+    )
+      throw executorError('UNAUTHORIZED_BACKEND_RESULT');
+    await options.projectionAuthority!.assertVisible(
+      request(input, context),
+      page.items.map(({ dataItemId, versionId, evidenceId }) => ({
+        dataItemId,
+        versionId,
+        evidenceId,
+      })),
+    );
+  }
+  return page;
 }
 
 function executorError(code: SpecialQueryExecutorErrorCode) {
@@ -138,6 +241,9 @@ function scope(context: DataCapabilityExecutionContext): SpecialQueryScope {
     projectId: context.authorization.projectId,
     maxSecurityLevel: context.effectiveMaxSecurityLevel,
     maximumPolicyVersion: context.authorization.authzVersion,
+    ...(context.authorization.resourceAccess
+      ? { resourceAccess: context.authorization.resourceAccess }
+      : {}),
   });
 }
 
@@ -159,7 +265,10 @@ function request(
   });
 }
 
-function validateGraphSecurity(output: unknown, maximum: SecurityLevel): void {
+function validateGraphSecurity(
+  output: unknown,
+  maximum: SecurityLevel,
+): ValidatedGraphOutput {
   const parsed =
     DATA_CAPABILITY_REGISTRY['data.graph.expand'].outputSchema.safeParse(
       output,
@@ -173,6 +282,57 @@ function validateGraphSecurity(output: unknown, maximum: SecurityLevel): void {
   ) {
     throw executorError('UNAUTHORIZED_BACKEND_RESULT');
   }
+  return graph;
+}
+
+async function authorizedGraph(
+  options: SpecialQueryExecutorOptions,
+  input: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+  path: boolean,
+): Promise<unknown> {
+  const pins = managedSearchPins(context);
+  if (pins?.length === 0) return { nodes: [], edges: [] };
+  if (pins && !options.projectionAuthority)
+    throw executorError('BACKEND_UNAVAILABLE');
+  const query = request(input, context);
+  const output = path
+    ? await options.graph.findPath(query)
+    : await options.graph.expand(query);
+  const graph = validateGraphSecurity(
+    output,
+    context.effectiveMaxSecurityLevel,
+  );
+  if (pins) {
+    if (
+      graph.nodes.some(
+        (node) =>
+          !pins.some(
+            (pin) =>
+              pin.dataItemId === node.dataItemId &&
+              pin.versionId === node.versionId,
+          ),
+      )
+    )
+      throw executorError('UNAUTHORIZED_BACKEND_RESULT');
+    const nodeIds = new Set(graph.nodes.map((node) => node.entityId));
+    if (
+      graph.edges.some(
+        (edge) =>
+          !nodeIds.has(edge.fromEntityId) || !nodeIds.has(edge.toEntityId),
+      )
+    )
+      throw executorError('INVALID_BACKEND_RESULT');
+    await options.projectionAuthority!.assertVisible(query, [
+      ...graph.nodes.map(({ dataItemId, versionId, evidenceId }) => ({
+        dataItemId,
+        versionId,
+        evidenceId,
+      })),
+      ...graph.edges.map(({ evidenceId }) => ({ evidenceId })),
+    ]);
+  }
+  return output;
 }
 
 function define(
@@ -232,38 +392,14 @@ export function createSpecialQueryExecutors(
     define('data.query', (input, context) =>
       options.data.query(request(input, context)),
     ),
-    define('data.search.federated', async (input, context) => {
-      const output = await options.search.search({
-        tenantId: context.authorization.tenantId,
-        projectId: context.authorization.projectId,
-        query: input.query,
-        maxSecurityLevel: context.effectiveMaxSecurityLevel,
-        policyVersion: context.authorization.authzVersion,
-        businessDomains: input.businessDomains,
-        securityLevels: input.securityLevels,
-        sources: input.sources,
-        allowedExcerptFields: EXCERPT_FIELDS,
-        first: input.first,
-        after: input.after,
-      });
-      validatedSearchPage(output, context.effectiveMaxSecurityLevel);
-      return output;
-    }),
+    define('data.search.federated', (input, context) =>
+      authorizedSearch(options, input, context),
+    ),
     define('data.knowledge.search', async (input, context) => {
-      const raw = await options.search.search({
-        tenantId: context.authorization.tenantId,
-        projectId: context.authorization.projectId,
-        query: input.query,
-        maxSecurityLevel: context.effectiveMaxSecurityLevel,
-        policyVersion: context.authorization.authzVersion,
-        sources: ['semantic'],
-        allowedExcerptFields: EXCERPT_FIELDS,
-        first: input.first,
-        after: input.after,
-      });
-      const validatedPage = validatedSearchPage(
-        raw,
-        context.effectiveMaxSecurityLevel,
+      const validatedPage = await authorizedSearch(
+        options,
+        { ...input, sources: ['semantic'] },
+        context,
       );
       const dataItemIds = new Set(
         Array.isArray(input.dataItemIds)
@@ -285,16 +421,12 @@ export function createSpecialQueryExecutors(
           : { nextCursor: validatedPage.nextCursor }),
       };
     }),
-    define('data.graph.expand', async (input, context) => {
-      const output = await options.graph.expand(request(input, context));
-      validateGraphSecurity(output, context.effectiveMaxSecurityLevel);
-      return output;
-    }),
-    define('data.graph.findPath', async (input, context) => {
-      const output = await options.graph.findPath(request(input, context));
-      validateGraphSecurity(output, context.effectiveMaxSecurityLevel);
-      return output;
-    }),
+    define('data.graph.expand', (input, context) =>
+      authorizedGraph(options, input, context, false),
+    ),
+    define('data.graph.findPath', (input, context) =>
+      authorizedGraph(options, input, context, true),
+    ),
     define('data.geo.query', (input, context) =>
       options.geo.query(request(input, context)),
     ),

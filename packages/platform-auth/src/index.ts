@@ -8,6 +8,13 @@ import {
   type PlatformRequestContext,
 } from '@wiser/platform-contracts';
 
+export {
+  PostgresProjectAccessService,
+  ProjectAccessError,
+  type ProjectAccessErrorCode,
+  type ProjectAccessServiceOptions,
+} from './project-access-service.js';
+
 export interface VerifiedSupabaseJwtClaims {
   readonly userId: string;
   readonly sessionId: string;
@@ -177,3 +184,28 @@ export {
   type PlatformCredentialPrincipalResolverOptions,
   type PlatformPrincipalResolverLike,
 } from './platform-credential-principal-resolver.js';
+
+export { evaluateResourceAccess } from './resource-access-policy.js';
+
+export { compileResourceAccessScope } from './resource-access-scope.js';
+
+export { ResourceScopedPrincipalResolver } from './resource-scoped-principal-resolver.js';
+
+export {
+  createPostgresResourceAuthorityLoader,
+  type ResourceAuthorityQuery,
+} from './postgres-resource-authority.js';
+
+export {
+  PostgresResourceAdministrationService,
+  ResourceAdministrationError,
+  type ResourceAdministrationOptions,
+} from './resource-administration-service.js';
+
+export { canAdministerResources } from './resource-policy-limits.js';
+
+export {
+  assertResourceManagementPolicy,
+  consumeResourceManagementPermit,
+  type ResourceManagementPermit,
+} from './resource-management-policy.js';

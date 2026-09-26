@@ -41,13 +41,27 @@ export async function loadBusinessRelations(
 ) {
   const pins = membership ? membership.pins : scope.assertionPins;
   const limit = membership ? 100000 : 2000;
+  const pinned = pins !== undefined;
   const result = await client.query(
-    `${RELATION_SELECT} where exists(select 1 from jsonb_array_elements($1::jsonb) ref where b.data_item_id=(ref->>'dataItemId')::uuid and b.version_id=(ref->>'versionId')::uuid)
-    and a.status=any($2::text[]) and ($3::jsonb is null or exists(select 1 from jsonb_array_elements($3::jsonb) pin where b.assertion_id=(pin->>0)::uuid)) and ${relationVisibleSql()} order by b.assertion_id limit $4`,
+    `with allowed_refs as materialized (
+      select (ref->>'dataItemId')::uuid data_item_id,(ref->>'versionId')::uuid version_id
+      from jsonb_array_elements($1::jsonb) ref
+    )${
+      pinned
+        ? `, allowed_pins as materialized (
+      select (pin->>0)::uuid assertion_id from jsonb_array_elements($3::jsonb) pin
+    )`
+        : ''
+    }
+    ${RELATION_SELECT} where (b.data_item_id,b.version_id) in
+      (select data_item_id,version_id from allowed_refs)
+    and a.status=any($2::text[])
+    ${pinned ? 'and b.assertion_id in (select assertion_id from allowed_pins)' : ''}
+    and ${relationVisibleSql()} order by b.assertion_id limit ${pinned ? '$4' : '$3'}`,
     [
       JSON.stringify(refs),
       businessQueryStatuses(scope.status),
-      pins ? JSON.stringify(pins) : null,
+      ...(pinned ? [JSON.stringify(pins)] : []),
       limit + 1,
     ],
   );

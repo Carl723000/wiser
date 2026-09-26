@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 94e74c99cba4677216553949fd65781ddda4eb04
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 5b28eea8d6e7754b16f00761b69df181b5e4ee93
 ---
 
 本页只覆盖第一次完整运行。日常的前后端单独启动、所有端口、环境变量和故障排查见[本机开发环境](/development/local-environment/)。
@@ -73,6 +73,8 @@ pnpm stack:full:up
 | GraphQL             | `POST http://127.0.0.1:3101/graphql`          |
 | MCP Streamable HTTP | `http://127.0.0.1:13004/mcp`                  |
 | Supabase Studio     | `http://127.0.0.1:56323`                      |
+
+这些是隔离的本机开发入口。现网 OAuth 部署工作树的 `supabase/config.toml` 已使用公网 HTTPS `:7100`；执行本机 fixture 流程应使用单独的本机工作树，并配置对应的本机 Auth URL 与回调。现网资料查阅与样本试录入见[用户指南](/development/wiser-data-guide/)。
 
 使用本机 fixture 账号登录：
 

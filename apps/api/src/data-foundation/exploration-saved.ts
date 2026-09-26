@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import {
   loadBusinessRelations,
   storedBusinessMembership,
@@ -89,6 +90,11 @@ async function scope(
     context.authorization.purpose,
     String(context.timeoutMs),
   ]);
+  await applyResourceReadScope(
+    client,
+    context.authorization,
+    context.resourceReadAction,
+  );
 }
 async function authorized(
   client: QueryAdapterPgClient,
@@ -537,7 +543,10 @@ export function createExplorationSavedExecutors(
       async execute(raw, context) {
         const { request } = ExportExplorationInputSchema.parse(raw);
         const result = ExplorationResultSchema.parse(
-          await exploration.execute(request, context),
+          await exploration.execute(request, {
+            ...context,
+            resourceReadAction: 'result.export',
+          }),
         );
         const coverage = exportCoverage(result, request.after !== undefined);
         return ExportExplorationOutputSchema.parse({

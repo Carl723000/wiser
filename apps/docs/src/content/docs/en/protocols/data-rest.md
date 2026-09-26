@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: 628f92d5b980b8529d2e811dc9922e440f04988b
+lastReviewedAt: 2026-09-23
+lastReviewedCommit: 46cd150396b22e873ae44fc87c869174ce3d7b19
 ---
 
 ## Protocol boundary
@@ -169,6 +169,8 @@ GeoServer, STAC API, TiTiler, and Martin publish no host ports. Browsers, Agents
 
 Every call requires the unified Bearer, Tenant, Project, Purpose, and `data.geo.read`; every other HTTP method returns `405`. OGC accepts only each service's read request/query allowlist. Except for GetCapabilities, callers supply an authorized `versionId`, while API fixes layer/type and Tenant/Project/Version filters. STAC `current` becomes the current Tenant/Project's deterministic collection; a cross-scope collection returns safe `404`.
 
+For resource-managed projects, the raw project-wide STAC proxy returns `403` except for static `/conformance`, and OGC GetCapabilities returns `403` even when `versionId` is supplied. Those upstream service catalogs cannot be narrowed reliably to the caller's licensed versions. Governed per-item STAC reads use `/api/data/v1/stac/collections/:collectionId/items/:itemId`; authorized per-version OGC data requests and vector/raster tiles remain available. A resource-filtered STAC listing or capabilities document requires a separate, explicitly governed contract.
+
 Vector tiles first verify an RLS-visible Version with a spatial extent, then call Martin's version-scoped `service.wiser_spatial_extent_mvt` source with server-injected Tenant, Project, Version, security ceiling, and policy version. Raster tiles select only a visible TIFF/GeoTIFF COG from authoritative RAW assets, validate its content-addressed key, and generate a constrained `s3://` source server-side for TiTiler. A client-supplied `url`/source fails with `422` before upstream I/O.
 
 All four upstream origins come from startup-validated internal configuration; userinfo/query/fragment, redirects, and dynamic hosts are forbidden. Query, coordinates, TMS, format, and response content type use strict allowlists. Default timeout is 5 seconds, response cap is 8 MiB, and only safe ETag/Last-Modified pass through. Every contextual ALLOWED/DENIED/FAILED request records `data.geo.read`, target, and route hash. An unauthenticated denial emits only a redacted platform log because no actor audit may be fabricated.
@@ -280,6 +282,8 @@ After an ambiguous failure, retry only the identical actor, Tenant, Project, Pur
 ## Shared exploration result sets
 
 `POST /api/data/v1/explore/query` calls `data.explore.query` and requires both `data.query.execute` and `data.catalog.read`. Start with `{"spec":{"text":"water"},"view":"resources","first":20}`. Continue with `{"queryId":"<returned UUID>","view":"resources","first":20,"after":"<returned cursor>"}`. Supply exactly one of `spec` or `queryId`; continuation requires the latter. The response carries `queryId`, `spec`, creation/expiry times, authorized `totalCount`, versioned `resources`, readiness and optional `nextCursor`.
+
+The `resources` response also includes optional `summary.coverage`. For the reauthorized, pinned resource set, `temporal` and `geometry` each report `recordedVersionCount` and `unknownVersionCount`; the two counts partition `summary.resourceCount` independently of the page size. A version is recorded when at least one extent row is visible under Data RLS, and multiple rows for that version count once. Unknown includes missing or non-visible extents, so these counts do not certify sampling time, geometry accuracy, CRS, or administrative/river identity. `approvedAssertionCount` and `effectiveActions` remain `null` rather than invented totals. A revoked or expired query cannot reuse its old summary.
 
 Manifests expire after 30 minutes. Foreign owners, changed Purpose/security/policy and expired IDs return `404`; changed authority membership returns `409`; malformed criteria/cursors and more than 10,000 matching versions return `422`. At most 32 recent manifests are retained per matching owner/context; creating another can evict an older query. Re-run the original specification when a result set expires. Projection readiness may advance independently. No raw SQL, Cypher, tenant or actor override is accepted.
 
@@ -394,3 +398,15 @@ The default runtime is disabled. A real source needs a trusted adapter and live 
 Relation list 1.7 adds opt-in `pageMode: "BOUNDED_PROJECT"` with `first` up to 500, only for an existing project business `queryId`. The server rechecks snapshot ownership, expiry, current source/evidence authorization and immutable assertion revisions before each page. A complete relation is never truncated. The serialized UTF-8 JSON result (items, total and cursor) is bounded to 1 MiB; oversized single relations fail validation rather than returning an empty continuation. Transport envelopes are outside this result budget.
 
 Requests without this mode retain the 100-item limit and existing behavior. The exact 1.6 discovery schemas remain archived; older capability versions are unchanged. Clients must discover 1.7 support before opting in and otherwise use the legacy path. A fixed project membership is not an authorization cache. This reduces repeated requests without changing the cost or scope of full reauthorization, and makes no performance claim until measured.
+
+## Resource scope adapter boundary
+
+Trusted SQL adapters preserve existing public inputs and legacy transactions while accepting an internal compiled authority scope. Resource restrictions apply before result counts and pagination. Catalog continuation binds the resource fingerprint; changed-scope continuation is INVALID_DATA_CURSOR. Existing fixed exploration manifests still fail with CONFLICT when any pinned member becomes inaccessible, including export without the required intersection. An internal export action cannot be supplied through JSON. The platform runtime now supplies fresh resource authority. End-to-end resource administration acceptance remains pending.
+
+Managed federated/semantic search sends at most 1000 trusted content-version pins to each backend; discovery-only scope returns no content hits. Search cursors include the resource fingerprint. Exact item/version/evidence references are checked against Data PostgreSQL RLS, publication and cross-source evidence visibility before releasing a page; missing authority adapters fail closed.
+
+Managed graph expansion/path queries constrain every node and relationship to the content-version pins, omit the full authority snapshot from Neo4j parameters, and revalidate node/evidence references against Data PostgreSQL before returning the graph. Readable endpoints never substitute for readable relationship evidence. Empty content scope avoids querying the projection.
+
+REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
+
+Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.

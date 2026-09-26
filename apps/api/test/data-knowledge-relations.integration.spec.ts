@@ -30,6 +30,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       item = randomUUID(),
       version = randomUUID();
     const role = `reconciliation_test_${actor.replaceAll('-', '')}`;
+    let rejectedSqlState: string | undefined;
     const context: DataCapabilityExecutionContext = {
       principal: {
         actorId: actor,
@@ -71,7 +72,12 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
               await client.query('rollback to savepoint reconciliation');
               return client.query('release savepoint reconciliation');
             }
-            return client.query(sql, [...values]);
+            try {
+              return await client.query(sql, [...values]);
+            } catch (error) {
+              rejectedSqlState = (error as { code?: string }).code;
+              throw error;
+            }
           },
           release() {},
         };
@@ -116,6 +122,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           ),
         );
       await client.query(`create role ${role} nologin nosuperuser nobypassrls`);
+      await client.query(`grant ${role} to current_user`);
       await client.query(
         `grant usage on schema catalog,service,knowledge,security,event to ${role}`,
       );
@@ -217,9 +224,39 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         subject: { ...highCandidate.subject, label: 'Different definition' },
         object: { ...highCandidate.object, key: 'different:measurement' },
       };
+      const validBatchMember = relation(
+        'a:rollback',
+        'HAS_REPORTED_INDICATOR',
+        'b:rollback',
+      );
+      await client.query('reset role');
+      const batchState = async () =>
+        (
+          await client.query<{
+            evidence: number;
+            assertions: number;
+            bindings: number;
+            definitions: number;
+          }>(
+            `select
+               (select count(*)::int from knowledge.evidence_fragment where tenant_id=$1 and project_id=$2) evidence,
+               (select count(*)::int from knowledge.assertion where tenant_id=$1 and project_id=$2) assertions,
+               (select count(*)::int from knowledge.assertion_binding where tenant_id=$1 and project_id=$2) bindings,
+               (select count(*)::int from security.relation_entity_definition where tenant_id=$1 and project_id=$2) definitions`,
+            [tenant, project],
+          )
+        ).rows[0];
+      const beforeRejectedBatch = await batchState();
       await expect(
-        call('import', { ...input, candidates: [conflicting] }, command()),
-      ).rejects.toThrow();
+        call(
+          'import',
+          { ...input, candidates: [validBatchMember, conflicting] },
+          command(),
+        ),
+      ).rejects.toMatchObject({ code: 'PERSISTENCE_FAILED' });
+      expect(rejectedSqlState).toBe('23514');
+      await client.query('reset role');
+      expect(await batchState()).toEqual(beforeRejectedBatch);
       const ctx = command();
       const imported = ImportRelationsOutputSchema.parse(
         await call('import', input, ctx),
@@ -994,6 +1031,23 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       await expect(
         call('get', { assertionId: candidate.assertionId }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await client.query('reset role');
+      const beforeWithdrawnImport = await batchState();
+      await expect(
+        call(
+          'import',
+          {
+            ...input,
+            candidates: [
+              relation('withdrawn:a', 'HAS_REPORTED_INDICATOR', 'withdrawn:b'),
+              relation('withdrawn:b', 'HAS_REPORTED_INDICATOR', 'withdrawn:c'),
+            ],
+          },
+          command(),
+        ),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await client.query('reset role');
+      expect(await batchState()).toEqual(beforeWithdrawnImport);
       await expect(call('import', input, ctx)).rejects.toMatchObject({
         code: 'NOT_FOUND',
       });

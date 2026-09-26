@@ -1,3 +1,4 @@
+import { admitsManagedCapability } from './managed-capability-policy.js';
 import { createHash } from 'node:crypto';
 
 import {
@@ -91,6 +92,9 @@ export class DataCapabilityHandlerError extends Error {
 }
 
 export interface DataCapabilityExecutionContext {
+  /** Trusted internal operation, never read from capability input. */
+  readonly resourceReadAction?:
+    'content.read' | 'original.read' | 'result.export';
   readonly principal: PlatformPrincipal;
   readonly authorization: AuthorizedContext;
   readonly effectiveMaxSecurityLevel: SecurityLevel;
@@ -306,6 +310,8 @@ export class DataCapabilityHandler {
       return this.#deny(auditBase, 'VALIDATION_FAILED');
     }
     if (
+      (requestContext.authorization.resourceAccess !== undefined &&
+        !admitsManagedCapability(definition.id)) ||
       definition.requiredScopes.some(
         (scope) => !requestContext.authorization.scopes.includes(scope),
       )

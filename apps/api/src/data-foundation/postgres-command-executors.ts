@@ -1,3 +1,4 @@
+import { applyResourceReadScope } from './resource-read-scope.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
@@ -735,6 +736,12 @@ function requestHash(
         actorId: context.principal.actorId,
         tenantId: context.authorization.tenantId,
         projectId: context.authorization.projectId,
+        ...(context.authorization.resourceAccess
+          ? {
+              resourceFingerprint:
+                context.authorization.resourceAccess.fingerprint,
+            }
+          : {}),
       }),
     )
     .digest('hex');
@@ -1065,6 +1072,11 @@ export class CommandTransactions {
           String(context.authorization.authzVersion),
           statementTimeout(context),
         ]),
+      );
+      await applyResourceReadScope(
+        client,
+        context.authorization,
+        context.resourceReadAction,
       );
       exactlyOne(
         await this.query(client, context, IDEMPOTENCY_LOCK_SQL, [

@@ -1,3 +1,4 @@
+import { sameDeliveryAuthority } from './authority-delivery.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
@@ -248,14 +249,15 @@ export function createDataFoundationResourceModule(
             return sendError(request, reply, errors.forbidden);
           }
           try {
-            return sendResource(
-              request,
-              reply,
-              await options.resources.readEvidence({
-                context: resolved.context,
-                evidenceId: params.data.evidenceId,
-              }),
-            );
+            const resource = await options.resources.readEvidence({
+              context: resolved.context,
+              evidenceId: params.data.evidenceId,
+            });
+            const fresh = await resolveContext(request, options.resolver);
+            if ('error' in fresh) return sendError(request, reply, fresh.error);
+            if (!sameDeliveryAuthority(resolved.context, fresh.context))
+              return sendError(request, reply, errors.forbidden);
+            return sendResource(request, reply, resource);
           } catch (error) {
             return sendError(request, reply, mapError(error));
           }
@@ -280,15 +282,16 @@ export function createDataFoundationResourceModule(
             return sendError(request, reply, errors.forbidden);
           }
           try {
-            return sendResource(
-              request,
-              reply,
-              await options.resources.readStacItem({
-                context: resolved.context,
-                collectionId: params.data.collectionId,
-                itemId: params.data.itemId,
-              }),
-            );
+            const resource = await options.resources.readStacItem({
+              context: resolved.context,
+              collectionId: params.data.collectionId,
+              itemId: params.data.itemId,
+            });
+            const fresh = await resolveContext(request, options.resolver);
+            if ('error' in fresh) return sendError(request, reply, fresh.error);
+            if (!sameDeliveryAuthority(resolved.context, fresh.context))
+              return sendError(request, reply, errors.forbidden);
+            return sendResource(request, reply, resource);
           } catch (error) {
             return sendError(request, reply, mapError(error));
           }

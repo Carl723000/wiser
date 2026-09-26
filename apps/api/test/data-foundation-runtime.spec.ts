@@ -16,6 +16,7 @@ import {
   createDataFoundationRuntimeFromEnvironment,
   type DataFoundationRuntimeFactories,
 } from '../src/data-foundation/runtime.js';
+import type { TrustedExternalMetadataRegistry } from '../src/data-foundation/external-metadata-registry.js';
 import type { PlatformAuthRuntime } from '../src/platform/auth-runtime.js';
 
 const enabledEnvironment = {
@@ -161,6 +162,72 @@ afterEach(async () => {
 });
 
 describe('Data Foundation production runtime composition', () => {
+  it('passes one optional trusted source registry to package validation and external reading, without enabling the default runtime', () => {
+    const f = factories();
+    const baseRead = f.value.createReadRuntime.bind(f.value);
+    const baseSpecial = f.value.createSpecialExecutors.bind(f.value);
+    let readPorts: unknown;
+    let specialPorts: unknown;
+    f.value.createReadRuntime = (pool, external) => {
+      readPorts = external;
+      return baseRead(pool);
+    };
+    f.value.createSpecialExecutors = (config, pool, external) => {
+      specialPorts = external;
+      return baseSpecial(config, pool);
+    };
+    const registry: TrustedExternalMetadataRegistry = {
+      resolve: () => Promise.resolve(null),
+    };
+    createDataFoundationRuntimeFromEnvironment(
+      enabledEnvironment,
+      authRuntime,
+      f.value,
+      registry,
+    );
+    expect(readPorts).toBe(specialPorts);
+    expect(readPorts).toMatchObject({
+      validateExternalSource: expect.any(Function) as unknown,
+      resolveReader: expect.any(Function) as unknown,
+    });
+    readPorts = 'stale';
+    specialPorts = 'stale';
+    createDataFoundationRuntimeFromEnvironment(
+      enabledEnvironment,
+      authRuntime,
+      f.value,
+    );
+    expect(readPorts).toBeUndefined();
+    expect(specialPorts).toBeUndefined();
+  });
+  it('wires resource management only when both trusted control and Data ports exist', () => {
+    const f = factories();
+    const validateResourcePackage = vi.fn(() => Promise.resolve(false));
+    const resourceAdministrationModule = vi.fn(() => ({
+      id: 'platform.resource-administration',
+      register() {},
+    }));
+    const make = f.value.createReadRuntime.bind(f.value);
+    f.value.createReadRuntime = (pool) => ({
+      ...make(pool),
+      validateResourcePackage,
+    });
+    const runtime = createDataFoundationRuntimeFromEnvironment(
+      enabledEnvironment,
+      { ...authRuntime, resourceAdministrationModule },
+      f.value,
+    );
+    expect(resourceAdministrationModule).toHaveBeenCalledWith(
+      validateResourcePackage,
+      undefined,
+      undefined,
+    );
+    expect(
+      runtime.modules.some(
+        (module) => module.id === 'platform.resource-administration',
+      ),
+    ).toBe(true);
+  });
   it('keeps Platform Auth, Data Foundation, and the existing EXCON host composition together', () => {
     const dataModules = [
       { id: 'data.foundation', register() {} },

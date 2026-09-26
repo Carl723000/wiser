@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type {
   AuthorizationQuery,
+  ResourceAuthorityQuery,
   DelegatedCredentialAuthorizationQuery,
   PlatformDelegationTransactionPool,
   SupabaseClaimsClient,
@@ -23,6 +24,24 @@ const SESSION_ID = 'f1000000-0000-4000-8000-000000000002';
 const TENANT_ID = 'f1000000-0000-4000-8000-000000000003';
 const PROJECT_ID = 'f1000000-0000-4000-8000-000000000004';
 
+const legacyResourceAuthority: ResourceAuthorityQuery = (_sql, values) =>
+  Promise.resolve({
+    rows: [
+      {
+        snapshot: {
+          mode: 'legacy',
+          tenantId: values[0],
+          projectId: values[1],
+          actorId: values[2],
+          purpose: values[3],
+          now: '2026-09-23T00:00:00Z',
+          revision: 0,
+          grants: [],
+        },
+      },
+    ],
+  });
+
 const openApps: FastifyInstance[] = [];
 
 afterEach(async () => {
@@ -30,6 +49,63 @@ afterEach(async () => {
 });
 
 describe('WISER platform auth runtime', () => {
+  it('registers project management only with its explicit server switch', async () => {
+    const env = {
+      WISER_AUTH_MODE: 'supabase',
+      SUPABASE_URL: 'http://127.0.0.1:56321',
+      SUPABASE_PUBLISHABLE_KEY: 'publishable-test-key-long-enough',
+      DATABASE_URL: 'postgresql://test:test@127.0.0.1:56322/postgres',
+      WISER_DELEGATED_CREDENTIAL_HMAC_KEYS: JSON.stringify({
+        activeKeyId: 'test',
+        keys: { test: Buffer.alloc(32, 7).toString('base64url') },
+      }),
+    };
+    const factories: PlatformAuthRuntimeFactories = {
+      createClaimsClient: () => ({
+        getClaims: () => Promise.resolve({ data: null, error: null }),
+      }),
+      createAuthorizationDatabase: () => ({
+        resourceAuthorityQuery: legacyResourceAuthority,
+        query: () => Promise.resolve({ rows: [] }),
+        delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
+        transactionPool: {
+          connect: () => Promise.reject(new Error('No database call expected')),
+        },
+        close: () => Promise.resolve(),
+      }),
+    };
+    for (const enabled of [false, true]) {
+      const runtime = createPlatformAuthRuntimeFromEnvironment(
+        {
+          ...env,
+          ...(enabled ? { WISER_PROJECT_ACCESS_ENABLED: 'true' } : {}),
+        },
+        factories,
+      );
+      expect(typeof runtime.resourceAdministrationModule).toBe(
+        enabled ? 'function' : 'undefined',
+      );
+      const module = createPlatformAuthModuleFromEnvironment(
+        {
+          ...env,
+          ...(enabled ? { WISER_PROJECT_ACCESS_ENABLED: 'true' } : {}),
+        },
+        factories,
+      )!;
+      const app = buildApp({ logger: false, modules: [module] });
+      openApps.push(app);
+      expect(
+        (await app.inject('/api/platform/v1/access/projects')).statusCode,
+      ).toBe(enabled ? 401 : 404);
+    }
+    expect(() =>
+      loadPlatformAuthRuntimeConfig({
+        ...env,
+        WISER_PROJECT_ACCESS_ENABLED: 'yes',
+      }),
+    ).toThrow('WISER_PROJECT_ACCESS_ENABLED');
+  });
+
   it('registers Agent routes in the actual configured runtime', async () => {
     const module = createPlatformAuthModuleFromEnvironment(
       {
@@ -49,6 +125,7 @@ describe('WISER platform auth runtime', () => {
           getClaims: () => Promise.resolve({ data: null, error: null }),
         }),
         createAuthorizationDatabase: () => ({
+          resourceAuthorityQuery: legacyResourceAuthority,
           query: () => Promise.resolve({ rows: [] }),
           delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
           transactionPool: {
@@ -171,6 +248,7 @@ describe('WISER platform auth runtime', () => {
     const factories: PlatformAuthRuntimeFactories = {
       createClaimsClient: vi.fn(() => claimsClient),
       createAuthorizationDatabase: vi.fn(() => ({
+        resourceAuthorityQuery: legacyResourceAuthority,
         query,
         delegatedCredentialQuery: vi.fn(() => Promise.resolve({ rows: [] })),
         transactionPool: {
@@ -218,6 +296,98 @@ describe('WISER platform auth runtime', () => {
     });
   });
 
+  it('loads resource authority on every verified resolution and fails closed on authority loss', async () => {
+    const snapshot = {
+      mode: 'managed',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      actorId: USER_ID,
+      purpose: 'operate',
+      now: '2026-09-23T00:00:00Z',
+      revision: 3,
+      grants: [],
+    };
+    const resourceAuthorityQuery = vi.fn(
+      (): Promise<{ rows: { snapshot: unknown }[] }> =>
+        Promise.resolve({ rows: [{ snapshot }] }),
+    );
+    const factories = {
+      createClaimsClient: () => ({
+        getClaims: () =>
+          Promise.resolve({
+            data: {
+              claims: {
+                sub: USER_ID,
+                session_id: SESSION_ID,
+                role: 'authenticated',
+                exp: 1_800_000_000,
+              },
+            },
+            error: null,
+          }),
+      }),
+      createAuthorizationDatabase: () => ({
+        query: () =>
+          Promise.resolve({
+            rows: [
+              {
+                tenant_id: TENANT_ID,
+                project_id: PROJECT_ID,
+                roles: ['data-reader'],
+                scopes: ['data.catalog.read'],
+                max_security_level: 'L1_INTERNAL',
+                authz_version: 2,
+              },
+            ],
+          }),
+        delegatedCredentialQuery: () => Promise.resolve({ rows: [] }),
+        resourceAuthorityQuery,
+        transactionPool: {
+          connect: () => Promise.reject(new Error('No transaction expected')),
+        },
+        close: () => Promise.resolve(),
+      }),
+    };
+    const runtime = createPlatformAuthRuntimeFromEnvironment(
+      {
+        WISER_AUTH_MODE: 'supabase',
+        SUPABASE_URL: 'http://127.0.0.1:56521',
+        SUPABASE_PUBLISHABLE_KEY: 'publishable-test-key-long-enough',
+        DATABASE_URL: 'postgresql://test:test@127.0.0.1:56522/postgres',
+        WISER_DELEGATED_CREDENTIAL_HMAC_KEYS: JSON.stringify({
+          activeKeyId: 'test',
+          keys: { test: Buffer.alloc(32, 7).toString('base64url') },
+        }),
+      },
+      factories,
+    );
+    const input = {
+      token: 'verified-token',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'operate',
+      traceId: 'f'.repeat(32),
+    };
+    const first = await runtime.resolver!.resolve(input);
+    expect(first?.authorization.resourceAccess).toMatchObject({
+      revision: 3,
+      scope: { mode: 'managed', permissions: { 'content.read': [] } },
+    });
+    resourceAuthorityQuery.mockResolvedValue({
+      rows: [{ snapshot: { ...snapshot, revision: 4 } }],
+    });
+    const next = await runtime.resolver!.resolve(input);
+    expect(next?.authorization.resourceAccess?.revision).toBe(4);
+    expect(next?.authorization.resourceAccess?.fingerprint).not.toBe(
+      first?.authorization.resourceAccess?.fingerprint,
+    );
+    resourceAuthorityQuery.mockRejectedValue(
+      new Error('private database details'),
+    );
+    await expect(runtime.resolver!.resolve(input)).resolves.toBeNull();
+    expect(resourceAuthorityQuery).toHaveBeenCalledTimes(3);
+  });
+
   it('wires verified claims membership lookup and pool shutdown', async () => {
     const claimsClient: SupabaseClaimsClient = {
       getClaims: vi.fn(() =>
@@ -259,6 +429,7 @@ describe('WISER platform auth runtime', () => {
     const factories: PlatformAuthRuntimeFactories = {
       createClaimsClient: vi.fn(() => claimsClient),
       createAuthorizationDatabase: vi.fn(() => ({
+        resourceAuthorityQuery: legacyResourceAuthority,
         query,
         delegatedCredentialQuery,
         transactionPool,

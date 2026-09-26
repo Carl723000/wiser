@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: c05533c0502c2b05cb8f09480463d7f7fc36308d
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 5b28eea8d6e7754b16f00761b69df181b5e4ee93
 ---
 
 ## 运行模式
@@ -67,6 +67,8 @@ GeoServer、STAC API、TiTiler 与 Martin 没有 host port；只能由统一 Aut
 
 Compose 与独立开发都使用 Web `3100`、API `3101` 作为宿主机入口；Compose 内部端口仍为 `3000`、`3001`。浏览器参考测试使用 `3200`，独立 EXCON Lab 默认使用 `3201`，独立 MCP HTTP 默认使用 `3004`。Supabase Auth 回调使用 Web 的 `3100` 地址，无需本机端口覆盖配置。
 
+现网 OAuth 部署工作树的 `supabase/config.toml` 已把 Site URL、外部 Auth URL 和 JWT issuer 指向公网 HTTPS `:7100`；上表仍描述独立本机开发端口。不要把该现网配置直接用于独立 localhost 登录测试；在单独的本机工作树中设置相应的本机 URL 与回调，部署工作树保留公网配置。现网 Auth 标准发现路径经路由器精确放行，MCP resource 为公网 `/mcp`，与容器内部 transport 地址分开。
+
 ## 单应用命令
 
 在不同终端中按需启动：
@@ -86,6 +88,8 @@ Data Foundation Web 使用 Supabase SSR Session，完整栈会为 Data smoke 和
 共享 MCP 进程总会初始化 EXCON HTTP client；即使只开发 Data MCP，也必须配置非空 `AGENT_EXCON_API_KEY` 和完整 `DATA_*`。Data Tool 不会发送该 EXCON key，因此本机占位值可以用于 Data-only 进程配置；它不是统一 Auth 身份，也不能调用 `excon_*`。
 
 ### 如何取得本机身份
+
+仓库 Auth 配置已关闭公众自行注册；保留邮箱认证以供已有账户登录。本机 fixture 登录、经授权的管理员邀请与公众注册入口分别处理。已由 Compose 管理的现网 Auth 还须在持久运行配置中设置 `GOTRUE_DISABLE_SIGNUP=true`，并只重建 Auth 服务；仅修改 `supabase/config.toml` 不会改变已运行的容器。
 
 - 人类开发者在 `/zh-CN/login` 使用 quick-start 的 seed operator 登录，Web 通过 Supabase Session 访问 Platform 与 Data 页面。
 - Agent/服务 delegated credential 由有 `platform.delegation.manage` 的 Supabase 人类通过 `/api/platform/v1/delegations` 创建、签发、轮换和撤销；明文只返回一次。
