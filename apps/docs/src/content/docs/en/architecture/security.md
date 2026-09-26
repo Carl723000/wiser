@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: c0ba77f364bb77b6a36067f59907edf620abb155
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## Separate four data classes
@@ -39,6 +39,8 @@ This page covers WISER-wide identity, database, secret, and telemetry boundaries
 Never send full fact objects to a browser or participant and rely on the UI to hide fields. Isolation starts in the server-side query.
 
 ## Supabase and RLS
+
+Public self-registration is disabled with `[auth] enable_signup=false` and the deployed `GOTRUE_DISABLE_SIGNUP=true`. Email authentication stays enabled for existing accounts. Account provisioning and invitations require an authorized maintenance workflow; creating an account never grants Project membership by itself.
 
 Supabase Auth is the only WISER authority for users, sessions, Tenants, Projects, Memberships, and delegated identities; Data Foundation never creates a second Auth system. `platform` and `platform_private` are not exposed to the Data API. anon/authenticated Schema, Table, Sequence, and Function privileges are revoked by default, and every table enables `FORCE ROW LEVEL SECURITY` as defense in depth.
 

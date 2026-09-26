@@ -17,7 +17,7 @@ checkPaths:
   - apps/mcp/src/**
   - supabase/config.toml
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: c0ba77f3
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## 网页入口
@@ -54,4 +54,6 @@ lastReviewedCommit: c0ba77f3
 
 ### 自行注册状态
 
-现网 `/auth/v1/settings` 报告 `disable_signup=false`，运行中的 GoTrue 也配置 `GOTRUE_DISABLE_SIGNUP=false`、邮箱登录开启。网页只展示已有账户登录并不等于认证 API 关闭了自行注册；此前“不提供公众自行注册”的说法不能视为已落实。此次未在缺少账户开通流程核对的情况下修改注册开关，也未创建测试账户。
+2026-09-26 经部署负责人明确要求，现网已关闭公众自行注册。`/auth/v1/settings` 返回 `disable_signup=true`，GoTrue 持久配置为 `GOTRUE_DISABLE_SIGNUP=true`，仓库的 `[auth] enable_signup=false` 与之保持一致。公网 `POST /auth/v1/signup` 实测返回 `422 signup_disabled`；检查请求不含密码，未创建测试账户。
+
+已有账户的邮箱密码登录保持开启，账号、会话、项目及成员权限数量核对未变。需要新账户时联系项目维护者，经授权的账户开通或邀请流程处理；账户开通不自动授予项目权限。此检查不替代本人登录、邮件邀请和真实 MCP 客户端的端到端验收。

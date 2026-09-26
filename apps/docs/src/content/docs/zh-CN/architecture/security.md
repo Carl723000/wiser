@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: c0ba77f364bb77b6a36067f59907edf620abb155
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## 四类数据必须分开
@@ -39,6 +39,8 @@ lastReviewedCommit: c0ba77f364bb77b6a36067f59907edf620abb155
 浏览器和参训智能体永远不能接收完整事实对象，再依赖前端隐藏字段。服务端必须从查询源头隔离数据。
 
 ## Supabase 与 RLS
+
+通过 `[auth] enable_signup=false` 和现网 `GOTRUE_DISABLE_SIGNUP=true` 关闭公众自行注册，已有账户的邮箱认证保持开启。账户开通与邀请须经授权的维护流程；创建账户本身不授予项目成员权限。
 
 - Supabase Auth 是全 WISER 唯一的用户、Session、Tenant、Project、Membership 与委托身份权威；Data Foundation 不创建第二套 Auth。
 - `platform` 与 `platform_private` 不暴露给 Data API，默认撤销 anon/authenticated 的 Schema、Table、Sequence 和 Function 权限，并对所有表启用 `FORCE ROW LEVEL SECURITY` 作为纵深防御。

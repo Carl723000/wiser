@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: c05533c0502c2b05cb8f09480463d7f7fc36308d
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## Runtime modes
@@ -88,6 +88,8 @@ Data Foundation Web uses the Supabase SSR session, and the complete stack inject
 The shared MCP process always initializes its EXCON HTTP client. Even Data-only MCP work configures a non-empty `AGENT_EXCON_API_KEY` plus complete `DATA_*`. Data Tools never send that EXCON key, so a local placeholder can satisfy Data-only process configuration; it is not unified identity and cannot call `excon_*`.
 
 ### Obtaining local identity
+
+The checked-in Auth configuration disables public self-registration. Keep email authentication enabled for existing users; local fixture login and authorized administrative invitations are separate from the public signup endpoint. A deployed Compose Auth instance also needs `GOTRUE_DISABLE_SIGNUP=true` in its persistent runtime configuration and a targeted Auth recreation; editing `supabase/config.toml` alone does not change an already-running container.
 
 - A human developer signs in at `/en/login` with the seeded operator from Quick start. Web uses the Supabase session for Platform and Data pages.
 - A Supabase human with `platform.delegation.manage` creates, issues, rotates, and revokes Agent/service delegated credentials through `/api/platform/v1/delegations`; plaintext is returned once.

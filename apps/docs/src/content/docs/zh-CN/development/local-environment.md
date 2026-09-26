@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-21
-lastReviewedCommit: c05533c0502c2b05cb8f09480463d7f7fc36308d
+lastReviewedAt: 2026-09-26
+lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
 ---
 
 ## 运行模式
@@ -88,6 +88,8 @@ Data Foundation Web 使用 Supabase SSR Session，完整栈会为 Data smoke 和
 共享 MCP 进程总会初始化 EXCON HTTP client；即使只开发 Data MCP，也必须配置非空 `AGENT_EXCON_API_KEY` 和完整 `DATA_*`。Data Tool 不会发送该 EXCON key，因此本机占位值可以用于 Data-only 进程配置；它不是统一 Auth 身份，也不能调用 `excon_*`。
 
 ### 如何取得本机身份
+
+仓库 Auth 配置已关闭公众自行注册；保留邮箱认证以供已有账户登录。本机 fixture 登录、经授权的管理员邀请与公众注册入口分别处理。已由 Compose 管理的现网 Auth 还须在持久运行配置中设置 `GOTRUE_DISABLE_SIGNUP=true`，并只重建 Auth 服务；仅修改 `supabase/config.toml` 不会改变已运行的容器。
 
 - 人类开发者在 `/zh-CN/login` 使用 quick-start 的 seed operator 登录，Web 通过 Supabase Session 访问 Platform 与 Data 页面。
 - Agent/服务 delegated credential 由有 `platform.delegation.manage` 的 Supabase 人类通过 `/api/platform/v1/delegations` 创建、签发、轮换和撤销；明文只返回一次。
