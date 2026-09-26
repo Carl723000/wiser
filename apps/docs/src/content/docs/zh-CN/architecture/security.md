@@ -22,7 +22,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/**
 lastReviewedAt: 2026-09-26
-lastReviewedCommit: 0635f3f684efbbaeacda76618d200458d5511f6c
+lastReviewedCommit: e5eef1040b814c154288f24349ff7f0fd4034dcd
 ---
 
 ## 四类数据必须分开
@@ -79,6 +79,8 @@ WISER Web 只接收 Observability Gateway 产生的安全 DTO，不直接读取 
 - CI 使用 fake provider；显式的在线测试使用最小权限 secret。
 - 日志记录供应商、模型、耗时和 token 数，不记录原始凭据。
 - 用户上传和模型输出都视为不可信内容，不能当成系统指令执行。
+
+认证 URL 中的邀请 hash、OAuth 授权码与令牌同样不得写入访问日志。Web 通过 `logging: false` 关闭 Next.js 开发请求日志；自托管 Kong 应持久配置 `KONG_PROXY_ACCESS_LOG=off`、`KONG_ADMIN_ACCESS_LOG=off`，或使用已审查且排除查询参数值的日志格式。路由器日志与错误报告也不得记录认证 URL。发送有效邀请前，用无敏感信息的测试标记逐层核验 stdout 与 stderr，不要用真实凭据测试日志。
 
 ## Compose 安全
 
