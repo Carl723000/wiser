@@ -23,13 +23,13 @@ lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
 
 ## 从哪里获得访问权限
 
-| 任务           | 当前入口                                        | 权限依据                                                         |
-| -------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
-| 了解 WISER     | Portal 公开                                     | 阅读系统介绍无需账号                                             |
-| 进入工作区     | 使用已有组织账号登录                            | 需要已验证的会话和当前项目成员资格                               |
-| 查阅或管理资料 | 在数据基座选择获准项目                          | 按操作核对成员资格、资料授权、来源条款及用途                     |
-| 参与演练       | 打开获准的智能体演练场景或运行                  | 账号需要相应的演练角色与权限                                     |
-| 连接外部智能体 | 从兼容的 MCP 客户端发起 OAuth，在浏览器确认授权 | 本人选择项目、用途、数据等级和有效期；网页权限不会自动授予智能体 |
+| 任务           | 当前入口                                        | 权限依据                                                 |
+| -------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| 了解 WISER     | Portal 公开                                     | 阅读系统介绍无需账号                                     |
+| 进入工作区     | 使用已有组织账号登录                            | 需要已验证的会话和当前项目成员资格                       |
+| 查阅或管理资料 | 在数据基座选择获准项目                          | 按操作核对成员资格、资料授权、来源条款及用途             |
+| 参与演练       | 打开获准的智能体演练场景或运行                  | 账号需要相应的演练角色与权限                             |
+| 连接外部智能体 | 从兼容的 MCP 客户端发起 OAuth，在浏览器确认授权 | 本人选择项目、用途和数据等级；网页权限不会自动授予智能体 |
 
 已核验的现网服务关闭了公开自行注册；账号创建和项目成员资格由管理员办理。[现网资料指南](/development/wiser-data-guide/)说明当前入口及尚待完成的个人客户端验收。本页解释这些用户路径背后的统一身份约束。
 
@@ -123,7 +123,7 @@ API 同时配置 `WISER_AGENT_MCP_RESOURCE`（精确的公开 `/mcp` URL）与 `
 
 ### 7100 公网 OAuth 部署
 
-当前部署启用了 GoTrue OAuth 2.1、动态客户端注册与 `platform_private.agent_access_token_hook`。Web 的 `/oauth/consent` 把授权请求送到已登录的双语页面；页面先通过 Supabase 关联当前 human，再从 WISER API 读取可授权项目。用户必须明确选择一个项目、模式、级别和期限，或拒绝。项目授权先提交，随后 Supabase 才批准授权码。MCP 发现元数据中的 resource 为 `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`，issuer 为 `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`。Auth 反代只允许 `/auth/v1` 和精确的 `/.well-known/oauth-authorization-server/auth/v1`；后者在反代内改写到 Kong 的 Auth 路由，不开放 Kong 的 REST/Storage。
+当前部署启用了 GoTrue OAuth 2.1、动态客户端注册与 `platform_private.agent_access_token_hook`。Web 的 `/oauth/consent` 把授权请求送到已登录的双语页面；页面先通过 Supabase 关联当前 human，再从 WISER API 读取可授权项目。用户必须明确选择一个项目、模式和级别，或拒绝。限定项目的智能体连接先提交，随后 Supabase 才批准授权码。新连接的 Delegation 没有固定到期时间，但仍逐次核验 OAuth 同意、Session、成员资格、资料授权与策略。MCP 发现元数据中的 resource 为 `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`，issuer 为 `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`。Auth 反代只允许 `/auth/v1` 和精确的 `/.well-known/oauth-authorization-server/auth/v1`；后者在反代内改写到 Kong 的 Auth 路由，不开放 Kong 的 REST/Storage。
 
 截至 2026-09-26，现有合成普通身份已通过公网浏览器同意／拒绝、PKCE 交换及官方 MCP SDK 实际调用，包含受管资料范围、跨项目拒绝、撤销和真实时钟到期。本人的真实客户端验收由用户明确推迟，仍为 **BLOCKED**；合成协议证据不能替代本人验收。详见资料指南中的范围与收据说明。公众自行注册已关闭：现网认证 API 返回 `disable_signup=true`，公众注册请求得到 `signup_disabled`。已有邮箱密码登录保持开启；管理员邀请仍须分别验证邮件投递与收件人接受。
 
