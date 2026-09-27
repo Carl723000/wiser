@@ -80,13 +80,21 @@ export default async function AgentConnectionsPage({
               <dd>{item.projectName?.[locale] ?? t.unknownProject}</dd>
               <dt>{t.expires}</dt>
               <dd>
-                <time dateTime={item.expiresAt}>
-                  {new Intl.DateTimeFormat(locale, {
-                    dateStyle: 'medium',
-                    timeStyle: 'long',
-                    timeZone: 'UTC',
-                  }).format(new Date(item.expiresAt))}
-                </time>
+                {item.expiresAt === null ? (
+                  item.status === 'revoked' ? (
+                    t.status.revoked
+                  ) : (
+                    t.untilDisconnected
+                  )
+                ) : (
+                  <time dateTime={item.expiresAt}>
+                    {new Intl.DateTimeFormat(locale, {
+                      dateStyle: 'medium',
+                      timeStyle: 'long',
+                      timeZone: 'UTC',
+                    }).format(new Date(item.expiresAt))}
+                  </time>
+                )}
               </dd>
             </dl>
             {item.status !== 'revoked' || item.providerConsent ? (

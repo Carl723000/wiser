@@ -178,6 +178,7 @@ type Mutation {
   createDataUploadSession(input: JSON!): JSON!
   completeDataUploadSession(id: ID!, input: JSON!): JSON!
   submitDataIngestion(id: ID!): Operation!
+  resumeDataIngestion(id: ID!, expectedVersion: Int!): Operation!
   approveDataIngestion(id: ID!, input: ApprovalInput!): Operation!
   rejectDataIngestion(id: ID!, input: JSON!): JSON!
   cancelDataOperation(id: ID!): Operation!
@@ -225,6 +226,7 @@ export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   createDataUploadSession: 'data.uploadSession.create',
   completeDataUploadSession: 'data.uploadSession.complete',
   submitDataIngestion: 'data.ingestion.submit',
+  resumeDataIngestion: 'data.ingestion.resume',
   approveDataIngestion: 'data.ingestion.approve',
   rejectDataIngestion: 'data.ingestion.reject',
   cancelDataOperation: 'data.operation.cancel',
@@ -831,6 +833,17 @@ const resolvers = {
         }),
       );
     },
+    resumeDataIngestion: async (
+      _: unknown,
+      args: { id: string; expectedVersion: number },
+      context: GraphqlContext,
+    ) =>
+      operationFrom(
+        await executeCommand(context, 'data.ingestion.resume', {
+          ingestionId: args.id,
+          expectedVersion: args.expectedVersion,
+        }),
+      ),
     approveDataIngestion: async (
       _: unknown,
       args: { id: string; input: Record<string, unknown> },

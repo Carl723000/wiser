@@ -153,7 +153,7 @@ export const PlatformAgentAuthorizeCommandSchema = z.strictObject({
   projectId: PlatformUuidSchema,
   mode: PlatformAgentModeSchema,
   maxSecurityLevel: PlatformSecurityLevelSchema.default('L1_INTERNAL'),
-  expiresInSeconds: z.number().int().min(60).max(3600).default(3600),
+  expiresInSeconds: z.number().int().min(60).max(3600).optional(),
 });
 export type PlatformAgentAuthorizeCommand = z.input<
   typeof PlatformAgentAuthorizeCommandSchema
@@ -192,7 +192,7 @@ export const PlatformAgentConnectionViewSchema = z.strictObject({
   scopes: z.array(PlatformScopeSchema).min(1).max(128),
   purpose: z.literal('agent-data'),
   maxSecurityLevel: PlatformSecurityLevelSchema,
-  expiresAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime().nullable(),
   status: z.enum(['active', 'expired', 'revoked']),
 });
 export type PlatformAgentConnectionView = z.infer<

@@ -90,3 +90,20 @@ it('shows the disconnect action only while either access or saved consent remain
   expect(screen.getAllByRole('button', { name: '断开连接' })).toHaveLength(1);
   expect(screen.getByRole('status').textContent).toContain('连接已断开');
 });
+it('shows an active connection without a fixed expiry as lasting until disconnect', async () => {
+  mocks.viewer.mockResolvedValue({ userId: 'owner' });
+  mocks.account.mockResolvedValue({ load: mocks.load });
+  mocks.load.mockResolvedValue([
+    {
+      connectionId: 'active',
+      clientName: 'Codex',
+      projectName: { 'zh-CN': '黑臭水体', en: 'Black-odor water' },
+      expiresAt: null,
+      status: 'active',
+      providerConsent: true,
+    },
+  ]);
+  render(await Page(props('zh-CN')));
+  expect(screen.getByText('直到手动断开')).toBeDefined();
+  expect(screen.queryByText('1970')).toBeNull();
+});

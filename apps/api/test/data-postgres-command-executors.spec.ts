@@ -83,6 +83,10 @@ class FakeClient implements PostgresDataCommandClient {
   cancellationAttemptCount = 2;
   cancellationLeaseOwner = 'worker-1';
   cancellationLeaseExpiresAt = '2026-08-22T05:01:00.000Z';
+  resumeJobStatus = 'PENDING';
+  resumeAttemptCount = 0;
+  resumeLeaseOwner: string | null = null;
+  resumeTimeoutAt: string | null = '2026-08-22T04:59:00.000Z';
   zeroRowCountFor: string | undefined;
   released = false;
 
@@ -234,6 +238,7 @@ class FakeClient implements PostgresDataCommandClient {
             progress_percent: 30,
             row_version: this.operationVersion,
             security_level: 'L1_INTERNAL',
+            policy_version: 7,
             created_at: NOW.toISOString(),
             updated_at: NOW.toISOString(),
           },
@@ -249,6 +254,26 @@ class FakeClient implements PostgresDataCommandClient {
             operation_id: OPERATION_ID,
             status: 'WAITING_REVIEW',
             row_version: 2,
+            security_level: 'L1_INTERNAL',
+            policy_version: 7,
+          },
+        ],
+        rowCount: 1,
+      });
+    }
+    if (text.includes('data.ingestion.resume.job.lock')) {
+      return Promise.resolve({
+        rows: [
+          {
+            job_id: 'd2000000-0000-4000-8000-000000000099',
+            operation_id: OPERATION_ID,
+            status: this.resumeJobStatus,
+            row_version: 1,
+            attempt_count: this.resumeAttemptCount,
+            lease_owner: this.resumeLeaseOwner,
+            cancel_requested_at: null,
+            timeout_at: this.resumeTimeoutAt,
+            next_attempt_at: '2026-08-22T04:59:00.000Z',
             security_level: 'L1_INTERNAL',
             policy_version: 7,
           },
@@ -656,7 +681,7 @@ describe('PostgreSQL Data Foundation command executors', () => {
         .execute(input, context),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
-  it('provides exactly the nine concrete command capabilities', () => {
+  it('provides exactly the ten concrete command capabilities', () => {
     const value = runtime();
     expect(value.runtime.executors.map(({ id }) => id)).toEqual([
       'data.analysis.create',
@@ -665,6 +690,7 @@ describe('PostgreSQL Data Foundation command executors', () => {
       'data.uploadSession.complete',
       'data.ingestion.create',
       'data.ingestion.submit',
+      'data.ingestion.resume',
       'data.ingestion.approve',
       'data.ingestion.reject',
       'data.operation.cancel',
@@ -955,6 +981,45 @@ describe('PostgreSQL Data Foundation command executors', () => {
     );
     expect(submitUpdate?.text).not.toMatch(/set\s+state\s*=/i);
     expect(sql).not.toMatch(/insert into catalog\.data_item_version/i);
+  });
+
+  it('resumes only the original expired, unclaimed ingestion job with an audited Operation event', async () => {
+    const value = runtime();
+    const result = await executor(
+      value.runtime,
+      'data.ingestion.resume',
+    ).execute({ ingestionId: INGESTION_ID, expectedVersion: 2 }, context);
+    expect(result).toMatchObject({
+      operation: { operationId: OPERATION_ID, status: 'RUNNING', version: 3 },
+    });
+    const sql = value.pool.client.calls.map(({ text }) => text).join('\n');
+    expect(sql).toContain('data.ingestion.resume.job.update');
+    expect(sql).toContain('data.ingestion.resume.operation.update');
+    expect(sql).toContain('data.command.audit.insert');
+    expect(sql).toContain('data.command.outbox.insert');
+    expect(sql).toContain('data.command.operation-event.insert');
+    expect(sql).not.toContain('data.ingestion.job.insert');
+    expect(sql).not.toContain('data.ingestion.create');
+  });
+
+  it('refuses to resume a claimed or terminal ingestion job', async () => {
+    for (const status of ['RUNNING', 'DEAD_LETTER']) {
+      const value = runtime();
+      value.pool.client.resumeJobStatus = status;
+      value.pool.client.resumeAttemptCount = 1;
+      await expect(
+        executor(value.runtime, 'data.ingestion.resume').execute(
+          { ingestionId: INGESTION_ID, expectedVersion: 2 },
+          context,
+        ),
+      ).rejects.toSatisfy((error: unknown) => {
+        expect((error as PostgresDataCommandError).code).toBe('STATE_CONFLICT');
+        return true;
+      });
+      expect(
+        value.pool.client.calls.map(({ text }) => text).join('\n'),
+      ).not.toContain('data.ingestion.resume.job.update');
+    }
   });
 
   it('uses explicit tenant/project/security/policy predicates on every lock and update', async () => {

@@ -89,7 +89,8 @@ export function createAgentHttpAuthorizer(
     if (
       exchange.connection.status !== 'active' ||
       Date.parse(exchange.expiresAt) <= Date.now() ||
-      Date.parse(exchange.connection.expiresAt) <= Date.now()
+      (exchange.connection.expiresAt !== null &&
+        Date.parse(exchange.connection.expiresAt) <= Date.now())
     )
       return null;
     return createAgentDataRequestHandler(

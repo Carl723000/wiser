@@ -198,7 +198,7 @@ create table platform.delegations (
   status text not null default 'active'
     check (status in ('active', 'expired', 'revoked')),
   version bigint not null default 1 check (version > 0),
-  expires_at timestamptz not null,
+  expires_at timestamptz,
   revoked_at timestamptz,
   created_at timestamptz not null default now(),
   foreign key (project_id, tenant_id)
@@ -213,7 +213,10 @@ create table platform.delegations (
     array_to_string(scopes, ',')
       ~ '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+(,[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+)*$'
   ),
-  constraint delegations_expiry_check check (expires_at > created_at),
+  constraint delegations_expiry_check check (
+    (expires_at is not null and expires_at > created_at)
+    or (expires_at is null and purpose = 'agent-data')
+  ),
   constraint delegations_revocation_state_check check (
     (status = 'revoked') = (revoked_at is not null)
   ),

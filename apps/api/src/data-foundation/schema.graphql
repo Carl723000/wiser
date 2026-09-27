@@ -145,6 +145,7 @@ type Mutation {
   createDataUploadSession(input: JSON!): JSON!
   completeDataUploadSession(id: ID!, input: JSON!): JSON!
   submitDataIngestion(id: ID!): Operation!
+  resumeDataIngestion(id: ID!, expectedVersion: Int!): Operation!
   approveDataIngestion(id: ID!, input: ApprovalInput!): Operation!
   rejectDataIngestion(id: ID!, input: JSON!): JSON!
   cancelDataOperation(id: ID!): Operation!

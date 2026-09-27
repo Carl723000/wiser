@@ -131,7 +131,7 @@ begin
     and c.owner_actor_id::text = claims ->> 'sub'
     and c.oauth_client_id::text = claims ->> 'client_id'
     and d.status = 'active' and d.revoked_at is null
-    and d.expires_at > statement_timestamp();
+    and (d.expires_at is null or d.expires_at > statement_timestamp());
   if not found then
     return jsonb_build_object('error', jsonb_build_object(
       'http_code', 403, 'message', 'Agent access is not authorized.'

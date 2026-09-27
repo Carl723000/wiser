@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-实现使用 Mercurius 的 schema-first SDL，不使用 decorator 或 TypeScript AST 扫描。GraphQL field 只是 42 项 Capability 的投影；resolver 与 REST 调用同一个 `DataCapabilityHandler`，因此输入/输出 Zod 校验、Scope、安全 ceiling、Purpose、timeout、幂等和 audit 语义一致。
+实现使用 Mercurius 的 schema-first SDL，不使用 decorator 或 TypeScript AST 扫描。GraphQL field 只是 43 项 Capability 的投影；resolver 与 REST 调用同一个 `DataCapabilityHandler`，因此输入/输出 Zod 校验、Scope、安全 ceiling、Purpose、timeout、幂等和 audit 语义一致。
 
 GraphQL 与 Mercurius 的精确兼容版本由 `apps/api/package.json` 和根 lockfile 定义，并由 API typecheck/build 验证。协议文档不复制会随依赖升级变化的版本清单。
 
@@ -87,16 +87,17 @@ Connection 返回 `nodes` 与 `pageInfo { endCursor hasNextPage }`。其余分�
 
 `CreateIngestionInput.sourceRegistration` 是入库 1.1 严格描述的可选 JSON 映射。GraphQL 与 REST 使用相同的清单绑定、授权、幂等、校验和“仅来源登记”语义；JSON scalar 不绕过 Capability schema。
 
-| Field                       | Capability                    | 结果                                  |
-| --------------------------- | ----------------------------- | ------------------------------------- |
-| `createDataIngestion`       | `data.ingestion.create`       | 创建异步 Operation                    |
-| `createDataItem`            | `data.catalog.create`         | 创建目录 DataItem                     |
-| `createDataUploadSession`   | `data.uploadSession.create`   | 生成受控上传计划                      |
-| `completeDataUploadSession` | `data.uploadSession.complete` | 核对并完成上传                        |
-| `submitDataIngestion`       | `data.ingestion.submit`       | 读取当前版本后提交持久任务            |
-| `approveDataIngestion`      | `data.ingestion.approve`      | 消费显式 `expectedVersion` 的审核批准 |
-| `rejectDataIngestion`       | `data.ingestion.reject`       | 消费显式 `expectedVersion` 的拒绝     |
-| `cancelDataOperation`       | `data.operation.cancel`       | 读取当前版本后请求取消                |
+| Field                       | Capability                    | 结果                                        |
+| --------------------------- | ----------------------------- | ------------------------------------------- |
+| `createDataIngestion`       | `data.ingestion.create`       | 创建异步 Operation                          |
+| `createDataItem`            | `data.catalog.create`         | 创建目录 DataItem                           |
+| `createDataUploadSession`   | `data.uploadSession.create`   | 生成受控上传计划                            |
+| `completeDataUploadSession` | `data.uploadSession.complete` | 核对并完成上传                              |
+| `submitDataIngestion`       | `data.ingestion.submit`       | 读取当前版本后提交持久任务                  |
+| `resumeDataIngestion`       | `data.ingestion.resume`       | 携带 Operation 版本恢复过期且从未领取的 Job |
+| `approveDataIngestion`      | `data.ingestion.approve`      | 消费显式 `expectedVersion` 的审核批准       |
+| `rejectDataIngestion`       | `data.ingestion.reject`       | 消费显式 `expectedVersion` 的拒绝           |
+| `cancelDataOperation`       | `data.operation.cancel`       | 读取当前版本后请求取消                      |
 
 GraphQL 没有隐式“成功即发布”。长任务返回统一 `Operation`，调用方继续用 `dataOperation`/`dataOperationEvents` 对账。upload Session 返回的预签名 URL 仍由客户端直接 PUT/上传分片；GraphQL 进程不代理大文件正文。
 
@@ -116,6 +117,8 @@ curl --fail http://127.0.0.1:3101/graphql \
 ```
 
 真实 ID 必须来自已授权目录结果。不要把 bearer 写入 query/variables、GraphQL 日志或客户端缓存。
+
+`resumeDataIngestion(id: ID!, expectedVersion: Int!)` 保留原入库单与 Operation。使用当前 **Operation** 版本、新的 UUID `Idempotency-Key` 和同一授权项目上下文。已领取、已取消或终态任务会被拒绝；恢复后继续轮询原 Operation。
 
 ## Mutation 示例
 

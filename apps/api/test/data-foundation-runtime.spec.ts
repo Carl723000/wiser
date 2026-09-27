@@ -303,7 +303,7 @@ describe('Data Foundation production runtime composition', () => {
         authRuntime,
         incomplete.value,
       ),
-    ).toThrow('42');
+    ).toThrow('43');
   });
 
   it('reports degraded readiness without leaking probe failures', async () => {

@@ -20,8 +20,8 @@ checkPaths:
   - skills/wiser-data-foundation/**
   - .env.example
   - compose.yaml
-lastReviewedAt: 2026-08-22
-lastReviewedCommit: ed36c7913b5dd2b2542adf1aa1ce1e5d9a70029f
+lastReviewedAt: 2026-09-28
+lastReviewedCommit: 51ca569d7d87395257e4d4540ebf09d782552afb
 ---
 
 # WISER MCP Gateway / WISER MCP 网关

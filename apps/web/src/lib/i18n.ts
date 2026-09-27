@@ -2380,7 +2380,7 @@ const zhCN = {
     agentConnections: {
       title: 'AI/MCP 连接',
       description:
-        '查看由你授权的客户端。断开连接会立即停止其访问；如需连接到期后的续用或更新资料范围，请断开后回到原客户端重新授权。',
+        '查看由你授权的客户端。连接会持续有效，直到你手动断开；项目权限和资料许可仍须有效。更新资料范围时，请断开后从原客户端重新授权。',
       bounded: '显示最近更新的最多 100 个连接。',
       empty:
         '你还没有授权 AI/MCP 客户端。请从需要使用的客户端发起连接，再核对项目并同意授权。',
@@ -2389,7 +2389,8 @@ const zhCN = {
       client: 'MCP 客户端',
       project: '授权项目',
       unknownProject: '原授权项目当前不可见',
-      expires: '授权到期时间',
+      expires: '授权期限',
+      untilDisconnected: '直到手动断开',
       status: { active: '授权有效', expired: '授权已到期', revoked: '已断开' },
       disconnect: '断开连接',
       retryDisconnect: '完成断开',
@@ -2405,12 +2406,13 @@ const zhCN = {
       eyebrow: '智能体连接',
       title: '授权外部客户端访问 WISER',
       description:
-        '请核对客户端和访问范围。只有你选择的一个项目会获得限时授权。',
+        '请核对客户端和访问范围。授权仅覆盖你选择的一个项目，并持续到手动断开。',
       clientRequest: '此客户端正在请求代表你访问 WISER。',
       callback: '返回客户端',
       requestedScopes: '请求的身份范围',
       noScopes: '未列出',
-      caution: '请只授权你信任的客户端。授权可在有效期结束前撤销。',
+      caution:
+        '请只授权你信任的客户端。你可以随时在账户中的 AI/MCP 连接页断开。',
       projectsTitle: '选择一个获准项目',
       noProjects:
         '当前账户没有可授权的项目。你可以拒绝此次请求，或联系项目管理员。',
@@ -2423,9 +2425,6 @@ const zhCN = {
         L2_RESTRICTED: '受限',
         L3_CONFIDENTIAL: '保密',
       },
-      duration: '有效期',
-      fifteenMinutes: '15 分钟',
-      oneHour: '1 小时',
       projectScope:
         '实际操作仍受你当前的项目权限和资料许可约束。需要逐项授权的资料，仅限你已获批的 AI/MCP 访问范围；新增资料须重新同意，权限撤销或到期后停止访问。',
       approve: '同意授权此项目',
@@ -5450,7 +5449,7 @@ const en: typeof zhCN = {
     agentConnections: {
       title: 'AI/MCP connections',
       description:
-        'Review the clients you authorized. Disconnecting stops access immediately. To renew an expired connection or update its resources, disconnect it and authorize again from the original client.',
+        'Review the clients you authorized. A connection remains active until you disconnect it; project access and data permissions must still be valid. To update its resources, disconnect and authorize again from the original client.',
       bounded: 'Shows up to 100 most recently updated connections.',
       empty:
         'You have not authorized an AI/MCP client. Start from the client you want to use, then review the project and approve access.',
@@ -5459,7 +5458,8 @@ const en: typeof zhCN = {
       client: 'MCP client',
       project: 'Authorized project',
       unknownProject: 'The original project is no longer visible',
-      expires: 'Authorization expires',
+      expires: 'Authorization term',
+      untilDisconnected: 'Until you disconnect',
       status: {
         active: 'Authorized',
         expired: 'Expired',
@@ -5481,13 +5481,13 @@ const en: typeof zhCN = {
       eyebrow: 'AGENT CONNECTION',
       title: 'Authorize an external client',
       description:
-        'Review the client and access scope. Only the one project you choose receives a time-limited grant.',
+        'Review the client and access scope. Only the one project you choose is authorized, until you disconnect.',
       clientRequest: 'This client requests access to WISER on your behalf.',
       callback: 'Return to client',
       requestedScopes: 'Requested identity scopes',
       noScopes: 'None listed',
       caution:
-        'Authorize only clients you trust. You can revoke access before the grant expires.',
+        'Authorize only clients you trust. You can disconnect at any time from AI/MCP connections in your account.',
       projectsTitle: 'Choose one permitted project',
       noProjects:
         'Your account has no project eligible for this connection. Deny the request or contact a project administrator.',
@@ -5500,9 +5500,6 @@ const en: typeof zhCN = {
         L2_RESTRICTED: 'Restricted',
         L3_CONFIDENTIAL: 'Confidential',
       },
-      duration: 'Duration',
-      fifteenMinutes: '15 minutes',
-      oneHour: '1 hour',
       projectScope:
         'Your current project access and data permissions still apply. Resources requiring individual approval are limited to your approved AI/MCP scope at consent. New resources need fresh consent; revoked or expired access stops immediately.',
       approve: 'Authorize this project',

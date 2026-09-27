@@ -88,7 +88,7 @@ describe('WISER MCP browser consent', () => {
     });
   });
 
-  it('creates the bounded project grant before OAuth approval, then redirects to the registered callback', async () => {
+  it('creates a legacy timed project grant before OAuth approval, then redirects to the registered callback', async () => {
     const deps = fixture();
     const order: string[] = [];
     vi.mocked(deps.authorize).mockImplementation((_token, command) => {
@@ -126,6 +126,25 @@ describe('WISER MCP browser consent', () => {
         skipBrowserRedirect: true,
       },
     );
+  });
+
+  it('authorizes a connection without a fixed expiry when duration is omitted', async () => {
+    const deps = fixture();
+    await decideAgentConsent(deps, 'direct-user-token', {
+      authorizationId,
+      decision: 'approve',
+      tenantId,
+      projectId,
+      mode: 'query',
+      maxSecurityLevel: 'L1_INTERNAL',
+    });
+    expect(vi.mocked(deps.authorize).mock.calls[0]?.[1]).toEqual({
+      authorizationId,
+      tenantId,
+      projectId,
+      mode: 'query',
+      maxSecurityLevel: 'L1_INTERNAL',
+    });
   });
 
   it('rejects another project and a write mode before creating a grant or issuing a code', async () => {

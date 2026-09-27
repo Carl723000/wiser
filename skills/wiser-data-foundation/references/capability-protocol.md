@@ -21,6 +21,7 @@ Commands require a UUID `Idempotency-Key`. Versioned commands also require a str
 | `data.geo.intersect`          | `POST /geo/intersect`                                       | `data_geo_intersect`           |
 | `data.ingestion.create`       | `POST /ingestions`                                          | `data_ingestion_create`        |
 | `data.ingestion.submit`       | `POST /ingestions/{ingestionId}/submit`                     | `data_ingestion_submit`        |
+| `data.ingestion.resume`       | `POST /ingestions/{ingestionId}/resume`                     | `data_ingestion_resume`        |
 | `data.operation.get`          | `GET /operations/{operationId}`                             | `data_operation_get`           |
 | `data.catalog.create`         | `POST /catalog/data-items`                                  | `data_catalog_create`          |
 | `data.catalog.versions.list`  | `GET /catalog/data-items/{dataItemId}/versions`             | `data_catalog_versions_list`   |

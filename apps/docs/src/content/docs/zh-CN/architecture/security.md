@@ -57,6 +57,7 @@ lastReviewedCommit: ce7c39fbcc4aebc5bca1f67ee80634b7ce544c4d
 带有 `client_id` 的 OAuth resource Token 不继承 human 直接访问权限。普通 API JWT 验证器会拒绝这类 Token；暴露的应用表在所有权策略之外叠加 restrictive `wiser_direct_session_only` 策略，新增暴露表时也必须保留该限制。Agent 连接与 OAuth credential 绑定存放在强制 RLS 的私有表；token hook 仅向 Supabase Auth 授予必要的读取和执行权限。
 
 OAuth 交换 credential 必须保留不可变的 `agent_exchange` 类型与 Session 绑定；延迟数据库约束会拒绝未绑定的签发。API 每次使用时都检查该绑定，包括 OAuth consent/client 撤销与 Session 删除，因此撤销不依赖等待短期凭证到期。查询授权不包含入库与发布，入库授权也不包含发布。
+只有 `agent-data` 委托可以没有固定到期时间。其 OAuth access token 和交换凭据仍为短期凭据；每次交换及后续委托调用都复查有效连接、Session、同意和当前委托人、项目及资料权限。撤销连接或 OAuth 授权无需等待 Token 到期即可停止访问。
 
 ## 时间与证据授权
 

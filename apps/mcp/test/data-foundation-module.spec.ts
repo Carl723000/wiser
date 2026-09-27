@@ -37,6 +37,7 @@ const EXPECTED_DATA_TOOLS = [
   'data_geo_intersect',
   'data_ingestion_create',
   'data_ingestion_submit',
+  'data_ingestion_resume',
   'data_operation_get',
   'data_catalog_create',
   'data_catalog_versions_list',

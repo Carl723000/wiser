@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-09-28
+lastReviewedCommit: 1578c35cab665f78bd2810072de1a98224b21858
 ---
 
 本页适合第一次在自己的开发环境运行 WISER。现网资料查阅与外部客户端连接请使用[现网使用指南](/development/wiser-data-guide/)；单独启动应用、端口、配置和排障见[本机开发环境](/development/local-environment/)。

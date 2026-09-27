@@ -340,6 +340,10 @@ const validCapabilityInputs = {
     ingestionId: INGESTION_ID,
     expectedVersion: 1,
   },
+  'data.ingestion.resume': {
+    ingestionId: INGESTION_ID,
+    expectedVersion: 2,
+  },
   'data.operation.get': { operationId: OPERATION_ID },
   'data.catalog.create': createDataItemInput,
   'data.catalog.versions.list': { dataItemId: DATA_ITEM_ID, first: 25 },
@@ -725,6 +729,19 @@ const expectedCapabilityMappings = {
     mcpMapping: { toolName: 'data_ingestion_submit' },
     skillMapping: { operation: 'data.ingestion.submit' },
   },
+  'data.ingestion.resume': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestions/:ingestionId/resume',
+      successStatus: 202,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'resumeDataIngestion',
+    },
+    mcpMapping: { toolName: 'data_ingestion_resume' },
+    skillMapping: { operation: 'data.ingestion.resume' },
+  },
   'data.operation.get': {
     restMapping: {
       method: 'GET',
@@ -898,6 +915,7 @@ const expectedCapabilityScopes = {
   'data.geo.intersect': ['data.geo.read'],
   'data.ingestion.create': ['data.ingestion.write'],
   'data.ingestion.submit': ['data.ingestion.write'],
+  'data.ingestion.resume': ['data.ingestion.write'],
   'data.operation.get': ['data.operation.read'],
   'data.catalog.create': ['data.ingestion.write'],
   'data.catalog.versions.list': ['data.catalog.read'],
@@ -915,6 +933,7 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
   'data.analysis.create',
   'data.ingestion.create',
   'data.ingestion.submit',
+  'data.ingestion.resume',
   'data.ingestion.approve',
 ]);
 
@@ -1046,6 +1065,10 @@ const expectedJsonSchemaHashes = {
     input: '47ed04cb0df6082ab3eebccb7e9baf18d299de127844ec5bb64c14f94ab26b62',
     output: '928bf9ac9cdd29b9a23353f39dee4a4b4c5cb50f2878b9fc92c3d3fbf53633be',
   },
+  'data.ingestion.resume': {
+    input: '47ed04cb0df6082ab3eebccb7e9baf18d299de127844ec5bb64c14f94ab26b62',
+    output: '928bf9ac9cdd29b9a23353f39dee4a4b4c5cb50f2878b9fc92c3d3fbf53633be',
+  },
   'data.operation.get': {
     input: '09011488985ab0fd152fd0d78a556e7a698c5491c863bf2ccef9984e486d0662',
     output: 'f413231e63ad67f73058ed7e86bbd247ebd235de4dedb9472f618427fab4fd98',
@@ -1088,7 +1111,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.operation.events': {
     input: '247ee2e3a7b01ba0a273c3031da7336cd19085e1794eb8391216ddd28d4bf3f2',
-    output: '8a06fb39f4dee6a7d8a92b8c6a4f4ab1f0b6bf873091ef8668b9a4dfff57c83a',
+    output: '577210df340b2b9cd45a93ea3f0454bc52d2eb8afc3853532695163081096ecc',
   },
 } satisfies Record<
   DataCapabilityId,
@@ -1414,6 +1437,7 @@ describe('Data Foundation capability registry', () => {
       'data.geo.intersect',
       'data.ingestion.create',
       'data.ingestion.submit',
+      'data.ingestion.resume',
       'data.operation.get',
       'data.catalog.create',
       'data.catalog.versions.list',

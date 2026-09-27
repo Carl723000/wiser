@@ -69,7 +69,7 @@ export async function POST(
   if (action === 'deny') {
     decision = { authorizationId, decision: 'deny' };
   } else if (action === 'approve') {
-    const duration = Number(form.get('expiresInSeconds'));
+    const duration = form.get('expiresInSeconds');
     decision = {
       authorizationId,
       decision: 'approve',
@@ -77,7 +77,7 @@ export async function POST(
       projectId: textField(form, 'projectId'),
       mode: textField(form, 'mode') as 'query',
       maxSecurityLevel: textField(form, 'maxSecurityLevel') as 'L0_PUBLIC',
-      expiresInSeconds: duration,
+      ...(duration === null ? {} : { expiresInSeconds: Number(duration) }),
     };
   } else {
     return back(locale, authorizationId, 'invalid-request');

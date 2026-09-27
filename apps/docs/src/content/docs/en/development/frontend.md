@@ -65,7 +65,7 @@ See [Product interface and content design](/en/development/product-experience/) 
 
 In Supabase mode, Portal, sign-in, and Auth transport routes are public. Other localized product routes require verified authenticated claims in Proxy; anonymous requests retain their target and redirect to locale sign-in. `WISER_AUTH_MODE=off` remains a local reference-preview mode only.
 
-The public OAuth entry keeps its browser redirect relative to the Web origin. The localized consent page needs a verified user Session and reads eligible Projects from the WISER API after Supabase associates the authorization request with that user. Form decisions check `WISER_PUBLIC_WEB_ORIGIN` in production, then revalidate the selected Project, mode, level, and duration server-side. Approval creates the bounded WISER grant before Supabase issues an authorization code; denial creates no grant.
+The public OAuth entry keeps its browser redirect relative to the Web origin. The localized consent page needs a verified user Session and reads eligible Projects from the WISER API after Supabase associates the authorization request with that user. Form decisions check `WISER_PUBLIC_WEB_ORIGIN` in production, then revalidate the selected Project, mode, and level server-side. Approval creates the project-scoped Agent connection before Supabase issues an authorization code; denial creates no grant. New Agent delegations have no fixed expiry, while previously timed connections retain their deadlines.
 
 Pages are Server Components by default. Add a Client Component only for browser interaction, browser APIs, or local state. Do not move data access and identity logic into the browser merely because a parent view contains an interaction.
 
@@ -274,4 +274,4 @@ The resource-enabled project workbench includes a batch-access tab for managers 
 
 Batch member details show frozen differences by action, with an explicit unknown state for older previews. Changed grants prompt a fresh application; current effective access is never inferred from a historical receipt.
 
-The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and expiry. Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.
+The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and either an optional expiry or “Until you disconnect.” Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.

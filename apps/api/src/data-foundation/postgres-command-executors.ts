@@ -16,6 +16,7 @@ import {
   CreateUploadSessionInputSchema,
   DATA_CAPABILITY_REGISTRY,
   RejectIngestionInputSchema,
+  ResumeIngestionInputSchema,
   SubmitIngestionInputSchema,
   type DataCapabilityId,
   type DataItemDto,
@@ -449,6 +450,38 @@ where ingestion_id = $1::uuid and operation_id = $2::uuid
 for update
 `;
 
+const RESUME_JOB_LOCK_SQL = `
+/* data.ingestion.resume.job.lock */
+select job_id, operation_id, status, row_version, attempt_count,
+  lease_owner, cancel_requested_at, timeout_at, next_attempt_at,
+  security_level, policy_version
+from ingestion.job
+where ingestion_id = $1::uuid and operation_id = $2::uuid
+  and tenant_id = $3::uuid and project_id = $4::uuid
+  and job_type = 'data.ingestion.process'
+  and security.security_rank(security_level) <= security.security_rank($5)
+  and policy_version <= $6::bigint
+  and security.authorized_row(tenant_id, project_id, security_level, policy_version)
+for update
+`;
+
+const RESUME_JOB_SQL = `
+/* data.ingestion.resume.job.update */
+update ingestion.job
+set timeout_at = null, row_version = row_version + 1,
+  updated_at = $2::timestamptz
+where job_id = $1::uuid
+  and tenant_id = $3::uuid and project_id = $4::uuid
+  and status = 'PENDING' and row_version = $5::bigint
+  and attempt_count = 0 and lease_owner is null
+  and cancel_requested_at is null and timeout_at <= $2::timestamptz
+  and next_attempt_at <= $2::timestamptz
+  and security.security_rank(security_level) <= security.security_rank($6)
+  and policy_version <= $7::bigint
+  and security.authorized_row(tenant_id, project_id, security_level, policy_version)
+returning row_version
+`;
+
 const JOB_WAKE_SQL = `
 /* data.ingestion.job.wake */
 update ingestion.job
@@ -539,6 +572,19 @@ set status = 'RUNNING', started_at = coalesce(started_at, $2::timestamptz),
 where operation_id = $1::uuid
   and tenant_id = $3::uuid and project_id = $4::uuid
   and status = 'WAITING_INPUT' and row_version = $5::bigint
+  and security.security_rank(security_level) <= security.security_rank($6)
+  and policy_version <= $7::bigint
+  and security.authorized_row(tenant_id, project_id, security_level, policy_version)
+returning row_version
+`;
+
+const OPERATION_RESUME_SQL = `
+/* data.ingestion.resume.operation.update */
+update service.operation
+set row_version = row_version + 1, updated_at = $2::timestamptz
+where operation_id = $1::uuid
+  and tenant_id = $3::uuid and project_id = $4::uuid
+  and status = 'RUNNING' and row_version = $5::bigint
   and security.security_rank(security_level) <= security.security_rank($6)
   and policy_version <= $7::bigint
   and security.authorized_row(tenant_id, project_id, security_level, policy_version)
@@ -2388,9 +2434,7 @@ export function createPostgresDataCommandRuntime(
               `${DATA_INGESTION_PROCESS_JOB_TYPE}:${input.ingestionId}`,
               JSON.stringify(jobPayload),
               timestamp,
-              new Date(
-                Date.parse(timestamp) + Math.min(context.timeoutMs, 120_000),
-              ).toISOString(),
+              null,
               securityLevel,
               context.authorization.authzVersion,
             ]),
@@ -2419,6 +2463,114 @@ export function createPostgresDataCommandRuntime(
             replayResult: output,
             aggregateId: input.ingestionId,
             eventType: 'data.ingestion.submitted',
+            securityLevel,
+          };
+        },
+      );
+    }),
+
+    define('data.ingestion.resume', async (raw, context) => {
+      const input = ResumeIngestionInputSchema.parse(raw);
+      return transactions.run(
+        'data.ingestion.resume',
+        input,
+        context,
+        async (client, timestamp) => {
+          const ingestionResult = await transactions.query(
+            client,
+            context,
+            INGESTION_LOCK_SQL,
+            [input.ingestionId, ...scopeValues(context)],
+          );
+          const ingestion = singleRow(ingestionResult);
+          if (ingestion === undefined) throw commandError('NOT_FOUND');
+          if (text(ingestion, 'state') !== 'RECEIVED') {
+            throw commandError('STATE_CONFLICT');
+          }
+          const operationId = text(ingestion, 'operation_id');
+          const jobResult = await transactions.query(
+            client,
+            context,
+            RESUME_JOB_LOCK_SQL,
+            [input.ingestionId, operationId, ...scopeValues(context)],
+          );
+          const job = singleRow(jobResult);
+          if (job === undefined) throw commandError('NOT_FOUND');
+          const operation = await lockOperation(
+            transactions,
+            client,
+            operationId,
+            context,
+          );
+          if (integer(operation, 'row_version') !== input.expectedVersion) {
+            throw commandError('VERSION_CONFLICT');
+          }
+          if (
+            text(operation, 'status') !== 'RUNNING' ||
+            text(job, 'status') !== 'PENDING' ||
+            integer(job, 'attempt_count') !== 0 ||
+            job['lease_owner'] !== null ||
+            job['cancel_requested_at'] !== null ||
+            job['timeout_at'] === null ||
+            Date.parse(text(job, 'timeout_at')) > Date.parse(timestamp) ||
+            Date.parse(text(job, 'next_attempt_at')) > Date.parse(timestamp) ||
+            text(job, 'security_level') !== text(operation, 'security_level') ||
+            integer(job, 'policy_version') !==
+              integer(operation, 'policy_version')
+          ) {
+            throw commandError('STATE_CONFLICT');
+          }
+          const securityLevel = text(
+            operation,
+            'security_level',
+          ) as SecurityLevel;
+          assertSecurity(securityLevel, context);
+          exactlyOne(
+            await transactions.query(client, context, RESUME_JOB_SQL, [
+              text(job, 'job_id'),
+              timestamp,
+              context.authorization.tenantId,
+              context.authorization.projectId,
+              integer(job, 'row_version'),
+              context.effectiveMaxSecurityLevel,
+              context.authorization.authzVersion,
+            ]),
+          );
+          exactlyOne(
+            await transactions.query(client, context, OPERATION_RESUME_SQL, [
+              operationId,
+              timestamp,
+              context.authorization.tenantId,
+              context.authorization.projectId,
+              input.expectedVersion,
+              context.effectiveMaxSecurityLevel,
+              context.authorization.authzVersion,
+            ]),
+          );
+          const running = operationFromLocked(
+            operation,
+            'RUNNING',
+            timestamp,
+            context,
+            input.expectedVersion + 1,
+          );
+          await transactions.appendOperationEvent(
+            client,
+            operationId,
+            'RUNNING',
+            'RUNNING',
+            'RESUMED',
+            running.progressPercent,
+            securityLevel,
+            context,
+            timestamp,
+          );
+          const output = { operation: running };
+          return {
+            output,
+            replayResult: output,
+            aggregateId: input.ingestionId,
+            eventType: 'data.ingestion.resumed',
             securityLevel,
           };
         },
@@ -2554,9 +2706,7 @@ export function createPostgresDataCommandRuntime(
               integer(job, 'row_version'),
               context.effectiveMaxSecurityLevel,
               context.authorization.authzVersion,
-              new Date(
-                Date.parse(timestamp) + Math.min(context.timeoutMs, 120_000),
-              ).toISOString(),
+              null,
             ]),
           );
           const operationVersion = integer(lockedOperation, 'row_version');
