@@ -225,6 +225,57 @@ describe.skipIf(databaseUrl === undefined)(
       expect(JSON.stringify(stored.rows)).not.toContain(exchanges[0]?.token);
     });
 
+    it('keeps the connection after access-token renewal until explicit revocation', async () => {
+      const fixture = await requestFixture();
+      const connection = await service.authorize({
+        token: 'human',
+        idempotencyKey: randomUUID(),
+        command: {
+          authorizationId: fixture.authorizationId,
+          tenantId: tenant,
+          projectId: project,
+          mode: 'ingest',
+        },
+      });
+      expect(connection.expiresAt).toBeNull();
+      const expiredToken = randomUUID();
+      const refreshedToken = randomUUID();
+      const claims = {
+        userId: owner,
+        sessionId: fixture.sessionId,
+        clientId: fixture.clientId,
+        delegationId: connection.delegationId,
+        resource,
+      };
+      tokens.set(expiredToken, {
+        ...claims,
+        expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      });
+      tokens.set(refreshedToken, {
+        ...claims,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      });
+      await expect(
+        service.exchange({ token: expiredToken, idempotencyKey: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+      const exchanged = await service.exchange({
+        token: refreshedToken,
+        idempotencyKey: randomUUID(),
+      });
+      expect((await resolve(exchanged.token))?.authorization.scopes).toContain(
+        'data.ingestion.write',
+      );
+      await service.revoke({
+        token: 'human',
+        connectionId: connection.connectionId,
+        idempotencyKey: randomUUID(),
+      });
+      await expect(resolve(exchanged.token)).resolves.toBeNull();
+      await expect(
+        service.exchange({ token: refreshedToken, idempotencyKey: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
+    });
+
     it('rejects unowned projects and excess duration before changing the control plane', async () => {
       const fixture = await requestFixture();
       const command = {

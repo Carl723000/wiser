@@ -107,6 +107,19 @@ function resolverWith(
 }
 
 describe('delegated credential principal resolution', () => {
+  it('keeps a consented Agent delegation active without a fixed expiry while bounding the credential', async () => {
+    const { resolver } = resolverWith({
+      ...baseRecord,
+      purpose: 'agent-data',
+      delegationExpiresAt: null,
+    });
+    await expect(
+      resolver.resolve(input({ purpose: 'agent-data' })),
+    ).resolves.toMatchObject({
+      principal: { expiresAt: baseRecord.credentialExpiresAt },
+    });
+  });
+
   it('authenticates the delegate while intersecting live scopes and security ceilings', async () => {
     const { resolver, loadRecord } = resolverWith();
 
