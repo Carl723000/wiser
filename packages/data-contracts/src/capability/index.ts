@@ -153,6 +153,7 @@ export const DATA_CAPABILITY_IDS = [
   'data.geo.intersect',
   'data.ingestion.create',
   'data.ingestion.submit',
+  'data.ingestion.resume',
   'data.operation.get',
   'data.catalog.create',
   'data.catalog.versions.list',
@@ -421,6 +422,9 @@ export const SubmitIngestionInputSchema = z.strictObject({
   ingestionId: PlatformUuidSchema,
   expectedVersion: z.number().int().positive(),
 });
+
+/** expectedVersion is the existing ingestion Operation version. */
+export const ResumeIngestionInputSchema = SubmitIngestionInputSchema;
 
 export const OperationOutputSchema = z.strictObject({
   operation: OperationSchema,
@@ -733,6 +737,30 @@ const capabilityRegistry = {
     },
     mcpMapping: { toolName: 'data_ingestion_submit' },
     skillMapping: { operation: 'data.ingestion.submit' },
+  }),
+  'data.ingestion.resume': defineCapability({
+    id: 'data.ingestion.resume',
+    version: '1.0.0',
+    kind: 'command',
+    inputSchema: ResumeIngestionInputSchema,
+    outputSchema: OperationOutputSchema,
+    requiredScopes: ['data.ingestion.write'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'ASYNCHRONOUS',
+    timeout: 120_000,
+    idempotent: true,
+    auditLevel: 'FULL',
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestions/:ingestionId/resume',
+      successStatus: 202,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'resumeDataIngestion',
+    },
+    mcpMapping: { toolName: 'data_ingestion_resume' },
+    skillMapping: { operation: 'data.ingestion.resume' },
   }),
   'data.operation.get': defineCapability({
     id: 'data.operation.get',

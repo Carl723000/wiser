@@ -75,6 +75,8 @@ Supabase 的四类文件必须同步：顺序 migration 是可重放历史，dec
 
 Agent 授权与交换集成测试通过 `WISER_AGENT_TEST_DATABASE_URL` 连接已迁移并加载 seed 的一次性 Supabase 数据库。设置该变量后运行 `pnpm exec vitest run apps/api/test/platform-agent-connections.integration.spec.ts`。测试会创建合成 OAuth Session、client、consent 与 Agent Membership；应在 pgTAP 之后运行，不能与种子数量断言并发执行。未设置变量时跳过该集成套件，普通单元测试仍不依赖数据库与 AI provider。
 
+迁移 `20260927162820_persistent_agent_connections.sql` 仅允许 `agent-data` 委托的到期时间为空，并更新 OAuth token hook 识别该状态。先应用迁移，再部署新版 API/Web；旧限时记录不变，须重新经过浏览器同意才能成为无固定期限连接。OAuth 和交换凭据仍保持短期有效，并持续校验 Session、同意和手动断开。回退时须先撤销或为有效的无期限连接设定有限期限，再用前向迁移恢复 `NOT NULL`；直接恢复旧约束会因现有记录失败。用可丢弃、已迁移并填充种子的控制库运行 pgTAP 和 Agent 集成验证。
+
 迁移 `20260926084756_resource_batch_agent_purpose.sql` 仅将私有批次用途约束扩展为明确的网页与 AI/MCP 两种用途。声明式结构 `06_resource_batches.sql` 和 pgTAP 第 12 组保持同一约束，seed 不授予资源访问权。批次集成套件通过 `WISER_RESOURCE_TEST_DATABASE_URL` 连接可丢弃、已迁移并填充测试种子的数据库，核验用途隔离的预览、审批、执行和续期。部署前备份控制库和运行配置，先应用追加迁移，再更新 API/Web。产生 AI/MCP 批次后，恢复版本须能读取两种用途并保留不可变历史；旧版仅支持网页用途的读取器无法解析这些记录。此前保存的预览因指纹增加用途绑定而须重新生成。
 
 ## Data Foundation 变更流程
@@ -82,6 +84,8 @@ Agent 授权与交换集成测试通过 `WISER_AGENT_TEST_DATABASE_URL` 连接�
 `0010_source_registration.sql` 在 `ingestion.session` 中增加不可变的来源登记 JSON，复用现有强制 RLS。状态转换不能修改来源身份与声明限制；正式版本清单也冻结该描述。聚焦测试 `packages/data-infra/test/migrations/source-registration.spec.ts` 使用 `WISER_DATA_PG_INTEGRATION=1`，并将 `DATA_TEST_DATABASE_URL` 指向可丢弃且已迁移的数据库，验证无 BYPASSRLS 的角色、跨项目不可见、合法转换和描述修改拒绝。真实研究材料不进入 seed 或 Git。
 
 `infrastructure/data-foundation/postgres/migrations` 是 Data Foundation 唯一的业务 schema 历史。文件名必须是连续、唯一的 `NNNN_descriptive_name.sql`，且只能追加。
+
+迁移 `0032_queued_job_timeout.sql` 使尚未领取的入库 Job 在排队期间保持可领取，每次领取时才开始六小时执行期限，并使人工审核等待不触发执行超时回收。数据库守卫仅允许从未领取的 PENDING 入库 Job 清除已过期的排队期限。API 的 `data.ingestion.resume` 使用原 Operation 的版本前置条件，在同一事务中完成更新、审计、事件和 Outbox。对存在旧版排队任务的项目，应先应用迁移，再开放新 API 命令或启动 Worker。
 
 1. 为目标不变量增加失败测试。SQL 结构、runner 和 repository 测试位于 `packages/data-infra/test`；部署流程测试位于 `scripts/data-foundation/*.test.mjs`。
 2. 追加 migration。Runner 按四位版本排序，对每个文件计算 SHA-256，在 session advisory lock 下逐文件开启事务，并把版本、文件名和 checksum 记录到 `public.schema_migrations`。

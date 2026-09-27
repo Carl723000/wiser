@@ -165,13 +165,6 @@ export default async function AgentConsentPage({
                             ))}
                         </select>
                       </label>
-                      <label>
-                        <span>{t.duration}</span>
-                        <select name="expiresInSeconds" defaultValue="900">
-                          <option value="900">{t.fifteenMinutes}</option>
-                          <option value="3600">{t.oneHour}</option>
-                        </select>
-                      </label>
                     </div>
                     <p className={styles.projectNote}>{t.projectScope}</p>
                     <button type="submit">{t.approve}</button>

@@ -50,12 +50,12 @@ Upload, parsing, source registration, and formal publication are different state
 The client must support the OAuth 2.1 authorization-code flow with PKCE S256. Set its Streamable HTTP MCP address to https://mcp.wiser.thuenv.tiangong.world:7100/mcp and let the client complete protected-resource discovery, callback registration, and sign-in. See [Data MCP](/en/protocols/data-mcp/) and [Unified Auth](/en/architecture/unified-auth/) for protocol fields.
 
 1. Sign in with your existing WISER account in the browser. Check the requesting client and return address.
-2. Explicitly choose one eligible project, query or intake access, the highest data level, and a 15-minute or one-hour term. Deny the request if you do not agree.
+2. Explicitly choose one eligible project, query or intake access, and the highest data level. The connection stays active until you disconnect it; deny the request if you do not agree.
 3. Return to the original client and make one small catalog read. Check the actual project, data, and action scope. Setup instructions or Skill installation alone do not grant access.
-4. Use “AI/MCP connections” in the account menu to disconnect a connection you own. After expiry or when you need more data, disconnect first, then restart from the original client and consent again. Managed projects require separate approval for web and AI/MCP purposes.
+4. Use “AI/MCP connections” in the account menu to disconnect a connection you own. If an older timed connection has expired, or you need newly approved managed resources, disconnect first, then restart from the original client and consent again. Managed projects require separate approval for web and AI/MCP purposes. The client's OAuth access token remains short-lived and is refreshed automatically while its session and consent remain valid.
 
 Do not paste passwords, authorization codes, or tokens into chat, tool arguments, or logs. If the page says previous consent was not fully cleared, follow its retry action. Data access has stopped, but check the state before reconnecting.
 
 ## Personal-client acceptance
 
-End-to-end acceptance with the person's actual client has not yet been recorded. Record the client name, selected project, and non-secret call outcomes. At minimum, verify an allowed read, denial of another project and unapproved actions, explicit denial, expiry, and immediate loss of access after disconnection. Mark that client accepted only after these checks; synthetic-account verification does not substitute for them.
+End-to-end acceptance with the person's actual client has not yet been recorded. Record the client name, selected project, and non-secret call outcomes. At minimum, verify an allowed read, denial of another project and unapproved actions, explicit denial, successful access-token refresh after an hour, and immediate loss of access after disconnection. Mark that client accepted only after these checks; synthetic-account verification does not substitute for them.

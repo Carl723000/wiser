@@ -53,15 +53,18 @@ const externalServices = [
 ] as const;
 
 function serviceBlock(name: string): string {
-  const start = compose.indexOf(`\n  ${name}:\n`);
-  if (start < 0) return '';
-  const remaining = compose.slice(start + 1);
-  const next = /\n {2}[a-z0-9][a-z0-9-]*:\n|\nnetworks:\n/.exec(
-    remaining.slice(`  ${name}:\n`.length),
+  const serviceHeader = new RegExp(`\\n  ${name}:(?: &[a-z0-9-]+)?\\n`).exec(
+    compose,
   );
+  if (serviceHeader === null) return '';
+  const remaining = compose.slice(serviceHeader.index + 1);
+  const next =
+    /\n {2}[a-z0-9][a-z0-9-]*:(?: &[a-z0-9-]+)?\n|\nnetworks:\n/.exec(
+      remaining.slice(serviceHeader[0].length - 1),
+    );
   return remaining.slice(
     0,
-    next === null ? undefined : `  ${name}:\n`.length + next.index,
+    next === null ? undefined : serviceHeader[0].length - 1 + next.index,
   );
 }
 

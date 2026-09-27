@@ -109,7 +109,7 @@ interface ConnectionRow {
   readonly project_id: string;
   readonly scopes: string[];
   readonly max_security_level: string;
-  readonly expires_at: Date;
+  readonly expires_at: Date | null;
   readonly status: string;
 }
 const CONNECTION_SELECT = `select c.id as connection_id, c.oauth_client_id, c.delegation_id,
@@ -127,7 +127,7 @@ function connectionView(row: ConnectionRow): PlatformAgentConnectionView {
     scopes: row.scopes,
     purpose: 'agent-data',
     maxSecurityLevel: row.max_security_level,
-    expiresAt: row.expires_at.toISOString(),
+    expiresAt: row.expires_at?.toISOString() ?? null,
     status: row.status,
   });
 }
@@ -417,12 +417,14 @@ export class PostgresAgentConnectionService implements AgentConnectionService {
         .sort();
       if (!scopes.includes('data.catalog.read'))
         throw new AgentConnectionError('NOT_AUTHORIZED');
-      const { rows: times } = await client.query<{ expires_at: Date }>(
-        `select statement_timestamp()+make_interval(secs=>$1) as expires_at`,
-        [command.expiresInSeconds],
+      const { rows: times } = await client.query<{
+        expires_at: Date | null;
+      }>(
+        `select case when $1::integer is null then null else statement_timestamp()+make_interval(secs=>$1) end as expires_at`,
+        [command.expiresInSeconds ?? null],
       );
-      const expiresAt = times[0]?.expires_at;
-      if (expiresAt === undefined) throw new Error('Agent expiry unavailable.');
+      if (times[0] === undefined) throw new Error('Agent expiry unavailable.');
+      const expiresAt = times[0].expires_at;
       const resourceGrants = await this.#consentedResources(
         client,
         human.userId,
@@ -484,7 +486,7 @@ export class PostgresAgentConnectionService implements AgentConnectionService {
         scopes,
         purpose: 'agent-data',
         maxSecurityLevel: command.maxSecurityLevel,
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: expiresAt?.toISOString() ?? null,
         status: 'active',
       };
       await this.#grantConsentedResources(
@@ -595,7 +597,8 @@ export class PostgresAgentConnectionService implements AgentConnectionService {
         join auth.oauth_clients oauth on oauth.id=c.oauth_client_id and oauth.deleted_at is null
         join auth.oauth_consents consent on consent.user_id=c.owner_actor_id and consent.client_id=c.oauth_client_id and consent.revoked_at is null
         where c.owner_actor_id=$1 and c.oauth_client_id=$3 and c.delegation_id=$4 and c.resource=$5
-          and d.status='active' and d.revoked_at is null and d.expires_at>statement_timestamp()
+          and d.status='active' and d.revoked_at is null
+          and (d.expires_at is null or d.expires_at>statement_timestamp())
           and (s.not_after is null or s.not_after>statement_timestamp()) and $6::timestamptz>statement_timestamp()
         for share of c,d,s,oauth,consent`,
         [

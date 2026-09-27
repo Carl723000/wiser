@@ -84,9 +84,9 @@ Agent 连接记录把一个 human 与 OAuth client 绑定到已有的 `agent-dat
 
 `createSupabaseAgentClaimsVerifier` 单独验证这类已签名 claims：要求配置的精确 issuer、单一 resource audience、authenticated role、有效的 user/session/client/Delegation ID，以及未到期的整数 expiry。它不会从用户 metadata 推导 Delegation。claims 验证之后，调用方仍须检查实时连接与 Session 授权。
 
-`PostgresAgentConnectionService` 提供请求检查、项目授权、连接列表与撤销，以及 credential 交换。授权要求实时有效的直接 human Session、`platform.delegation.manage`，以及目标 Project 的目录读取权限。查询模式仅授予调用方已有的读取 scopes；入库还要求用户明确选择且当前具备 `data.ingestion.write`，不授予发布权限。安全等级默认内部，不能超过调用方上限；授权有效期为 60–3600 秒。浏览器须先通过 Supabase 把 OAuth authorization request 关联到 human，再由服务提交授权。
+`PostgresAgentConnectionService` 提供请求检查、项目授权、连接列表与撤销，以及 credential 交换。授权要求实时有效的直接 human Session、`platform.delegation.manage`，以及目标 Project 的目录读取权限。查询模式仅授予调用方已有的读取 scopes；入库还要求用户明确选择且当前具备 `data.ingestion.write`，不授予发布权限。安全等级默认内部，不能超过调用方上限。新版浏览器同意创建无固定到期日的 Agent 委托和成员关系；只有 `agent-data` 委托允许空到期日。浏览器须先通过 Supabase 把 OAuth authorization request 关联到 human，再由服务提交授权。滚动更新期间仍提交 60–3600 秒期限的旧客户端保留其原期限。
 
-授权在一个控制面事务内创建平台 Agent、到期 Membership 与有边界的 Delegation。重新授权会撤销旧 Delegation。交换流程检查当前连接、OAuth client、consent 与 Session，再签发最长 60 秒且不超过 OAuth 和 Delegation 到期时间的 credential。`agent_exchange` credential 支持并发请求；普通 `delegated` credential 保留单枚有效约束。credential 类型和 OAuth 绑定不可变，延迟约束要求提交时绑定必须存在；每次委托 API 解析都会复查绑定的 Session、consent、client 和当前 Delegation。变更使用幂等锁与原子 Audit/Outbox，交换重放不能恢复明文。
+授权在一个控制面事务内创建平台 Agent、成员关系与 Delegation。重新授权会撤销旧 Delegation。OAuth access token 仍为短期令牌，客户端使用轮换的 refresh token 续期。交换流程检查当前连接、OAuth client、consent 与 Session，再签发最长 60 秒且不超过 OAuth 及任何有限 Delegation 到期时间的 credential。`agent_exchange` credential 支持并发请求；普通 `delegated` credential 保留单枚有效约束。credential 类型和 OAuth 绑定不可变，延迟约束要求提交时绑定必须存在；每次委托 API 解析都会复查绑定的 Session、consent、client 和当前 Delegation。手动断开、OAuth 同意或 Session 撤销，以及项目或资料权限失效，仍会停止访问。变更使用幂等锁与原子 Audit/Outbox，交换重放不能恢复明文。
 
 - Actor 统一表示 human、agent 与 service；human actor 关联 `auth.users.id`。
 - Tenant 是顶级隔离边界；Project 是业务资源所有权边界。
@@ -288,10 +288,10 @@ PostgreSQL资源授权读取器通过同一语句读取项目配置、固定资�
 
 本变更不改写表结构或既有数据，也不启用任何项目的受管模式。回退可恢复此前应用，并由连接所有者通过 API 撤销受影响连接，保留不可变授权及审计历史；此前未绑定资源的受管连接须重新同意。合成身份集成验证和公网协议验证不能替代用户已推迟的本人客户端验收。
 
-GoTrue v2.195.0 可能对相同身份范围自动复用该客户端已有的同意。连接到期或新增资源授权后，如需改变 WISER 的固定范围，所有者须先通过 Supabase `oauth.revokeGrant({ clientId })`（普通用户 `DELETE /auth/v1/user/oauth/grants?client_id=...`）撤销该客户端授权，再从客户端重新发起并明确同意。这会撤销该用户在该客户端的 OAuth 会话，不影响其他用户或直接密码登录会话。只清除客户端令牌或添加 `prompt=consent` 对此固定版本不足以触发重新同意；仅撤销 WISER 连接会停止访问，但不会清除 Supabase 保存的同意。
+GoTrue v2.195.0 可能对相同身份范围自动复用该客户端已有的同意。替换旧的已到期连接或变更 WISER 固定资料范围时，所有者须先通过 Supabase `oauth.revokeGrant({ clientId })`（普通用户 `DELETE /auth/v1/user/oauth/grants?client_id=...`）撤销该客户端授权，再从客户端重新发起并明确同意。这会撤销该用户在该客户端的 OAuth 会话，不影响其他用户或直接密码登录会话。只清除客户端令牌或添加 `prompt=consent` 对此固定版本不足以触发重新同意；仅撤销 WISER 连接会停止访问，但不会清除 Supabase 保存的同意。
 
 ### 本人管理 AI/MCP 连接
 
-已登录账户区提供 `/[locale]/account/agents`，显示最近更新的最多 100 个本人连接、仍可见的项目名称、期限和当前状态。失去项目成员资格不妨碍断开连接。Supabase 客户端名称只作为不可信文本显示，不生成提供方链接或暴露凭据。
+已登录账户区提供 `/[locale]/account/agents`，显示最近更新的最多 100 个本人连接、仍可见的项目名称、可选的到期时间和当前状态。无固定到期日的连接显示“直到手动断开”；旧的限时连接仍保留原到期时间。失去项目成员资格不妨碍断开连接。Supabase 客户端名称只作为不可信文本显示，不生成提供方链接或暴露凭据。
 
 用户明确点击断开，以同源 POST 提交。服务端验证当前会话、重新读取本人连接，并从该记录取得 OAuth 客户端，不接受浏览器传入客户端标识。先撤销 WISER 连接，再清除该用户的 Supabase 授权；提供方失败时访问已停止，但页面提示重试，不报告全部完成。提供方授权已不存在时可幂等完成。表单拒绝重复或多余字段、外站或 null Origin 及超限请求体；页面以 `same-origin` 保持原生表单来源，决策响应禁用缓存并使用 `no-referrer`。断开后由用户回到原客户端重新发起并明确选择项目授权。

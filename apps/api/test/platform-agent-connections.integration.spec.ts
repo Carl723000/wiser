@@ -272,7 +272,10 @@ describe.skipIf(databaseUrl === undefined)(
       });
       await expect(resolve(exchanged.token)).resolves.toBeNull();
       await expect(
-        service.exchange({ token: refreshedToken, idempotencyKey: randomUUID() }),
+        service.exchange({
+          token: refreshedToken,
+          idempotencyKey: randomUUID(),
+        }),
       ).rejects.toMatchObject({ code: 'NOT_AUTHORIZED' });
     });
 

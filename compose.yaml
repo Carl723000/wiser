@@ -817,13 +817,13 @@ services:
           memory: 128M
     logging: *data-logging
 
-  data-worker:
+  data-worker: &data-worker-service
     <<: *app
     profiles: [data-foundation]
     command: pnpm --filter @wiser/data-worker dev
     restart: unless-stopped
     stop_grace_period: 45s
-    environment:
+    environment: &data-worker-environment
       DATA_ANALYSIS_PARSER_URL: http://source-parser:3005
       DATA_DATABASE_URL: postgresql://wiser_data_worker:${DATA_WORKER_DATABASE_PASSWORD:-wiser-local-worker-runtime-35b90c72}@data-postgres:5432/wiser_data
       DATA_TENANT_ID: ${DATA_TENANT_ID:-b1000000-0000-4000-8000-000000000001}
@@ -918,6 +918,19 @@ services:
     deploy:
       resources: *data-resources
     logging: *data-logging
+
+  data-worker-project:
+    <<: *data-worker-service
+    profiles: [data-foundation-project]
+    image: ${DATA_PROJECT_WORKER_IMAGE:-registry.invalid/wiser/project-worker-unconfigured:0}
+    pull_policy: never
+    environment:
+      <<: *data-worker-environment
+      DATA_TENANT_ID: ${DATA_PROJECT_WORKER_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+      DATA_PROJECT_ID: ${DATA_PROJECT_WORKER_PROJECT_ID:-00000000-0000-0000-0000-000000000000}
+      DATA_POLICY_VERSION: ${DATA_PROJECT_WORKER_POLICY_VERSION:-0}
+      DATA_WORKER_ID: ${DATA_PROJECT_WORKER_ID:-compose-data-worker-project-1}
+    ports: []
 
   mcp-http:
     <<: *app

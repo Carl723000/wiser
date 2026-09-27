@@ -1,6 +1,6 @@
 ---
 title: Data MCP integration
-description: Invoke 42 Data Capabilities and five governed Resources through the shared WISER MCP Gateway.
+description: Invoke 43 Data Capabilities and five governed Resources through the shared WISER MCP Gateway.
 docType: protocol-reference
 scope: data-mcp-adapter
 status: active
@@ -25,7 +25,7 @@ lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 
 Data MCP is a static `WiserMcpModule` in the existing WISER MCP Gateway, not another business implementation. Both stdio and stateless Streamable HTTP call `/api/data/v1`; they never connect to data-postgres, SeaweedFS, or a projection and never hold a Supabase service-role key.
 
-The module registers 42 strict Zod Tools from the ordered `@wiser/data-contracts` Registry. Tool names, input schemas, query/command annotations, and REST mappings come from the same Capability definitions at runtime. There is no AST scanning, general SQL/Cypher/DSL Tool, or discovered database command.
+The module registers 43 strict Zod Tools from the ordered `@wiser/data-contracts` Registry. Tool names, input schemas, query/command annotations, and REST mappings come from the same Capability definitions at runtime. There is no AST scanning, general SQL/Cypher/DSL Tool, or discovered database command.
 
 ## Data API configuration
 
@@ -92,7 +92,7 @@ Never place either token in a query, Tool argument, Resource URI, log, telemetry
 
 The port 7100 deployment sets `WISER_MCP_AUTH_MODE=oauth`. Its public resource is `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`. An anonymous request receives 401 and `WWW-Authenticate` pointing to protected resource metadata; the authorization server uses public issuer `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`. The client uses OAuth authorization code with PKCE S256 and the existing user's browser consent. This mode does not use the static `DATA_MCP_BEARER_TOKEN` or a fixed downstream `DATA_API_BEARER_TOKEN` for client requests. Each bearer request is exchanged by the API for a short-lived, Project-bound credential, then only Data Tools and `wiser_connection` are registered for that connection. Query and ingestion remain subject to the selected mode and live Project/resource permissions; publication is not granted. End-to-end client acceptance is still **BLOCKED** pending personal browser and real MCP client tests. See [Unified Auth](/en/architecture/unified-auth/) and [the connection guide](/en/development/wiser-data-guide/).
 
-## The 33 Tools
+## Selected Data Tools
 
 | MCP Tool                       | Capability                    | Kind    |
 | ------------------------------ | ----------------------------- | ------- |
@@ -107,6 +107,7 @@ The port 7100 deployment sets `WISER_MCP_AUTH_MODE=oauth`. Its public resource i
 | `data_geo_intersect`           | `data.geo.intersect`          | query   |
 | `data_ingestion_create`        | `data.ingestion.create`       | command |
 | `data_ingestion_submit`        | `data.ingestion.submit`       | command |
+| `data_ingestion_resume`        | `data.ingestion.resume`       | command |
 | `data_operation_get`           | `data.operation.get`          | query   |
 | `data_catalog_create`          | `data.catalog.create`         | command |
 | `data_catalog_versions_list`   | `data.catalog.versions.list`  | query   |
@@ -140,6 +141,8 @@ GET Tools encode only boolean, number, string, or string-array queries, and URL-
 `data_geo_intersect` resolves DataItem targets to a visible committed Version before collecting all sibling extents and never falls back to an older Version. Current catalog/version Tool outputs require `tileAvailability`; Agents may use its booleans to decide whether to offer governed vector/raster routes, but must not infer upstream service health or COG conformance.
 
 ### Ingestion
+
+If an old queued ingestion exceeded its queue deadline without a Worker claim, fetch its Operation version and call `data_ingestion_resume` with the original ingestion ID, that `expectedVersion`, and a fresh command key. The Tool preserves the same Operation and refuses a claimed or terminal task. Poll that Operation after the project Worker starts.
 
 `data_ingestion_create` discovers the optional `sourceRegistration` 1.1 input from the shared Registry. Use it to register real provider/catalog/interface records and raw research assets with an exact source manifest. Preserve sample, partial, empty and unknown states; successful registration does not assert analytical completeness. The Skill's `references/water-bundle.md` defines local inventory and preparation. Native OAuth MCP mode is documented in Backend development; the static configuration above remains the compatibility mode.
 

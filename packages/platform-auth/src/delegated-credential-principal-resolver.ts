@@ -38,7 +38,7 @@ export interface DelegatedCredentialAuthorizationRecord {
   readonly delegationScopes: readonly string[];
   readonly delegationMaxSecurityLevel: string;
   readonly delegationStatus: string;
-  readonly delegationExpiresAt: string;
+  readonly delegationExpiresAt: string | null;
   readonly delegationRevokedAt: string | null;
   readonly delegatorScopes: readonly string[];
   readonly delegatorMaxSecurityLevel: string;
@@ -102,10 +102,13 @@ function liveRecord(
   now: number,
 ): {
   readonly credentialExpiry: number;
-  readonly delegationExpiry: number;
+  readonly delegationExpiry: number | null;
 } | null {
   const credentialExpiry = timestamp(record.credentialExpiresAt);
-  const delegationExpiry = timestamp(record.delegationExpiresAt);
+  const delegationExpiry =
+    record.delegationExpiresAt === null
+      ? null
+      : timestamp(record.delegationExpiresAt);
   if (
     record.credentialRevokedAt !== null ||
     record.rotatedToCredentialId !== null ||
@@ -113,8 +116,11 @@ function liveRecord(
     credentialExpiry <= now ||
     record.delegationStatus !== 'active' ||
     record.delegationRevokedAt !== null ||
-    delegationExpiry === null ||
-    delegationExpiry <= now ||
+    (delegationExpiry === null &&
+      !(
+        record.purpose === 'agent-data' && record.delegationExpiresAt === null
+      )) ||
+    (delegationExpiry !== null && delegationExpiry <= now) ||
     (record.delegateActorType !== 'agent' &&
       record.delegateActorType !== 'service') ||
     record.delegateActorStatus !== 'active' ||
@@ -232,7 +238,7 @@ export class DelegatedCredentialPrincipalResolver {
         delegatedBy: record.delegatedByActorId,
         authenticationMethod: 'delegated_credential',
         expiresAt: new Date(
-          Math.min(live.credentialExpiry, live.delegationExpiry),
+          Math.min(live.credentialExpiry, live.delegationExpiry ?? Infinity),
         ).toISOString(),
       },
       authorization: authorization.data,

@@ -76,6 +76,7 @@ Read [governance-and-security.md](references/governance-and-security.md) wheneve
 - Supply the current strong `If-Match: "vN"` or MCP `expectedVersion` for versioned commands. On conflict, refetch and decide; never increment a version by guesswork.
 - Treat `operationId`, DataItem versions, assets, evidence, reviews, audit events, and Operation events as durable facts.
 - A timeout is ambiguous. Reconcile the Operation or resource before issuing a different command.
+- If an ingestion Operation is still `RUNNING` but its original processing Job was never claimed and its old queue deadline expired, discover `data.ingestion.resume`. Use the original `ingestionId`, the current **Operation** version as `expectedVersion`, and a fresh UUID command key. This preserves the original Operation and assets. The Capability rejects already claimed, cancelled, or terminal work; do not create a second ingestion.
 - Cancel only the intended non-terminal Operation. Cancellation does not erase uploaded objects, versions, evidence, audit, or prior events.
 
 ## Hard boundary

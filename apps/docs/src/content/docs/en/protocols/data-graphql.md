@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 42 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
+It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 43 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
 
 `apps/api/package.json` and the root lockfile define the exact compatible GraphQL and Mercurius versions, and API typecheck/build verifies that combination. Protocol prose does not duplicate a version inventory that changes during dependency upgrades.
 
@@ -87,16 +87,17 @@ Connections expose `nodes` and `pageInfo { endCursor hasNextPage }`; other pages
 
 `CreateIngestionInput.sourceRegistration` is an optional JSON projection of the strict ingestion 1.1 descriptor. GraphQL and REST use the same manifest binding, authorization, idempotency, validation and source-registration-only semantics; the JSON scalar does not bypass the Capability schema.
 
-| Field                       | Capability                    | Result                                         |
-| --------------------------- | ----------------------------- | ---------------------------------------------- |
-| `createDataIngestion`       | `data.ingestion.create`       | Create an asynchronous Operation               |
-| `createDataItem`            | `data.catalog.create`         | Create a catalog DataItem                      |
-| `createDataUploadSession`   | `data.uploadSession.create`   | Produce a governed upload plan                 |
-| `completeDataUploadSession` | `data.uploadSession.complete` | Verify and complete upload                     |
-| `submitDataIngestion`       | `data.ingestion.submit`       | Read current version then submit durable work  |
-| `approveDataIngestion`      | `data.ingestion.approve`      | Approve with explicit `expectedVersion`        |
-| `rejectDataIngestion`       | `data.ingestion.reject`       | Reject with explicit `expectedVersion`         |
-| `cancelDataOperation`       | `data.operation.cancel`       | Read current version then request cancellation |
+| Field                       | Capability                    | Result                                                           |
+| --------------------------- | ----------------------------- | ---------------------------------------------------------------- |
+| `createDataIngestion`       | `data.ingestion.create`       | Create an asynchronous Operation                                 |
+| `createDataItem`            | `data.catalog.create`         | Create a catalog DataItem                                        |
+| `createDataUploadSession`   | `data.uploadSession.create`   | Produce a governed upload plan                                   |
+| `completeDataUploadSession` | `data.uploadSession.complete` | Verify and complete upload                                       |
+| `submitDataIngestion`       | `data.ingestion.submit`       | Read current version then submit durable work                    |
+| `resumeDataIngestion`       | `data.ingestion.resume`       | Resume an expired, never-claimed Job using the Operation version |
+| `approveDataIngestion`      | `data.ingestion.approve`      | Approve with explicit `expectedVersion`                          |
+| `rejectDataIngestion`       | `data.ingestion.reject`       | Reject with explicit `expectedVersion`                           |
+| `cancelDataOperation`       | `data.operation.cancel`       | Read current version then request cancellation                   |
 
 GraphQL never implies “successful request means published.” Long work returns the shared `Operation`; reconcile through `dataOperation` and `dataOperationEvents`. Upload Session URLs are still used directly by the client for PUT/multipart; GraphQL never proxies large object bodies.
 
@@ -116,6 +117,8 @@ curl --fail http://127.0.0.1:3101/graphql \
 ```
 
 Real IDs must come from an authorized catalog result. Never place the bearer in query/variables, GraphQL logs, or client cache.
+
+`resumeDataIngestion(id: ID!, expectedVersion: Int!)` preserves the existing ingestion and Operation. Pass the current **Operation** version, a fresh UUID `Idempotency-Key`, and the same authorized project context. It rejects already claimed, cancelled, or terminal tasks; poll the original Operation after resuming.
 
 ## Mutation example
 

@@ -1,6 +1,6 @@
 ---
 title: Data MCP 接入
-description: 通过共享 WISER MCP Gateway 调用 42 项 Data Capability 与 5 类受控 Resource。
+description: 通过共享 WISER MCP Gateway 调用 43 项 Data Capability 与 5 类受控 Resource。
 docType: protocol-reference
 scope: data-mcp-adapter
 status: active
@@ -25,7 +25,7 @@ lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
 
 Data MCP 是现有 WISER MCP Gateway 的静态 `WiserMcpModule`，不是第二套业务实现。stdio 与无状态 Streamable HTTP 都调用 `/api/data/v1`，从不连接 data-postgres、SeaweedFS 或任一投影，也不持有 Supabase service-role key。
 
-模块从 `@wiser/data-contracts` 的有序 Registry 注册 42 个 strict Zod Tool。Tool name、输入 schema、query/command 注解和 REST mapping 在运行时来自同一 Capability definition；不存在 AST 扫描、通用 SQL/Cypher/DSL Tool 或自动发现的数据库命令。
+模块从 `@wiser/data-contracts` 的有序 Registry 注册 43 个 strict Zod Tool。Tool name、输入 schema、query/command 注解和 REST mapping 在运行时来自同一 Capability definition；不存在 AST 扫描、通用 SQL/Cypher/DSL Tool 或自动发现的数据库命令。
 
 ## Data API 配置
 
@@ -92,7 +92,7 @@ pnpm --filter @wiser/mcp start:http
 
 7100 现网设置 `WISER_MCP_AUTH_MODE=oauth`，公网资源为 `https://mcp.wiser.thuenv.tiangong.world:7100/mcp`。匿名请求得到 401 和指向受保护资源元数据的 `WWW-Authenticate`，授权服务器的公网 issuer 为 `https://auth.wiser.thuenv.tiangong.world:7100/auth/v1`。客户端使用 OAuth 授权码、PKCE S256 与现有用户的浏览器同意。此模式的客户端请求不使用静态 `DATA_MCP_BEARER_TOKEN` 或固定的下游 `DATA_API_BEARER_TOKEN`。API 对每次 Bearer 请求交换短期、绑定项目的 credential；当前连接只注册 Data Tools 和 `wiser_connection`。查询与入库仍受所选模式、实时项目及资料权限约束，不授予发布能力。本人浏览器与真实 MCP 客户端联调完成前，端到端状态仍为 **BLOCKED**。见[统一身份](/architecture/unified-auth/)与[接入指南](/development/wiser-data-guide/)。
 
-## 36 个 Tools
+## 常用 Data Tools
 
 | MCP Tool                       | Capability                    | 类型    |
 | ------------------------------ | ----------------------------- | ------- |
@@ -107,6 +107,7 @@ pnpm --filter @wiser/mcp start:http
 | `data_geo_intersect`           | `data.geo.intersect`          | query   |
 | `data_ingestion_create`        | `data.ingestion.create`       | command |
 | `data_ingestion_submit`        | `data.ingestion.submit`       | command |
+| `data_ingestion_resume`        | `data.ingestion.resume`       | command |
 | `data_operation_get`           | `data.operation.get`          | query   |
 | `data_catalog_create`          | `data.catalog.create`         | command |
 | `data_catalog_versions_list`   | `data.catalog.versions.list`  | query   |
@@ -140,6 +141,8 @@ GET Tool 只编码 boolean、number、string 或 string array query；path param
 `data_geo_intersect` 先把 DataItem target 解析为可见已提交 Version，再收集全部 sibling extent，绝不回退旧 Version。当前 catalog/version Tool 输出必须带有 `tileAvailability`；Agent 可用布尔量决定是否提供受控 vector/raster route，但不得由此推断上游服务健康或 COG 合规。
 
 ### 入库
+
+如果旧入库任务在 Worker 尚未领取时超过排队期限，先读取原 Operation 版本，再用原入库单 ID、该 `expectedVersion` 和新的命令键调用 `data_ingestion_resume`。此 Tool 保留原 Operation，拒绝已领取或终态任务。项目 Worker 启动后继续轮询同一 Operation。
 
 `data_ingestion_create` 从共享 Registry 发现可选的 `sourceRegistration` 1.1 输入，用精确来源清单登记真实提供方、目录、接口和研究原始资产。必须保留样本、部分下载、空文件与未知状态；登记成功不表示分析数据完整。Skill 的 `references/water-bundle.md` 说明本机清点与准备流程。原生 OAuth MCP 模式见后端开发文档，上述静态配置保留为兼容模式。
 

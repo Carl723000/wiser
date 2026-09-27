@@ -257,6 +257,7 @@ const validInputs = {
     requestedSecurityLevel: 'L1_INTERNAL',
   },
   'data.ingestion.submit': { ingestionId: INGESTION_ID, expectedVersion: 4 },
+  'data.ingestion.resume': { ingestionId: INGESTION_ID, expectedVersion: 5 },
   'data.operation.get': { operationId: OPERATION_ID },
   'data.catalog.create': {
     name: 'Station metadata draft',
@@ -326,6 +327,7 @@ const validInputs = {
 const VERSIONED_COMMANDS = new Set<DataCapabilityId>([
   'data.reconciliation.review',
   'data.ingestion.submit',
+  'data.ingestion.resume',
   'data.uploadSession.complete',
   'data.ingestion.approve',
   'data.ingestion.reject',

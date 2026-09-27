@@ -51,6 +51,7 @@ Frontend code receives only a publishable key. Views use security-invoker behavi
 OAuth resource tokens carrying `client_id` do not inherit direct human access. The ordinary API JWT verifier rejects them, and exposed application tables apply the restrictive `wiser_direct_session_only` policy alongside their ownership policies. Add the same restriction when introducing another exposed table. Agent connections and OAuth credential bindings remain private and force RLS; the token hook grants only Supabase Auth the necessary read and execute privileges.
 
 An OAuth exchange credential must retain its immutable `agent_exchange` kind and Session binding. A deferred database constraint rejects unbound issuance. The API validates that binding on every use, including OAuth consent/client revocation and Session deletion, so its short expiry is not the only revocation mechanism. A query grant excludes ingestion and publication; an ingestion grant still excludes publication.
+Only `agent-data` Delegations may omit a fixed expiry. Their OAuth access tokens and exchanged credentials remain short-lived; each exchange and delegated API call rechecks the live connection, Session, consent and current delegator/project/resource authority. Revoking the connection or OAuth grant stops access without waiting for token expiry.
 
 ## Time and evidence authorization
 

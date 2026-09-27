@@ -27,7 +27,7 @@ const authorizationId = randomUUID();
 const exchange = {
   connection,
   token: `wdc1.wdc_${'k'.repeat(22)}.${'s'.repeat(43)}`,
-  expiresAt: connection.expiresAt,
+  expiresAt: '2027-01-01T00:00:00.000Z',
 };
 const openApps: FastifyInstance[] = [];
 afterEach(async () => {
@@ -138,7 +138,6 @@ describe('Platform Agent HTTP boundary', () => {
       command: {
         ...command,
         maxSecurityLevel: 'L1_INTERNAL',
-        expiresInSeconds: 3600,
       },
     });
     const list = await app.inject({

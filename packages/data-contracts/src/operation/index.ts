@@ -85,6 +85,7 @@ export const OperationEventTypeSchema = z.enum([
   'CREATED',
   'STARTED',
   'PROGRESS_REPORTED',
+  'RESUMED',
   'WAITING_INPUT',
   'WAITING_REVIEW',
   'SUCCEEDED',

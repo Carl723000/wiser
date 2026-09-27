@@ -24,6 +24,7 @@ const IDEMPOTENCY_KEY_SCHEMA = z
 const VERSIONED_COMMANDS = new Set<DataCapabilityId>([
   'data.reconciliation.review',
   'data.ingestion.submit',
+  'data.ingestion.resume',
   'data.uploadSession.complete',
   'data.ingestion.approve',
   'data.ingestion.reject',

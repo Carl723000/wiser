@@ -1,6 +1,6 @@
 ---
 title: Data REST API
-description: Data Foundation's 42 Capabilities, OpenAPI, governed Resources, idempotency, SSE, and asset-download protocol.
+description: Data Foundation's 43 Capabilities, OpenAPI, governed Resources, idempotency, SSE, and asset-download protocol.
 docType: protocol-reference
 scope: data-rest-api
 status: active
@@ -21,7 +21,7 @@ lastReviewedCommit: 26b4d35fec914ff5391b09f47c7cdee6439f70af
 
 ## Protocol boundary
 
-Data REST lives at `/api/data/v1` in the existing Fastify process; it is not a second service. All 42 business routes call one `DataCapabilityHandler`, which validates input and output with strict Zod 4 schemas from `@wiser/data-contracts`, then enforces live scopes, security level, purpose, timeout, idempotency, and hash-only audit.
+Data REST lives at `/api/data/v1` in the existing Fastify process; it is not a second service. All 43 business routes call one `DataCapabilityHandler`, which validates input and output with strict Zod 4 schemas from `@wiser/data-contracts`, then enforces live scopes, security level, purpose, timeout, idempotency, and hash-only audit.
 
 MCP, the Skill, and Web's server-side DAL all traverse this HTTP boundary. No caller can submit SQL, Cypher, OpenSearch DSL, shell commands, or arbitrary object-store keys.
 
@@ -32,7 +32,7 @@ These non-cacheable reads require no identity:
 | Method | Path                                               | Result                                                                             |
 | ------ | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `GET`  | `/api/data/v1/health`                              | data-postgres, object-store, Worker readiness; any missing authority returns `503` |
-| `GET`  | `/api/data/v1/capabilities`                        | ordered 42-item Registry, draft-7 I/O Schemas, and four mappings                   |
+| `GET`  | `/api/data/v1/capabilities`                        | ordered 43-item Registry, draft-7 I/O Schemas, and four mappings                   |
 | `GET`  | `/api/data/v1/capabilities/:capabilityId/:version` | one fixed Capability version; unknown version returns `404`                        |
 
 A ready response has this core shape:
@@ -51,7 +51,7 @@ A ready response has this core shape:
 
 ## OpenAPI contract projection
 
-Shared `GET /openapi.json` returns OpenAPI 3.1 with the fixed title **WISER Platform API**, covering Platform, Agent EXCON, and Data Foundation. The 42 Data Capabilities do not maintain another handwritten schema. At route registration, Fastify converts Registry Zod 4 input/output into draft-7 JSON Schema and projects it into path, query, body, and required-header OpenAPI operations.
+Shared `GET /openapi.json` returns OpenAPI 3.1 with the fixed title **WISER Platform API**, covering Platform, Agent EXCON, and Data Foundation. The 43 Data Capabilities do not maintain another handwritten schema. At route registration, Fastify converts Registry Zod 4 input/output into draft-7 JSON Schema and projects it into path, query, body, and required-header OpenAPI operations.
 
 Every Data operation has the `data-foundation` tag, a stable `operationId`, `bearerAuth`, its successful response Schema, plus `Idempotency-Key` for commands and `If-Match` for versioned commands. Fastify schema compilers serve the OpenAPI projection here; the single runtime behavior gate remains strict Zod input/output validation in the shared `DataCapabilityHandler`. Generated documentation never becomes a second behavior source.
 
@@ -83,9 +83,11 @@ These versioned commands also require a strong ETag:
 If-Match: "v3"
 ```
 
-This applies to upload Session completion, ingestion submit/approve/reject, and Operation cancel. The header must equal an `expectedVersion` already present in the body. Successful responses include `ETag: "vN"` when an aggregate version is present. Identity, business, and error responses are all `private, no-store`.
+This applies to upload Session completion, ingestion submit/resume/approve/reject, and Operation cancel. The header must equal an `expectedVersion` already present in the body. Successful responses include `ETag: "vN"` when an aggregate version is present. Identity, business, and error responses are all `private, no-store`.
 
-## The 42 Capability routes
+`data.ingestion.resume` accepts the existing ingestion ID and the current **Operation** version in `expectedVersion` and `If-Match`. It applies only to an expired, never-claimed PENDING ingestion Job whose original Operation is still RUNNING. A successful response keeps the same Operation ID, advances its version, and records a RESUMED event, audit, and Outbox entry. Use a fresh UUID command key; replay only the identical request.
+
+## The 43 Capability routes
 
 | Capability                        | Method and path                                           | Success |
 | --------------------------------- | --------------------------------------------------------- | ------- |
@@ -101,6 +103,7 @@ This applies to upload Session completion, ingestion submit/approve/reject, and 
 | `data.geo.intersect`              | `POST /geo/intersect`                                     | `200`   |
 | `data.ingestion.create`           | `POST /ingestions`                                        | `202`   |
 | `data.ingestion.submit`           | `POST /ingestions/:ingestionId/submit`                    | `202`   |
+| `data.ingestion.resume`           | `POST /ingestions/:ingestionId/resume`                    | `202`   |
 | `data.operation.get`              | `GET /operations/:operationId`                            | `200`   |
 | `data.catalog.create`             | `POST /catalog/data-items`                                | `201`   |
 | `data.catalog.versions.list`      | `GET /catalog/data-items/:dataItemId/versions`            | `200`   |
@@ -207,7 +210,7 @@ Publication consumer respects terminal Operations. Even after all five completio
 
 ## Evidence and STAC Resource reads
 
-These governed GETs are not part of the 42 business Capabilities. They specifically back MCP Resources while still using unified Auth, data-postgres RLS, post-authorization audit, and no-store:
+These governed GETs are not part of the 43 business Capabilities. They specifically back MCP Resources while still using unified Auth, data-postgres RLS, post-authorization audit, and no-store:
 
 | Path                                                        | Scope                 | Authority and output boundary                                                                                                                                       |
 | ----------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

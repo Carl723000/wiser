@@ -22,7 +22,7 @@ export interface DelegatedCredentialAuthorizationRow {
   readonly delegation_scopes: readonly string[] | null;
   readonly delegation_max_security_level: string;
   readonly delegation_status: string;
-  readonly delegation_expires_at: Date | string;
+  readonly delegation_expires_at: Date | string | null;
   readonly delegation_revoked_at: Date | string | null;
   readonly delegator_scopes: readonly string[] | null;
   readonly delegator_max_security_level: string;
@@ -248,7 +248,7 @@ function toRecord(
     delegationScopes: [...(row.delegation_scopes ?? [])],
     delegationMaxSecurityLevel: row.delegation_max_security_level,
     delegationStatus: row.delegation_status,
-    delegationExpiresAt: isoTimestamp(row.delegation_expires_at),
+    delegationExpiresAt: nullableTimestamp(row.delegation_expires_at),
     delegationRevokedAt: nullableTimestamp(row.delegation_revoked_at),
     delegatorScopes: [...(row.delegator_scopes ?? [])],
     delegatorMaxSecurityLevel: row.delegator_max_security_level,

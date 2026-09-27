@@ -36,6 +36,8 @@ lastReviewedCommit: 86651aa7c44d64f6f7195eb148e5dc92d584c4b1
 
 本地开发必须加载 `compose.override.yaml`，显式指定文件时也要包含它：`docker compose -f compose.yaml -f compose.override.yaml ...`。如果还需要 case/runtime 文件，仍须保留本地 override，并在启动、构建或重建服务前核对合并顺序和最终配置。保留用户手动修改的本地配置，不得静默覆盖其中的端口、源码挂载或开发命令。配置检查与后续 Compose 操作使用同一组文件；`docker compose ... config --quiet` 可校验配置而不打印解析后的秘密。
 
+额外 Data 项目可启用独立的 `data-worker-project` 服务，复用有界 Worker 代码与依赖，不暴露主机端口。由已核验的控制面上下文设置 `DATA_PROJECT_WORKER_TENANT_ID`、`DATA_PROJECT_WORKER_PROJECT_ID` 和 `DATA_PROJECT_WORKER_POLICY_VERSION`，并将 `DATA_PROJECT_WORKER_IMAGE` 指向已经部署且与 API 匹配的 Worker 镜像。缺失配置会留下无效项目/策略值和不可用镜像，使服务拒绝启动。在既有 Compose 文件列表上增加 `--profile data-foundation-project`，先核对合并后的镜像、挂载、范围、策略版本与无主机端口，再执行 `up -d data-worker-project`。对于已过期的旧入库任务，应先应用迁移 0032、部署匹配的 API，再对同一 Operation 使用 `data.ingestion.resume`，最后启动该项目 Worker。默认 Worker 仍只处理原项目。
+
 - 完整 Data profile 会同时运行数据库、ClamAV、搜索、图谱与 GIS，资源上限以 `compose.yaml` 为准；启动前确认 Docker 可用容量与磁盘，而不是依赖一个未经仓库验证的“最低配置”数字。
 - 部分镜像在 Apple Silicon 上使用显式 `linux/amd64` 模拟，首次拉取、初始化和健康检查会更久。
 - 安装和首次构建需要访问 npm registry 与容器 registry。
