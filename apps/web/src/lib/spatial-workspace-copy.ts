@@ -143,6 +143,9 @@ export interface SpatialWorkspaceCopy {
   exportHint: string;
   exported: string;
   rasterTitle: string;
+  rasterLayer?: string;
+  rasterBand?: string;
+  rasterOpacity?: string;
   rasterUnavailable: string;
   rasterLimits: string;
   regions: {

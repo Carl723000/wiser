@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { CustomLayerInterface } from 'maplibre-gl';
+import { renderToStaticMarkup } from 'react-dom/server';
 import type { WorkspaceMapFeatures } from '@/lib/spatial-workspace-view';
 import type { WorkspaceRasterReport } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
@@ -225,6 +226,17 @@ it('retains an actual selectable planar geometry view without WebGL', () => {
     recordId: 'r1',
     positionId: 'p1',
   });
+});
+
+it('renders accessible SVG titles as a single text child without server warnings', () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  renderToStaticMarkup(
+    <SpatialWorkspaceMap {...props} webGLAvailable={false} />,
+  );
+  expect(errors.mock.calls.flat().join(' ')).not.toMatch(
+    /title.*children|children.*title/,
+  );
+  errors.mockRestore();
 });
 
 it('unloads a failed canvas and leaves the record positions selectable for retry', () => {

@@ -224,6 +224,16 @@
 .mapToolbar {
   margin-bottom: 0.5rem;
 }
+.rasterControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+.rasterControls label {
+  min-width: 8rem;
+}
 .mapToolbar button {
   font-size: 0.75rem;
   min-height: 2.1rem;

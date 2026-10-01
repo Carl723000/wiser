@@ -4,15 +4,20 @@ import * as maplibre from 'maplibre-gl';
 import Map, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FeatureCollection, Geometry, Position } from 'geojson';
-import type { WorkspaceBounds } from '@/lib/spatial-workspace-contract';
+import type {
+  WorkspaceBounds,
+  WorkspaceRasterReport,
+} from '@/lib/spatial-workspace-contract';
 import type { SpatialWorkspaceCopy } from '@/lib/spatial-workspace-copy';
 import {
   projectWorkspaceCoordinate,
+  defaultWorkspaceRaster,
   workspaceGeometryAnchor,
   workspaceRecordKinds,
   type WorkspaceCamera,
   type WorkspaceMapFeatures,
   type WorkspaceSelection,
+  type WorkspaceRasterSettings,
 } from '@/lib/spatial-workspace-view';
 import styles from './spatial-workspace.module.css';
 
@@ -67,6 +72,9 @@ export interface SpatialWorkspaceMapProps {
   bounds?: WorkspaceBounds | null;
   drawBounds?: boolean;
   onBounds?: (bounds: WorkspaceBounds) => void;
+  rasterReports?: readonly WorkspaceRasterReport[];
+  rasterSettings?: WorkspaceRasterSettings;
+  onRasterChange?: (settings: WorkspaceRasterSettings) => void;
   /** Optional deterministic rendering-capability override for browser acceptance. */
   webGLAvailable?: boolean;
 }
@@ -211,6 +219,9 @@ export function SpatialWorkspaceMap({
   bounds = null,
   drawBounds = false,
   onBounds,
+  rasterReports = [],
+  rasterSettings = defaultWorkspaceRaster,
+  onRasterChange,
   webGLAvailable,
 }: SpatialWorkspaceMapProps) {
   const map = useRef<MapRef>(null),
@@ -227,6 +238,48 @@ export function SpatialWorkspaceMap({
     [size, setSize] = useState({ width: 800, height: 460 }),
     [pendingBounds, setPendingBounds] = useState<WorkspaceBounds | null>(null);
   const [hits, setHits] = useState<WorkspaceMapFeatures['features']>([]);
+  const verifiedRaster = rasterReports.filter(
+    (report) =>
+      report.rights.displayAllowed &&
+      report.wgs84Bounds &&
+      report.products.some(
+        (product) =>
+          product.readable &&
+          product.hashMatches &&
+          product.thumbnailUrl &&
+          /^\/spatial-workspace-media\/(b03|b8a|scl|tci)-wgs84\.png$/.test(
+            product.thumbnailUrl,
+          ),
+      ),
+  );
+  const rasters = rasterSettings.enabled
+    ? verifiedRaster.flatMap((report) => {
+        const product = report.products.find(
+          (item) =>
+            item.band === rasterSettings.band &&
+            item.readable &&
+            item.hashMatches &&
+            item.thumbnailUrl &&
+            /^\/spatial-workspace-media\/(b03|b8a|scl|tci)-wgs84\.png$/.test(
+              item.thumbnailUrl,
+            ),
+        );
+        const extent = report.wgs84Bounds;
+        if (!product?.thumbnailUrl || !extent) return [];
+        const coordinates: [
+          [number, number],
+          [number, number],
+          [number, number],
+          [number, number],
+        ] = [
+          [extent[0], extent[3]],
+          [extent[2], extent[3]],
+          [extent[2], extent[1]],
+          [extent[0], extent[1]],
+        ];
+        return [{ report, product, coordinates, url: product.thumbnailUrl }];
+      })
+    : [];
   const [colors, setColors] = useState({
     accent: '#087f8c',
     border: '#95b1b7',
@@ -439,11 +492,16 @@ export function SpatialWorkspaceMap({
             [
               copy.rotateLeft,
               () =>
-                changeCamera({ bearing: (camera.bearing - 15 + 360) % 360 }),
+                changeCamera({
+                  bearing: ((camera.bearing - 15 + 540) % 360) - 180,
+                }),
             ],
             [
               copy.rotateRight,
-              () => changeCamera({ bearing: (camera.bearing + 15) % 360 }),
+              () =>
+                changeCamera({
+                  bearing: ((camera.bearing + 15 + 540) % 360) - 180,
+                }),
             ],
             [
               copy.panWest,
@@ -498,6 +556,95 @@ export function SpatialWorkspaceMap({
           </>
         ) : null}
       </div>
+      {verifiedRaster.length ? (
+        <div className={styles.rasterControls}>
+          <label className={styles.checkbox}>
+            <input
+              type="checkbox"
+              checked={rasterSettings.enabled}
+              onChange={(event) =>
+                onRasterChange?.({
+                  ...rasterSettings,
+                  enabled: event.target.checked,
+                })
+              }
+            />
+            {copy.rasterLayer ?? copy.kinds.raster}
+          </label>
+          <label>
+            {copy.rasterBand ?? copy.rasterTitle}
+            <select
+              value={rasterSettings.band}
+              onChange={(event) =>
+                onRasterChange?.({
+                  ...rasterSettings,
+                  band: event.target.value as WorkspaceRasterSettings['band'],
+                })
+              }
+            >
+              {(['TCI', 'B03', 'B8A', 'SCL'] as const)
+                .filter((band) =>
+                  verifiedRaster.some((report) =>
+                    report.products.some(
+                      (product) =>
+                        product.band === band &&
+                        product.readable &&
+                        product.hashMatches,
+                    ),
+                  ),
+                )
+                .map((band) => (
+                  <option key={band} value={band}>
+                    {band}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            {copy.rasterOpacity ?? copy.value}
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={rasterSettings.opacity}
+              onChange={(event) =>
+                onRasterChange?.({
+                  ...rasterSettings,
+                  opacity: Number(event.target.value),
+                })
+              }
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const extent = verifiedRaster[0]?.wgs84Bounds;
+              if (extent)
+                changeCamera({
+                  longitude: (extent[0] + extent[2]) / 2,
+                  latitude: (extent[1] + extent[3]) / 2,
+                  zoom: Math.min(
+                    12,
+                    Math.max(
+                      6,
+                      8 -
+                        Math.log2(
+                          Math.max(
+                            0.01,
+                            extent[2] - extent[0],
+                            extent[3] - extent[1],
+                          ),
+                        ),
+                    ),
+                  ),
+                });
+            }}
+          >
+            {copy.locatePosition} · {copy.kinds.raster}
+          </button>
+        </div>
+      ) : null}
       {flat ? (
         <p role="status">
           {failed ? copy.renderFailed : copy.noWebgl}
@@ -617,6 +764,26 @@ export function SpatialWorkspaceMap({
                 }}
               />
             </Source>
+            {rasters.map((raster) => (
+              <Source
+                key={`${raster.report.id}:${raster.product.band}`}
+                id={`workspace-image-${raster.report.id}-${raster.product.band}`}
+                type="image"
+                url={raster.url}
+                coordinates={raster.coordinates}
+              >
+                <Layer
+                  id={`workspace-raster-${raster.report.id}-${raster.product.band}`}
+                  type="raster"
+                  paint={{
+                    'raster-opacity': rasterSettings.opacity,
+                    'raster-resampling':
+                      raster.product.band === 'SCL' ? 'nearest' : 'linear',
+                    'raster-fade-duration': 0,
+                  }}
+                />
+              </Source>
+            ))}
             <Source id="workspace-records" type="geojson" data={features}>
               <Layer
                 id="workspace-areas"
@@ -737,6 +904,25 @@ export function SpatialWorkspaceMap({
                   )
                 : [],
             )}
+            {rasters.map((raster) => {
+              const topLeft = planar.project(raster.coordinates[0]),
+                topRight = planar.project(raster.coordinates[1]),
+                bottomLeft = planar.project(raster.coordinates[3]);
+              return (
+                <image
+                  key={`${raster.report.id}:${raster.product.band}`}
+                  href={raster.url}
+                  x="0"
+                  y="0"
+                  width="1000"
+                  height="1000"
+                  preserveAspectRatio="none"
+                  opacity={rasterSettings.opacity}
+                  pointerEvents="none"
+                  transform={`matrix(${(topRight[0] - topLeft[0]) / 1000} ${(topRight[1] - topLeft[1]) / 1000} ${(bottomLeft[0] - topLeft[0]) / 1000} ${(bottomLeft[1] - topLeft[1]) / 1000} ${topLeft[0]} ${topLeft[1]})`}
+                />
+              );
+            })}
             {features.features.map((feature) => (
               <g
                 key={feature.id}
@@ -754,10 +940,7 @@ export function SpatialWorkspaceMap({
                   }
                 }}
               >
-                <title>
-                  {feature.properties.label} · {feature.properties.sourceId} ·{' '}
-                  {feature.properties.versionId}
-                </title>
+                <title>{`${feature.properties.label} · ${feature.properties.sourceId} · ${feature.properties.versionId}`}</title>
                 {geometryPaths(feature.geometry, planar.project).map(
                   ({ path, fill }, index) => (
                     <path

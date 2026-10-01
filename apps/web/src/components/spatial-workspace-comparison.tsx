@@ -6,6 +6,7 @@ import {
   filterSpatialWorkspace,
   validWorkspaceTimeFilter,
   workspaceRegionIds,
+  workspaceRasterOverlays,
   type SpatialWorkspaceView,
   type WorkspaceComparisonScope,
   type WorkspaceInvalidation,
@@ -190,6 +191,13 @@ export function SpatialWorkspaceComparison({
               </p>
               <SpatialWorkspaceMap
                 features={filtered.features}
+                rasterReports={workspaceRasterOverlays(
+                  pack,
+                  scopeView(scope),
+                  invalidations,
+                )}
+                rasterSettings={view.raster}
+                onRasterChange={(raster) => onChange({ ...view, raster })}
                 camera={view.camera}
                 mode={view.mode}
                 selection={view.selection}

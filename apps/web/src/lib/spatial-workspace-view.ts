@@ -6,6 +6,7 @@ import type {
   WorkspacePack,
   WorkspacePosition,
   WorkspaceRecord,
+  WorkspaceRasterReport,
 } from './spatial-workspace-contract';
 export type { WorkspaceBounds } from './spatial-workspace-contract';
 
@@ -282,6 +283,16 @@ export interface WorkspaceComparisonScope {
   start: string | null;
   end: string | null;
 }
+export interface WorkspaceRasterSettings {
+  enabled: boolean;
+  band: WorkspaceRasterReport['products'][number]['band'];
+  opacity: number;
+}
+export const defaultWorkspaceRaster: WorkspaceRasterSettings = {
+  enabled: true,
+  band: 'TCI',
+  opacity: 0.8,
+};
 export interface SpatialWorkspaceView {
   schemaVersion: 1;
   kind: 'spatial-workspace-view';
@@ -295,6 +306,7 @@ export interface SpatialWorkspaceView {
   bounds: WorkspaceBounds | null;
   camera: WorkspaceCamera;
   mode: '2d' | '3d';
+  raster?: WorkspaceRasterSettings;
   selection: WorkspaceSelection;
   expandedSources: string[];
   sourcePins: WorkspaceSourcePin[] | null;
@@ -359,6 +371,7 @@ export function createSpatialWorkspaceView(
     bounds: null,
     camera: workspaceRegionCamera(pack, regionId),
     mode: '2d',
+    raster: { ...defaultWorkspaceRaster },
     selection: null,
     expandedSources: [],
     sourcePins: null,
@@ -529,9 +542,9 @@ function workRoot(pack: WorkspacePack, sourceId: string) {
   for (;;) {
     if (seen.has(current)) return sourceId;
     seen.add(current);
-    const parent = pack.sources.find(
-      (source) => source.id === current,
-    )?.duplicateOf;
+    const source = pack.sources.find((source) => source.id === current);
+    if (source?.workId) return source.workId;
+    const parent = source?.duplicateOf;
     if (!parent) return current;
     current = parent;
   }
@@ -702,18 +715,60 @@ function pinFor(source: Material): WorkspaceSourcePin {
   };
 }
 
+function sceneRecords(
+  pack: WorkspacePack,
+  view: SpatialWorkspaceView,
+  invalidations: readonly WorkspaceInvalidation[],
+) {
+  const records = filterSpatialWorkspace(pack, view, invalidations).records;
+  if (view.comparison.enabled)
+    for (const scope of [view.comparison.left, view.comparison.right])
+      records.push(
+        ...filterSpatialWorkspace(
+          pack,
+          { ...view, ...scope, bounds: null, topicId: null },
+          invalidations,
+        ).records,
+      );
+  return [...new Map(records.map((record) => [record.id, record])).values()];
+}
+
+/** Imagery remains bound to an exact, filtered and evidenced footprint record. */
+export function workspaceRasterOverlays(
+  pack: WorkspacePack,
+  view: SpatialWorkspaceView,
+  invalidations: readonly WorkspaceInvalidation[] = [],
+) {
+  const filtered = filterSpatialWorkspace(pack, view, invalidations);
+  return pack.rasterReports.filter(
+    (report) =>
+      report.rights.displayAllowed &&
+      report.wgs84Bounds &&
+      validWorkspaceBounds([...report.wgs84Bounds]) &&
+      filtered.records.some(
+        (record) =>
+          record.kind === 'raster' &&
+          record.sourceId === report.sourceId &&
+          record.versionId === report.versionId &&
+          workspaceDisplayPositions(pack, record, invalidations).some(
+            (position) =>
+              position.geometrySourceId === report.sourceId &&
+              position.geometryVersionId === report.versionId,
+          ),
+      ),
+  );
+}
+
 export function captureSpatialWorkspaceView(
   pack: WorkspacePack,
   view: SpatialWorkspaceView,
   invalidations: readonly WorkspaceInvalidation[] = [],
 ): SpatialWorkspaceView {
-  const filtered = filterSpatialWorkspace(pack, view, invalidations);
+  const records = sceneRecords(pack, view, invalidations);
   const needed = new Set(
-    filtered.records.map((record) =>
-      sourceKey(record.sourceId, record.versionId),
-    ),
+    records.map((record) => sourceKey(record.sourceId, record.versionId)),
   );
-  for (const record of filtered.records)
+  for (const record of records)
     for (const position of workspaceDisplayPositions(
       pack,
       record,
@@ -728,7 +783,7 @@ export function captureSpatialWorkspaceView(
   const selection = sanitizeWorkspaceSelection(
     pack,
     view.selection,
-    filtered.records,
+    records,
     invalidations,
   );
   return {
@@ -815,6 +870,18 @@ function isView(value: unknown): value is SpatialWorkspaceView {
   )
     return false;
   if (value['mode'] !== '2d' && value['mode'] !== '3d') return false;
+  const raster = value['raster'];
+  if (
+    raster !== undefined &&
+    (!object(raster) ||
+      typeof raster['enabled'] !== 'boolean' ||
+      !['B03', 'B8A', 'SCL', 'TCI'].includes(String(raster['band'])) ||
+      typeof raster['opacity'] !== 'number' ||
+      !Number.isFinite(raster['opacity']) ||
+      raster['opacity'] < 0 ||
+      raster['opacity'] > 1)
+  )
+    return false;
   if (
     (value['start'] !== null && typeof value['start'] !== 'string') ||
     (value['end'] !== null && typeof value['end'] !== 'string')
@@ -943,11 +1010,11 @@ export function restoreSpatialWorkspaceView(
         .map((source) => source.id),
   );
   view.expandedSources = view.expandedSources.filter((id) => allowed.has(id));
-  const filtered = filterSpatialWorkspace(pack, view, invalidations);
+  const records = sceneRecords(pack, view, invalidations);
   view.selection = sanitizeWorkspaceSelection(
     pack,
     view.selection,
-    filtered.records,
+    records,
     invalidations,
   );
   if (view.mode === '2d') view.camera.pitch = 0;

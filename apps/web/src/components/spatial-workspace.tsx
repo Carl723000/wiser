@@ -21,6 +21,7 @@ import {
   workspaceEvidenceUrl,
   workspaceGeometryBounds,
   workspaceObjectDossier,
+  workspaceRasterOverlays,
   workspaceRecordKinds,
   workspaceRegionCamera,
   workspaceRegionIds,
@@ -157,6 +158,7 @@ export function SpatialWorkspace({
     }
     const record = dossier.selected,
       previous = current.current;
+    if (previous.selection?.recordId === selectedRecordId) return;
     const targetRegion =
       previous.regionId === 'bth' ||
       record.regionIds.includes(previous.regionId)
@@ -727,6 +729,13 @@ export function SpatialWorkspace({
               <h2>{copy.mapTitle}</h2>
               <SpatialWorkspaceMap
                 features={filtered.features}
+                rasterReports={workspaceRasterOverlays(
+                  pack,
+                  view,
+                  invalidations,
+                )}
+                rasterSettings={view.raster}
+                onRasterChange={(raster) => setView({ ...view, raster })}
                 camera={view.camera}
                 mode={view.mode}
                 selection={selection}
