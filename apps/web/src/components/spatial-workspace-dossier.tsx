@@ -5,6 +5,7 @@ import {
   workspaceEvidenceUrl,
   workspaceObjectDossier,
   type WorkspaceInvalidation,
+  type WorkspaceSourcePin,
 } from '@/lib/spatial-workspace-view';
 import styles from './spatial-workspace.module.css';
 
@@ -14,6 +15,7 @@ export interface SpatialWorkspaceDossierProps {
   positionId?: string | null;
   copy: SpatialWorkspaceCopy;
   invalidations?: readonly WorkspaceInvalidation[];
+  sourcePins?: readonly WorkspaceSourcePin[] | null;
   onSelectRecord: (id: string) => void;
   onSelectPosition: (recordId: string, positionId: string) => void;
   sourceHref?: (sourceId: string, versionId: string) => string;
@@ -29,12 +31,13 @@ export function SpatialWorkspaceDossier({
   positionId,
   copy,
   invalidations = [],
+  sourcePins = null,
   onSelectRecord,
   onSelectPosition,
   sourceHref,
 }: SpatialWorkspaceDossierProps) {
   const dossier = recordId
-    ? workspaceObjectDossier(pack, recordId, invalidations)
+    ? workspaceObjectDossier(pack, recordId, invalidations, sourcePins)
     : null;
   return (
     <section

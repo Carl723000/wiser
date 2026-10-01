@@ -439,19 +439,40 @@ function readableSource(
     : null;
 }
 
+function withinPins(
+  source: Material | null,
+  pins: readonly WorkspaceSourcePin[] | null,
+) {
+  return (
+    !!source &&
+    (pins === null ||
+      pins.some(
+        (pin) =>
+          pin.sourceId === source.id &&
+          pin.versionId === source.versionId &&
+          pin.sha256 === source.originalSha256 &&
+          pin.processingVersion === source.processingVersion,
+      ))
+  );
+}
+
 /** A position is rendered only with a permitted, pinned and evidenced geometry source. */
 export function workspaceDisplayPositions(
   pack: WorkspacePack,
   record: WorkspaceRecord,
   invalidations: readonly WorkspaceInvalidation[] = [],
+  sourcePins: readonly WorkspaceSourcePin[] | null = null,
 ) {
   if (
-    !readableSource(
-      pack,
-      record.sourceId,
-      record.versionId,
-      invalidations,
-      record.id,
+    !withinPins(
+      readableSource(
+        pack,
+        record.sourceId,
+        record.versionId,
+        invalidations,
+        record.id,
+      ),
+      sourcePins,
     )
   )
     return [];
@@ -467,12 +488,15 @@ export function workspaceDisplayPositions(
       !!position.evidence.text.trim() &&
       !!position.geometrySourceId &&
       !!position.geometryVersionId &&
-      !!readableSource(
-        pack,
-        position.geometrySourceId,
-        position.geometryVersionId,
-        invalidations,
-        record.id,
+      withinPins(
+        readableSource(
+          pack,
+          position.geometrySourceId,
+          position.geometryVersionId,
+          invalidations,
+          record.id,
+        ),
+        sourcePins,
       ),
   );
 }
@@ -579,6 +603,7 @@ export function filterSpatialWorkspace(
     );
     return (
       source &&
+      withinPins(source, view.sourcePins) &&
       !excluded.has(record.id) &&
       (!pinned || pinned.has(sourceKey(record.sourceId, record.versionId))) &&
       (!recordIds || recordIds.has(record.id)) &&
@@ -604,6 +629,7 @@ export function filterSpatialWorkspace(
       pack,
       record,
       invalidations,
+      view.sourcePins,
     ).filter(
       (position) =>
         !pinned ||
@@ -661,6 +687,7 @@ export function workspaceObjectDossier(
   pack: WorkspacePack,
   recordId: string,
   invalidations: readonly WorkspaceInvalidation[] = [],
+  sourcePins: readonly WorkspaceSourcePin[] | null = null,
 ) {
   const selected = pack.records.find((record) => record.id === recordId);
   if (!selected) return null;
@@ -671,17 +698,20 @@ export function workspaceObjectDossier(
     invalidations,
     selected.id,
   );
-  if (!source) return null;
+  if (!source || !withinPins(source, sourcePins)) return null;
   const records = pack.records.filter(
     (record) =>
       record.sourceId === selected.sourceId &&
       record.objectId === selected.objectId &&
-      readableSource(
-        pack,
-        record.sourceId,
-        record.versionId,
-        invalidations,
-        record.id,
+      withinPins(
+        readableSource(
+          pack,
+          record.sourceId,
+          record.versionId,
+          invalidations,
+          record.id,
+        ),
+        sourcePins,
       ),
   );
   const work = workRoot(pack, selected.sourceId);
@@ -689,7 +719,10 @@ export function workspaceObjectDossier(
     (copy) =>
       copy.id !== source.id &&
       workRoot(pack, copy.id) === work &&
-      readableSource(pack, copy.id, copy.versionId, invalidations),
+      withinPins(
+        readableSource(pack, copy.id, copy.versionId, invalidations),
+        sourcePins,
+      ),
   );
   const versions = pack.sources.filter(
     (version) =>
@@ -702,7 +735,12 @@ export function workspaceObjectDossier(
     records,
     copies,
     versions,
-    positions: workspaceDisplayPositions(pack, selected, invalidations),
+    positions: workspaceDisplayPositions(
+      pack,
+      selected,
+      invalidations,
+      sourcePins,
+    ),
   };
 }
 
@@ -753,7 +791,12 @@ export function workspaceRasterOverlays(
           workspaceDisplayPositions(pack, record, invalidations).some(
             (position) =>
               position.geometrySourceId === report.sourceId &&
-              position.geometryVersionId === report.versionId,
+              position.geometryVersionId === report.versionId &&
+              (!view.bounds ||
+                geometryIntersectsWorkspaceBounds(
+                  position.geometry!,
+                  view.bounds,
+                )),
           ),
       ),
   );
@@ -773,6 +816,7 @@ export function captureSpatialWorkspaceView(
       pack,
       record,
       invalidations,
+      view.sourcePins,
     ))
       needed.add(
         sourceKey(position.geometrySourceId!, position.geometryVersionId!),
@@ -785,6 +829,7 @@ export function captureSpatialWorkspaceView(
     view.selection,
     records,
     invalidations,
+    sourcePins,
   );
   return {
     ...structuredClone(view),
@@ -801,6 +846,7 @@ export function sanitizeWorkspaceSelection(
   selection: WorkspaceSelection,
   records: readonly WorkspaceRecord[],
   invalidations: readonly WorkspaceInvalidation[] = [],
+  sourcePins: readonly WorkspaceSourcePin[] | null = null,
 ): WorkspaceSelection {
   if (!selection) return null;
   const record = records.find((record) => record.id === selection.recordId);
@@ -819,7 +865,7 @@ export function sanitizeWorkspaceSelection(
     recordId: record.id,
     positionId:
       selection.positionId &&
-      workspaceDisplayPositions(pack, record, invalidations).some(
+      workspaceDisplayPositions(pack, record, invalidations, sourcePins).some(
         (position) => position.id === selection.positionId,
       )
         ? selection.positionId
@@ -1016,6 +1062,7 @@ export function restoreSpatialWorkspaceView(
     view.selection,
     records,
     invalidations,
+    view.sourcePins,
   );
   if (view.mode === '2d') view.camera.pitch = 0;
   return { view, notices };

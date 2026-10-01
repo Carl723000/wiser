@@ -126,71 +126,75 @@ export function SpatialWorkspace({
     view.selection,
     eligibleRecords,
     invalidations,
+    view.sourcePins,
   );
+  // Region and record are one external navigation event. Independent effects
+  // can overwrite each other's queued state when a matrix updates both props.
+  const invalidationKey = JSON.stringify(invalidations);
   useEffect(() => {
-    if (regionId && current.current.regionId !== regionId) {
-      setView(switchSpatialWorkspaceRegion(current.current, pack, regionId));
-      setBoundsText('');
+    const previous = current.current;
+    const meaningfulInvalidations = JSON.parse(
+      invalidationKey,
+    ) as WorkspaceInvalidation[];
+    let next =
+      regionId && regionId !== previous.regionId
+        ? switchSpatialWorkspaceRegion(previous, pack, regionId)
+        : previous;
+    if (selectedRecordId === null && next.selection)
+      next = { ...next, selection: null };
+    if (selectedRecordId) {
+      const dossier = workspaceObjectDossier(
+        pack,
+        selectedRecordId,
+        meaningfulInvalidations,
+      );
+      if (!dossier) {
+        if (next.selection)
+          next = { ...next, selection: null, expandedSources: [] };
+        callbacks.current.onSelectRecord?.(null);
+      } else if (next.selection?.recordId !== selectedRecordId) {
+        const record = dossier.selected;
+        const target =
+          next.regionId === 'bth' || record.regionIds.includes(next.regionId)
+            ? next.regionId
+            : (record.regionIds.find((id) => id !== 'bth') ?? 'bth');
+        if (target !== next.regionId) {
+          next = switchSpatialWorkspaceRegion(next, pack, target);
+          callbacks.current.onRegionChange?.(target);
+        }
+        next = {
+          ...next,
+          search: '',
+          start: null,
+          end: null,
+          timeRole: 'all',
+          kinds: [...workspaceRecordKinds],
+          bounds: null,
+          topicId: null,
+          sourcePins: null,
+          selection: {
+            recordId: selectedRecordId,
+            positionId: dossier.positions[0]?.id ?? null,
+          },
+        };
+      }
+    }
+    if (next !== previous) {
+      setView(next);
+      setBoundsText(next.bounds?.join(',') ?? '');
       setBoundsInvalid(false);
       setDrawBounds(false);
       setRecordLimit(40);
     }
-  }, [regionId, pack]);
+  }, [regionId, selectedRecordId, pack, invalidationKey]);
   useEffect(() => {
-    if (selectedRecordId === undefined) return;
-    if (selectedRecordId === null) {
-      setView((previous) =>
-        previous.selection ? { ...previous, selection: null } : previous,
-      );
+    if (
+      (regionId && regionId !== view.regionId) ||
+      (selectedRecordId !== undefined &&
+        selectedRecordId !== view.selection?.recordId &&
+        !(selectedRecordId === null && !view.selection))
+    )
       return;
-    }
-    const dossier = workspaceObjectDossier(
-      pack,
-      selectedRecordId,
-      invalidations,
-    );
-    if (!dossier) {
-      setView((previous) =>
-        previous.selection ? { ...previous, selection: null } : previous,
-      );
-      callbacks.current.onSelectRecord?.(null);
-      return;
-    }
-    const record = dossier.selected,
-      previous = current.current;
-    if (previous.selection?.recordId === selectedRecordId) return;
-    const targetRegion =
-      previous.regionId === 'bth' ||
-      record.regionIds.includes(previous.regionId)
-        ? previous.regionId
-        : (record.regionIds[0] ?? 'bth');
-    const next =
-      targetRegion !== previous.regionId
-        ? switchSpatialWorkspaceRegion(previous, pack, targetRegion)
-        : {
-            ...previous,
-            search: '',
-            start: null,
-            end: null,
-            timeRole: 'all' as const,
-            kinds: [...workspaceRecordKinds],
-            bounds: null,
-            topicId: null,
-            sourcePins: null,
-          };
-    setView({
-      ...next,
-      selection: {
-        recordId: selectedRecordId,
-        positionId: dossier.positions[0]?.id ?? null,
-      },
-    });
-    setBoundsText('');
-    setBoundsInvalid(false);
-    if (targetRegion !== previous.regionId)
-      callbacks.current.onRegionChange?.(targetRegion);
-  }, [selectedRecordId, pack, invalidations]);
-  useEffect(() => {
     if (view.selection && !selection) {
       setView((previous) => ({
         ...previous,
@@ -204,7 +208,7 @@ export function SpatialWorkspace({
       view.selection.positionId !== selection.positionId
     )
       setView((previous) => ({ ...previous, selection }));
-  }, [view.selection, selection]);
+  }, [view.selection, selection, view.regionId, regionId, selectedRecordId]);
   useEffect(() => {
     const load = () => {
       try {
@@ -236,7 +240,12 @@ export function SpatialWorkspace({
     const record = pack.records.find((item) => item.id === picked.recordId);
     if (
       !record ||
-      !workspaceObjectDossier(pack, picked.recordId, invalidations)
+      !workspaceObjectDossier(
+        pack,
+        picked.recordId,
+        invalidations,
+        view.sourcePins,
+      )
     )
       return;
     let camera = view.camera;
@@ -245,6 +254,7 @@ export function SpatialWorkspace({
         pack,
         record,
         invalidations,
+        view.sourcePins,
       ).find((item) => item.id === picked.positionId);
       const extent = position?.geometry
         ? workspaceGeometryBounds(position.geometry)
@@ -879,6 +889,7 @@ export function SpatialWorkspace({
           positionId={selection?.positionId}
           copy={copy}
           invalidations={invalidations}
+          sourcePins={view.sourcePins}
           onSelectRecord={(id) =>
             selectRecord({ recordId: id, positionId: null })
           }
