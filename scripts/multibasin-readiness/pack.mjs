@@ -56,6 +56,9 @@ function referencePosition(geo, id, evidence) {
   };
 }
 export function monthlyRecord(row, source, geometries) {
+  const categoryRange = /^(Ⅰ|Ⅱ|Ⅲ|Ⅳ|Ⅴ|劣Ⅴ)[~～－-](Ⅰ|Ⅱ|Ⅲ|Ⅳ|Ⅴ|劣Ⅴ)$/.test(
+    compact(row.rawValue),
+  );
   const positions = [
     textPosition(
       `${row.id}:reach`,
@@ -138,7 +141,11 @@ export function monthlyRecord(row, source, geometries) {
       'sampling-frequency-unknown',
       'exact-position-unknown',
       'professional-review-pending',
-      ...(row.categoryValid ? [] : ['category-not-reported']),
+      ...(categoryRange
+        ? ['category-range-not-single-value']
+        : row.categoryValid
+          ? []
+          : ['category-not-reported']),
     ],
   };
 }
@@ -271,12 +278,14 @@ export function buildPack(
           item.id === input.sourceId && item.versionId === input.originalSha256,
       )
       .files.find((file) => file.role === 'original');
-    const rows = output.rows.map((row) =>
-      monthlyRecord(row, input, geometries),
-    );
+    const monthlyProcessingVersion = `${processingVersion}:monthly:${batch.journal[input.sourceId].ruleVersion}`;
+    const rows = output.rows.map((row) => ({
+      ...monthlyRecord(row, input, geometries),
+      processingVersion: monthlyProcessingVersion,
+    }));
     // Independent recheck: each emitted value and position must equal its physical source cell.
     for (const record of rows)
-      for (const evidence of record.evidence.slice(0, 3)) {
+      for (const evidence of record.evidence) {
         const match = evidence.locator.match(
           /table:(\d+)\/row:(\d+)\/column:(\d+)$/,
         );
@@ -303,6 +312,7 @@ export function buildPack(
       '仅北京市公开月报所列河段、湖泊、水库；不代表全流域、连续采样或浓度明细。',
     );
     material.status.parsed = 'table-complete';
+    material.processingVersion = monthlyProcessingVersion;
     material.status.checked = 'all-physical-cells-verified';
     material.status.space = rows.some((record) =>
       record.positions.some((position) => position.geometry),
@@ -538,7 +548,7 @@ export function buildPack(
     },
     {
       label: '海河流域重点水体生态保护措施',
-      regions: ['bth', 'yongding', 'chaobai', 'beiyun', 'daqing-baiyangdian'],
+      regions: ['bth', 'daqing-baiyangdian'],
     },
   ];
   for (const [index, block] of policy.blocks.entries()) {
@@ -622,7 +632,16 @@ export function buildPack(
     id,
     title,
     regionIds,
-    sourceIds: [...new Set(selected.map((record) => record.sourceId))],
+    sourceIds: [
+      ...new Set(
+        selected.flatMap((record) => [
+          record.sourceId,
+          ...record.positions.flatMap((position) =>
+            position.geometrySourceId ? [position.geometrySourceId] : [],
+          ),
+        ]),
+      ),
+    ],
     recordIds: selected.map((record) => record.id),
     question,
     gaps,

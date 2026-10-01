@@ -1,9 +1,9 @@
 .panel {
-  border: 1px solid var(--border, #dce3e9);
+  border: 1px solid var(--border, var(--border));
   border-radius: 12px;
   padding: 20px;
-  background: var(--background, #fff);
-  color: var(--foreground, #172b3a);
+  background: var(--surface-raised, #fff);
+  color: var(--text-primary, #172b3a);
 }
 .heading {
   display: flex;
@@ -18,9 +18,9 @@
 }
 .notice {
   padding: 10px 12px;
-  border-left: 3px solid #b18a35;
-  background: #fbf7eb;
-  color: #594521;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 .object {
   font-weight: 600;
@@ -33,7 +33,7 @@
 .evidenceGrid blockquote {
   margin: 10px 0;
   padding: 12px;
-  background: #f3f7fa;
+  background: var(--surface);
   border-radius: 6px;
 }
 .evidenceGrid p {
@@ -42,7 +42,7 @@
 }
 .evidenceGrid small {
   display: block;
-  color: #556a79;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 .evidenceGrid a {
@@ -52,7 +52,7 @@
 .position {
   padding: 12px;
   margin-top: 10px;
-  border: 1px solid #dce3e9;
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 .form {
@@ -69,7 +69,7 @@
 .form select,
 .form textarea {
   padding: 9px;
-  border: 1px solid #aab9c4;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   color: inherit;
   background: inherit;
@@ -91,10 +91,10 @@
   gap: 10px;
 }
 .panel button {
-  border: 1px solid #aab9c4;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #f4f8fa;
-  color: #173e52;
+  background: var(--surface);
+  color: var(--accent-strong);
   padding: 8px 12px;
   cursor: pointer;
   font: inherit;
@@ -106,7 +106,7 @@
 .panel button:focus-visible,
 .form select:focus-visible,
 .form textarea:focus-visible {
-  outline: 2px solid #16748b;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 @media (max-width: 700px) {

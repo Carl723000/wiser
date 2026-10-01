@@ -9,6 +9,7 @@ import math
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from decimal import Decimal
 from html.parser import HTMLParser
 from pathlib import Path
 from zipfile import ZipFile
@@ -151,6 +152,40 @@ def rings_from_ways(members):
     return rings
 
 
+def simple_ring(ring):
+    """Exact segment tests at OSM's retained decimal precision; no geometry mutation."""
+    points = []
+    for point in ring:
+        scaled = [Decimal(str(value)) * 10 ** 7 for value in point]
+        if any(value != value.to_integral_value() for value in scaled):
+            raise ValueError('OSM_PRECISION_UNEXPECTED')
+        points.append(tuple(int(value) for value in scaled))
+    if len(points) < 4 or points[0] != points[-1]:
+        return False
+    if len(set(points[:-1])) != len(points) - 1:
+        return False
+    segments = [(min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1]), index, a, b)
+                for index, (a, b) in enumerate(zip(points, points[1:]))]
+    def orient(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    def opposite_or_zero(a, b):
+        return a == 0 or b == 0 or (a < 0) != (b < 0)
+    active = []
+    for current in sorted(segments):
+        xmin, _, ymin, ymax, index, a, b = current
+        active = [segment for segment in active if segment[1] >= xmin]
+        for other in active:
+            if abs(other[4] - index) == 1 or {other[4], index} == {0, len(segments) - 1}:
+                continue
+            if other[3] < ymin or other[2] > ymax:
+                continue
+            c, d = other[5], other[6]
+            if opposite_or_zero(orient(a, b, c), orient(a, b, d)) and opposite_or_zero(orient(c, d, a), orient(c, d, b)):
+                return False
+        active.append(current)
+    return True
+
+
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + '.tmp')
@@ -255,6 +290,25 @@ def main(root):
             'geometry': {'type': 'Polygon', 'coordinates': rings_from_ways(element['members'])}})
     new_entries.append({'id': 'osm-two-areas', 'workId': 'openstreetmap', 'versionId': receipt['sha256'], 'newOriginal': True, 'attemptCount': 1, 'state': 'hash-identity-and-geometry-verified', 'retainedAfterFailure': True, 'files': [receipt], 'query': acquired['query'], 'retrievedAt': acquired['retrievedAt']})
     write_json(output / 'prepared-reference-geometries.json', geometries)
+    geometry_audit = []
+    for feature in geometries:
+        geometry = feature['geometry']
+        is_polygon = geometry['type'] == 'Polygon'
+        rings_simple = all(simple_ring(ring) for ring in geometry['coordinates']) if is_polygon else None
+        if is_polygon and not rings_simple:
+            raise ValueError('POLYGON_SELF_INTERSECTION:' + feature['id'])
+        geometry_audit.append({'id': feature['id'], 'sourceId': feature['sourceId'], 'sourceVersionId': feature['versionId'],
+                               'type': geometry['type'], 'vertices': sum(len(line) for line in geometry['coordinates']),
+                               'polygonRingsSimple': rings_simple, 'originalCoordinatesRetained': True,
+                               'crs': 'EPSG:4326', 'axisOrder': 'longitude,latitude',
+                               'role': 'reference', 'professionalReview': 'pending', 'controlPointVerified': False,
+                               'scale': 'Native OSM coordinates; no accuracy, map scale or historic boundary equivalence asserted.'})
+    write_json(output / 'reference-geometry-audit.json', {'conversion': 'Equal endpoint stitching and ring orientation only; no simplification, smoothing, snapping or centroids.',
+               'crsBasis': 'OpenStreetMap WGS 84 decimal longitude/latitude coordinates, retained in GeoJSON longitude/latitude order.',
+               'coordinateDocumentation': 'https://wiki.openstreetmap.org/wiki/Overpass_API/Overpass_QL',
+               'datumDocumentation': 'https://wiki.openstreetmap.org/wiki/GIS_FAQ',
+               'license': 'ODbL 1.0', 'attribution': '© OpenStreetMap contributors',
+               'licenseUrl': 'https://www.openstreetmap.org/copyright', 'features': geometry_audit})
     keys = {(entry['id'], entry['versionId']) for entry in ledger['entries']}
     ledger['entries'].extend(entry for entry in new_entries if (entry['id'], entry['versionId']) not in keys)
     failure_keys = {(item['id'], item['retrievedAt']) for item in ledger['publicRetrievalFailures']}

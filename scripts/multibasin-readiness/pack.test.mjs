@@ -90,3 +90,25 @@ test('a named admin polygon remains reference and cannot become a precise sampli
     0,
   );
 });
+test('a published category interval is preserved as an interval, not missing or a single class', () => {
+  const row = {
+    id: 'r',
+    objectId: 's:obj',
+    objectLabel: '水库',
+    area: '密云',
+    rawValue: 'Ⅱ～Ⅲ',
+    month: '2023-04',
+    valueLocator: 'c3',
+    objectLocator: 'c1',
+    areaLocator: 'c2',
+    categoryValid: false,
+  };
+  const record = monthlyRecord(
+    row,
+    { sourceId: 's', originalSha256: 'a'.repeat(64) },
+    [],
+  );
+  assert.equal(record.value, 'Ⅱ～Ⅲ');
+  assert.ok(record.missingReasons.includes('category-range-not-single-value'));
+  assert.ok(!record.missingReasons.includes('category-not-reported'));
+});

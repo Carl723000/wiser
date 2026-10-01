@@ -1,5 +1,5 @@
 import unittest
-from preflight import paragraph_blocks, rings_from_ways, read_ooxml
+from preflight import paragraph_blocks, rings_from_ways, read_ooxml, simple_ring
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
@@ -29,6 +29,10 @@ class PreflightTests(unittest.TestCase):
                 archive.writestr('word/document.xml', '<!DOCTYPE x [<!ENTITY bomb "secret">]><x>&bomb;</x>')
             with self.assertRaisesRegex(ValueError, 'XML_DECLARATION_FORBIDDEN'):
                 read_ooxml(path)
+
+    def test_polygon_topology_rejects_self_intersection_without_smoothing(self):
+        self.assertTrue(simple_ring([[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]))
+        self.assertFalse(simple_ring([[0, 0], [3, 3], [0, 3], [2, 0], [0, 0]]))
 
 
 if __name__ == '__main__':
