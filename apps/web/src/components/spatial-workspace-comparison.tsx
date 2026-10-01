@@ -7,12 +7,14 @@ import {
   validWorkspaceTimeFilter,
   workspaceRegionIds,
   workspaceRasterOverlays,
+  workspaceScopeInvalidations,
   type SpatialWorkspaceView,
   type WorkspaceComparisonScope,
   type WorkspaceInvalidation,
   type WorkspaceSelection,
 } from '@/lib/spatial-workspace-view';
 import { SpatialWorkspaceMap } from './spatial-workspace-map';
+import { SpatialWorkspaceInvalidations } from './spatial-workspace-invalidations';
 import styles from './spatial-workspace.module.css';
 
 export interface SpatialWorkspaceComparisonProps {
@@ -122,12 +124,22 @@ export function SpatialWorkspaceComparison({
         {(['left', 'right'] as const).map((side) => {
           const scope = scopes[side],
             filtered = side === 'left' ? left : right;
+          const notices = workspaceScopeInvalidations(
+            pack,
+            scopeView(scope),
+            invalidations,
+          );
           return (
             <section
               key={side}
               aria-label={side === 'left' ? copy.leftWindow : copy.rightWindow}
             >
               <h3>{side === 'left' ? copy.leftWindow : copy.rightWindow}</h3>
+              <SpatialWorkspaceInvalidations
+                pack={pack}
+                copy={copy}
+                notices={notices}
+              />
               <div className={styles.scopeControls}>
                 <label>
                   {copy.region}
@@ -205,7 +217,9 @@ export function SpatialWorkspaceComparison({
                 onCamera={(camera) => onChange({ ...view, camera })}
                 onSelect={onSelect}
               />
-              {!filtered.records.length ? <p>{copy.missingPeriod}</p> : null}
+              {!filtered.records.length && !notices.length ? (
+                <p>{copy.missingPeriod}</p>
+              ) : null}
               <div className={styles.comparisonRecords}>
                 {filtered.records.map((record) => (
                   <button

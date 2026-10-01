@@ -446,6 +446,64 @@ describe('spatial workspace actual interactions', () => {
     );
   });
 
+  it('identifies affected dossier and comparison scopes while suppressing revoked details', () => {
+    const { rerender } = render(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId={sampleRecord.id}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(zh.comparisonTitle));
+    const stale = [
+      {
+        sourceId: 'report',
+        state: 'stale' as const,
+        reason: '规则更新，需要重新核对',
+        affectedRecordIds: [sampleRecord.id],
+      },
+    ];
+    rerender(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId={sampleRecord.id}
+        invalidations={stale}
+      />,
+    );
+    expect(
+      within(screen.getByRole('region', { name: zh.dossierTitle })).getByText(
+        zh.stale,
+      ),
+    ).toBeTruthy();
+    const right = screen.getByRole('region', { name: zh.rightWindow });
+    expect(within(right).getByText('规则更新，需要重新核对')).toBeTruthy();
+    expect(screen.queryByText('潮白河 7.8 mg/L')).toBeNull();
+    rerender(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId={sampleRecord.id}
+        invalidations={[
+          {
+            sourceId: 'report',
+            state: 'revoked',
+            reason: '不应公开的撤回详情',
+          },
+        ]}
+      />,
+    );
+    expect(
+      within(screen.getByRole('region', { name: zh.dossierTitle })).getByText(
+        zh.revoked,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('不应公开的撤回详情')).toBeNull();
+  });
+
   it('saves pins and camera, restores the shared region, and refuses stale records', () => {
     const onRegionChange = vi.fn();
     const { rerender } = render(

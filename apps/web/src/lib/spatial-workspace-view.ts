@@ -771,6 +771,38 @@ function sceneRecords(
   return [...new Map(records.map((record) => [record.id, record])).values()];
 }
 
+/** Notices identify affected reading scopes without restoring withdrawn content. */
+export function workspaceScopeInvalidations(
+  pack: WorkspacePack,
+  view: SpatialWorkspaceView,
+  invalidations: readonly WorkspaceInvalidation[],
+) {
+  const topicRecords = view.topicId
+    ? pack.topicPackages.find((topic) => topic.id === view.topicId)?.recordIds
+    : null;
+  return invalidations.filter(
+    (invalid) =>
+      pack.records.some(
+        (record) =>
+          record.sourceId === invalid.sourceId &&
+          (!invalid.versionId || record.versionId === invalid.versionId) &&
+          (!invalid.affectedRecordIds ||
+            invalid.affectedRecordIds.includes(record.id)) &&
+          (view.regionId === 'bth' ||
+            record.regionIds.includes(view.regionId)) &&
+          view.kinds.includes(record.kind) &&
+          timeMatches(record, view) &&
+          (!topicRecords || topicRecords.includes(record.id)),
+      ) ||
+      (invalid.state === 'missing' &&
+        view.sourcePins?.some(
+          (pin) =>
+            pin.sourceId === invalid.sourceId &&
+            (!invalid.versionId || pin.versionId === invalid.versionId),
+        )),
+  );
+}
+
 /** Imagery remains bound to an exact, filtered and evidenced footprint record. */
 export function workspaceRasterOverlays(
   pack: WorkspacePack,

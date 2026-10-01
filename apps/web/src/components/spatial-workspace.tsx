@@ -22,6 +22,7 @@ import {
   workspaceGeometryBounds,
   workspaceObjectDossier,
   workspaceRasterOverlays,
+  workspaceScopeInvalidations,
   workspaceRecordKinds,
   workspaceRegionCamera,
   workspaceRegionIds,
@@ -128,6 +129,21 @@ export function SpatialWorkspace({
     invalidations,
     view.sourcePins,
   );
+  const scopeNotices = view.comparison.enabled
+    ? [
+        ...new Map(
+          [view.comparison.left, view.comparison.right]
+            .flatMap((scope) =>
+              workspaceScopeInvalidations(
+                pack,
+                { ...view, ...scope, bounds: null, topicId: null },
+                invalidations,
+              ),
+            )
+            .map((item) => [JSON.stringify(item), item]),
+        ).values(),
+      ]
+    : workspaceScopeInvalidations(pack, view, invalidations);
   // Region and record are one external navigation event. Independent effects
   // can overwrite each other's queued state when a matrix updates both props.
   const invalidationKey = JSON.stringify(invalidations);
@@ -890,6 +906,7 @@ export function SpatialWorkspace({
           copy={copy}
           invalidations={invalidations}
           sourcePins={view.sourcePins}
+          notices={scopeNotices}
           onSelectRecord={(id) =>
             selectRecord({ recordId: id, positionId: null })
           }

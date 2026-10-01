@@ -8,6 +8,7 @@ import {
   type WorkspaceSourcePin,
 } from '@/lib/spatial-workspace-view';
 import styles from './spatial-workspace.module.css';
+import { SpatialWorkspaceInvalidations } from './spatial-workspace-invalidations';
 
 export interface SpatialWorkspaceDossierProps {
   pack: WorkspacePack;
@@ -16,6 +17,7 @@ export interface SpatialWorkspaceDossierProps {
   copy: SpatialWorkspaceCopy;
   invalidations?: readonly WorkspaceInvalidation[];
   sourcePins?: readonly WorkspaceSourcePin[] | null;
+  notices?: readonly WorkspaceInvalidation[];
   onSelectRecord: (id: string) => void;
   onSelectPosition: (recordId: string, positionId: string) => void;
   sourceHref?: (sourceId: string, versionId: string) => string;
@@ -32,6 +34,7 @@ export function SpatialWorkspaceDossier({
   copy,
   invalidations = [],
   sourcePins = null,
+  notices = [],
   onSelectRecord,
   onSelectPosition,
   sourceHref,
@@ -46,6 +49,11 @@ export function SpatialWorkspaceDossier({
       tabIndex={-1}
     >
       <h2>{copy.dossierTitle}</h2>
+      <SpatialWorkspaceInvalidations
+        pack={pack}
+        copy={copy}
+        notices={notices}
+      />
       {!dossier ? (
         <p>{copy.selectRecord}</p>
       ) : (
