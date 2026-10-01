@@ -7,7 +7,6 @@ import {
   inspectCnemcPages,
   startSyntheticSupplier,
   syntheticEnvelope,
-  type CnemcPage,
   type CnemcQuery,
   type SyntheticSupplier,
 } from '../src/connectors/cnemc-offline/index.js';
@@ -239,7 +238,7 @@ describe('offline CNEMC decoding and integrity', () => {
   ] as const)(
     'never labels an anomalous sequence complete: %#',
     (pages, issue) => {
-      const report = inspectCnemcPages(pages as readonly CnemcPage[]);
+      const report = inspectCnemcPages(pages);
       expect(report.state).toBe('incomplete');
       expect(report.issues).toContain(issue);
     },
