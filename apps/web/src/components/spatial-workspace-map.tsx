@@ -160,17 +160,26 @@ function planarProjection(
     },
   };
 }
+/** Quantize presentation pixels only; source coordinates and map math remain full precision. */
+function screenCoordinate(value: number, precision = 3) {
+  return String(Number(value.toFixed(precision)));
+}
 function geometryPaths(
   geometry: Geometry,
   project: (value: Position) => number[],
 ): { path: string; fill: boolean }[] {
   const line = (points: Position[], close = false) =>
     points
-      .map((point, i) => `${i ? 'L' : 'M'}${project(point).join(' ')}`)
+      .map(
+        (point, i) =>
+          `${i ? 'L' : 'M'}${project(point)
+            .map((value) => screenCoordinate(value))
+            .join(' ')}`,
+      )
       .join(' ') + (close ? ' Z' : '');
   const point = (position: Position) => {
     const [x, y] = project(position);
-    return `M${x - 4} ${y}a4 4 0 1 0 8 0a4 4 0 1 0 -8 0`;
+    return `M${screenCoordinate(x - 4)} ${screenCoordinate(y)}a4 4 0 1 0 8 0a4 4 0 1 0 -8 0`;
   };
   switch (geometry.type) {
     case 'Point':
@@ -919,7 +928,7 @@ export function SpatialWorkspaceMap({
                   preserveAspectRatio="none"
                   opacity={rasterSettings.opacity}
                   pointerEvents="none"
-                  transform={`matrix(${(topRight[0] - topLeft[0]) / 1000} ${(topRight[1] - topLeft[1]) / 1000} ${(bottomLeft[0] - topLeft[0]) / 1000} ${(bottomLeft[1] - topLeft[1]) / 1000} ${topLeft[0]} ${topLeft[1]})`}
+                  transform={`matrix(${screenCoordinate((topRight[0] - topLeft[0]) / 1000, 6)} ${screenCoordinate((topRight[1] - topLeft[1]) / 1000, 6)} ${screenCoordinate((bottomLeft[0] - topLeft[0]) / 1000, 6)} ${screenCoordinate((bottomLeft[1] - topLeft[1]) / 1000, 6)} ${screenCoordinate(topLeft[0])} ${screenCoordinate(topLeft[1])})`}
                 />
               );
             })}
@@ -1006,10 +1015,10 @@ export function SpatialWorkspaceMap({
               {projected.map(({ feature, ground, card, error }) => (
                 <line
                   key={feature.id}
-                  x1={ground.x}
-                  y1={ground.y}
-                  x2={card.x}
-                  y2={card.y}
+                  x1={screenCoordinate(ground.x)}
+                  y1={screenCoordinate(ground.y)}
+                  x2={screenCoordinate(card.x)}
+                  y2={screenCoordinate(card.y)}
                   stroke={
                     colors.kinds[
                       workspaceRecordKinds.indexOf(feature.properties.kind)
