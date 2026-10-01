@@ -1,0 +1,143 @@
+.panel {
+  color: var(--foreground, #172b3a);
+}
+.panel h2 {
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+.scope {
+  padding: 12px 14px;
+  background: #edf5f6;
+  border-left: 3px solid #297d85;
+}
+.counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+.counts > div {
+  border: 1px solid #dce3e9;
+  border-radius: 8px;
+  padding: 12px;
+}
+.counts dt {
+  color: #536976;
+  font-size: 13px;
+}
+.counts dd {
+  margin: 8px 0 0;
+  font-size: 21px;
+  font-weight: 600;
+}
+.questions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.questions article {
+  padding: 15px;
+  border: 1px solid #dce3e9;
+  border-radius: 8px;
+  background: var(--background, #fff);
+}
+.questions h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.questions p {
+  color: #526977;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.panel button {
+  color: #155b72;
+  border: 1px solid #adbec9;
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: #f5fafc;
+  cursor: pointer;
+  font: inherit;
+}
+.panel button:focus-visible {
+  outline: 2px solid #16748b;
+  outline-offset: 2px;
+}
+.needs,
+.uses {
+  margin-top: 20px;
+}
+.panel summary {
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 0;
+}
+.tableScroll {
+  overflow-x: auto;
+}
+.needs table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.needs th,
+.needs td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #dce3e9;
+  vertical-align: top;
+}
+.needs th {
+  white-space: nowrap;
+}
+.needs th small {
+  display: block;
+  color: #617782;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.needs td:last-child {
+  min-width: 180px;
+  max-width: 320px;
+  color: #617782;
+}
+.uses ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.uses li {
+  border: 1px solid #dce3e9;
+  border-radius: 8px;
+  padding: 12px;
+}
+.uses li span {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+}
+.uses li p {
+  font-size: 13px;
+  color: #617782;
+}
+.stale {
+  color: #795215;
+  background: #fbf5e9;
+  padding: 12px;
+}
+@media (max-width: 850px) {
+  .questions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .questions,
+  .uses ul {
+    grid-template-columns: 1fr;
+  }
+}

@@ -111,6 +111,34 @@ describe('multi-region readiness', () => {
       true,
     );
   });
+  it('counts separate queries of one work once without collapsing their versions or objects', () => {
+    const first = { ...material, workId: 'openstreetmap' };
+    const second = {
+      ...material,
+      id: 'query2',
+      versionId: 'v2',
+      workId: 'openstreetmap',
+    };
+    const result = buildReadiness(
+      pack(
+        [first, second],
+        [
+          record,
+          {
+            ...record,
+            id: 'r2',
+            sourceId: 'query2',
+            versionId: 'v2',
+            objectId: 'different-source-object',
+          },
+        ],
+      ),
+      'bth',
+    );
+    expect(result.counts.sources).toBe(1);
+    expect(result.counts.versions).toBe(2);
+    expect(result.counts.sourceObjects).toBe(2);
+  });
   it('does not count synthetic decisions, missing geometry, or an institutional address as valid mapped sampling', () => {
     const synthetic = {
       ...record,

@@ -1,0 +1,117 @@
+.panel {
+  border: 1px solid var(--border, #dce3e9);
+  border-radius: 12px;
+  padding: 20px;
+  background: var(--background, #fff);
+  color: var(--foreground, #172b3a);
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.notice {
+  padding: 10px 12px;
+  border-left: 3px solid #b18a35;
+  background: #fbf7eb;
+  color: #594521;
+}
+.object {
+  font-weight: 600;
+}
+.evidenceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.evidenceGrid blockquote {
+  margin: 10px 0;
+  padding: 12px;
+  background: #f3f7fa;
+  border-radius: 6px;
+}
+.evidenceGrid p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.evidenceGrid small {
+  display: block;
+  color: #556a79;
+  overflow-wrap: anywhere;
+}
+.evidenceGrid a {
+  display: inline-block;
+  margin-top: 8px;
+}
+.position {
+  padding: 12px;
+  margin-top: 10px;
+  border: 1px solid #dce3e9;
+  border-radius: 6px;
+}
+.form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form select,
+.form textarea {
+  padding: 9px;
+  border: 1px solid #aab9c4;
+  border-radius: 6px;
+  color: inherit;
+  background: inherit;
+  font: inherit;
+}
+.reason,
+.actions,
+.form details,
+.form > p {
+  grid-column: 1 / -1;
+}
+.reason textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.panel button {
+  border: 1px solid #aab9c4;
+  border-radius: 6px;
+  background: #f4f8fa;
+  color: #173e52;
+  padding: 8px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.panel button:focus-visible,
+.form select:focus-visible,
+.form textarea:focus-visible {
+  outline: 2px solid #16748b;
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  .evidenceGrid,
+  .form {
+    grid-template-columns: 1fr;
+  }
+}
