@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import type { WorkspaceMapFeatures } from '@/lib/spatial-workspace-view';
+import type { WorkspaceRasterReport } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
 import { SpatialWorkspaceMap } from './spatial-workspace-map';
 
@@ -17,6 +18,7 @@ const probe = vi.hoisted(() => ({
   props: {} as Record<string, unknown>,
   source: null as unknown,
   custom: null as CustomLayerInterface | null,
+  images: [] as { id: string; url: string; coordinates: number[][] }[],
   query: vi.fn(() => []),
 }));
 vi.mock('maplibre-gl', () => ({
@@ -56,8 +58,21 @@ vi.mock('react-map-gl/maplibre', async () => {
       }));
       return <div data-testid="native-map">{props.children as ReactNode}</div>;
     }),
-    Source: (props: { children?: ReactNode; data: unknown; id: string }) => {
+    Source: (props: {
+      children?: ReactNode;
+      data?: unknown;
+      id: string;
+      type?: string;
+      url?: string;
+      coordinates?: number[][];
+    }) => {
       if (props.id === 'workspace-records') probe.source = props.data;
+      if (props.type === 'image' && props.url && props.coordinates)
+        probe.images.push({
+          id: props.id,
+          url: props.url,
+          coordinates: props.coordinates,
+        });
       return <div>{props.children}</div>;
     },
     Layer: () => null,
@@ -132,6 +147,7 @@ const props = {
 };
 beforeEach(() => {
   probe.custom = null;
+  probe.images = [];
   probe.query.mockClear();
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     callback(0);
@@ -223,4 +239,91 @@ it('unloads a failed canvas and leaves the record positions selectable for retry
   });
   fireEvent.click(screen.getByRole('button', { name: copy.retryMap }));
   expect(screen.getByTestId('native-map')).toBeTruthy();
+});
+
+it('places retained imagery at its four WGS84 corners without loading a public image service', () => {
+  const raster: WorkspaceRasterReport = {
+    id: 'retained-window',
+    sourceId: 'sentinel',
+    versionId: 'fixed-window',
+    sceneId: 'one-scene',
+    acquiredAt: '2026-08-24',
+    regionIds: ['yongding'],
+    title: '真实窗口',
+    products: [
+      {
+        band: 'TCI',
+        width: 512,
+        height: 512,
+        channels: 3,
+        dtype: 'uint8',
+        sha256: 'c'.repeat(64),
+        hashMatches: true,
+        readable: true,
+        nativeCrs: 'EPSG:32650',
+        resolution: [10, 10],
+        noData: [0],
+        scales: [1],
+        offsets: [0],
+        stats: { min: 0, max: 255, validPixels: 100, noDataPixels: 0 },
+        classFrequency: null,
+        thumbnailUrl: '/spatial-workspace-media/tci-wgs84.png',
+      },
+    ],
+    wgs84Bounds: [115.5, 40.2, 115.8, 40.5],
+    footprint: null,
+    qualityLayerPresent: true,
+    oneSceneOnly: true,
+    controlPointVerified: false,
+    rights: {
+      displayAllowed: true,
+      redistributionAllowed: true,
+      note: 'Copernicus',
+    },
+    limitations: ['单景，未控制点核验'],
+  };
+  const { rerender } = render(
+    <SpatialWorkspaceMap {...props} rasterReports={[raster]} />,
+  );
+  expect(
+    probe.images.some(
+      (image) =>
+        image.url === '/spatial-workspace-media/tci-wgs84.png' &&
+        JSON.stringify(image.coordinates) ===
+          JSON.stringify([
+            [115.5, 40.5],
+            [115.8, 40.5],
+            [115.8, 40.2],
+            [115.5, 40.2],
+          ]),
+    ),
+  ).toBe(true);
+  probe.images = [];
+  rerender(
+    <SpatialWorkspaceMap
+      {...props}
+      rasterReports={[
+        { ...raster, rights: { ...raster.rights, displayAllowed: false } },
+      ]}
+    />,
+  );
+  expect(probe.images).toHaveLength(0);
+  probe.images = [];
+  rerender(
+    <SpatialWorkspaceMap
+      {...props}
+      rasterReports={[
+        {
+          ...raster,
+          products: [
+            {
+              ...raster.products[0],
+              thumbnailUrl: 'https://public-server.example/hidden-image.png',
+            },
+          ],
+        },
+      ]}
+    />,
+  );
+  expect(probe.images).toHaveLength(0);
 });

@@ -21,6 +21,7 @@ import {
   workspaceObjectDossier,
   exportWorkspaceTopic,
   workspaceEvidenceUrl,
+  workspaceRasterOverlays,
 } from './spatial-workspace-view';
 
 const rectangle: Geometry = {
@@ -462,6 +463,134 @@ describe('shared pack filtering and evidence identity', () => {
 });
 
 describe('pinned scenes and source invalidation', () => {
+  it('pins both comparison scopes and restores a record selected in the right scope', () => {
+    const rightSource = {
+      ...source,
+      id: 'right-source',
+      versionId: 'right-v1',
+    };
+    const rightRecord = {
+      ...record,
+      id: 'right-record',
+      sourceId: rightSource.id,
+      versionId: rightSource.versionId,
+      regionIds: ['beiyun' as const],
+      positions: [
+        {
+          ...position,
+          geometrySourceId: rightSource.id,
+          geometryVersionId: rightSource.versionId,
+        },
+      ],
+    };
+    const data = {
+      ...pack,
+      sources: [...pack.sources, rightSource],
+      records: [record, rightRecord],
+    };
+    const initial = createSpatialWorkspaceView(data, 'chaobai');
+    const view = {
+      ...initial,
+      selection: { recordId: rightRecord.id, positionId: 'river' },
+      comparison: {
+        ...initial.comparison,
+        enabled: true,
+        left: { regionId: 'chaobai' as const, start: null, end: null },
+        right: { regionId: 'beiyun' as const, start: null, end: null },
+      },
+    };
+    const saved = captureSpatialWorkspaceView(data, view);
+    expect(
+      saved.sourcePins?.some((pin) => pin.sourceId === rightSource.id),
+    ).toBe(true);
+    expect(saved.selection?.recordId).toBe(rightRecord.id);
+    expect(
+      restoreSpatialWorkspaceView(data, saved)?.view.selection?.recordId,
+    ).toBe(rightRecord.id);
+  });
+
+  it('counts explicitly shared works without merging their objects or versions', () => {
+    const first = { ...source, workId: 'publication-one' },
+      second = { ...source, id: 'second-source', workId: 'publication-one' };
+    const data = {
+      ...pack,
+      sources: [first, second, geometrySource],
+      records: [
+        record,
+        { ...record, id: 'second-record', sourceId: second.id },
+      ],
+    };
+    expect(
+      filterSpatialWorkspace(data, createSpatialWorkspaceView(data))
+        .sourceCount,
+    ).toBe(1);
+    expect(workspaceObjectDossier(data, record.id)?.records).toHaveLength(1);
+  });
+
+  it('offers imagery only for a filtered, permitted exact-version footprint record', () => {
+    const rasterRecord = {
+      ...record,
+      kind: 'raster' as const,
+      sourceId: 'raster-source',
+      versionId: 'raster-v1',
+      positions: [
+        {
+          ...position,
+          geometrySourceId: 'raster-source',
+          geometryVersionId: 'raster-v1',
+        },
+      ],
+    };
+    const rasterSource = {
+      ...source,
+      id: 'raster-source',
+      versionId: 'raster-v1',
+      kind: 'raster' as const,
+    };
+    const report = {
+      id: 'raster-report',
+      sourceId: 'raster-source',
+      versionId: 'raster-v1',
+      sceneId: 'scene',
+      acquiredAt: '2023-12-01',
+      regionIds: ['chaobai' as const],
+      title: '真实窗口',
+      products: [],
+      wgs84Bounds: [116, 39, 118, 41] as const,
+      footprint: position.geometry,
+      qualityLayerPresent: true,
+      oneSceneOnly: true,
+      controlPointVerified: false as const,
+      rights: {
+        displayAllowed: true,
+        redistributionAllowed: true,
+        note: '许可',
+      },
+      limitations: ['单景'],
+    };
+    const data = {
+      ...pack,
+      sources: [rasterSource],
+      records: [rasterRecord],
+      rasterReports: [report],
+    };
+    const view = createSpatialWorkspaceView(data);
+    expect(workspaceRasterOverlays(data, view)).toHaveLength(1);
+    expect(
+      workspaceRasterOverlays(data, { ...view, kinds: ['observation'] }),
+    ).toHaveLength(0);
+    expect(
+      workspaceRasterOverlays(data, view, [
+        { sourceId: rasterSource.id, state: 'revoked' },
+      ]),
+    ).toHaveLength(0);
+    expect(
+      workspaceRasterOverlays(
+        { ...data, rasterReports: [{ ...report, versionId: 'wrong-version' }] },
+        view,
+      ),
+    ).toHaveLength(0);
+  });
   it('restores camera, native filters, layers, selection and evidence identity without caching source text', () => {
     const view = {
       ...createSpatialWorkspaceView(pack, 'chaobai'),
