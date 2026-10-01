@@ -463,6 +463,49 @@ describe('shared pack filtering and evidence identity', () => {
 });
 
 describe('pinned scenes and source invalidation', () => {
+  it('removes a changed geometry version from restored selection and dossier positions', () => {
+    const view = {
+      ...createSpatialWorkspaceView(pack),
+      selection: { recordId: record.id, positionId: position.id },
+    };
+    const saved = captureSpatialWorkspaceView(pack, view);
+    const changed = {
+      ...pack,
+      sources: pack.sources.map((source) =>
+        source.id === geometrySource.id
+          ? { ...source, originalSha256: 'f'.repeat(64) }
+          : source,
+      ),
+    };
+    const restored = restoreSpatialWorkspaceView(changed, saved)!;
+    expect(filterSpatialWorkspace(changed, restored.view).geometryCount).toBe(
+      0,
+    );
+    expect(restored.view.selection).toEqual({
+      recordId: record.id,
+      positionId: null,
+    });
+    expect(
+      workspaceObjectDossier(changed, record.id, [], restored.view.sourcePins)
+        ?.positions,
+    ).toEqual([]);
+  });
+
+  it('does not silently display a changed source hash through an already fixed scene', () => {
+    const saved = captureSpatialWorkspaceView(
+      pack,
+      createSpatialWorkspaceView(pack),
+    );
+    const changed = {
+      ...pack,
+      sources: pack.sources.map((source) =>
+        source.id === record.sourceId
+          ? { ...source, originalSha256: 'f'.repeat(64) }
+          : source,
+      ),
+    };
+    expect(filterSpatialWorkspace(changed, saved).records).toHaveLength(0);
+  });
   it('pins both comparison scopes and restores a record selected in the right scope', () => {
     const rightSource = {
       ...source,

@@ -12,6 +12,7 @@ import type {
   WorkspaceRecord,
 } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
+import { StrictMode, useState } from 'react';
 import { SpatialWorkspace } from './spatial-workspace';
 
 vi.mock('./spatial-workspace-map', () => ({
@@ -230,6 +231,95 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('spatial workspace actual interactions', () => {
+  it('keeps a B-style shared selection when region and record arrive together under a fresh invalidations array', () => {
+    const data = {
+      ...pack,
+      records: [
+        { ...sampleRecord, regionIds: ['bth' as const, 'chaobai' as const] },
+      ],
+    };
+    function SharedHost() {
+      const [regionId, setRegionId] = useState<'bth' | 'chaobai' | 'bohai'>(
+        'bohai',
+      );
+      const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
+        null,
+      );
+      const [tab, setTab] = useState('readiness');
+      return (
+        <>
+          <button
+            onClick={() => {
+              setRegionId('chaobai');
+              setSelectedRecordId(sampleRecord.id);
+              setTab('spatial');
+            }}
+          >
+            Inspect B record
+          </button>
+          <output data-testid="shared-region">{regionId}</output>
+          <div hidden={tab !== 'spatial'}>
+            <SpatialWorkspace
+              pack={data}
+              locale="zh-CN"
+              copy={zh}
+              regionId={regionId}
+              selectedRecordId={selectedRecordId}
+              onRegionChange={(id) =>
+                setRegionId(id as 'bth' | 'chaobai' | 'bohai')
+              }
+              onSelectRecord={setSelectedRecordId}
+              invalidations={[]}
+            />
+          </div>
+        </>
+      );
+    }
+    render(
+      <StrictMode>
+        <SharedHost />
+      </StrictMode>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect B record' }));
+    expect(screen.getByTestId('spatial-original-evidence')).toBeTruthy();
+    expect(screen.getByTestId('shared-region').textContent).toBe('chaobai');
+    expect(
+      screen
+        .getByRole('button', { name: zh.regions.chaobai })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+  });
+
+  it('preserves a repeated external record while its supported region changes', () => {
+    const data = {
+      ...pack,
+      records: [
+        { ...sampleRecord, regionIds: ['bth' as const, 'chaobai' as const] },
+      ],
+    };
+    const { rerender } = render(
+      <SpatialWorkspace
+        pack={data}
+        locale="zh-CN"
+        copy={zh}
+        regionId="bth"
+        selectedRecordId={sampleRecord.id}
+        invalidations={[]}
+      />,
+    );
+    expect(screen.getByTestId('spatial-original-evidence')).toBeTruthy();
+    rerender(
+      <SpatialWorkspace
+        pack={data}
+        locale="zh-CN"
+        copy={zh}
+        regionId="chaobai"
+        selectedRecordId={sampleRecord.id}
+        invalidations={[]}
+      />,
+    );
+    expect(screen.getByTestId('spatial-original-evidence')).toBeTruthy();
+  });
   it('consumes the corrected shared locale branch and preserves dictionary structure', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort());
     render(<SpatialWorkspace pack={pack} locale="en" copy={en} />);
