@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -15,6 +16,10 @@ import { getDictionary } from '@/lib/i18n';
 import { StrictMode, useState } from 'react';
 import { SpatialWorkspace } from './spatial-workspace';
 
+const mapProbe = vi.hoisted(() => ({
+  camera: null as ((value: unknown) => void) | null,
+}));
+
 vi.mock('./spatial-workspace-map', () => ({
   SpatialWorkspaceMap: (props: {
     features: {
@@ -23,40 +28,43 @@ vi.mock('./spatial-workspace-map', () => ({
     camera: { pitch: number; bearing: number };
     onCamera: (value: unknown) => void;
     onSelect: (value: unknown) => void;
-  }) => (
-    <div
-      data-testid="workspace-map"
-      data-pitch={props.camera.pitch}
-      data-bearing={props.camera.bearing}
-    >
-      <button
-        onClick={() =>
-          props.onCamera({
-            longitude: 117,
-            latitude: 40,
-            zoom: 7,
-            pitch: 50,
-            bearing: 35,
-          })
-        }
+  }) => {
+    if (!mapProbe.camera) mapProbe.camera = props.onCamera;
+    return (
+      <div
+        data-testid="workspace-map"
+        data-pitch={props.camera.pitch}
+        data-bearing={props.camera.bearing}
       >
-        Move map
-      </button>
-      {props.features.features.map((feature) => (
         <button
-          key={`${feature.properties.recordId}:${feature.properties.positionId}`}
           onClick={() =>
-            props.onSelect({
-              recordId: feature.properties.recordId,
-              positionId: feature.properties.positionId,
+            props.onCamera({
+              longitude: 117,
+              latitude: 40,
+              zoom: 7,
+              pitch: 50,
+              bearing: 35,
             })
           }
         >
-          {feature.properties.recordId}:{feature.properties.positionId}
+          Move map
         </button>
-      ))}
-    </div>
-  ),
+        {props.features.features.map((feature) => (
+          <button
+            key={`${feature.properties.recordId}:${feature.properties.positionId}`}
+            onClick={() =>
+              props.onSelect({
+                recordId: feature.properties.recordId,
+                positionId: feature.properties.positionId,
+              })
+            }
+          >
+            {feature.properties.recordId}:{feature.properties.positionId}
+          </button>
+        ))}
+      </div>
+    );
+  },
 }));
 
 const zh = getDictionary('zh-CN').dataFoundation.spatialWorkspace;
@@ -227,10 +235,48 @@ const pack: WorkspacePack = {
 
 beforeEach(() => {
   localStorage.clear();
+  mapProbe.camera = null;
 });
 afterEach(cleanup);
 
 describe('spatial workspace actual interactions', () => {
+  it('keeps the new record, filters and comparison when an earlier map camera callback arrives late', () => {
+    const { rerender } = render(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId={null}
+      />,
+    );
+    const delayedCamera = mapProbe.camera!;
+    rerender(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId={sampleRecord.id}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(zh.comparisonTitle));
+    fireEvent.change(screen.getByLabelText(zh.recordSearch), {
+      target: { value: '潮白河' },
+    });
+    act(() =>
+      delayedCamera({
+        longitude: 117,
+        latitude: 40,
+        zoom: 7,
+        pitch: 50,
+        bearing: 35,
+      }),
+    );
+    expect(screen.getByTestId('spatial-original-evidence')).toBeTruthy();
+    expect(screen.getAllByTestId('workspace-map')).toHaveLength(2);
+    expect(screen.getByLabelText<HTMLInputElement>(zh.recordSearch).value).toBe(
+      '潮白河',
+    );
+  });
   it('keeps a B-style shared selection when region and record arrive together under a fresh invalidations array', () => {
     const data = {
       ...pack,
