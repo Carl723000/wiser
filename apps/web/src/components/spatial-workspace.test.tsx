@@ -240,6 +240,50 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('spatial workspace actual interactions', () => {
+  it.each([
+    ['zh-CN', zh, '原资料未公布浓度明细', '政策要求不代表实测成效'],
+    ['en', en, 'Concentration details not published', 'Policy requirements are not observed outcomes'],
+  ] as const)(
+    'explains missing-reason codes in %s while retaining original codes, evidence and counts',
+    (locale, copy, concentrationLabel, policyLabel) => {
+      const reasons = [
+        'concentrations-not-published',
+        'policy-not-observed-outcome',
+        '仅有一个月',
+      ];
+      const data = {
+        ...pack,
+        records: [{ ...sampleRecord, missingReasons: reasons }],
+      };
+      const originalData = JSON.stringify(data);
+      render(
+        <SpatialWorkspace
+          pack={data}
+          locale={locale}
+          copy={{
+            ...copy,
+            missingReasons: {
+              'concentrations-not-published': concentrationLabel,
+              'policy-not-observed-outcome': policyLabel,
+            },
+          }}
+          selectedRecordId={sampleRecord.id}
+        />,
+      );
+      const dossier = screen.getByRole('region', { name: copy.dossierTitle });
+      expect(within(dossier).getByText(concentrationLabel)).toBeTruthy();
+      expect(within(dossier).getByText(policyLabel)).toBeTruthy();
+      for (const reason of reasons)
+        expect(within(dossier).getByText(reason)).toBeTruthy();
+      expect(screen.getByTestId('spatial-original-evidence').textContent).toContain(
+        '潮白河 7.8 mg/L',
+      );
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain('1');
+      expect(screen.getByTestId('spatial-geometry-count').textContent).toContain('1');
+      expect(JSON.stringify(data)).toBe(originalData);
+    },
+  );
+
   it('keeps the new record, filters and comparison when an earlier map camera callback arrives late', () => {
     const { rerender } = render(
       <SpatialWorkspace
