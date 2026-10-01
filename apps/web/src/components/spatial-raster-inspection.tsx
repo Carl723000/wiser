@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import type { WorkspacePack } from '@/lib/spatial-workspace-contract';
 import type { Dictionary } from '@/lib/i18n';
 import { ContextHelp } from './context-help';
@@ -12,6 +14,7 @@ export function SpatialRasterInspection({
   pack: WorkspacePack;
   copy: Dictionary['dataFoundation']['spatialManagement'];
 }) {
+  const [selectedPixel, setSelectedPixel] = useState('');
   return (
     <section aria-label={copy.raster}>
       <h2>{copy.raster}</h2>
@@ -26,6 +29,50 @@ export function SpatialRasterInspection({
               {report.acquiredAt ?? copy.unknown} ·{' '}
               <strong>{copy.scene}</strong> {report.sceneId}
             </p>
+            {!!report.pixelProbes?.length && (
+              <section className={styles.card}>
+                <label>
+                  {copy.pixelProbe}{' '}
+                  <select
+                    value={selectedPixel}
+                    onChange={(event) => setSelectedPixel(event.target.value)}
+                  >
+                    <option value="">{copy.selectPixel}</option>
+                    {report.pixelProbes.map((probe) => (
+                      <option key={probe.id} value={probe.id}>
+                        {probe.row} / {probe.column}
+                      </option>
+                    ))}
+                  </select>
+                </label>{' '}
+                <ContextHelp label={copy.pixelHelp}>
+                  {copy.pixelHelpText}
+                </ContextHelp>
+                {report.pixelProbes
+                  .filter((probe) => probe.id === selectedPixel)
+                  .map((probe) => (
+                    <div key={probe.id} data-testid="pixel-values">
+                      <p>
+                        {copy.pixelIndex}: {probe.row} / {probe.column} · WGS84:{' '}
+                        {probe.coordinates
+                          .map((number) => number.toFixed(6))
+                          .join(', ')}
+                      </p>
+                      <dl>
+                        {Object.entries(probe.rawValues).map(
+                          ([band, values]) => (
+                            <div key={band}>
+                              <dt>{band}</dt>
+                              <dd>{values.join(', ')}</dd>
+                            </div>
+                          ),
+                        )}
+                      </dl>
+                      <p>{probe.sclLabel}</p>
+                    </div>
+                  ))}
+              </section>
+            )}
             <p className={styles.status}>
               {copy.oneScene}{' '}
               <ContextHelp label={copy.rasterHelp}>
@@ -43,6 +90,7 @@ export function SpatialRasterInspection({
                     <th>{copy.range}</th>
                     <th>{copy.validPixels}</th>
                     <th>{copy.noData}</th>
+                    <th>{copy.noDataTag}</th>
                     <th>{copy.hash}</th>
                   </tr>
                 </thead>
@@ -62,6 +110,13 @@ export function SpatialRasterInspection({
                       </td>
                       <td>{product.stats.validPixels.toLocaleString()}</td>
                       <td>{product.stats.noDataPixels.toLocaleString()}</td>
+                      <td>
+                        {product.noData
+                          .map((value) =>
+                            value === null ? copy.undeclared : String(value),
+                          )
+                          .join(', ')}
+                      </td>
                       <td>
                         {product.hashMatches ? copy.matched : copy.mismatched}
                       </td>

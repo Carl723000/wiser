@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-02
-lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
+lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
 ---
 
 ## What runs today
@@ -456,3 +456,9 @@ The source management catalog runs under `wiser_data_metadata`, a non-login, non
 The spatial workbench `WorkspacePack` is a narrow frontend/local-processor interchange, not a new public query protocol or authority identity store. It preserves originals, extracted rows, textual places, reference geometries, method evidence and pending professional review separately. Same-name source-local objects are not merged. Original paths never reach the browser, and derived graphics cannot expose sources lacking display rights.
 
 An independent synthetic candidate supports accept, exclude and pending exercises followed by source/rule impact calculation. Real candidates remain pending. Exercises are not professional review, authorization, managed correction or publication. Standard intake, ordinary-account authorization and live provider access require their own end-to-end acceptance.
+
+### Offline protocol and raster inspection
+
+`connectors/cnemc-offline` provides pure protocol checks and a loopback fault harness. It changes neither the external-metadata reader nor the public observation contract and does not contact a real supplier. Requests preserve documented parameter forms; responses validate fields, pagination and business errors. Duplicate/incomplete pages, redirects, cancellation, timeouts and oversized responses fail without partial rows. The synthetic provider binds only numeric loopback, with at most32 pages and4 MiB per response; no real credentials or monitoring responses are included. Supplier ordering, unique keys, revisions and rights remain separate prerequisites.
+
+`scripts/raster-inspection` reads retained rasters without mutation, verifies before/after hashes and reports CRS, grid, pixels, quality classes, NoData and product metadata. Nearest-neighbor thumbnails are separate from native pixels. Channel counts do not multiply scene or spatial-pixel counts; classifications are not ground truth. Inspection neither ingests nor publishes data and does not replace control-point verification.

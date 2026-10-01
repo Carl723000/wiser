@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-02
-lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
+lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
 ---
 
 ## 设计方向
@@ -119,3 +119,5 @@ Data 地图把这一合同落实为可访问控件，而不是只靠画布颜色
 初次使用需要的说明放在相关控件旁或统一帮助披露中；当前错误、权限拒绝和重要使用限制始终可见。中英文表达同一任务和状态。
 
 路由、查询、地图与浏览器测试细节见[前端开发](/development/frontend/)；来源权威、记录身份、位置精度与审核规则见[数据基座架构](/architecture/data-foundation/)；可见名称与状态用语见[产品界面与内容设计](/development/product-experience/)。
+
+本机空间工作台沿用共享主题、全屏和问号帮助。区域、固定版本、位置未知、参考范围及演练状态均用文字与视觉标识区分，不仅靠颜色。地图与清单共用选择，独立双窗保留各自相机；无WebGL的平面回退明确标识。屏幕坐标精度规范用于一致渲染，不改变数据精度。

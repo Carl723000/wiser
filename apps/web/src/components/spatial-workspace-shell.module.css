@@ -18,6 +18,14 @@
 .heading p {
   margin: 0.5rem 0;
 }
+.hash {
+  overflow-wrap: anywhere;
+}
+.workspace blockquote {
+  margin-inline: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .status {
   border: 1px solid var(--border);
   border-radius: 0.65rem;

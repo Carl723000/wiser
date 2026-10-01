@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-02
-lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
+lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
 ---
 
 ## Design direction
@@ -117,3 +117,5 @@ A selected source remains identifiable by name, fixed version, and evidence link
 Explanations that help first use belong next to the relevant control or in the shared help disclosure. Current failures, permission denials, and material limitations remain visible. The same task and state have the same meaning in Chinese and English.
 
 For exact route, query, map, and browser-test behavior, use [Frontend development](/en/development/frontend/). For source authority, record identity, spatial accuracy, and review rules, use [Data Foundation architecture](/en/architecture/data-foundation/). User-facing naming and state language are defined in [Product interface and content design](/en/development/product-experience/).
+
+The local spatial workbench reuses shared themes, fullscreen and contextual help. Region, fixed version, unknown location, reference extent and exercise status use text as well as visual cues. Map and list share selection; comparison panes retain independent cameras. A no-WebGL planar fallback is explicit. Screen-coordinate precision supports consistent rendering without changing source precision.

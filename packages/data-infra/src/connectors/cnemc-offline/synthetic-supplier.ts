@@ -139,14 +139,12 @@ export async function startSyntheticSupplier(
         return;
       }
       if (fault === 'json-business') {
-        response
-          .writeHead(200, { 'Content-Type': 'application/json' })
-          .end(
-            JSON.stringify({
-              errCode: 'SYNTHETIC_ERROR',
-              errMsg: 'SYNTHETIC_PRIVATE_TEXT',
-            }),
-          );
+        response.writeHead(200, { 'Content-Type': 'application/json' }).end(
+          JSON.stringify({
+            errCode: 'SYNTHETIC_ERROR',
+            errMsg: 'SYNTHETIC_PRIVATE_TEXT',
+          }),
+        );
         return;
       }
       if (fault === 'oversize') {

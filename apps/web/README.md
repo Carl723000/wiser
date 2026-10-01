@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-02
-lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
+lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
 ---
 
 # WISER Web / 产品界面
@@ -68,3 +68,9 @@ pnpm --filter @wiser/web test:e2e
 ```
 
 仓库交付前还须运行 `pnpm verify` 及 Docpact 检查；需要真实数据库或浏览器环境的检查见[测试与验证](../docs/src/content/docs/zh-CN/development/testing.md) / [Testing and verification](../docs/src/content/docs/en/development/testing.md)。
+
+## 本机空间资料工作台 / Local spatial workbench
+
+`/{locale}/data-foundation/spatial-workspace` 仅在显式本机开发模式下读取已核对的资料包，不作为正式Data API失败时的替代。空间证据、就绪／合成复核和遥感检查在同一界面，复用固定版本回查、双窗、场景恢复和全屏。 / This explicitly enabled local-only workspace reads a validated pack, never substitutes fixtures for failed production Data reads, and shares exact-source, comparison, saved-scene and fullscreen interactions.
+
+配置见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#本地多流域资料工作台)。额外验收使用 `pnpm --filter @wiser/web exec playwright test --config playwright.spatial.config.ts`，连接已启动的回环3410预览，不自行启动整套服务。真实Auth、Data API、OAuth和Worker集成另行验证。 / This browser suite connects to an already running loopback3410 preview. Real Auth, Data API, OAuth and Worker integration remains separate.

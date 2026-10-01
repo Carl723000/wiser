@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-02
-lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
+lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
 ---
 
 ## Two frontend applications
@@ -283,3 +283,11 @@ The account control links to `/[locale]/account/agents` for the current user’s
 Enabling requires non-production, `WISER_AUTH_MODE=off`, `WISER_SPATIAL_WORKSPACE_MODE=local` and a loopback Host. `WISER_SPATIAL_INPUT_MANIFEST` names an absolute JSON path. Missing input, malformed input and inconsistent versions have separate closed states; no fixture fallback is permitted. This configuration is for a scoped development preview, not target deployment.
 
 The server validates source and geometry versions, hash shape and display rights, strips original paths and unknown fields, and removes undisplayable sources and related records. Derived PNGs use a bounded loopback-only `spatial-workspace-media` route, disabled in production. Existing Auth, Data API, RLS, intake and professional approval remain separate acceptance paths.
+
+### Workbench reading and exercises
+
+The workspace combines spatial evidence, readiness/review and raster inspection tabs. Matrix, list, map and dossier share selection; exact-version source links reject unknown versions. Region/time comparison, legally retained offline geometry, category layers, unlocated records and saved scenes preserve source identity. Bird's-eye category height is neither terrain nor depth. Unavailable WebGL has an explicit planar fallback.
+
+Synthetic review changes only independent local exercise state. Regeneration previews stale matrix, dossier and comparison dependencies; ending the exercise restores real reading state. Separate scene storage keys prevent overwriting real state or approving knowledge. Final SVG screen coordinates use deterministic precision to avoid server/browser last-bit hydration differences; original geometry and anchor-error calculations are not rounded.
+
+Packs are bounded to80 pinned source versions,5000 records and150000 geometry vertices. Images accept only local derived PNG paths; external images and credential-bearing evidence URLs are rejected, and original paths are not serialized. Raster inspection separates encoded pixels, file masks, NoData declarations, product quantification, display stretches and licensing.

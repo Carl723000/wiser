@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-02
-lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
+lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
 ---
 
 ## What this guide governs
@@ -156,3 +156,5 @@ A user can distinguish source content from quality review, publication, and acce
 An empty list names the current scope and gives an available action. A failure says what is affected, whether the user's work is retained, and how to retry or contact the right administrator. A permission denial names the project or data scope without exposing internal policy code. Progress text and completion text use the same action name as the initiating control.
 
 The specialist behavior and exact versioned query contracts live in [Data Foundation architecture](/en/architecture/data-foundation/) and the [Data REST reference](/en/protocols/data-rest/). Route structure, session-bound data reads, and browser verification live in [Frontend development](/en/development/frontend/). These technical references may use protocol vocabulary; the ordinary workspace follows the writing rules above.
+
+The local spatial workbench starts with region/time, then shows real sources, original locators and readiness. Dossiers explain location roles and content before exact-version evidence; administrative references are never precise river reaches. Candidate exercises have distinct status and exit controls, and exercise decisions never appear as professional approval. Matrix need slots are planned uses, not received datasets.
