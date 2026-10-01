@@ -9,7 +9,8 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { CustomLayerInterface } from 'maplibre-gl';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup, renderToString } from 'react-dom/server';
+import { hydrateRoot, type Root } from 'react-dom/client';
 import type { WorkspaceMapFeatures } from '@/lib/spatial-workspace-view';
 import type { WorkspaceRasterReport } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
@@ -237,6 +238,44 @@ it('renders accessible SVG titles as a single text child without server warnings
     /title.*children|children.*title/,
   );
   errors.mockRestore();
+});
+
+it('hydrates the same SVG paths across last-bit projection differences without changing source geometry', async () => {
+  const original = JSON.stringify(features);
+  const host = document.createElement('div');
+  host.innerHTML = renderToString(
+    <SpatialWorkspaceMap {...props} webGLAvailable={false} />,
+  );
+  const serverPaths = [...host.querySelectorAll('path')].map((path) =>
+    path.getAttribute('d'),
+  );
+  document.body.appendChild(host);
+  const nativeLog = Math.log;
+  const projection = vi
+    .spyOn(Math, 'log')
+    .mockImplementation((value) => nativeLog(value) + 1e-14 * (value - 1));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  let root: Root | undefined;
+  try {
+    await act(async () => {
+      root = hydrateRoot(
+        host,
+        <SpatialWorkspaceMap {...props} webGLAvailable={false} />,
+      );
+    });
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(
+      /hydrat|didn't match/i,
+    );
+    expect(
+      [...host.querySelectorAll('path')].map((path) => path.getAttribute('d')),
+    ).toEqual(serverPaths);
+    expect(JSON.stringify(features)).toBe(original);
+  } finally {
+    await act(async () => root?.unmount());
+    host.remove();
+    projection.mockRestore();
+    errors.mockRestore();
+  }
 });
 
 it('unloads a failed canvas and leaves the record positions selectable for retry', () => {
