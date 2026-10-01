@@ -1,4 +1,5 @@
 'use client';
+import type { Dispatch, SetStateAction } from 'react';
 import type { RegionId, WorkspacePack } from '@/lib/spatial-workspace-contract';
 import type { SpatialWorkspaceCopy } from '@/lib/spatial-workspace-copy';
 import {
@@ -21,7 +22,7 @@ export interface SpatialWorkspaceComparisonProps {
   pack: WorkspacePack;
   view: SpatialWorkspaceView;
   copy: SpatialWorkspaceCopy;
-  onChange: (view: SpatialWorkspaceView) => void;
+  onChange: Dispatch<SetStateAction<SpatialWorkspaceView>>;
   onSelect: (selection: NonNullable<WorkspaceSelection>) => void;
   invalidations?: readonly WorkspaceInvalidation[];
 }
@@ -209,12 +210,16 @@ export function SpatialWorkspaceComparison({
                   invalidations,
                 )}
                 rasterSettings={view.raster}
-                onRasterChange={(raster) => onChange({ ...view, raster })}
+                onRasterChange={(raster) =>
+                  onChange((previous) => ({ ...previous, raster }))
+                }
                 camera={view.camera}
                 mode={view.mode}
                 selection={view.selection}
                 copy={copy}
-                onCamera={(camera) => onChange({ ...view, camera })}
+                onCamera={(camera) =>
+                  onChange((previous) => ({ ...previous, camera }))
+                }
                 onSelect={onSelect}
               />
               {!filtered.records.length && !notices.length ? (

@@ -761,12 +761,16 @@ export function SpatialWorkspace({
                   invalidations,
                 )}
                 rasterSettings={view.raster}
-                onRasterChange={(raster) => setView({ ...view, raster })}
+                onRasterChange={(raster) =>
+                  setView((previous) => ({ ...previous, raster }))
+                }
                 camera={view.camera}
                 mode={view.mode}
                 selection={selection}
                 copy={copy}
-                onCamera={(camera) => setView({ ...view, camera })}
+                onCamera={(camera) =>
+                  setView((previous) => ({ ...previous, camera }))
+                }
                 onSelect={selectRecord}
                 bounds={view.bounds}
                 drawBounds={drawBounds}
