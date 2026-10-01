@@ -134,6 +134,13 @@ class RasterReportTests(unittest.TestCase):
         products[1]["resolution"] = [0, 20]
         self.assertIn("INVALID_RESOLUTION", issue_codes(products))
 
+    def test_same_bounds_do_not_hide_different_pixel_transform(self):
+        products = fixture()
+        for product in products:
+            product["transform"] = [20, 0, 400000, 0, -20, 4400060]
+        products[1]["transform"][1] = 0.1
+        self.assertIn("GRID_MISMATCH", issue_codes(products))
+
     def test_spatial_pixel_counts_do_not_multiply_by_rgb_channels(self):
         products = fixture()
         products[3]["stats"]["validPixels"] = 36
