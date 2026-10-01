@@ -257,7 +257,7 @@ it('hydrates the same SVG paths across last-bit projection differences without c
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
   let root: Root | undefined;
   try {
-    await act(async () => {
+    await act(() => {
       root = hydrateRoot(
         host,
         <SpatialWorkspaceMap {...props} webGLAvailable={false} />,
@@ -271,7 +271,7 @@ it('hydrates the same SVG paths across last-bit projection differences without c
     ).toEqual(serverPaths);
     expect(JSON.stringify(features)).toBe(original);
   } finally {
-    await act(async () => root?.unmount());
+    await act(() => root?.unmount());
     host.remove();
     projection.mockRestore();
     errors.mockRestore();
