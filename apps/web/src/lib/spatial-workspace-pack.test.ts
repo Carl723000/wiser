@@ -108,6 +108,78 @@ function pack(): WorkspacePack {
 }
 
 describe('local spatial pack server boundary', () => {
+  it('rejects credential-bearing evidence URLs in sources and records before they reach the page', () => {
+    const sourceInput = pack();
+    sourceInput.sources[0].evidenceUrl =
+      'https://example.org/report?token=SYNTHETIC_ONLY';
+    expect(() => parseWorkspacePack(sourceInput)).toThrow('spatial-pack:url');
+    const recordInput = pack();
+    recordInput.records[0].evidence[0].url =
+      'https://example.org/report?api_key=SYNTHETIC_ONLY';
+    expect(() => parseWorkspacePack(recordInput)).toThrow('spatial-pack:url');
+    const regular = pack();
+    regular.sources[0].evidenceUrl = 'https://example.org/report?year=2023';
+    expect(parseWorkspacePack(regular).sources[0].evidenceUrl).toContain(
+      'year=2023',
+    );
+  });
+  it('accepts only local PNG thumbnails and rejects automatic external image fetches', () => {
+    const input = pack();
+    input.sources[0].kind = 'raster';
+    input.rasterReports = [
+      {
+        id: 'raster1',
+        sourceId: 'report',
+        versionId: 'v1',
+        sceneId: 'one-scene',
+        acquiredAt: null,
+        regionIds: ['beiyun'],
+        title: 'Retained window',
+        products: [
+          {
+            band: 'TCI',
+            width: 1,
+            height: 1,
+            channels: 3,
+            dtype: 'uint8',
+            sha256: 'b'.repeat(64),
+            hashMatches: true,
+            readable: true,
+            nativeCrs: null,
+            resolution: null,
+            noData: [null],
+            scales: [1],
+            offsets: [0],
+            stats: { min: 0, max: 255, validPixels: 1, noDataPixels: 0 },
+            classFrequency: null,
+            thumbnailUrl: 'https://example.org/unapproved.png',
+          },
+        ],
+        wgs84Bounds: null,
+        footprint: null,
+        qualityLayerPresent: false,
+        oneSceneOnly: true,
+        controlPointVerified: false,
+        rights: {
+          displayAllowed: true,
+          redistributionAllowed: true,
+          note: 'Public',
+        },
+        limitations: [],
+      },
+    ];
+    expect(() => parseWorkspacePack(input)).toThrow(
+      'spatial-pack:thumbnail-url',
+    );
+    input.rasterReports[0].products[0].thumbnailUrl =
+      '/spatial-workspace-media/tci-wgs84.png';
+    expect(
+      parseWorkspacePack(input).rasterReports[0].products[0].thumbnailUrl,
+    ).toBe('/spatial-workspace-media/tci-wgs84.png');
+    input.rasterReports[0].products[0].thumbnailUrl =
+      '/spatial-workspace-media/../private.png';
+    expect(() => parseWorkspacePack(input)).toThrow();
+  });
   it('keeps exact values, locators and source versions without serializing paths or unknown payloads', () => {
     const input = { ...pack(), credential: 'DO_NOT_SERIALIZE' };
     Object.assign(input.sources[0], { token: 'DO_NOT_SERIALIZE' });
@@ -156,5 +228,16 @@ describe('local spatial pack server boundary', () => {
     const input = pack();
     input.records[0].positions[0].match = 'bound';
     expect(() => parseWorkspacePack(input)).toThrow();
+  });
+  it('rejects impossible calendar dates while preserving the explicit native month precision', () => {
+    const input = pack();
+    input.records[0].time = {
+      start: '2023-02-31',
+      end: '2023-02-31',
+      precision: 'day',
+      role: 'observation',
+    };
+    expect(() => parseWorkspacePack(input)).toThrow('spatial-pack:calendar');
+    expect(parseWorkspacePack(pack()).records[0].time.precision).toBe('month');
   });
 });

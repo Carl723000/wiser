@@ -1,4 +1,8 @@
 import type { Geometry } from 'geojson';
+import {
+  validWorkspaceTimeFilter,
+  workspaceEvidenceUrl,
+} from './spatial-workspace-view';
 import type {
   Material,
   RegionId,
@@ -73,24 +77,11 @@ function hash(value: unknown): string {
 function url(value: unknown, thumbnail = false): string | null {
   if (value === null) return null;
   const text = string(value);
-  if (thumbnail && /^\/spatial-workspace-media\/[a-zA-Z0-9._-]+$/.test(text))
-    return text;
-  let parsed: URL;
-  try {
-    parsed = new URL(text);
-  } catch {
-    return fail('url');
-  }
-  if (
-    !['https:', 'http:'].includes(parsed.protocol) ||
-    parsed.username ||
-    parsed.password ||
-    /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|\[|172\.(1[6-9]|2\d|3[01])\.)/i.test(
-      parsed.hostname,
-    )
-  )
-    fail('url');
-  return text;
+  if (thumbnail)
+    return /^\/spatial-workspace-media\/[a-zA-Z0-9_-]+\.png$/.test(text)
+      ? text
+      : fail('thumbnail-url');
+  return workspaceEvidenceUrl(text) ?? fail('url');
 }
 function evidence(value: unknown): WorkspaceEvidence {
   const v = object(value);
@@ -196,6 +187,7 @@ function source(value: unknown): Material {
   };
   if (v.coverageNote !== undefined)
     result.coverageNote = string(v.coverageNote);
+  if (v.workId !== undefined) result.workId = string(v.workId);
   if (v.fieldNames !== undefined) result.fieldNames = strings(v.fieldNames);
   if (v.quantity !== undefined) {
     const q = object(v.quantity);
@@ -271,6 +263,7 @@ function record(value: unknown): WorkspaceRecord {
     )
       fail('time');
   if (start && end && start > end) fail('time-order');
+  if (!validWorkspaceTimeFilter(start, end)) fail('calendar');
   const result: WorkspaceRecord = {
     id: string(v.id),
     sourceId: string(v.sourceId),
@@ -379,6 +372,42 @@ function raster(value: unknown): WorkspaceRasterReport {
       note: string(rights.note),
     },
     limitations: strings(v.limitations),
+    ...(v.pixelProbes === undefined
+      ? {}
+      : {
+          pixelProbes: array(v.pixelProbes, 32).map((value) => {
+            const probe = object(value),
+              raw = object(probe.rawValues);
+            const coordinates = array(probe.coordinates, 2).map(number);
+            if (
+              coordinates.length !== 2 ||
+              Math.abs(coordinates[0]) > 180 ||
+              Math.abs(coordinates[1]) > 90
+            )
+              fail('pixel-coordinates');
+            const row = count(probe.row),
+              column = count(probe.column);
+            const dimensions = object(array(v.products, 8)[0]);
+            if (
+              row >= count(dimensions.height) ||
+              column >= count(dimensions.width)
+            )
+              fail('pixel-index');
+            return {
+              id: string(probe.id),
+              row,
+              column,
+              coordinates: coordinates as [number, number],
+              rawValues: {
+                B03: array(raw.B03, 1).map(number),
+                B8A: array(raw.B8A, 1).map(number),
+                SCL: array(raw.SCL, 1).map(number),
+                TCI: array(raw.TCI, 3).map(number),
+              },
+              sclLabel: string(probe.sclLabel),
+            };
+          }),
+        }),
   };
 }
 

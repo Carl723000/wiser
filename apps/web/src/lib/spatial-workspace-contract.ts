@@ -10,6 +10,8 @@ export interface WorkspaceEvidence {
   url: string | null;
 }
 export interface Material {
+  /** Shared work identity for counting versions/copies, never an object identity merge. */
+  workId?: string;
   id: string;
   versionId: string;
   title: string;
@@ -151,6 +153,14 @@ export interface WorkspaceRasterReport {
     note: string;
   };
   limitations: string[];
+  pixelProbes?: {
+    id: string;
+    row: number;
+    column: number;
+    coordinates: [number, number];
+    rawValues: Record<'B03' | 'B8A' | 'SCL' | 'TCI', number[]>;
+    sclLabel: string;
+  }[];
 }
 export interface WorkspacePack {
   schemaVersion: 1;
