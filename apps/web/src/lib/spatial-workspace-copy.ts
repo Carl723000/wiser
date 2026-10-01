@@ -92,6 +92,8 @@ export interface SpatialWorkspaceCopy {
   locatePosition: string;
   selected: string;
   comparisonTitle: string;
+  enableComparison?: string;
+  timeInvalid?: string;
   comparisonHint: string;
   leftWindow: string;
   rightWindow: string;
