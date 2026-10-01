@@ -242,7 +242,12 @@ afterEach(cleanup);
 describe('spatial workspace actual interactions', () => {
   it.each([
     ['zh-CN', zh, '原资料未公布浓度明细', '政策要求不代表实测成效'],
-    ['en', en, 'Concentration details not published', 'Policy requirements are not observed outcomes'],
+    [
+      'en',
+      en,
+      'Concentration details not published',
+      'Policy requirements are not observed outcomes',
+    ],
   ] as const)(
     'explains missing-reason codes in %s while retaining original codes, evidence and counts',
     (locale, copy, concentrationLabel, policyLabel) => {
@@ -275,11 +280,15 @@ describe('spatial workspace actual interactions', () => {
       expect(within(dossier).getByText(policyLabel)).toBeTruthy();
       for (const reason of reasons)
         expect(within(dossier).getByText(reason)).toBeTruthy();
-      expect(screen.getByTestId('spatial-original-evidence').textContent).toContain(
-        '潮白河 7.8 mg/L',
+      expect(
+        screen.getByTestId('spatial-original-evidence').textContent,
+      ).toContain('潮白河 7.8 mg/L');
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+        '1',
       );
-      expect(screen.getByTestId('spatial-record-count').textContent).toContain('1');
-      expect(screen.getByTestId('spatial-geometry-count').textContent).toContain('1');
+      expect(
+        screen.getByTestId('spatial-geometry-count').textContent,
+      ).toContain('1');
       expect(JSON.stringify(data)).toBe(originalData);
     },
   );

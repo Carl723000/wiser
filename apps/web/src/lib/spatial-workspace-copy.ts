@@ -87,6 +87,7 @@ export interface SpatialWorkspaceCopy {
   unit: string;
   unknown: string;
   missing: string;
+  missingReasons?: Readonly<Record<string, string>>;
   openOriginal: string;
   noGeometry: string;
   locatePosition: string;

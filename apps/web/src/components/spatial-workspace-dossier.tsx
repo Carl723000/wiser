@@ -194,9 +194,20 @@ export function SpatialWorkspaceDossier({
                 <div className={styles.missing}>
                   <strong>{copy.missing}</strong>
                   <ul>
-                    {record.missingReasons.map((reason, index) => (
-                      <li key={index}>{reason}</li>
-                    ))}
+                    {record.missingReasons.map((reason, index) => {
+                      const explanation = copy.missingReasons?.[reason];
+                      return (
+                        <li key={index}>
+                          {typeof explanation === 'string' ? (
+                            <>
+                              <span>{explanation}</span> <small>{reason}</small>
+                            </>
+                          ) : (
+                            reason
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
