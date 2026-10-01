@@ -1,0 +1,115 @@
+.workspace {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  min-width: 0;
+}
+.heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+.heading h1 {
+  margin: 0;
+}
+.heading p {
+  margin: 0.5rem 0;
+}
+.status {
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.9rem;
+  color: var(--text-secondary);
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-block: 1rem;
+}
+.tabs button,
+.workspace button,
+.workspace select {
+  font: inherit;
+}
+.tabs button {
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.tabs button[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-on-fill);
+  border-color: var(--accent);
+}
+.workspace :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  padding: 1.2rem;
+  margin-block: 1rem;
+  min-width: 0;
+}
+.tableScroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.tableScroll table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.tableScroll th,
+.tableScroll td {
+  padding: 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 1rem;
+}
+.product img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.product {
+  min-width: 0;
+}
+.product dl div {
+  display: flex;
+  justify-content: space-between;
+}
+.alert {
+  border: 1px solid var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--text-primary);
+  padding: 1rem;
+  border-radius: 0.6rem;
+}
+.practice {
+  border: 1px solid var(--warning-border);
+  padding: 1rem;
+  margin-top: 1rem;
+  border-radius: 0.6rem;
+}
+@media (max-width: 600px) {
+  .workspace {
+    padding: 0.75rem;
+  }
+  .card {
+    padding: 0.75rem;
+  }
+}

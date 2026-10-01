@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-10-02
+lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
 ---
 
 ## Two frontend applications
@@ -275,3 +275,11 @@ The resource-enabled project workbench includes a batch-access tab for managers 
 Batch member details show frozen differences by action, with an explicit unknown state for older previews. Changed grants prompt a fresh application; current effective access is never inferred from a historical receipt.
 
 The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and either an optional expiry or “Until you disconnect.” Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.
+
+## Local multi-region material workspace
+
+`/{locale}/data-foundation/spatial-workspace` is a local processing and reading workbench, never fallback data for a failed Data API read. It reuses the WISER shell, locales, themes and map components and consumes validated local source versions, evidence locators, times and location candidates. It does not change managed material identity, approval or publication.
+
+Enabling requires non-production, `WISER_AUTH_MODE=off`, `WISER_SPATIAL_WORKSPACE_MODE=local` and a loopback Host. `WISER_SPATIAL_INPUT_MANIFEST` names an absolute JSON path. Missing input, malformed input and inconsistent versions have separate closed states; no fixture fallback is permitted. This configuration is for a scoped development preview, not target deployment.
+
+The server validates source and geometry versions, hash shape and display rights, strips original paths and unknown fields, and removes undisplayable sources and related records. Derived PNGs use a bounded loopback-only `spatial-workspace-media` route, disabled in production. Existing Auth, Data API, RLS, intake and professional approval remain separate acceptance paths.

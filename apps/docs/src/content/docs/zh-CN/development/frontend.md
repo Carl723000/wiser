@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-10-02
+lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
 ---
 
 ## 两个前端应用
@@ -273,3 +273,11 @@ BusinessQuery v2允许已审与待审关系共同展示，但不改变断言状�
 “来源许可”页签复用会话核验代理，提供有界的申请记录及独立发布、驳回、撤回和撤销操作；服务端另行核对明确配置的来源管理岗位。历史办理结果与当前许可分别标识，并显示核验时间。切换项目、刷新被拒或页面隐藏时清除旧记录，已知期限边界触发重新核验；结果不明的重试保留同一幂等键。来源登记与管理元数据选择器仍需单独接入，本审批页面不授予个人读取权限。
 
 账户区通过 `/[locale]/account/agents` 管理本人的 AI/MCP 连接。页面验证当前会话，显示有界的本人连接、状态和可选到期时间；无固定期限显示“直到手动断开”。原生断开表单执行同源检查，并区分提供方撤销尚未完成的重试状态。断开完成后，用户回到原客户端重新授权。
+
+## 本地多流域资料工作台
+
+`/{locale}/data-foundation/spatial-workspace` 是本机资料加工与查阅工作台，不是 Data API 读取失败时的替代数据。它复用 WISER Shell、双语、主题和地图组件，消费经过校验的本地来源版本、原文定位、时间及位置候选；不会改变正式资料的身份、审核或发布状态。
+
+启用须同时满足非 production、`WISER_AUTH_MODE=off`、`WISER_SPATIAL_WORKSPACE_MODE=local` 和本机 Host。`WISER_SPATIAL_INPUT_MANIFEST` 是绝对路径 JSON；未配置、损坏或版本不一致分别收敛，禁止伪造资料回退。配置只用于局部开发预览，不进入正式部署。
+
+服务器校验固定来源与几何来源版本、哈希格式和使用条件，剥离原件路径及未知字段；不可显示的来源和关联记录清除。派生影像 PNG 只通过本机受限 `spatial-workspace-media` 路由交付，生产环境不可用。正式 Auth、Data API、RLS、入库与专业审核继续按既有流程另验。

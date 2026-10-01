@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-10-02
+lastReviewedCommit: a99d278ab2403cbbd48dfccfbca13de92e2bcfd5
 ---
 
 ## What runs today
@@ -450,3 +450,9 @@ Managed projects admit the explicit resource-aware capability set. Ingestion, op
 Resource administration uses a metadata-only validation port. After checking the current source policy under control-plane project/settings locks, Platform issues a process-local, single-use permit bound to the verified actor/session, tenant, project, purpose, roles, scopes, security ceiling, authority version, exact resources and requested actions. It expires within five seconds and never outlives source permission. A serialized copy, changed request or replay is rejected before Data access. The port performs one bounded boolean check of fixed versions, publication, acceptance and source authorization text in a private read-only transaction. It installs only those exact references in the existing transaction-local version RLS transport; it never changes personal grants or passes that connection/scope to content, evidence, original or export adapters. Tenant/project/security RLS remains effective. Cancellation and expired results fail closed. Personal content access is neither required nor granted. External sources still require their separate registry port; management coverage browsing remains a separate integration gate.
 
 The source management catalog runs under `wiser_data_metadata`, a non-login, non-bypass role with a fixed catalog-column allowlist. Its deployment grants include the `security.resource_related_ids(text)` invoker required by the current catalog RLS policy; content columns, assets and evidence stay inaccessible. The real PostgreSQL API verification lane exercises this deployed role configuration after migrations.
+
+## Local candidates and managed materials
+
+The spatial workbench `WorkspacePack` is a narrow frontend/local-processor interchange, not a new public query protocol or authority identity store. It preserves originals, extracted rows, textual places, reference geometries, method evidence and pending professional review separately. Same-name source-local objects are not merged. Original paths never reach the browser, and derived graphics cannot expose sources lacking display rights.
+
+An independent synthetic candidate supports accept, exclude and pending exercises followed by source/rule impact calculation. Real candidates remain pending. Exercises are not professional review, authorization, managed correction or publication. Standard intake, ordinary-account authorization and live provider access require their own end-to-end acceptance.
