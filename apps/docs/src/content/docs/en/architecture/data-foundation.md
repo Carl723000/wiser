@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5bfb45754bb42a0b5f3178b16595b69201b3e4b8
+lastReviewedCommit: 30a76bda7ffcf2b7347a9bc2e0ec559a80400c2b
 ---
 
 ## What runs today
@@ -476,3 +476,7 @@ An independent synthetic candidate supports accept, exclude and pending exercise
 The local native-window reader accepts arbitrary native row/column pixels and bounded integer rectangles from a fixed four-product manifest. It preserves caller-supplied local source/version references and verifies product/scene/acquisition tags, native grids and file/manifest integrity before handing out the result; authority asset/version mapping is not verified by this CLI. Limits are 4,096 spatial cells, 24,576 channel values, 1 MiB of returned value/mask arrays and 8 MiB of exact UTF-8 JSON. These bounds do not limit source block IO or whole-file hashing. It never samples thumbnails, pads/clips out-of-range windows or silently resamples mismatched grids. Unsigned sidecars are rejected.
 
 Pure window statistics preserve encoded values, individual channel masks, explicit quality selection, overlapping invalid reasons and separate joint denominators. Valid zero remains a value; nonfinite values and NoData labels have explicit reason encodings, and empty statistics stay null. Projected grid area uses the finite affine determinant and a verified linear-unit conversion; angular/unknown units keep square metres unknown. This area is not measured water area or true surface area. The older thumbnail-report contract rejects nonfinite labels it cannot express. This internal CLI/rule slice adds no public query, authority model, authorization, persistence, professional decision or browser selection; each requires its own governed integration and acceptance.
+
+### Local readiness reading adapter
+
+The local Web workbench consumes the pure rule through the explicit `@wiser/data-core/project-readiness` entry. Question drilldowns retain their actual work/version/asset, object/record, field, check, coverage-cell, task and use-check grains. The adapter keeps pending records pending and ignores synthetic supplements. Displayable geometry-reference counts include every still-readable fixed position reference, not only the representative geometry used in a rule record; neither count represents sampling sites. A declared publication series may correct the date role for this readonly coverage inspection only; original workbench records remain unchanged. These local facts do not grant access, publish materials, persist candidates or replace authenticated HTTP acceptance.

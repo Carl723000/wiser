@@ -20,6 +20,7 @@
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.117.1",
     "@wiser/data-contracts": "workspace:*",
+    "@wiser/data-core": "workspace:*",
     "@wiser/platform-contracts": "workspace:*",
     "echarts": "6.1.0",
     "gcoord": "1.0.7",

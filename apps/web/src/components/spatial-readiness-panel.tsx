@@ -1,23 +1,37 @@
 'use client';
 
+import { useMemo, useRef, useState } from 'react';
+import {
+  readinessRecordKey,
+  type ProjectReadinessInput,
+} from '@wiser/data-core/project-readiness';
 import {
   buildReadiness,
+  NEED_IDS,
   type NeedState,
   type ReadinessCounts,
+  type ReadinessGrain,
   type ReadinessQuestionId,
   type UseId,
 } from '../lib/spatial-readiness';
+import {
+  fixedSourceKey,
+  materialReference,
+  type ReadinessSelection,
+} from '../lib/spatial-readiness-facts';
 import type {
   Material,
   RegionId,
   WorkspacePack,
 } from '../lib/spatial-workspace-contract';
+import { ContextHelp } from './context-help';
 import styles from './spatial-readiness-panel.module.css';
 
 export interface ReadinessCopy {
   title: string;
   scopeNote: string;
   unknown: string;
+  help: string;
   counts: Record<keyof ReadinessCounts, string>;
   questionLabels: Record<ReadinessQuestionId, string>;
   detailLabels: Record<string, string>;
@@ -29,6 +43,8 @@ export interface ReadinessCopy {
   recordsLabel: string;
   states: Record<NeedState, string>;
   inspect: string;
+  selectNeed: string;
+  factsUnavailable: string;
   usesHeading: string;
   useLabels: Record<UseId, string>;
   useEligible: string;
@@ -40,31 +56,248 @@ export interface ReadinessCopy {
   gapLabel: string;
   none: string;
   staleLabel: string;
+  questionStates: Record<'KNOWN' | 'PARTIAL' | 'UNKNOWN', string>;
+  grains: Record<ReadinessGrain, string>;
+  selectionHeading: string;
+  activeScope: string;
+  startMonth: string;
+  endMonth: string;
+  dateRole: string;
+  dateRoles: Record<ReadinessSelection['dateRole'], string>;
+  applyWindow: string;
+  clearWindow: string;
+  windowError: string;
+  windowHelp: string;
+  closeDetails: string;
+  more: string;
+  noDetails: string;
+  emptyValue: string;
+  owner: string;
+  unassigned: string;
+  processor: string;
+  notRegistered: string;
+  nextAction: string;
+  fieldType: string;
+  unit: string;
+  technicalDetails: string;
+  evidence: string;
+  coverageModes: Record<'raw' | 'approved' | 'hypothetical', string>;
+  hypotheticalNote: string;
+  presentMonth: string;
+  missingMonth: string;
+  taskKinds: Record<'CLEANING' | 'QUALITY_CONTROL', string>;
+  factStates: Record<string, string>;
 }
 export interface SpatialReadinessPanelProps {
   pack: WorkspacePack;
   regionId: RegionId;
-  staleRecordIds?: string[];
+  staleRecordIds?: readonly string[];
+  facts?: ProjectReadinessInput | null;
   onSelectRecord?: (id: string) => void;
+  sourceHref?: (sourceId: string, versionId: string) => string;
   copy: ReadinessCopy;
 }
+
+const pageSize = 40;
+const emptyStaleRecordIds: readonly string[] = Object.freeze([]);
 export function SpatialReadinessPanel({
   pack,
   regionId,
-  staleRecordIds = [],
+  staleRecordIds = emptyStaleRecordIds,
+  facts = null,
   onSelectRecord,
+  sourceHref,
   copy,
 }: SpatialReadinessPanelProps) {
-  const result = buildReadiness(pack, regionId, staleRecordIds);
+  const [needId, setNeedId] = useState('K5-001');
+  const [window, setWindow] = useState(facts?.requirement.window ?? null);
+  const [startMonth, setStartMonth] = useState(window?.start ?? '');
+  const [endMonth, setEndMonth] = useState(window?.end ?? '');
+  const [dateRole, setDateRole] = useState<ReadinessSelection['dateRole']>(
+    facts?.requirement.dateRole ?? 'PUBLICATION',
+  );
+  const [windowError, setWindowError] = useState(false);
+  const [opened, setOpened] = useState<{
+    id: ReadinessQuestionId;
+    needId: string;
+    regionId: RegionId;
+    scope: string;
+  } | null>(null);
+  const [limit, setLimit] = useState(pageSize);
+  const [coverageMode, setCoverageMode] = useState<
+    'raw' | 'approved' | 'hypothetical'
+  >('raw');
+  const inspector = useRef<HTMLElement>(null);
+  const result = useMemo(
+    () =>
+      buildReadiness(pack, regionId, staleRecordIds, facts, {
+        needId,
+        window,
+        dateRole,
+      }),
+    [pack, regionId, staleRecordIds, facts, needId, window, dateRole],
+  );
   const label = (code: string) => copy.detailLabels[code] ?? copy.unknown;
+  // A detail list cannot survive a changed source/version/readability or fact set.
+  const scope = JSON.stringify([
+    window,
+    dateRole,
+    facts?.requirement.version,
+    pack.processingVersion,
+    pack.sources.map((source) => [
+      source.id,
+      source.versionId,
+      source.originalSha256,
+      source.rights.displayAllowed,
+    ]),
+    staleRecordIds,
+    result.project.records,
+    result.project.checks,
+    result.project.fields,
+    result.project.tasks,
+    result.project.useChecks,
+  ]);
+  const selected =
+    opened?.needId === needId &&
+    opened.regionId === regionId &&
+    opened.scope === scope
+      ? result.questions.find((question) => question.id === opened.id)
+      : null;
+  const rows = result.project.monthly[coverageMode];
+  function open(id: ReadinessQuestionId) {
+    setOpened({ id, needId, regionId, scope });
+    setLimit(pageSize);
+    setCoverageMode('raw');
+    // The section remains in the document; keyboard users can continue at its heading.
+    if (typeof requestAnimationFrame === 'function')
+      requestAnimationFrame(() => inspector.current?.focus());
+  }
+  function applyWindow() {
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/;
+    const ordinal = (value: string) =>
+      Number(value.slice(0, 4)) * 12 + Number(value.slice(5));
+    if (
+      !month.test(startMonth) ||
+      !month.test(endMonth) ||
+      startMonth > endMonth ||
+      ordinal(endMonth) - ordinal(startMonth) >= 1200
+    ) {
+      setWindowError(true);
+      return;
+    }
+    setWindowError(false);
+    setWindow({ start: startMonth, end: endMonth });
+  }
+  function recordButton(id: string) {
+    const record = result.records.find((item) => item.id === id);
+    if (!record) return null;
+    const source = pack.sources.find(
+      (item) =>
+        item.id === record.sourceId &&
+        item.versionId === record.versionId &&
+        item.rights.displayAllowed,
+    );
+    if (!source) return null;
+    const fact = result.project.records.find((item) => item.id === id);
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => onSelectRecord?.(id)}
+        disabled={!onSelectRecord}
+      >
+        <strong>{record.objectLabel}</strong>
+        <span>
+          {source.title} · {fact?.time.value ?? copy.unknown} · {record.metric}{' '}
+          ·{' '}
+          {record.value === null
+            ? copy.unknown
+            : record.value === ''
+              ? copy.emptyValue
+              : record.value}
+        </span>
+      </button>
+    );
+  }
   return (
     <section className={styles.panel} aria-label={copy.title}>
-      <h2>{copy.title}</h2>
-      <p className={styles.scope}>{copy.scopeNote}</p>
+      <h2>
+        {copy.title}{' '}
+        <ContextHelp label={copy.help}>{copy.scopeNote}</ContextHelp>
+      </h2>
+      <fieldset className={styles.selection}>
+        <legend>{copy.selectionHeading}</legend>
+        <label>
+          {copy.needLabel}
+          <select
+            aria-label={copy.needLabel}
+            value={needId}
+            onChange={(event) => setNeedId(event.target.value)}
+          >
+            {NEED_IDS.map((id) => (
+              <option key={id} value={id}>
+                {id} · {copy.needLabels[id] ?? copy.unknown}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {copy.startMonth}
+          <input
+            type="month"
+            value={startMonth}
+            onChange={(event) => setStartMonth(event.target.value)}
+          />
+        </label>
+        <label>
+          {copy.endMonth}
+          <input
+            type="month"
+            value={endMonth}
+            onChange={(event) => setEndMonth(event.target.value)}
+          />
+        </label>
+        <label>
+          {copy.dateRole}
+          <select
+            aria-label={copy.dateRole}
+            value={dateRole}
+            onChange={(event) =>
+              setDateRole(event.target.value as ReadinessSelection['dateRole'])
+            }
+          >
+            {Object.entries(copy.dateRoles).map(([id, title]) => (
+              <option key={id} value={id}>
+                {title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={applyWindow}>
+          {copy.applyWindow}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setWindow(null);
+            setStartMonth('');
+            setEndMonth('');
+            setWindowError(false);
+          }}
+        >
+          {copy.clearWindow}
+        </button>
+        <ContextHelp label={copy.help}>{copy.windowHelp}</ContextHelp>
+        {windowError && <p role="alert">{copy.windowError}</p>}
+      </fieldset>
+      <p data-testid="readiness-active-scope">
+        {copy.activeScope}: {needId} · {copy.dateRoles[dateRole]} ·{' '}
+        {window ? `${window.start} — ${window.end}` : copy.unknown}
+      </p>
       <dl className={styles.counts}>
         {(Object.keys(result.counts) as (keyof ReadinessCounts)[]).map(
           (key) => (
-            <div key={key}>
+            <div key={key} data-readiness-count={key}>
               <dt>{copy.counts[key]}</dt>
               <dd>{result.counts[key] ?? copy.unknown}</dd>
             </div>
@@ -79,13 +312,16 @@ export function SpatialReadinessPanel({
       <div className={styles.questions}>
         {result.questions.map((question) => (
           <article key={question.id}>
-            <h3>{copy.questionLabels[question.id]}</h3>
-            <p>{question.detailCodes.map(label).join(' · ')}</p>
-            {question.id === 'inventory' && (
-              <p>
-                {copy.counts.sources}: {result.counts.sources} ·{' '}
-                {copy.recordsLabel}: {question.recordIds.length}
-              </p>
+            <div className={styles.questionHeading}>
+              <h3>{copy.questionLabels[question.id]}</h3>
+              <span data-state={question.state}>
+                {copy.questionStates[question.state]}
+              </span>
+            </div>
+            {!!question.detailCodes.length && (
+              <ContextHelp label={copy.help}>
+                {question.detailCodes.map(label).join(' · ')}
+              </ContextHelp>
             )}
             {question.id === 'structure' && (
               <p>
@@ -94,47 +330,329 @@ export function SpatialReadinessPanel({
               </p>
             )}
             {question.id === 'density' && (
-              <>
-                <p>
-                  {copy.reportWindowsLabel}:{' '}
-                  {result.density.reportWindows.join(', ') || copy.unknown}
-                </p>
-                <p>
-                  {copy.missingWindowsLabel}:{' '}
-                  {result.density.missingReportWindows.join(', ') || copy.none}
-                </p>
-              </>
+              <p>
+                {copy.reportWindowsLabel}:{' '}
+                {result.density.reportWindows.join(', ') || copy.unknown}
+              </p>
             )}
-            {question.id === 'quality' && (
-              <details>
-                <summary>{copy.stateLabel}</summary>
-                {result.statuses.map(({ sourceId, status }) => (
-                  <dl key={sourceId}>
-                    <dt>{sourceId}</dt>
-                    {(Object.keys(status) as (keyof Material['status'])[]).map(
-                      (key) => (
-                        <dd key={key}>
-                          {copy.statusLabels[key]}:{' '}
-                          {copy.detailLabels[status[key]] ?? status[key]}
-                        </dd>
-                      ),
-                    )}
-                  </dl>
-                ))}
-              </details>
-            )}
-            {question.recordIds.length > 0 && onSelectRecord && (
-              <button
-                type="button"
-                onClick={() => onSelectRecord(question.recordIds[0])}
-              >
-                {copy.inspect} ({question.recordIds.length})
+            {question.details.length > 0 ? (
+              <button type="button" onClick={() => open(question.id)}>
+                {copy.inspect}
               </button>
+            ) : (
+              <p>{copy.noDetails}</p>
             )}
           </article>
         ))}
       </div>
-      <details className={styles.needs} open>
+      {selected && (
+        <section
+          ref={inspector}
+          tabIndex={-1}
+          className={styles.inspector}
+          aria-label={copy.questionLabels[selected.id]}
+        >
+          <div className={styles.questionHeading}>
+            <h3>{copy.questionLabels[selected.id]}</h3>
+            <button type="button" onClick={() => setOpened(null)}>
+              {copy.closeDetails}
+            </button>
+          </div>
+          {(selected.id === 'density' || selected.id === 'gaps') &&
+            result.project.monthly.raw.length > 0 && (
+              <>
+                <div className={styles.coverageModes}>
+                  {(['raw', 'approved', 'hypothetical'] as const)
+                    .filter(
+                      (mode) =>
+                        mode === 'raw' ||
+                        (mode === 'approved'
+                          ? result.project.monthly.appliedApprovedIds.length
+                          : result.project.monthly.appliedHypothesisIds.length),
+                    )
+                    .map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-pressed={coverageMode === mode}
+                        onClick={() => {
+                          setCoverageMode(mode);
+                          setLimit(pageSize);
+                        }}
+                      >
+                        {copy.coverageModes[mode]}
+                      </button>
+                    ))}
+                </div>
+                {coverageMode === 'hypothetical' && (
+                  <p role="status">{copy.hypotheticalNote}</p>
+                )}
+                <div className={styles.tableScroll}>
+                  <table aria-label={copy.reportWindowsLabel}>
+                    <thead>
+                      <tr>
+                        <th>{copy.grains.SOURCE_OBJECT}</th>
+                        <th>{copy.reportWindowsLabel}</th>
+                        <th>{copy.missingWindowsLabel}</th>
+                        <th>{copy.recordsLabel}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.slice(0, limit).map((row) => (
+                        <tr key={JSON.stringify(row.objectKeys)}>
+                          <th scope="row">{row.originalNames.join(' ↔ ')}</th>
+                          <td>
+                            {row.observedMonths.join(', ') || copy.unknown}
+                          </td>
+                          <td>
+                            {row.missingMonths === null
+                              ? copy.unknown
+                              : row.missingMonths.join(', ') || copy.none}
+                          </td>
+                          <td>
+                            <details>
+                              <summary>{row.recordIds.length}</summary>
+                              {result.project.records
+                                .filter((record) =>
+                                  row.recordIds.includes(
+                                    readinessRecordKey(record),
+                                  ),
+                                )
+                                .map((record) => recordButton(record.id))}
+                            </details>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {rows.length > limit && (
+                  <button
+                    type="button"
+                    onClick={() => setLimit(limit + pageSize)}
+                  >
+                    {copy.more} ({Math.min(limit, rows.length)}/{rows.length})
+                  </button>
+                )}
+              </>
+            )}
+          {[...new Set(selected.details.map((detail) => detail.grain))].map(
+            (grain) => {
+              const entries = selected.details.filter(
+                (detail) => detail.grain === grain,
+              );
+              return (
+                <details
+                  key={grain}
+                  open={
+                    grain === 'RECORD' ||
+                    selected.details.every((detail) => detail.grain === grain)
+                  }
+                >
+                  <summary>
+                    {copy.grains[grain]} ({entries.length})
+                  </summary>
+                  <div
+                    role="group"
+                    aria-label={copy.grains[grain]}
+                    className={styles.detailList}
+                  >
+                    {entries.slice(0, limit).map((entry) => {
+                      const task =
+                        grain === 'TASK'
+                          ? result.project.tasks.find(
+                              (item) => item.id === entry.factId,
+                            )
+                          : undefined;
+                      const check =
+                        grain === 'CHECK'
+                          ? result.project.checks.find(
+                              (item) => item.id === entry.factId,
+                            )
+                          : undefined;
+                      const field =
+                        grain === 'FIELD'
+                          ? result.project.fields.find(
+                              (item) => item.id === entry.factId,
+                            )
+                          : undefined;
+                      const use =
+                        grain === 'USE_CHECK'
+                          ? result.project.useChecks.find(
+                              (item) => item.id === entry.factId,
+                            )
+                          : undefined;
+                      const correspondence =
+                        grain === 'CORRESPONDENCE'
+                          ? facts?.correspondences.find(
+                              (item) => item.id === entry.factId,
+                            )
+                          : undefined;
+                      return (
+                        <div key={entry.key}>
+                          {grain === 'RECORD' ? (
+                            recordButton(entry.recordIds[0])
+                          ) : (
+                            <>
+                              <strong>
+                                {entry.title ||
+                                  (task
+                                    ? copy.taskKinds[task.kind]
+                                    : copy.grains[grain])}
+                                {entry.month ? ` · ${entry.month}` : ''}
+                              </strong>
+                              {entry.month && (
+                                <span>
+                                  {entry.missing
+                                    ? copy.missingMonth
+                                    : copy.presentMonth}
+                                </span>
+                              )}
+                              {task && (
+                                <dl>
+                                  <dt>{copy.stateLabel}</dt>
+                                  <dd>
+                                    {copy.factStates[task.state] ??
+                                      copy.unknown}
+                                  </dd>
+                                  <dt>{copy.owner}</dt>
+                                  <dd>{task.owner ?? copy.unassigned}</dd>
+                                  <dt>{copy.processor}</dt>
+                                  <dd>
+                                    {task.processor
+                                      ? `${task.processor.name} · ${task.processor.version}`
+                                      : copy.notRegistered}
+                                  </dd>
+                                  <dt>{copy.nextAction}</dt>
+                                  <dd>{task.nextAction ?? copy.unknown}</dd>
+                                </dl>
+                              )}
+                              {check && (
+                                <>
+                                  <p>
+                                    {copy.factStates[check.state] ??
+                                      copy.unknown}
+                                  </p>
+                                  <ul>
+                                    {check.findings.map((finding) => (
+                                      <li key={finding}>{label(finding)}</li>
+                                    ))}
+                                  </ul>
+                                </>
+                              )}
+                              {field && (
+                                <dl>
+                                  <dt>{copy.fieldType}</dt>
+                                  <dd>{field.type || copy.unknown}</dd>
+                                  <dt>{copy.unit}</dt>
+                                  <dd>{field.unit ?? copy.unknown}</dd>
+                                </dl>
+                              )}
+                              {use && (
+                                <>
+                                  <p>
+                                    {copy.factStates[use.state] ?? copy.unknown}
+                                  </p>
+                                  <p>{use.reasons.map(label).join(' · ')}</p>
+                                </>
+                              )}
+                              {correspondence && (
+                                <p>
+                                  {copy.factStates[correspondence.status] ??
+                                    copy.unknown}
+                                </p>
+                              )}
+                              {sourceHref &&
+                                ['WORK', 'VERSION', 'ASSET'].includes(grain) &&
+                                result.sources
+                                  .filter((source) =>
+                                    entry.sourceRefs.some(
+                                      (ref) =>
+                                        fixedSourceKey(ref) ===
+                                        fixedSourceKey(
+                                          materialReference(source),
+                                        ),
+                                    ),
+                                  )
+                                  .map((source) => (
+                                    <a
+                                      key={`${source.id}:${source.versionId}`}
+                                      href={sourceHref(
+                                        source.id,
+                                        source.versionId,
+                                      )}
+                                    >
+                                      {source.title}
+                                    </a>
+                                  ))}
+                              {!!entry.recordIds.length && (
+                                <details>
+                                  <summary>
+                                    {copy.recordsLabel} (
+                                    {entry.recordIds.length})
+                                  </summary>
+                                  {entry.recordIds
+                                    .slice(0, limit)
+                                    .map(recordButton)}
+                                  {entry.recordIds.length > limit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setLimit(limit + pageSize)}
+                                    >
+                                      {copy.more} ({limit}/
+                                      {entry.recordIds.length})
+                                    </button>
+                                  )}
+                                </details>
+                              )}
+                              {!!(
+                                task?.evidence ??
+                                check?.evidence ??
+                                field?.evidence ??
+                                use?.evidence ??
+                                correspondence?.evidence
+                              )?.length && (
+                                <details>
+                                  <summary>{copy.evidence}</summary>
+                                  {(
+                                    task?.evidence ??
+                                    check?.evidence ??
+                                    field?.evidence ??
+                                    use?.evidence ??
+                                    correspondence?.evidence
+                                  )?.map((item, index) => (
+                                    <blockquote key={index}>
+                                      {item.excerpt}
+                                    </blockquote>
+                                  ))}
+                                </details>
+                              )}
+                              <details>
+                                <summary>{copy.technicalDetails}</summary>
+                                <code>{entry.key}</code>
+                              </details>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {entries.length > limit && (
+                      <button
+                        type="button"
+                        onClick={() => setLimit(limit + pageSize)}
+                      >
+                        {copy.more} ({Math.min(limit, entries.length)}/
+                        {entries.length})
+                      </button>
+                    )}
+                  </div>
+                </details>
+              );
+            },
+          )}
+        </section>
+      )}
+      <details className={styles.needs}>
         <summary>{copy.needHeading}</summary>
         <div className={styles.tableScroll}>
           <table>
@@ -157,12 +675,15 @@ export function SpatialReadinessPanel({
                   <td>{copy.states[need.state]}</td>
                   <td>{need.sourceIds.length}</td>
                   <td>
-                    {need.recordIds.length > 0 && onSelectRecord ? (
+                    {need.recordIds.length > 0 ? (
                       <button
                         type="button"
-                        onClick={() => onSelectRecord(need.recordIds[0])}
+                        onClick={() => {
+                          setNeedId(need.id);
+                          setOpened(null);
+                        }}
                       >
-                        {copy.inspect} ({need.recordIds.length})
+                        {copy.selectNeed} ({need.recordIds.length})
                       </button>
                     ) : (
                       need.recordIds.length
@@ -177,7 +698,7 @@ export function SpatialReadinessPanel({
           </table>
         </div>
       </details>
-      <details className={styles.uses} open>
+      <details className={styles.uses}>
         <summary>{copy.usesHeading}</summary>
         <ul>
           {result.uses.map((use) => (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { ProjectReadinessInput } from '@wiser/data-core';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import type { RegionId, WorkspacePack } from '@/lib/spatial-workspace-contract';
 import { versionImpact } from '@/lib/spatial-version-impact';
@@ -22,10 +23,14 @@ export function SpatialWorkspaceShell({
   pack,
   locale,
   initialRecordId = null,
+  readinessFacts = null,
+  readinessState = 'absent',
 }: {
   pack: WorkspacePack;
   locale: Locale;
   initialRecordId?: string | null;
+  readinessFacts?: ProjectReadinessInput | null;
+  readinessState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
 }) {
   const dictionary = getDictionary(locale).dataFoundation;
   const copy = dictionary.spatialManagement;
@@ -249,11 +254,18 @@ export function SpatialWorkspaceShell({
             ))}
           </select>
         </label>
+        {(readinessState === 'invalid' || readinessState === 'unavailable') && (
+          <p role="status">{dictionary.spatialReadiness.factsUnavailable}</p>
+        )}
         <SpatialReadinessPanel
           pack={pack}
           regionId={impact ? exerciseRegionId : regionId}
           copy={dictionary.spatialReadiness}
-          staleRecordIds={impact?.recordIds ?? []}
+          staleRecordIds={impact?.recordIds}
+          facts={readinessFacts}
+          sourceHref={(sourceId, versionId) =>
+            `/${locale}/data-foundation/spatial-workspace/source?source=${encodeURIComponent(sourceId)}&version=${encodeURIComponent(versionId)}`
+          }
           onSelectRecord={selectRecord}
         />
       </section>

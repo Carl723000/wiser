@@ -38,12 +38,12 @@ vi.mock('./spatial-workspace', () => ({
 vi.mock('./spatial-readiness-panel', () => ({
   SpatialReadinessPanel: (props: {
     onSelectRecord: (id: string) => void;
-    staleRecordIds: string[];
+    staleRecordIds?: readonly string[];
   }) => (
     <div>
       <button onClick={() => props.onSelectRecord('r1')}>inspect record</button>
       <output data-testid="matrix-impact">
-        {JSON.stringify(props.staleRecordIds)}
+        {JSON.stringify(props.staleRecordIds ?? [])}
       </output>
     </div>
   ),

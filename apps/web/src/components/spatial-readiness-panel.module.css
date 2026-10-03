@@ -1,5 +1,7 @@
 .panel {
   color: var(--text-primary, #172b3a);
+  font-size: 16px;
+  line-height: 1.55;
 }
 .panel h2 {
   font-size: 20px;
@@ -47,7 +49,7 @@
 }
 .questions p {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 16px;
   overflow-wrap: anywhere;
 }
 .panel button {
@@ -126,6 +128,97 @@
   color: var(--warning);
   background: var(--warning-soft);
   padding: 12px;
+}
+.selection {
+  min-inline-size: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.selection label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.selection input,
+.selection select {
+  min-inline-size: 0;
+  inline-size: 100%;
+  box-sizing: border-box;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  max-width: 100%;
+}
+.questionHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.questionHeading span {
+  color: var(--text-secondary);
+  background: var(--surface-tint);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 3px 9px;
+}
+.inspector {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.inspector:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.inspector table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.inspector th,
+.inspector td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.coverageModes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.detailList {
+  display: grid;
+  gap: 12px;
+}
+.detailList > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.inspector button span,
+.detailList a,
+.detailList span {
+  display: block;
+  margin-top: 5px;
+}
+.inspector button {
+  text-align: left;
+  max-width: 100%;
+}
+.detailList code {
+  overflow-wrap: anywhere;
 }
 @media (max-width: 850px) {
   .questions {

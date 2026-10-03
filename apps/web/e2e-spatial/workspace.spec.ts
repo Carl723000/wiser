@@ -268,8 +268,15 @@ test('actual regional matrix, fixed evidence, map camera, linked comparison, sav
   await page
     .getByRole('combobox', { name: /浏览范围/ })
     .selectOption('chaobai');
-  const row = page.locator('tr').filter({ hasText: 'K5-001' });
-  await row.getByRole('button').first().click();
+  const quantity = page
+    .getByRole('heading', { name: '有多少' })
+    .locator('..')
+    .locator('..');
+  await quantity.getByRole('button', { name: '查看明细', exact: true }).click();
+  const records = page
+    .getByRole('region', { name: '有多少' })
+    .getByRole('group', { name: '原表记录' });
+  await records.getByRole('button').nth(1).click();
   const dossier = page.getByRole('region', { name: '对象证据档案' });
   await expect(page.getByRole('tab', { name: '空间与证据' })).toHaveAttribute(
     'aria-selected',
@@ -369,7 +376,12 @@ test('actual regional matrix, fixed evidence, map camera, linked comparison, sav
     .getByRole('button', { name: '恢复场景', exact: true })
     .click();
   await page.getByRole('tab', { name: '资料就绪与复核' }).click();
-  await expect(page.getByText(/受影响记录需重新核对/).first()).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: '资料就绪管理' }).getByRole('status'),
+  ).toContainText('受影响记录需重新核对');
+  await expect(
+    page.getByRole('region', { name: '资料就绪管理' }).getByRole('status'),
+  ).toBeVisible();
   await page
     .getByRole('button', { name: '结束演练并返回资料', exact: true })
     .click();
@@ -681,7 +693,10 @@ test.describe('narrow spatial reading', () => {
         await page.screenshot({
           path: join(output, `${locale}-single-pane-map-390.png`),
         });
-        await evidence.tap();
+      }
+      await evidence.tap();
+      await expect(evidence).toHaveAttribute('aria-selected', 'true');
+      if (output) {
         await tabs.scrollIntoViewIfNeeded();
         await page.screenshot({
           path: join(output, `${locale}-single-pane-evidence-390.png`),

@@ -7,6 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { getDictionary } from '../lib/i18n';
 import { syntheticReviewRecord } from '../lib/spatial-candidate-review';
 import {
   SpatialReadinessPanel,
@@ -16,7 +17,11 @@ import type {
   Material,
   WorkspacePack,
 } from '../lib/spatial-workspace-contract';
+import type { ProjectReadinessInput } from '@wiser/data-core/project-readiness';
+import { materialReference } from '../lib/spatial-readiness-facts';
+import * as readiness from '../lib/spatial-readiness';
 const copy: ReadinessCopy = {
+  ...getDictionary('en').dataFoundation.spatialReadiness,
   title: 'Readiness',
   scopeNote: 'Slots are not datasets',
   unknown: 'Unknown',
@@ -26,6 +31,7 @@ const copy: ReadinessCopy = {
   sourcesLabel: 'Sources',
   recordsLabel: 'Records',
   counts: {
+    ...getDictionary('en').dataFoundation.spatialReadiness.counts,
     sources: 'Independent sources',
     versions: 'Versions',
     records: 'Candidate rows',
@@ -81,11 +87,15 @@ const copy: ReadinessCopy = {
   none: 'None',
   staleLabel: 'Affected records',
 };
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 function inspectionPack(): WorkspacePack {
   const record = {
     ...syntheticReviewRecord(),
     reviewStatus: 'pending' as const,
+    needIds: ['K5-001'],
   };
   const source: Material = {
     id: record.sourceId,
@@ -128,6 +138,33 @@ function inspectionPack(): WorkspacePack {
     rasterReports: [],
   };
 }
+it('reuses readiness calculation during unrelated rerenders and recalculates changed stale facts', () => {
+  const calculation = vi.spyOn(readiness, 'buildReadiness');
+  const pack = inspectionPack();
+  const { rerender } = render(
+    <SpatialReadinessPanel pack={pack} regionId="chaobai" copy={copy} />,
+  );
+  expect(calculation).toHaveBeenCalledTimes(1);
+  rerender(
+    <SpatialReadinessPanel
+      pack={pack}
+      regionId="chaobai"
+      copy={copy}
+      onSelectRecord={vi.fn()}
+    />,
+  );
+  expect(calculation).toHaveBeenCalledTimes(1);
+  rerender(
+    <SpatialReadinessPanel
+      pack={pack}
+      regionId="chaobai"
+      copy={copy}
+      staleRecordIds={[pack.records[0].id]}
+    />,
+  );
+  expect(calculation).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('status').textContent).toContain(copy.staleLabel);
+});
 it('opens the actual quantity result set and lets the reader choose a later record', () => {
   const select = vi.fn();
   render(
@@ -145,7 +182,9 @@ it('opens the actual quantity result set and lets the reader choose a later reco
   expect(select).not.toHaveBeenCalled();
   const details = screen.getByRole('region', { name: 'How much' });
   fireEvent.click(
-    within(details).getByRole('button', { name: /Later original object/ }),
+    within(
+      within(details).getByRole('group', { name: copy.grains.RECORD }),
+    ).getByRole('button', { name: /Later original object/ }),
   );
   expect(select).toHaveBeenCalledExactlyOnceWith('later-record');
 });
@@ -169,21 +208,172 @@ it('does not claim a cleaning processor or open every record as a cleaning task'
   expect(within(article).queryByText('Local processor assigned')).toBeNull();
   expect(within(article).queryByRole('button', { name: /Inspect/ })).toBeNull();
 });
-it('shows all nine questions and 19 needs and passes an evidence selection upward', () => {
-  const record = {
-    ...syntheticReviewRecord(),
-    reviewStatus: 'pending' as const,
+it('opens each source-version detail with only its own fixed-version link', () => {
+  const pack = inspectionPack();
+  pack.sources.push({
+    ...pack.sources[0],
+    versionId: 'v2',
+    title: 'Second fixed version',
+  });
+  pack.records[1] = { ...pack.records[1], versionId: 'v2' };
+  render(
+    <SpatialReadinessPanel
+      pack={pack}
+      regionId="chaobai"
+      copy={copy}
+      sourceHref={(id, version) => `/source?source=${id}&version=${version}`}
+    />,
+  );
+  const article = screen
+    .getByRole('heading', { name: 'How much' })
+    .closest('article')!;
+  fireEvent.click(within(article).getByRole('button', { name: /Inspect/ }));
+  const details = screen.getByRole('region', { name: 'How much' });
+  fireEvent.click(within(details).getByText(`${copy.grains.VERSION} (2)`));
+  const group = within(details).getByRole('group', {
+    name: copy.grains.VERSION,
+  });
+  const links = within(group).getAllByRole('link');
+  expect(links).toHaveLength(2);
+  expect(links[0].getAttribute('href')).toContain(
+    `version=${pack.sources[0].versionId}`,
+  );
+  expect(links[1].getAttribute('href')).toContain('version=v2');
+});
+it('rejects an overlong inclusive coverage window without replacing the current result', () => {
+  render(
+    <SpatialReadinessPanel
+      pack={inspectionPack()}
+      regionId="chaobai"
+      copy={copy}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText(copy.startMonth), {
+    target: { value: '1923-04' },
+  });
+  fireEvent.change(screen.getByLabelText(copy.endMonth), {
+    target: { value: '2023-04' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: copy.applyWindow }));
+  expect(screen.getByRole('alert').textContent).toBe(copy.windowError);
+  expect(
+    screen.getByTestId('readiness-active-scope').textContent,
+  ).not.toContain('1923-04');
+});
+it('separates same-ID facts by grain and leaves an unassigned task owner explicit', () => {
+  const pack = inspectionPack();
+  const source = materialReference(pack.sources[0]);
+  const evidence = [
+    { source, locator: 'test:record', excerpt: 'Synthetic unit-test evidence' },
+  ];
+  const facts: ProjectReadinessInput = {
+    track: 'REAL',
+    requirement: {
+      needId: 'K5-001',
+      version: 'test-v1',
+      regionId: 'chaobai',
+      purpose: 'inspection',
+      dateRole: 'PUBLICATION',
+      window: null,
+    },
+    sources: [
+      {
+        ...source,
+        track: 'REAL',
+        kind: 'DOCUMENT',
+        needIds: ['K5-001'],
+        regionIds: ['chaobai'],
+      },
+    ],
+    records: [],
+    series: [],
+    correspondences: [],
+    fields: [
+      {
+        id: 'same-id',
+        source,
+        name: 'Native field',
+        type: 'string',
+        unit: null,
+        timeRole: null,
+        positionRole: null,
+        primaryKey: null,
+        formatVersion: null,
+        evidence,
+      },
+    ],
+    tasks: [
+      {
+        id: 'same-id',
+        kind: 'CLEANING',
+        sources: [source],
+        recordIds: [],
+        state: 'OPEN',
+        owner: null,
+        processor: null,
+        nextAction: 'Inspect the original',
+        evidence,
+      },
+    ],
   };
-  const pack: WorkspacePack = {
-    schemaVersion: 1,
-    generatedAt: '2026-10-02',
-    processingVersion: 'p1',
-    sources: [],
-    records: [record],
-    regions: [],
-    topicPackages: [],
-    rasterReports: [],
-  };
+  render(
+    <SpatialReadinessPanel
+      pack={pack}
+      regionId="chaobai"
+      copy={copy}
+      facts={facts}
+    />,
+  );
+  const card = screen
+    .getByRole('heading', { name: 'Cleaning' })
+    .closest('article')!;
+  fireEvent.click(within(card).getByRole('button', { name: /Inspect/ }));
+  const details = screen.getByRole('region', { name: 'Cleaning' });
+  expect(within(details).getByText(copy.unassigned)).toBeTruthy();
+  expect(within(details).getByText(copy.notRegistered)).toBeTruthy();
+  expect(within(details).queryByText(copy.fieldType)).toBeNull();
+});
+it('removes an opened record set as soon as its fixed source loses readability', () => {
+  const pack = inspectionPack();
+  const select = vi.fn();
+  const view = render(
+    <SpatialReadinessPanel
+      pack={pack}
+      regionId="chaobai"
+      copy={copy}
+      onSelectRecord={select}
+    />,
+  );
+  fireEvent.click(
+    within(
+      screen.getByRole('heading', { name: 'How much' }).closest('article')!,
+    ).getByRole('button', { name: /Inspect/ }),
+  );
+  expect(screen.getByRole('region', { name: 'How much' })).toBeTruthy();
+  view.rerender(
+    <SpatialReadinessPanel
+      pack={{
+        ...pack,
+        sources: pack.sources.map((source) => ({
+          ...source,
+          rights: { ...source.rights, displayAllowed: false },
+        })),
+      }}
+      regionId="chaobai"
+      copy={copy}
+      onSelectRecord={select}
+    />,
+  );
+  expect(screen.queryByRole('region', { name: 'How much' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: /Later original object/ }),
+  ).toBeNull();
+  expect(select).not.toHaveBeenCalled();
+});
+it('shows all nine questions and 19 needs and passes an explicitly selected evidence record upward', () => {
+  const pack = inspectionPack();
+  pack.records = pack.records.slice(0, 1);
+  const record = pack.records[0];
   const select = vi.fn();
   render(
     <SpatialReadinessPanel
@@ -196,6 +386,16 @@ it('shows all nine questions and 19 needs and passes an evidence selection upwar
   expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(9);
   expect(screen.getAllByText(/^K5-\d{3}$/)).toHaveLength(19);
   expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
-  fireEvent.click(screen.getAllByRole('button', { name: /Inspect/ })[0]);
+  const article = screen
+    .getByRole('heading', { name: 'How much' })
+    .closest('article')!;
+  fireEvent.click(within(article).getByRole('button', { name: /Inspect/ }));
+  expect(select).not.toHaveBeenCalled();
+  const detail = screen.getByRole('region', { name: 'How much' });
+  fireEvent.click(
+    within(
+      within(detail).getByRole('group', { name: copy.grains.RECORD }),
+    ).getByRole('button'),
+  );
   expect(select).toHaveBeenCalledWith(record.id);
 });

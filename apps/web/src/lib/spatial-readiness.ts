@@ -1,10 +1,23 @@
+import {
+  readinessRecordKey,
+  type ProjectReadinessInput,
+  type ProjectReadinessResult,
+  type ReadinessQuestion,
+  type ReadinessSourceReference,
+} from '@wiser/data-core/project-readiness';
 import type {
   Material,
   RegionId,
   WorkspacePack,
-  WorkspacePosition,
   WorkspaceRecord,
 } from './spatial-workspace-contract';
+import {
+  fixedSourceKey,
+  materialReference,
+  projectReadinessFromPack,
+  type ReadinessSelection,
+} from './spatial-readiness-facts';
+import { workspaceDisplayPositions } from './spatial-workspace-view';
 
 export const NEED_IDS = Array.from(
   { length: 19 },
@@ -28,6 +41,7 @@ export type UseId =
   | 'reference-map'
   | 'concentration-trend'
   | 'pollution-load';
+export type ReadinessGrain = ReadinessQuestion['drilldowns'][number]['grain'];
 export interface ReadinessCounts {
   sources: number;
   versions: number;
@@ -37,6 +51,10 @@ export interface ReadinessCounts {
   samplingSites: number | null;
   validObservations: number | null;
   professionallyReviewed: number;
+  assets: number;
+  monthlyRecords: number;
+  nonMonthlyRecords: number;
+  namedObjects: number | null;
 }
 export interface ReadinessNeed {
   id: string;
@@ -45,18 +63,31 @@ export interface ReadinessNeed {
   recordIds: string[];
   missingReasons: string[];
 }
+export interface ReadinessDetail {
+  key: string;
+  grain: ReadinessGrain;
+  title: string;
+  sourceIds: string[];
+  recordIds: string[];
+  sourceRefs: ReadinessSourceReference[];
+  factId?: string;
+  month?: string;
+  missing?: boolean;
+}
 export interface ReadinessResult {
   regionId: RegionId;
   counts: ReadinessCounts;
   needs: ReadinessNeed[];
   questions: {
     id: ReadinessQuestionId;
+    state: ReadinessQuestion['state'];
     sourceIds: string[];
     recordIds: string[];
     detailCodes: string[];
+    details: ReadinessDetail[];
   }[];
   density: {
-    spatial: null;
+    spatial: number | null;
     reportWindows: string[];
     missingReportWindows: string[];
     frequency: 'monthly-publication' | 'mixed-or-unknown';
@@ -69,148 +100,254 @@ export interface ReadinessResult {
   }[];
   staleRecordIds: string[];
   fields: string[];
-  statuses: { sourceId: string; status: Material['status'] }[];
+  statuses: {
+    sourceId: string;
+    versionId: string;
+    title: string;
+    status: Material['status'];
+  }[];
+  project: ProjectReadinessResult;
+  records: WorkspaceRecord[];
+  sources: Material[];
 }
 
-function inRegion(ids: readonly RegionId[], regionId: RegionId) {
-  return regionId === 'bth' || ids.includes(regionId);
-}
-function mapped(position: WorkspacePosition) {
-  return (
-    position.role !== 'institution-address' &&
-    position.role !== 'mention' &&
-    position.match === 'bound' &&
-    position.geometry !== null &&
-    position.crs === 'EPSG:4326' &&
-    position.geometrySourceId !== null &&
-    position.geometryVersionId !== null &&
-    position.locator !== null
-  );
-}
-function windows(records: WorkspaceRecord[]) {
-  const reportWindows = [
-    ...new Set(
-      records
-        .filter(
-          (record) =>
-            record.time.role === 'observation' &&
-            record.time.precision === 'month' &&
-            /^\d{4}-(0[1-9]|1[0-2])$/.test(record.time.start ?? ''),
-        )
-        .map((record) => record.time.start!),
-    ),
-  ].sort();
-  const missingReportWindows: string[] = [];
-  if (reportWindows.length > 1) {
-    const index = (value: string) =>
-      Number(value.slice(0, 4)) * 12 + Number(value.slice(5)) - 1;
-    const first = index(reportWindows[0]);
-    const last = index(reportWindows.at(-1)!);
-    const present = new Set(reportWindows);
-    // Bound malformed or unexpectedly long windows; never expand an unbounded time series.
-    if (last - first <= 1200)
-      for (let month = first + 1; month < last; month++) {
-        const label = `${Math.floor(month / 12)}-${String((month % 12) + 1).padStart(2, '0')}`;
-        if (!present.has(label)) missingReportWindows.push(label);
-      }
-  }
-  return {
-    spatial: null,
-    reportWindows,
-    missingReportWindows,
-    frequency: reportWindows.length
-      ? ('monthly-publication' as const)
-      : ('mixed-or-unknown' as const),
-  };
-}
+const questionIds: Record<ReadinessQuestion['id'], ReadinessQuestionId> = {
+  KINDS: 'inventory',
+  COUNTS: 'quantity',
+  QUALITY: 'quality',
+  STRUCTURE: 'structure',
+  DENSITY: 'density',
+  GAPS: 'gaps',
+  CLEANING: 'cleaning',
+  QUALITY_CONTROL: 'quality-control',
+  COMPUTATIONS: 'computations',
+};
+const unique = <T>(values: readonly T[]) => [...new Set(values)];
 
-/** Six scopes share one union; record quantities are never observation density. */
+/** Pure local adapter; each question delegates to the same governed core rule. */
 export function buildReadiness(
   pack: WorkspacePack,
   regionId: RegionId,
   staleIds: readonly string[] = [],
+  facts: ProjectReadinessInput | null = null,
+  selection: ReadinessSelection = {
+    needId: 'K5-001',
+    window: facts?.requirement.window ?? null,
+    dateRole: facts?.requirement.dateRole ?? 'PUBLICATION',
+  },
 ): ReadinessResult {
-  const records = [
-    ...new Map(
-      pack.records
-        .filter(
-          (record) =>
-            record.reviewStatus === 'pending' &&
-            inRegion(record.regionIds, regionId),
-        )
-        .map((record) => [record.id, record]),
-    ).values(),
-  ];
-  const referenced = new Set(records.map((record) => record.sourceId));
-  const sources = pack.sources.filter(
-    (source) =>
-      inRegion(source.regionIds, regionId) || referenced.has(source.id),
+  const { project, records, sources } = projectReadinessFromPack(
+    pack,
+    regionId,
+    staleIds,
+    facts,
+    selection,
   );
-  const byId = new Map(pack.sources.map((source) => [source.id, source]));
-  const canonical = (source: Material) => {
-    const visited = new Set<string>();
-    let current = source;
-    while (
-      current.duplicateOf &&
-      byId.has(current.duplicateOf) &&
-      !visited.has(current.id)
-    ) {
-      visited.add(current.id);
-      current = byId.get(current.duplicateOf)!;
-    }
-    return current;
-  };
-  const originals = [
-    ...new Map(
-      sources.map((source) => {
-        const original = canonical(source);
-        return [`${original.id}\0${original.versionId}`, original] as const;
-      }),
-    ).values(),
-  ];
+  const currentKeys = new Set(project.records.map(readinessRecordKey));
+  const localRecord = new Map(
+    project.records.map((record) => [
+      readinessRecordKey(record),
+      records.find((item) => item.id === record.id)!,
+    ]),
+  );
+  const projectRecord = new Map(
+    project.records.map((record) => [readinessRecordKey(record), record]),
+  );
   const stale = new Set(
     staleIds.filter((id) => records.some((record) => record.id === id)),
   );
-  const usable = records.filter(
-    (record) =>
-      !stale.has(record.id) &&
-      byId.get(record.sourceId)?.rights.displayAllowed === true,
-  );
-  const geometry = new Set(
-    records.flatMap((record) =>
-      record.positions
-        .filter(mapped)
-        .map(
-          (position) =>
-            `${position.geometrySourceId}\0${position.geometryVersionId}\0${position.locator}`,
-        ),
-    ),
-  );
-  const counts: ReadinessCounts = {
-    sources: new Set(originals.map((source) => source.workId ?? source.id))
-      .size,
-    versions: originals.length,
-    records: records.length,
-    sourceObjects: new Set(
-      records.map((record) => `${record.sourceId}\0${record.objectId}`),
-    ).size,
-    geometryRecords: geometry.size,
-    samplingSites: null,
-    validObservations: null,
-    professionallyReviewed: originals.filter(
-      (source) => source.status.professionalReview === 'approved',
-    ).length,
-  };
-  const needs = NEED_IDS.map((id): ReadinessNeed => {
-    const matchingSources = sources.filter((source) =>
-      source.needIds.includes(id),
+  const sourceIdsFor = (keys: readonly string[]) =>
+    unique(keys.flatMap((key) => localRecord.get(key)?.sourceId ?? []));
+  const localIdsFor = (keys: readonly string[]) =>
+    unique(keys.flatMap((key) => localRecord.get(key)?.id ?? []));
+  const detailsFor = (question: ReadinessQuestion): ReadinessDetail[] =>
+    question.drilldowns.flatMap(({ grain, ids }) =>
+      ids.map((key): ReadinessDetail => {
+        let title = '',
+          keys: readonly string[] = [],
+          matchingSources: Material[] = [],
+          factId: string | undefined,
+          month: string | undefined,
+          missing: boolean | undefined;
+        if (['WORK', 'VERSION', 'ASSET'].includes(grain)) {
+          matchingSources = sources.filter((source) => {
+            const ref = materialReference(source);
+            return grain === 'WORK'
+              ? ref.workId === key
+              : grain === 'VERSION'
+                ? JSON.stringify([ref.workId, ref.versionId]) === key
+                : fixedSourceKey(ref) === key;
+          });
+          title = unique(matchingSources.map((source) => source.title)).join(
+            ' · ',
+          );
+          const refs = new Set(
+            matchingSources.map((source) =>
+              fixedSourceKey(materialReference(source)),
+            ),
+          );
+          keys = project.records
+            .filter((record) => refs.has(fixedSourceKey(record.source)))
+            .map(readinessRecordKey);
+        } else if (grain === 'RECORD') {
+          title = localRecord.get(key)?.objectLabel ?? '';
+          keys = currentKeys.has(key) ? [key] : [];
+        } else if (grain === 'SOURCE_OBJECT') {
+          keys = project.records
+            .filter(
+              (record) =>
+                record.object &&
+                JSON.stringify([
+                  fixedSourceKey(record.source),
+                  record.object.key,
+                ]) === key,
+            )
+            .map(readinessRecordKey);
+          title = projectRecord.get(keys[0])?.object?.originalName ?? '';
+        } else if (grain === 'COVERAGE_CELL') {
+          const cell = JSON.parse(key) as [string[], string];
+          const row = project.monthly.raw.find(
+            (item) =>
+              JSON.stringify(item.objectKeys) === JSON.stringify(cell[0]),
+          );
+          month = cell[1];
+          missing = row?.missingMonths?.includes(month) ?? false;
+          title = row?.originalNames.join(' · ') ?? '';
+          keys = missing
+            ? (row?.recordIds ?? [])
+            : (row?.recordIds.filter(
+                (id) => projectRecord.get(id)?.time.value === month,
+              ) ?? []);
+        } else if (grain === 'FIELD') {
+          const field = project.fields.find((item) => item.id === key);
+          title = field?.name ?? '';
+          factId = field?.id;
+          keys = project.records
+            .filter(
+              (record) =>
+                field &&
+                fixedSourceKey(record.source) === fixedSourceKey(field.source),
+            )
+            .map(readinessRecordKey);
+        } else if (
+          grain === 'CHECK' ||
+          grain === 'TASK' ||
+          grain === 'USE_CHECK'
+        ) {
+          const fact =
+            grain === 'CHECK'
+              ? project.checks.find((item) => item.id === key)
+              : grain === 'TASK'
+                ? project.tasks.find((item) => item.id === key)
+                : project.useChecks.find((item) => item.id === key);
+          factId = fact?.id;
+          if (fact) {
+            keys = fact.recordIds.filter((id) => currentKeys.has(id));
+            if ('sources' in fact) {
+              const refs = new Set(fact.sources.map(fixedSourceKey));
+              keys = unique([
+                ...keys,
+                ...project.records
+                  .filter((record) => refs.has(fixedSourceKey(record.source)))
+                  .map(readinessRecordKey),
+              ]);
+            }
+          }
+        } else if (grain === 'CORRESPONDENCE') {
+          const correspondence = facts?.correspondences.find(
+            (item) => item.id === key,
+          );
+          keys =
+            correspondence?.memberRecordIds.filter((id) =>
+              currentKeys.has(id),
+            ) ?? [];
+          title = unique(
+            keys.flatMap(
+              (id) => projectRecord.get(id)?.object?.originalName ?? [],
+            ),
+          ).join(' ↔ ');
+          factId = correspondence?.id;
+        }
+        return {
+          key,
+          grain,
+          title,
+          recordIds: localIdsFor(keys),
+          sourceIds: unique([
+            ...matchingSources.map((source) => source.id),
+            ...sourceIdsFor(keys),
+          ]),
+          sourceRefs: [
+            ...new Map(
+              [
+                ...matchingSources.map(materialReference),
+                ...keys.flatMap((id) => projectRecord.get(id)?.source ?? []),
+              ].map((ref) => [fixedSourceKey(ref), ref]),
+            ).values(),
+          ],
+          factId,
+          month,
+          missing,
+        };
+      }),
     );
-    const matchingRecords = records.filter((record) =>
+  const codes: Record<ReadinessQuestionId, string[]> = {
+    inventory: ['actual-materials-only'],
+    quantity: ['source-object-record-separated', 'valid-observations-unknown'],
+    quality: ['status-dimensions-separate'],
+    structure: ['native-field-names'],
+    density: [
+      'reporting-not-sampling-frequency',
+      'spatial-denominator-unknown',
+    ],
+    gaps: ['need-slots-not-datasets'],
+    cleaning: project.tasks.some((task) => task.kind === 'CLEANING')
+      ? []
+      : ['task-record-not-present'],
+    'quality-control': project.tasks.some(
+      (task) => task.kind === 'QUALITY_CONTROL',
+    )
+      ? []
+      : ['task-record-not-present'],
+    computations: project.useChecks.length
+      ? ['use-conditions-required']
+      : ['use-check-not-present'],
+  };
+  const questions = project.questions.map((question) => {
+    const id = questionIds[question.id],
+      details = detailsFor(question);
+    return {
+      id,
+      state: question.state,
+      details,
+      sourceIds: unique(details.flatMap((detail) => detail.sourceIds)),
+      recordIds: unique(details.flatMap((detail) => detail.recordIds)),
+      detailCodes: codes[id],
+    };
+  });
+  const inRegion = (ids: readonly RegionId[]) =>
+    regionId === 'bth' || ids.includes(regionId);
+  const readableRecords = pack.records.filter(
+    (record) =>
+      record.reviewStatus === 'pending' &&
+      inRegion(record.regionIds) &&
+      pack.sources.some(
+        (source) =>
+          source.id === record.sourceId &&
+          source.versionId === record.versionId &&
+          source.rights.displayAllowed,
+      ),
+  );
+  const needs = NEED_IDS.map((id): ReadinessNeed => {
+    const matchingSources = pack.sources.filter(
+      (source) => inRegion(source.regionIds) && source.needIds.includes(id),
+    );
+    const matchingRecords = readableRecords.filter((record) =>
       record.needIds.includes(id),
     );
     return {
       id,
-      state: matchingRecords.some((record) => stale.has(record.id))
+      state: matchingRecords.some((record) => staleIds.includes(record.id))
         ? 'stale'
         : matchingSources.length &&
             matchingSources.every((source) => !source.rights.displayAllowed)
@@ -218,33 +355,40 @@ export function buildReadiness(
           : matchingSources.length || matchingRecords.length
             ? 'partial'
             : 'not-obtained',
-      sourceIds: [
-        ...new Set(matchingSources.map((source) => canonical(source).id)),
-      ],
+      sourceIds: unique(matchingSources.map((source) => source.id)),
       recordIds: matchingRecords.map((record) => record.id),
-      missingReasons: [
-        ...new Set(matchingRecords.flatMap((record) => record.missingReasons)),
-      ].concat(
+      missingReasons: unique(
+        matchingRecords.flatMap((record) => record.missingReasons),
+      ).concat(
         matchingSources.length || matchingRecords.length
           ? []
           : ['material-not-obtained'],
       ),
     };
   });
-  const category = usable.filter(
-    (record) =>
-      record.time.role === 'observation' &&
-      record.time.precision === 'month' &&
-      record.value !== null &&
-      /水质类别/.test(record.metric) &&
-      ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', '劣Ⅴ'].includes(
-        record.value.replace(/\s+/g, ''),
-      ),
+  const usable = records.filter((record) => !stale.has(record.id));
+  const factById = new Map(
+    project.records.map((record) => [record.id, record]),
   );
-  const report = usable.filter(
-    (record) => byId.get(record.sourceId)?.kind === 'report',
+  const category = usable.filter((record) => {
+    const fact = factById.get(record.id);
+    return (
+      fact?.metric?.kind === 'CATEGORY' &&
+      fact.time.role === 'PUBLICATION' &&
+      fact.time.precision === 'MONTH'
+    );
+  });
+  const report = usable.filter((record) =>
+    sources.some(
+      (source) =>
+        source.id === record.sourceId &&
+        source.versionId === record.versionId &&
+        source.kind === 'report',
+    ),
   );
-  const mapRecords = usable.filter((record) => record.positions.some(mapped));
+  const mapRecords = usable.filter(
+    (record) => factById.get(record.id)?.spatial?.state === 'LOCATED',
+  );
   const uses: ReadinessResult['uses'] = [
     {
       id: 'archive',
@@ -284,40 +428,59 @@ export function buildReadiness(
     },
   ];
   if (stale.size) uses.forEach((use) => use.reasons.push('some-records-stale'));
-  const allSources = originals.map((source) => source.id);
-  const allRecords = records.map((record) => record.id);
-  const questionCodes: Record<ReadinessQuestionId, string[]> = {
-    inventory: ['actual-materials-only'],
-    quantity: ['source-object-record-separated', 'valid-observations-unknown'],
-    quality: ['status-dimensions-separate', 'professional-review-pending'],
-    structure: ['native-field-names'],
-    density: [
-      'reporting-not-sampling-frequency',
-      'spatial-denominator-unknown',
-    ],
-    gaps: ['need-slots-not-datasets'],
-    cleaning: ['local-deterministic-processing'],
-    'quality-control': ['hash-cell-check', 'professional-review-not-performed'],
-    computations: ['use-conditions-required'],
-  };
   return {
     regionId,
-    counts,
+    project,
+    records,
+    sources,
     needs,
-    questions: (Object.keys(questionCodes) as ReadinessQuestionId[]).map(
-      (id) => ({
-        id,
-        sourceIds: allSources,
-        recordIds: allRecords,
-        detailCodes: questionCodes[id],
-      }),
-    ),
-    density: windows(records),
+    questions,
     uses,
+    counts: {
+      sources: project.counts.works,
+      versions: project.counts.versions,
+      records: project.counts.records,
+      sourceObjects: project.counts.sourceObjects,
+      geometryRecords: unique(
+        records.flatMap((record) =>
+          workspaceDisplayPositions(pack, record).map((position) =>
+            JSON.stringify([
+              position.geometrySourceId,
+              position.geometryVersionId,
+              position.locator,
+            ]),
+          ),
+        ),
+      ).length,
+      samplingSites: null,
+      validObservations: project.counts.independentObservations,
+      professionallyReviewed: sources.filter(
+        (source) => source.status.professionalReview === 'approved',
+      ).length,
+      assets: project.counts.assets,
+      monthlyRecords: project.counts.monthlyRecords,
+      nonMonthlyRecords: project.counts.nonMonthlyRecords,
+      namedObjects: project.monthly.namedObjectCount,
+    },
+    density: {
+      spatial: project.density.observationsPerKm2,
+      reportWindows: unique(
+        project.monthly.raw.flatMap((row) => row.observedMonths),
+      ).sort(),
+      missingReportWindows: unique(
+        project.monthly.raw.flatMap((row) => row.missingMonths ?? []),
+      ).sort(),
+      frequency:
+        project.monthly.raw.length && selection.dateRole === 'PUBLICATION'
+          ? 'monthly-publication'
+          : 'mixed-or-unknown',
+    },
     staleRecordIds: [...stale],
-    fields: [...new Set(sources.flatMap((source) => source.fieldNames ?? []))],
-    statuses: originals.map((source) => ({
+    fields: unique(sources.flatMap((source) => source.fieldNames ?? [])),
+    statuses: sources.map((source) => ({
       sourceId: source.id,
+      versionId: source.versionId,
+      title: source.title,
       status: { ...source.status },
     })),
   };

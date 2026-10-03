@@ -279,6 +279,9 @@ importers:
       '@wiser/data-contracts':
         specifier: workspace:*
         version: link:../../packages/data-contracts
+      '@wiser/data-core':
+        specifier: workspace:*
+        version: link:../../packages/data-core
       '@wiser/platform-contracts':
         specifier: workspace:*
         version: link:../../packages/platform-contracts

@@ -1,4 +1,4 @@
-import { DataFoundationDomainError } from './domain-error.js';
+import { DataFoundationDomainError } from './domain-error.ts';
 
 export type ProjectReadinessTrack = 'REAL' | 'SYNTHETIC';
 export interface ReadinessSourceReference {

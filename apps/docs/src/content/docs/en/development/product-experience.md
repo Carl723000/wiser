@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5bfb45754bb42a0b5f3178b16595b69201b3e4b8
+lastReviewedCommit: 30a76bda7ffcf2b7347a9bc2e0ec559a80400c2b
 ---
 
 ## What this guide governs
@@ -176,3 +176,5 @@ Locating or resetting a map remains effective after reading evidence, resizing o
 Evidence reading starts with the original value, source, time, review state and executable original link. Full technical identifiers move into named, keyboard-operable disclosures. Missing information and reference-location limits remain visible. Optional identity explanations use shared contextual help, while withdrawing a source removes both visible and expanded technical evidence.
 
 Map legends describe only displayed material categories and location roles. Reference geometries retain dashed boundaries or hollow points after selection; applicable extents use dotted boundaries. A selected exact location retains its original expression and scale note. Overlap choices show readable source and position names, with fixed identifiers in closed technical details. Withdrawn or version-replaced choices are removed. This display does not create geometry, merge objects, resolve candidates, or approve location accuracy.
+
+Readiness question actions first open the matching typed facts, then let the reader choose a record or fixed source; they never select the first record implicitly. Quantity cards keep counting grains separate. Unrecorded tasks and owners remain explicit; an evidenced fact is not professional approval. Month inputs show the applied coverage scope separately from unsubmitted drafts. Pending name correspondence offers a labeled hypothesis without merging identities or changing raw counts.

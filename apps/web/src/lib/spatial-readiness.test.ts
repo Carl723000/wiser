@@ -5,6 +5,8 @@ import type {
   WorkspaceRecord,
 } from './spatial-workspace-contract';
 import { buildReadiness, NEED_IDS } from './spatial-readiness';
+import { materialReference } from './spatial-readiness-facts';
+import type { ProjectReadinessInput } from '@wiser/data-core';
 
 const material: Material = {
   id: 'report',
@@ -67,6 +69,73 @@ const pack = (sources = [material], records = [record]): WorkspacePack => ({
   topicPackages: [],
   rasterReports: [],
 });
+function publicationFacts(input: WorkspacePack): ProjectReadinessInput {
+  const sources = input.sources.map((source) => ({
+    ...materialReference(source),
+    track: 'REAL' as const,
+    kind: 'MONTHLY_REPORT' as const,
+    needIds: source.needIds,
+    regionIds: source.regionIds,
+  }));
+  const evidence = {
+    source: materialReference(input.sources[0]),
+    locator: 'table:1/title',
+    excerpt: '2023年4月水质公布资料',
+  };
+  return {
+    track: 'REAL',
+    requirement: {
+      needId: 'K5-001',
+      version: 'test-declared-window',
+      regionId: 'chaobai',
+      purpose: 'publication-coverage',
+      dateRole: 'PUBLICATION',
+      window: { start: '2023-04', end: '2023-06' },
+    },
+    sources,
+    series: [
+      {
+        id: 'declared-series',
+        version: 'series-v1',
+        sources,
+        evidence: [evidence],
+      },
+    ],
+    correspondences: [],
+    records: input.records.map((record) => ({
+      id: record.id,
+      source: materialReference(input.sources[0]),
+      needIds: record.needIds,
+      regionIds: record.regionIds,
+      object: {
+        key: record.objectId,
+        originalName: record.objectLabel,
+        markers: [],
+        footnotes: [],
+      },
+      series:
+        record.time.precision === 'month'
+          ? { id: 'declared-series', version: 'series-v1' }
+          : null,
+      time: {
+        value: record.time.start,
+        role: 'PUBLICATION',
+        precision: record.time.precision === 'month' ? 'MONTH' : 'DAY',
+      },
+      rawValue: record.value,
+      metric: {
+        code: record.metric,
+        kind: 'CATEGORY',
+        unit: record.unit,
+        method: null,
+      },
+      parsing: 'READY',
+      professionalState: 'PENDING_REVIEW',
+      evidence: [evidence],
+      spatial: null,
+    })),
+  };
+}
 
 describe('multi-region readiness', () => {
   it('has 19 demand slots for each of six regions without treating slots as datasets', () => {
@@ -110,6 +179,62 @@ describe('multi-region readiness', () => {
       result.questions.flatMap((question) => question.recordIds),
     ).not.toContain('orphan');
   });
+  it('does not import synthetic series, tasks or publication declarations into the real result', () => {
+    const input = pack();
+    const synthetic = {
+      ...publicationFacts(input),
+      track: 'SYNTHETIC' as const,
+    };
+    const result = buildReadiness(input, 'chaobai', [], synthetic);
+    expect(result.counts.monthlyRecords).toBe(0);
+    expect(result.project.monthly.raw).toEqual([]);
+    expect(result.project.tasks).toEqual([]);
+  });
+  it('counts all displayable fixed geometry references of a record, with repeated references deduplicated', () => {
+    const position = {
+      id: 'position-1',
+      expression: 'Test reference area',
+      role: 'reference' as const,
+      match: 'bound' as const,
+      crs: 'EPSG:4326' as const,
+      nativeCrs: 'EPSG:4326',
+      geometry: { type: 'Point' as const, coordinates: [116, 40] },
+      geometrySourceId: material.id,
+      geometryVersionId: material.versionId,
+      locator: 'table:1/row:2',
+      scaleNote: 'Synthetic test reference',
+      evidence: { locator: 'table:1/row:2', text: 'Test reference area' },
+    };
+    const second = {
+      ...position,
+      id: 'position-2',
+      locator: 'table:1/row:3',
+      geometry: { type: 'Point' as const, coordinates: [116.1, 40.1] },
+    };
+    const input = pack(
+      [material],
+      [
+        {
+          ...record,
+          positions: [position, second, { ...second, id: 'position-copy' }],
+        },
+      ],
+    );
+    expect(buildReadiness(input, 'chaobai').counts.geometryRecords).toBe(2);
+  });
+  it('does not turn a pending workspace record into professional approval through supplementary facts', () => {
+    const input = pack();
+    const facts = publicationFacts(input);
+    const result = buildReadiness(input, 'chaobai', [], {
+      ...facts,
+      records: facts.records.map((item) => ({
+        ...item,
+        professionalState: 'APPROVED',
+      })),
+    });
+    expect(result.counts.professionallyReviewed).toBe(0);
+    expect(result.project.records[0].professionalState).toBe('PENDING_REVIEW');
+  });
   it('global union deduplicates a source used by several regions and a format copy', () => {
     const duplicate = { ...material, id: 'copy', duplicateOf: 'report' };
     const result = buildReadiness(
@@ -133,7 +258,13 @@ describe('multi-region readiness', () => {
     expect(result.counts.sourceObjects).toBe(2);
   });
   it('keeps unknown observation counts and density separate from record counts', () => {
-    const result = buildReadiness(pack(), 'chaobai');
+    const input = pack();
+    const result = buildReadiness(
+      input,
+      'chaobai',
+      [],
+      publicationFacts(input),
+    );
     expect(result.counts.validObservations).toBeNull();
     expect(result.density.spatial).toBeNull();
     expect(result.density.reportWindows).toEqual(['2023-04']);
@@ -143,6 +274,13 @@ describe('multi-region readiness', () => {
     expect(result.uses.find((u) => u.id === 'monthly-category')?.eligible).toBe(
       true,
     );
+    // A label and month alone cannot establish a publication-series declaration.
+    expect(buildReadiness(input, 'chaobai').density.reportWindows).toEqual([]);
+    expect(
+      buildReadiness(input, 'chaobai').uses.find(
+        (u) => u.id === 'monthly-category',
+      )?.eligible,
+    ).toBe(false);
   });
   it('counts separate queries of one work once without collapsing their versions or objects', () => {
     const first = { ...material, workId: 'openstreetmap' };
@@ -207,29 +345,32 @@ describe('multi-region readiness', () => {
     expect(result.uses.every((u) => !u.eligible)).toBe(true);
   });
   it('time windows expose missing months and distinguish publication from observations', () => {
+    const input = pack(
+      [material],
+      [
+        record,
+        {
+          ...record,
+          id: 'june',
+          time: { ...record.time, start: '2023-06', end: '2023-06' },
+        },
+        {
+          ...record,
+          id: 'press',
+          time: {
+            start: '2026-06-04',
+            end: '2026-06-04',
+            precision: 'day',
+            role: 'publication',
+          },
+        },
+      ],
+    );
     const result = buildReadiness(
-      pack(
-        [material],
-        [
-          record,
-          {
-            ...record,
-            id: 'june',
-            time: { ...record.time, start: '2023-06', end: '2023-06' },
-          },
-          {
-            ...record,
-            id: 'press',
-            time: {
-              start: '2026-06-04',
-              end: '2026-06-04',
-              precision: 'day',
-              role: 'publication',
-            },
-          },
-        ],
-      ),
+      input,
       'chaobai',
+      [],
+      publicationFacts(input),
     );
     expect(result.density.missingReportWindows).toEqual(['2023-05']);
     expect(result.density.reportWindows).not.toContain('2026-06-04');

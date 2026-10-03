@@ -38,6 +38,8 @@ export default async function SpatialWorkspacePage({
       pack={input.pack}
       locale={locale}
       initialRecordId={search.record ?? null}
+      readinessFacts={input.readinessFacts ?? null}
+      readinessState={input.readinessState ?? 'absent'}
     />
   );
 }

@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5bfb45754bb42a0b5f3178b16595b69201b3e4b8
+lastReviewedCommit: 30a76bda7ffcf2b7347a9bc2e0ec559a80400c2b
 ---
 
 ## Design direction
@@ -125,3 +125,5 @@ Planar fallback and WebGL maps identify a selected geometry by both record and p
 At widths up to 1100 px or heights up to 500 px, the local spatial workbench exposes one named Map, Results or Evidence reading pane. Hidden panes remain mounted to retain map state and reading position, while their controls leave keyboard navigation. Tabs support arrows, Home and End. Selecting a result opens its evidence, and locating an evidenced position returns to the same map. Resizing keeps a focused reading control visible; desktop retains its concurrent layout.
 
 Evidence dossiers show source/provider, native time, original values, review state, conditions of use and location limits before technical references. Full fixed-version IDs, original hashes, processing IDs, location coordinate systems and mapped missing-reason codes remain exact in closed technical disclosures. Result cards show source/provider and review status. Identity explanations use pointer-, keyboard- and touch-accessible help; limitations never depend on that help.
+
+Readiness cards use text-backed fact-availability badges and shared semantic tokens. The focused inspector groups source references, records and workflow facts separately, with bounded lists and scrollable coverage tables. Help remains keyboard/touch accessible; missing tasks and invalid coverage input stay visible. Chinese/English, light/dark and 390px/desktop surfaces share the same facts and actions.

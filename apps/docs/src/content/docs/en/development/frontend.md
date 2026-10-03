@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5bfb45754bb42a0b5f3178b16595b69201b3e4b8
+lastReviewedCommit: 30a76bda7ffcf2b7347a9bc2e0ec559a80400c2b
 ---
 
 ## Two frontend applications
@@ -297,3 +297,9 @@ The spatial component listens to `(max-width: 1100px), (max-height: 500px)` and 
 WebGL resize events without an original user event do not update the controlled camera. External camera actions stop prior inertia before applying the requested view; hidden maps stop and ignore gesture callbacks. Reflected user camera updates do not stop navigation. Reopening the same result retains its still-permitted exact position; a default position respects the scene's pinned geometry source versions. Browser regressions include real WebGL dragging, camera reset, pane return, intermediate widths, phone landscape and fullscreen.
 
 The local spatial dossier separates business metadata from initially closed Technical details and Location technical details. Original hashes, exact source-local IDs, processing versions, fixed geometry versions and coordinate-system declarations remain retrievable without serializing original filesystem paths. Mapped missing-reason explanations stay visible while their unchanged codes are disclosed on demand. Selection and withdrawal use the existing shared record/source guards; this presentation does not change query, identity, permission or saved-scene contracts.
+
+### Readiness evidence and drilldowns
+
+An optional absolute `WISER_SPATIAL_READINESS_INPUT_MANIFEST` JSON file requires its exact `WISER_SPATIAL_READINESS_INPUT_SHA256` and the same loopback-only gate as the source pack. It is bounded to 12 MiB, parsed against a whitelist of existing internal fact fields and trimmed to the validated pack’s readable fixed sources and matching original records before serialization. Absent facts stay absent; invalid facts show a localized unavailable status while original reading remains available. Owners, processors, quality checks and use conclusions are never filled from fixture defaults. Coverage dates define an expected inclusive window of at most 1,200 months and do not remove original records. Lists render in batches of 40; changing requirement, date role, source version, readability or facts invalidates an opened result set. Fixed-version links and keyboard focus remain available.
+
+Unrelated object selection reuses the current readiness calculation. An absent stale-record scope uses a stable empty value; actual source, requirement, window, date-role and stale-fact changes still recalculate. The browser performance check retains its existing latency thresholds and records the fixed input and renderer separately from physical-device acceptance.
