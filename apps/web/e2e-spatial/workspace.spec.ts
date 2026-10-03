@@ -5,6 +5,69 @@ const route = '/zh-CN/data-foundation/spatial-workspace';
 const output = process.env.WISER_SPATIAL_ACCEPTANCE_DIRECTORY;
 const browserErrors = new WeakMap<BrowserContext, string[]>();
 const browserWarnings = new WeakMap<BrowserContext, string[]>();
+
+test('WebGL gestures cannot restore an obsolete camera after reset, hidden panes, viewport changes or fullscreen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(route);
+  const workspace = page.getByTestId('spatial-workspace');
+  const map = workspace.getByTestId('spatial-geographic-map');
+  const tabs = workspace.getByRole('tablist', { name: '查阅区域' });
+  await expect(map).toHaveAttribute('data-renderer', 'maplibre');
+  const nativeCanvas = map.locator('canvas');
+  await nativeCanvas.scrollIntoViewIfNeeded();
+  const before = await map.getAttribute('data-camera');
+  const box = (await nativeCanvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.5, {
+    steps: 20,
+  });
+  await page.mouse.up();
+  await expect.poll(() => map.getAttribute('data-camera')).not.toBe(before);
+  await page.waitForTimeout(2200);
+  const gesture = await map.getAttribute('data-camera');
+  await workspace
+    .getByRole('button', { name: '复位相机', exact: true })
+    .click();
+  await expect(map).toHaveAttribute('data-camera', before!);
+  expect(gesture).not.toBe(before);
+  const originalMap = await map.elementHandle();
+  await tabs.getByRole('tab', { name: '结果', exact: true }).click();
+  await page.waitForTimeout(150);
+  await tabs.getByRole('tab', { name: '地图', exact: true }).click();
+  await page.waitForTimeout(150);
+  await expect(map).toHaveAttribute('data-camera', before!);
+  for (const [width, height] of [
+    [768, 1024],
+    [834, 1112],
+    [1024, 768],
+    [1100, 800],
+    [844, 390],
+    [390, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect(tabs).toBeVisible();
+    await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
+    await expect(map).toHaveAttribute('data-camera', before!);
+  }
+  await page.getByRole('button', { name: '全屏工作区', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.waitForTimeout(150);
+  await expect(map).toHaveAttribute('data-camera', before!);
+  for (const width of [1101, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(tabs).toHaveCount(0);
+    await expect(map).toBeVisible();
+    await expect(map).toHaveAttribute('data-camera', before!);
+  }
+  expect(
+    await map.evaluate((node, original) => node === original, originalMap),
+  ).toBe(true);
+});
 test.beforeEach(async ({ context }) => {
   const errors: string[] = [];
   const warnings: string[] = [];

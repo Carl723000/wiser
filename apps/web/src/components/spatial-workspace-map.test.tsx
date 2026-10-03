@@ -25,6 +25,8 @@ const probe = vi.hoisted(() => ({
   custom: null as CustomLayerInterface | null,
   images: [] as { id: string; url: string; coordinates: number[][] }[],
   query: vi.fn(() => []),
+  stop: vi.fn(),
+  jumpTo: vi.fn(),
 }));
 vi.mock('maplibre-gl', () => ({
   setWorkerUrl: vi.fn(),
@@ -46,6 +48,8 @@ vi.mock('react-map-gl/maplibre', async () => {
       probe.props = props;
       useImperativeHandle(ref, () => ({
         getMap: () => ({
+          stop: probe.stop,
+          jumpTo: probe.jumpTo,
           addLayer: (layer: CustomLayerInterface) => {
             probe.custom = layer;
           },
@@ -174,6 +178,53 @@ it('passes original geometry and the common geographic pitch/bearing to MapLibre
   expect(probe.props.dragRotate).toBe(true);
   expect(probe.props.mapStyle).not.toHaveProperty('glyphs');
   expect(JSON.stringify(probe.props.mapStyle)).not.toMatch(/https?:/);
+});
+
+it('does not accept stale non-user resize camera events after a programmatic camera change', () => {
+  render(<SpatialWorkspaceMap {...props} />);
+  const old = { ...camera, longitude: 113 };
+  const move = probe.props.onMove as (event: unknown) => void;
+  act(() => move({ viewState: old }));
+  expect(props.onCamera).not.toHaveBeenCalled();
+  act(() =>
+    move({ viewState: old, originalEvent: new MouseEvent('mousemove') }),
+  );
+  expect(props.onCamera).toHaveBeenCalledExactlyOnceWith(old);
+});
+
+it('stops a gesture before applying an external camera and ignores its reflected user camera', () => {
+  const { rerender } = render(<SpatialWorkspaceMap {...props} />);
+  act(() => (probe.props.onLoad as () => void)());
+  probe.stop.mockClear();
+  probe.jumpTo.mockClear();
+  const user = { ...camera, longitude: 113 };
+  act(() =>
+    (probe.props.onMove as (event: unknown) => void)({
+      viewState: user,
+      originalEvent: new MouseEvent('mousemove'),
+    }),
+  );
+  rerender(<SpatialWorkspaceMap {...props} camera={user} />);
+  expect(probe.stop).not.toHaveBeenCalled();
+  const external = { ...camera, longitude: 117 };
+  rerender(<SpatialWorkspaceMap {...props} camera={external} />);
+  expect(probe.stop).toHaveBeenCalledOnce();
+  expect(probe.jumpTo).toHaveBeenCalledExactlyOnceWith(external);
+});
+
+it('stops a hidden map and does not accept its remaining gesture callbacks', () => {
+  const { rerender } = render(<SpatialWorkspaceMap {...props} />);
+  act(() => (probe.props.onLoad as () => void)());
+  probe.stop.mockClear();
+  rerender(<SpatialWorkspaceMap {...{ ...props, active: false }} />);
+  expect(probe.stop).toHaveBeenCalledOnce();
+  act(() =>
+    (probe.props.onMove as (event: unknown) => void)({
+      viewState: { ...camera, longitude: 113 },
+      originalEvent: new MouseEvent('mousemove'),
+    }),
+  );
+  expect(props.onCamera).not.toHaveBeenCalled();
 });
 
 it('uses the public MapLibre 3D projection matrix for evidenced category stems', () => {

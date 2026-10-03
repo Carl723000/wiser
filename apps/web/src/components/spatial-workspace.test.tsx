@@ -13,6 +13,10 @@ import type {
   WorkspaceRecord,
 } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
+import {
+  captureSpatialWorkspaceView,
+  createSpatialWorkspaceView,
+} from '@/lib/spatial-workspace-view';
 import { StrictMode, useEffect, useState } from 'react';
 import { SpatialWorkspace } from './spatial-workspace';
 
@@ -709,6 +713,104 @@ describe('narrow spatial reading panes', () => {
     );
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it('covers the stacked-layout breakpoint and phone landscape rather than only 800px', () => {
+    render(<SpatialWorkspace pack={pack} locale="zh-CN" copy={zh} />);
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      '(max-width: 1100px), (max-height: 500px)',
+    );
+  });
+
+  it('preserves the selected second position when reopening the same result', () => {
+    const second = {
+      ...sampleRecord.positions[0],
+      id: 'pos-second',
+      expression: '另一处原文参考线',
+    };
+    const multiple = {
+      ...pack,
+      records: [
+        { ...sampleRecord, positions: [...sampleRecord.positions, second] },
+      ],
+    };
+    render(
+      <SpatialWorkspace
+        pack={multiple}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId={sampleRecord.id}
+      />,
+    );
+    fireEvent.click(
+      screen.getAllByRole('button', { name: zh.locatePosition })[1],
+    );
+    const map = screen.getByTestId('workspace-map');
+    expect(JSON.parse(map.getAttribute('data-selection')!)).toEqual({
+      recordId: sampleRecord.id,
+      positionId: second.id,
+    });
+    fireEvent.click(screen.getByRole('tab', { name: '结果' }));
+    fireEvent.click(screen.getByRole('button', { name: /潮白河原文对象/ }));
+    expect(JSON.parse(map.getAttribute('data-selection')!)).toEqual({
+      recordId: sampleRecord.id,
+      positionId: second.id,
+    });
+    expect(
+      screen
+        .getAllByRole('button', { name: zh.locatePosition })[1]
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('chooses a default position only from the fixed geometry versions in a restored scene', () => {
+    const versions = ['v1', 'v2'].map((versionId) => ({
+      ...pack.sources[0],
+      id: 'geometry',
+      versionId,
+    }));
+    const multiple = {
+      ...pack,
+      sources: [...pack.sources, ...versions],
+      records: [
+        {
+          ...sampleRecord,
+          positions: versions.map((source, index) => ({
+            ...sampleRecord.positions[0],
+            id: `pos-${index}`,
+            geometrySourceId: source.id,
+            geometryVersionId: source.versionId,
+          })),
+        },
+      ],
+    };
+    const saved = captureSpatialWorkspaceView(
+      multiple,
+      createSpatialWorkspaceView(multiple, 'chaobai'),
+    );
+    saved.sourcePins = saved.sourcePins!.filter(
+      (pin) => pin.sourceId !== 'geometry' || pin.versionId === 'v2',
+    );
+    localStorage.setItem(
+      'wiser-spatial-workspace-goal100-v1',
+      JSON.stringify([
+        {
+          id: 'pinned',
+          name: 'Fixed geometry version',
+          createdAt: '2026-10-03',
+          view: saved,
+        },
+      ]),
+    );
+    render(<SpatialWorkspace pack={multiple} locale="zh-CN" copy={zh} />);
+    fireEvent.click(screen.getByRole('button', { name: zh.restoreView }));
+    fireEvent.click(screen.getByRole('tab', { name: '结果' }));
+    fireEvent.click(screen.getByRole('button', { name: /潮白河原文对象/ }));
+    expect(
+      JSON.parse(
+        screen.getByTestId('workspace-map').getAttribute('data-selection')!,
+      ),
+    ).toEqual({ recordId: sampleRecord.id, positionId: 'pos-1' });
+  });
 
   it.each([
     ['zh-CN', zh, ['地图', '结果', '证据']],
