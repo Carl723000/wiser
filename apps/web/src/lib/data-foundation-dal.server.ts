@@ -24,6 +24,14 @@ import {
   type IngestionCandidateRecordPage,
   type IngestionCandidateGeometryPage,
   type IngestionCandidateReadInputSchema,
+  CANDIDATE_SAVED_VIEW_BYTES,
+  type CreateIngestionCandidateViewInputSchema,
+  type CreateIngestionCandidateViewOutputSchema,
+  type ListIngestionCandidateViewsInputSchema,
+  type ListIngestionCandidateViewsOutputSchema,
+  type OpenIngestionCandidateViewInputSchema,
+  type OpenIngestionCandidateViewOutputSchema,
+  type RevokeIngestionCandidateViewOutputSchema,
 } from '@wiser/data-contracts';
 
 import {
@@ -77,6 +85,11 @@ type CandidatePage =
   | IngestionCandidateAssetPage
   | IngestionCandidateRecordPage
   | IngestionCandidateGeometryPage;
+type CandidateSavedViewOutput =
+  | ReturnType<typeof CreateIngestionCandidateViewOutputSchema.parse>
+  | ReturnType<typeof ListIngestionCandidateViewsOutputSchema.parse>
+  | ReturnType<typeof OpenIngestionCandidateViewOutputSchema.parse>
+  | ReturnType<typeof RevokeIngestionCandidateViewOutputSchema.parse>;
 
 function hasControlCharacter(value: string): boolean {
   return [...value].some((character) => {
@@ -163,6 +176,12 @@ export interface DataFoundationDal {
     input: unknown,
     signal?: AbortSignal,
   ): Promise<CandidatePage>;
+  candidateSavedView(
+    action: 'create' | 'list' | 'open' | 'revoke',
+    input: unknown,
+    idempotencyKey?: string,
+    signal?: AbortSignal,
+  ): Promise<CandidateSavedViewOutput>;
   operation(operationId: string): Promise<OperationDto>;
   operationEvents(operationId: string): Promise<readonly OperationEventDto[]>;
   search(query: string, after?: string): Promise<SearchPageDto>;
@@ -951,6 +970,106 @@ export function createDataFoundationDal(
           )
             throw new DataFoundationApiError('contract', 502);
           return page;
+        },
+      );
+    },
+    candidateSavedView: async (action, input, idempotencyKey, signal) => {
+      if (
+        action !== 'create' &&
+        action !== 'list' &&
+        action !== 'open' &&
+        action !== 'revoke'
+      )
+        throw new DataFoundationApiError('invalid-request', 422);
+      const command = action === 'create' || action === 'revoke';
+      if (command && (!idempotencyKey || !UUID_PATTERN.test(idempotencyKey)))
+        throw new DataFoundationApiError('invalid-request', 422);
+      const capability =
+        DATA_CAPABILITY_REGISTRY[`data.ingestion.candidate.view.${action}`];
+      const checked = capability.inputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data as Record<string, unknown>;
+      let path: string = capability.restMapping.path;
+      const body: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (path.includes(`:${key}`)) {
+          if (typeof value !== 'string')
+            throw new DataFoundationApiError('invalid-request', 422);
+          path = path.replace(`:${key}`, encodeURIComponent(value));
+        } else body[key] = value;
+      }
+      if (capability.restMapping.method === 'GET') {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(body)) {
+          if (value === undefined) continue;
+          if (typeof value !== 'string' && typeof value !== 'number')
+            throw new DataFoundationApiError('invalid-request', 422);
+          query.set(key, String(value));
+        }
+        path += `?${query}`;
+      }
+      return parsed(
+        () =>
+          call(path, {
+            method: capability.restMapping.method as 'GET' | 'POST',
+            ...(capability.restMapping.method === 'GET' ? {} : { body }),
+            ...(command ? { idempotencyKey } : {}),
+            signal,
+            responseLimitBytes: CANDIDATE_SAVED_VIEW_BYTES,
+          }),
+        (value) => {
+          const output = capability.outputSchema.parse(
+            value,
+          ) as CandidateSavedViewOutput;
+          if (action === 'open') {
+            const opened = output as ReturnType<
+              typeof OpenIngestionCandidateViewOutputSchema.parse
+            >;
+            const identity = checked.data as ReturnType<
+              typeof OpenIngestionCandidateViewInputSchema.parse
+            >;
+            if (!sameUuid(opened.savedView.viewId, identity.viewId))
+              throw new DataFoundationApiError('contract', 502);
+          } else if (action === 'revoke') {
+            const revoked = output as ReturnType<
+              typeof RevokeIngestionCandidateViewOutputSchema.parse
+            >;
+            const identity = checked.data as ReturnType<
+              typeof OpenIngestionCandidateViewInputSchema.parse
+            >;
+            if (!sameUuid(revoked.viewId, identity.viewId))
+              throw new DataFoundationApiError('contract', 502);
+          } else if (action === 'list') {
+            const page = output as ReturnType<
+              typeof ListIngestionCandidateViewsOutputSchema.parse
+            >;
+            const paging = checked.data as ReturnType<
+              typeof ListIngestionCandidateViewsInputSchema.parse
+            >;
+            if (
+              page.items.length > paging.first ||
+              (page.items.length === 0 && page.nextCursor !== null) ||
+              page.items.some((view) => view.revokedAt !== null) ||
+              new Set(page.items.map((view) => view.viewId.toLowerCase()))
+                .size !== page.items.length
+            )
+              throw new DataFoundationApiError('contract', 502);
+          } else {
+            const created = output as ReturnType<
+              typeof CreateIngestionCandidateViewOutputSchema.parse
+            >;
+            const creation = checked.data as ReturnType<
+              typeof CreateIngestionCandidateViewInputSchema.parse
+            >;
+            if (
+              created.savedView.revokedAt !== null ||
+              created.savedView.title !== creation.title ||
+              created.savedView.visibility !== creation.visibility
+            )
+              throw new DataFoundationApiError('contract', 502);
+          }
+          return output;
         },
       );
     },

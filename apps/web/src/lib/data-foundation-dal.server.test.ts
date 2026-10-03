@@ -1604,9 +1604,8 @@ describe('fixed candidate saved-view transport', () => {
         expect(init.body).toBeUndefined();
       } else {
         expect(parsed.search).toBe('');
-        expect(init.body).toBe(
-          JSON.stringify(action === 'create' ? input : {}),
-        );
+        if (typeof init.body !== 'string') throw Error('Expected JSON body');
+        expect(JSON.parse(init.body)).toEqual(action === 'create' ? input : {});
       }
     },
   );
@@ -1784,7 +1783,13 @@ describe('fixed candidate saved-view transport', () => {
         Promise.resolve(Response.json(output)),
       );
       await expect(
-        candidateDal(fetch).candidateSavedView('list', { first: 1 }),
+        candidateDal(fetch).candidateSavedView('list', {
+          first:
+            output.items.length === 2 &&
+            output.items[0].viewId === output.items[1].viewId
+              ? 2
+              : 1,
+        }),
       ).rejects.toMatchObject({ status: 502 });
     },
   );
