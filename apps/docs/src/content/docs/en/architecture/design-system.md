@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 807d688608daff02ff3da972745c4b75eb076ae4
+lastReviewedCommit: 82d4e9ea0fef8d01de203705e7c737565f1f8881
 ---
 
 ## Design direction
@@ -137,3 +137,5 @@ Fixed-input dependency checks accept explicit record sets or an exact record/pos
 Intake detail presents pending-review candidate materials through named Originals, Records and Map tabs. Whole-batch known totals, unparsed originals, loaded geometry records and drawing parts have distinct labels; independent observations remain unestablished. Null, zero, empty text and absent fields have different visible representations. Shared semantic tokens, wrapping controls, internal table scrolling, 44px action targets and contextual help support both locales and narrow layouts. Pending review, unknown position role/scale and current failures stay visible.
 
 The existing map accepts a private display collection without published-version identities. Candidate selection highlights only a member record in the current geometry page; collection parts retain the same record, and clearing restores ordinary drawing. This is reading focus, not positional verification. Full-workspace expansion keeps the reader mounted, confines keyboard focus and restores focus/scroll on exit. Saved-view controls create, list, reopen and revoke through the service, with no browser content archive. These implementation and synthetic behavior checks require separate real browser/theme/390px acceptance.
+
+Original links from a reopened saved view retain its canonical `savedViewId` on both asset cards and selected records, alongside the fixed candidate and asset, so the server can check the full manifest. Direct candidate reading keeps its single-original link without a saved-view identity.

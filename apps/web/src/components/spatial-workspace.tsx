@@ -7,6 +7,7 @@ import type {
   WorkspaceRecord,
 } from '@/lib/spatial-workspace-contract';
 import type { SpatialWorkspaceCopy } from '@/lib/spatial-workspace-copy';
+import type { PublicReferences } from '@/lib/spatial-public-reference';
 import {
   captureSpatialWorkspaceView,
   createSpatialWorkspaceView,
@@ -80,6 +81,8 @@ export interface SpatialWorkspaceProps {
   invalidations?: readonly WorkspaceInvalidation[];
   sourceHref?: (sourceId: string, versionId: string) => string;
   storageKey?: string;
+  publicReferences?: PublicReferences | null;
+  publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
 }
 export function SpatialWorkspace({
   pack,
@@ -92,6 +95,8 @@ export function SpatialWorkspace({
   invalidations = noInvalidations,
   sourceHref,
   storageKey = defaultStorageKey,
+  publicReferences = null,
+  publicReferenceState = 'absent',
 }: SpatialWorkspaceProps) {
   const readingId = useId();
   const [narrow, setNarrow] = useState(false);
@@ -870,6 +875,8 @@ export function SpatialWorkspace({
                 onChange={setView}
                 onSelect={selectRecord}
                 invalidations={invalidations}
+                publicReferences={publicReferences}
+                publicReferenceState={publicReferenceState}
               />
             ) : (
               <section aria-label={copy.mapTitle}>
@@ -877,6 +884,8 @@ export function SpatialWorkspace({
                 <SpatialWorkspaceMap
                   active={!narrow || readingPane === 'map'}
                   features={filtered.features}
+                  publicReferences={publicReferences}
+                  publicReferenceState={publicReferenceState}
                   rasterReports={workspaceRasterOverlays(
                     pack,
                     view,

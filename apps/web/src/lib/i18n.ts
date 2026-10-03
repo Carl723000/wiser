@@ -1644,6 +1644,20 @@ const zhCN = {
       readingPanel: '查阅区域',
       readingPanes: { map: '地图', results: '结果', evidence: '证据' },
       offlineReference: '离线地理参考',
+      publicReferenceLayers: '公共地理参照',
+      publicReferenceKinds: {
+        administrative: '行政参考范围',
+        watercourse: '原生水系参考线',
+        'reference-reach': '河段端点补证参考线',
+      },
+      publicReferenceLimit:
+        '这些公开地图几何仅供地理参照，不是月报河段边界、采样位置或已核准的业务定位；关闭参照不隐藏资料记录。',
+      publicReferenceEvidence: '公共参照来源、许可与原件哈希',
+      publicReferenceSource: '查看开放地图对象',
+      publicReferenceFileHash: '固定参照文件哈希',
+      publicReferenceOriginalHash: '来源原件哈希',
+      publicReferenceUnavailable:
+        '公共地理参照暂不可显示；资料位置与未定位记录仍按原证据查阅。',
       referenceHint: '只显示本批许可几何与经纬网；位置与范围的依据见资料档案。',
       flatView: '切换平面视图',
       spaceView: '切换鸟瞰视图',
@@ -5402,6 +5416,20 @@ const en: typeof zhCN = {
       readingPanel: 'Reading pane',
       readingPanes: { map: 'Map', results: 'Results', evidence: 'Evidence' },
       offlineReference: 'Offline geographic reference',
+      publicReferenceLayers: 'Public geographic references',
+      publicReferenceKinds: {
+        administrative: 'Administrative reference areas',
+        watercourse: 'Native watercourse reference',
+        'reference-reach': 'Endpoint evidence reference reaches',
+      },
+      publicReferenceLimit:
+        'These public map geometries are geographic references only. They are not monthly reach boundaries, sampling positions, or verified business locations. Turning off a reference does not hide material records.',
+      publicReferenceEvidence: 'Public source, license and original hashes',
+      publicReferenceSource: 'Open map object',
+      publicReferenceFileHash: 'Fixed reference file hash',
+      publicReferenceOriginalHash: 'Original source hash',
+      publicReferenceUnavailable:
+        'Public geographic references cannot be displayed now. Material positions and unresolved records remain available from their own evidence.',
       referenceHint:
         'Only licensed geometries from this batch and a graticule are shown. Read the material dossier for location and extent evidence.',
       flatView: 'Switch to planar view',

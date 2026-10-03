@@ -178,13 +178,17 @@ export function candidateOriginalUrl(
   reference: IngestionCandidateReference,
   assetId: string,
   locale: string,
-  _savedViewId?: string,
+  savedViewId?: string,
 ): string {
   const ref = IngestionCandidateReferenceSchema.parse(reference);
   const asset = PlatformUuidSchema.parse(assetId);
+  const saved =
+    savedViewId === undefined
+      ? undefined
+      : PlatformUuidSchema.parse(savedViewId);
   if (locale !== 'zh-CN' && locale !== 'en')
     throw new CandidateReaderError('invalid');
-  return `/api/data-foundation/candidate-assets/${ref.ingestionId.toLowerCase()}/${ref.processingBatchId.toLowerCase()}/${asset.toLowerCase()}?reviewHash=${ref.reviewHash}&locale=${locale}`;
+  return `/api/data-foundation/candidate-assets/${ref.ingestionId.toLowerCase()}/${ref.processingBatchId.toLowerCase()}/${asset.toLowerCase()}?reviewHash=${ref.reviewHash}&locale=${locale}${saved === undefined ? '' : `&savedViewId=${saved.toLowerCase()}`}`;
 }
 
 export interface CandidateDisplayFeatures {

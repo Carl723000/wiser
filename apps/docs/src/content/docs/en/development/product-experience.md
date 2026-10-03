@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 807d688608daff02ff3da972745c4b75eb076ae4
+lastReviewedCommit: 82d4e9ea0fef8d01de203705e7c737565f1f8881
 ---
 
 ## What this guide governs
@@ -192,3 +192,5 @@ Fixed-input dependency checks accept explicit record sets or an exact record/pos
 An intake with an authorized completed candidate offers originals, raw parsed records and native geometry before professional approval. A null candidate reference remains an explicit no-candidate state. Original links retain the fixed candidate and asset, table labels come from declared columns, and source locators remain exact. Drawing a line, area or geometry collection does not assign a sampling or study-area role. Map hits and the keyboard record list select the same real record.
 
 Fixed-view actions persist only the typed candidate list and reading state. Reopening checks every member's present access, uses a newly issued server read request and restores its page anchor and selected record. Refresh/retry cannot discard that full-list check or combine a historical batch with current original links. A denied or changed reference clears loaded materials and saved titles. Cross-intake views provide the corresponding task link; validated view links survive login. Existing saved map/period settings are retained and visibly marked when this raw reader cannot apply them. Actual account, database and browser acceptance remains distinct from synthetic component tests.
+
+Original links from a reopened saved view retain its canonical `savedViewId` on both asset cards and selected records, alongside the fixed candidate and asset, so the server can check the full manifest. Direct candidate reading keeps its single-original link without a saved-view identity.

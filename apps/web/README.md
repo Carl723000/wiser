@@ -77,6 +77,8 @@ pnpm --filter @wiser/web test:e2e
 
 `/{locale}/data-foundation/spatial-workspace` 仅在显式本机开发模式下读取已核对的资料包，不作为正式Data API失败时的替代。空间证据、就绪／合成复核和遥感检查在同一界面，复用固定版本回查、双窗、场景恢复和全屏。 / This explicitly enabled local-only workspace reads a validated pack, never substitutes fixtures for failed production Data reads, and shares exact-source, comparison, saved-scene and fullscreen interactions.
 
+可选的公共地理参照由两份固定哈希OSM GeoJSON独立提供：四区行政面／永定河线与五条端点补证参考河线。地图内各有开关，并保留许可、来源哈希和未核实边界说明；它们不增加业务记录或已定位数。绝对路径配置与固定哈希见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#本地多流域资料工作台)。 / Optional hash-pinned OSM reference files supply separate administrative, watercourse and endpoint-evidence layers. Their controls and license/hash details do not add business records or verified locations. See [Frontend development](../docs/src/content/docs/en/development/frontend.md#local-multi-region-material-workspace) for local paths and fixed hashes.
+
 配置见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#本地多流域资料工作台)。额外验收使用 `pnpm --filter @wiser/web exec playwright test --config playwright.spatial.config.ts`，连接已启动的回环3410预览，不自行启动整套服务。真实Auth、Data API、OAuth和Worker集成另行验证。 / This browser suite connects to an already running loopback3410 preview. Real Auth, Data API, OAuth and Worker integration remains separate.
 
 宽度不超过1100 px或高度不超过500 px时，在地图、结果与证据之间切换单区查阅，保留选择、视角、固定来源和已加载结果；桌面布局保留。 / At widths up to 1100 px or heights up to 500 px, one Map, Results or Evidence pane is visible while selection, camera, fixed sources and loaded results remain intact. Desktop retains its concurrent layout.

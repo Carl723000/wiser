@@ -17,6 +17,12 @@ import type {
 } from '@/lib/spatial-workspace-contract';
 import type { SpatialWorkspaceCopy } from '@/lib/spatial-workspace-copy';
 import {
+  publicReferenceKinds,
+  visiblePublicReferences,
+  type PublicReferences,
+  type PublicReferenceVisibility,
+} from '@/lib/spatial-public-reference';
+import {
   projectWorkspaceCoordinate,
   defaultWorkspaceRaster,
   workspaceGeometryAnchor,
@@ -90,6 +96,8 @@ const grid: FeatureCollection = {
 export interface SpatialWorkspaceMapProps {
   active?: boolean;
   features: WorkspaceMapFeatures;
+  publicReferences?: PublicReferences | null;
+  publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
   camera: WorkspaceCamera;
   mode: '2d' | '3d';
   selection: WorkspaceSelection;
@@ -247,6 +255,8 @@ function geometryPaths(
 export function SpatialWorkspaceMap({
   active = true,
   features,
+  publicReferences = null,
+  publicReferenceState = 'absent',
   camera,
   mode,
   selection,
@@ -299,6 +309,23 @@ export function SpatialWorkspaceMap({
     [size, setSize] = useState({ width: 800, height: 460 }),
     [pendingBounds, setPendingBounds] = useState<WorkspaceBounds | null>(null);
   const [hits, setHits] = useState<WorkspaceMapFeatures['features']>([]);
+  const [publicReferenceVisibility, setPublicReferenceVisibility] =
+    useState<PublicReferenceVisibility>({
+      administrative: true,
+      watercourse: true,
+      'reference-reach': true,
+    });
+  const shownPublicReferences = useMemo(
+    () =>
+      publicReferences
+        ? visiblePublicReferences(
+            publicReferences,
+            features,
+            publicReferenceVisibility,
+          )
+        : { type: 'FeatureCollection' as const, features: [] },
+    [publicReferences, features, publicReferenceVisibility],
+  );
   const verifiedRaster = rasterReports.filter(
     (report) =>
       report.rights.displayAllowed &&
@@ -610,6 +637,111 @@ export function SpatialWorkspaceMap({
           ))}
         </div>
       </div>
+      {publicReferences?.features.length ? (
+        <fieldset className={styles.publicReferenceControls}>
+          <legend>{copy.publicReferenceLayers}</legend>
+          <div>
+            {publicReferenceKinds.map((kind) => (
+              <label key={kind} className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={publicReferenceVisibility[kind]}
+                  disabled={
+                    !publicReferences.features.some(
+                      (feature) => feature.properties.kind === kind,
+                    )
+                  }
+                  onChange={(event) =>
+                    setPublicReferenceVisibility((previous) => ({
+                      ...previous,
+                      [kind]: event.target.checked,
+                    }))
+                  }
+                />
+                <svg
+                  width="28"
+                  height="14"
+                  viewBox="0 0 28 14"
+                  aria-hidden="true"
+                >
+                  {kind === 'administrative' ? (
+                    <rect
+                      x="2"
+                      y="2"
+                      width="24"
+                      height="10"
+                      fill={colors.border}
+                      fillOpacity="0.12"
+                    />
+                  ) : null}
+                  <line
+                    x1="2"
+                    x2="26"
+                    y1="7"
+                    y2="7"
+                    stroke={
+                      kind === 'administrative'
+                        ? colors.border
+                        : kind === 'watercourse'
+                          ? colors.accent
+                          : colors.selected
+                    }
+                    strokeWidth="2"
+                    strokeDasharray={
+                      kind === 'administrative'
+                        ? '3 3'
+                        : kind === 'reference-reach'
+                          ? '6 4'
+                          : undefined
+                    }
+                  />
+                </svg>
+                {copy.publicReferenceKinds[kind]}
+              </label>
+            ))}
+          </div>
+          <p>{copy.publicReferenceLimit}</p>
+          <details>
+            <summary>{copy.publicReferenceEvidence}</summary>
+            <ul>
+              {publicReferences.features.map((feature) => (
+                <li key={String(feature.id)}>
+                  <strong>{feature.properties.label}</strong> ·{' '}
+                  <a
+                    href={feature.properties.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {copy.publicReferenceSource}
+                  </a>{' '}
+                  ·{' '}
+                  <a
+                    href={feature.properties.licenseUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {feature.properties.attribution}
+                  </a>
+                  <p>{feature.properties.limitation}</p>
+                  <p>
+                    {copy.publicReferenceFileHash}:{' '}
+                    <code>{feature.properties.sourceFileSha256}</code>
+                  </p>
+                  <p>
+                    {copy.publicReferenceOriginalHash}:{' '}
+                    {feature.properties.originalSha256.map((hash) => (
+                      <code key={hash}>{hash} </code>
+                    ))}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </fieldset>
+      ) : publicReferenceState === 'invalid' ||
+        publicReferenceState === 'unavailable' ? (
+        <p role="status">{copy.publicReferenceUnavailable}</p>
+      ) : null}
       {selectedFeature ? (
         <div
           className={styles.mapSelection}
@@ -926,6 +1058,44 @@ export function SpatialWorkspaceMap({
                 }}
               />
             </Source>
+            <Source
+              id="workspace-public-references"
+              type="geojson"
+              data={shownPublicReferences}
+            >
+              <Layer
+                id="workspace-public-administrative-fill"
+                type="fill"
+                filter={['==', ['get', 'kind'], 'administrative']}
+                paint={{ 'fill-color': colors.border, 'fill-opacity': 0.08 }}
+              />
+              <Layer
+                id="workspace-public-administrative-outline"
+                type="line"
+                filter={['==', ['get', 'kind'], 'administrative']}
+                paint={{
+                  'line-color': colors.border,
+                  'line-width': 1,
+                  'line-dasharray': [2, 2],
+                }}
+              />
+              <Layer
+                id="workspace-public-watercourse"
+                type="line"
+                filter={['==', ['get', 'kind'], 'watercourse']}
+                paint={{ 'line-color': colors.accent, 'line-width': 1.5 }}
+              />
+              <Layer
+                id="workspace-public-reference-reach"
+                type="line"
+                filter={['==', ['get', 'kind'], 'reference-reach']}
+                paint={{
+                  'line-color': colors.selected,
+                  'line-width': 1.5,
+                  'line-dasharray': [3, 2],
+                }}
+              />
+            </Source>
             {rasters.map((raster) => (
               <Source
                 key={`${raster.report.id}:${raster.product.band}`}
@@ -1091,6 +1261,45 @@ export function SpatialWorkspaceMap({
                   )
                 : [],
             )}
+            {shownPublicReferences.features.map((feature) => (
+              <g
+                key={String(feature.id)}
+                aria-hidden="true"
+                pointerEvents="none"
+                data-public-reference-kind={feature.properties.kind}
+              >
+                {geometryPaths(feature.geometry, planar.project).map(
+                  ({ path, fill }, index) => (
+                    <path
+                      key={index}
+                      d={path}
+                      fill={
+                        fill && feature.properties.kind === 'administrative'
+                          ? colors.border
+                          : 'none'
+                      }
+                      fillOpacity="0.08"
+                      fillRule="evenodd"
+                      stroke={
+                        feature.properties.kind === 'administrative'
+                          ? colors.border
+                          : feature.properties.kind === 'watercourse'
+                            ? colors.accent
+                            : colors.selected
+                      }
+                      strokeWidth="1.5"
+                      strokeDasharray={
+                        feature.properties.kind === 'administrative'
+                          ? '3 3'
+                          : feature.properties.kind === 'reference-reach'
+                            ? '6 4'
+                            : undefined
+                      }
+                    />
+                  ),
+                )}
+              </g>
+            ))}
             {rasters.map((raster) => {
               const topLeft = planar.project(raster.coordinates[0]),
                 topRight = planar.project(raster.coordinates[1]),

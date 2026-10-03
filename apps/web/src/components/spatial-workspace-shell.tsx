@@ -6,6 +6,7 @@ import { getDictionary, type Locale } from '@/lib/i18n';
 import type { RegionId, WorkspacePack } from '@/lib/spatial-workspace-contract';
 import { versionImpact } from '@/lib/spatial-version-impact';
 import type { WorkspaceInvalidation } from '@/lib/spatial-workspace-view';
+import type { PublicReferences } from '@/lib/spatial-public-reference';
 import { ContextHelp } from './context-help';
 import { ExplorationWorkspace } from './exploration-workspace';
 import { SpatialWorkspace } from './spatial-workspace';
@@ -25,12 +26,16 @@ export function SpatialWorkspaceShell({
   initialRecordId = null,
   readinessFacts = null,
   readinessState = 'absent',
+  publicReferences = null,
+  publicReferenceState = 'absent',
 }: {
   pack: WorkspacePack;
   locale: Locale;
   initialRecordId?: string | null;
   readinessFacts?: ProjectReadinessInput | null;
   readinessState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
+  publicReferences?: PublicReferences | null;
+  publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
 }) {
   const dictionary = getDictionary(locale).dataFoundation;
   const copy = dictionary.spatialManagement;
@@ -197,6 +202,8 @@ export function SpatialWorkspaceShell({
             pack={pack}
             locale={locale}
             copy={dictionary.spatialWorkspace}
+            publicReferences={publicReferences}
+            publicReferenceState={publicReferenceState}
             regionId={regionId}
             onRegionChange={setRegionId}
             selectedRecordId={selectedRecordId}
@@ -215,6 +222,8 @@ export function SpatialWorkspaceShell({
               pack={pack}
               locale={locale}
               copy={dictionary.spatialWorkspace}
+              publicReferences={publicReferences}
+              publicReferenceState={publicReferenceState}
               regionId={exerciseRegionId}
               onRegionChange={setExerciseRegionId}
               selectedRecordId={exerciseSelectedId}

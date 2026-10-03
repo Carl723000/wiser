@@ -280,6 +280,8 @@ BusinessQuery v2允许已审与待审关系共同展示，但不改变断言状�
 
 启用须同时满足非 production、`WISER_AUTH_MODE=off`、`WISER_SPATIAL_WORKSPACE_MODE=local` 和本机 Host。`WISER_SPATIAL_INPUT_MANIFEST` 是绝对路径 JSON；未配置、损坏或版本不一致分别收敛，禁止伪造资料回退。配置只用于局部开发预览，不进入正式部署。
 
+可选的离线公共地理参照，分别将`WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON`设为`spatial-reference.geojson`绝对路径，和／或将`WISER_SPATIAL_REACH_REFERENCE_GEOJSON`设为`reference-ranges.geojson`绝对路径。前者完整SHA-256须为`955998aa4f119709801e288aa765c9333c9f0a8c108c00c30fa9a1bbc986b7b9`（最多1 MiB）；后者须为`1843e403c2f4ccf2f7cff8c64cd339dd3729133f99592ce6b62b3e3650525269`（最多256 KiB）。地图内可查来源原件哈希和ODbL署名。任一已配置文件变化或不可取得时，整组公共背景关闭，资料记录地图仍可用；读取受非生产、关闭Auth和本机Host的同一门禁约束。该层只是独立公共地理参照，既非候选业务定位或月报河段边界，也不作登录后Data地图回退。
+
 服务器校验固定来源与几何来源版本、哈希格式和使用条件，剥离原件路径及未知字段；不可显示的来源和关联记录清除。派生影像 PNG 只通过本机受限 `spatial-workspace-media` 路由交付，生产环境不可用。正式 Auth、Data API、RLS、入库与专业审核继续按既有流程另验。
 
 ### 工作台查阅与演练

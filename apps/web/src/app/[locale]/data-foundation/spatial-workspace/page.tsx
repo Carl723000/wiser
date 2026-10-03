@@ -40,6 +40,8 @@ export default async function SpatialWorkspacePage({
       initialRecordId={search.record ?? null}
       readinessFacts={input.readinessFacts ?? null}
       readinessState={input.readinessState ?? 'absent'}
+      publicReferences={input.publicReferences ?? null}
+      publicReferenceState={input.publicReferenceState ?? 'absent'}
     />
   );
 }

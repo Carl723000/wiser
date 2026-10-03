@@ -17,12 +17,14 @@ import type {
   WorkspaceSelection,
 } from '@/lib/spatial-workspace-view';
 import type { WorkspaceRasterReport } from '@/lib/spatial-workspace-contract';
+import type { PublicReferences } from '@/lib/spatial-public-reference';
 import { getDictionary } from '@/lib/i18n';
 import { SpatialWorkspaceMap } from './spatial-workspace-map';
 
 const probe = vi.hoisted(() => ({
   props: {} as Record<string, unknown>,
   source: null as unknown,
+  publicReferences: null as unknown,
   custom: null as CustomLayerInterface | null,
   images: [] as { id: string; url: string; coordinates: number[][] }[],
   query: vi.fn(() => []),
@@ -77,6 +79,8 @@ vi.mock('react-map-gl/maplibre', async () => {
       coordinates?: number[][];
     }) => {
       if (props.id === 'workspace-records') probe.source = props.data;
+      if (props.id === 'workspace-public-references')
+        probe.publicReferences = props.data;
       if (props.type === 'image' && props.url && props.coordinates)
         probe.images.push({
           id: props.id,
@@ -138,6 +142,65 @@ const features: WorkspaceMapFeatures = {
   ],
 };
 const copy = getDictionary('zh-CN').dataFoundation.spatialWorkspace;
+const publicReferences: PublicReferences = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 'admin',
+      geometry: features.features[0].geometry,
+      properties: {
+        kind: 'administrative',
+        label: '行政参考',
+        fixedSourceId: 'osm-admin-reference-20260919',
+        sourceFileSha256: 'a'.repeat(64),
+        originalSha256: ['b'.repeat(64)],
+        attribution: '© OpenStreetMap contributors · ODbL 1.0',
+        licenseUrl: 'https://www.openstreetmap.org/copyright',
+        sourceUrl: 'https://www.openstreetmap.org/relation/1',
+        limitation: '不是法定边界',
+        scope: 'public-geographic-reference',
+        crs: 'EPSG:4326',
+      },
+    },
+    {
+      type: 'Feature',
+      id: 'watercourse',
+      geometry: features.features[1].geometry,
+      properties: {
+        kind: 'watercourse',
+        label: '水系参考',
+        fixedSourceId: 'osm-river-reference-20260919',
+        sourceFileSha256: 'c'.repeat(64),
+        originalSha256: ['d'.repeat(64)],
+        attribution: '© OpenStreetMap contributors · ODbL 1.0',
+        licenseUrl: 'https://www.openstreetmap.org/copyright',
+        sourceUrl: 'https://www.openstreetmap.org/way/2',
+        limitation: '不是月报边界',
+        scope: 'public-geographic-reference',
+        crs: 'EPSG:4326',
+      },
+    },
+    {
+      type: 'Feature',
+      id: 'reach',
+      geometry: features.features[1].geometry,
+      properties: {
+        kind: 'reference-reach',
+        label: '河段参考',
+        fixedSourceId: 'openstreetmap',
+        sourceFileSha256: 'e'.repeat(64),
+        originalSha256: ['f'.repeat(64)],
+        attribution: '© OpenStreetMap contributors · ODbL 1.0',
+        licenseUrl: 'https://www.openstreetmap.org/copyright',
+        sourceUrl: 'https://www.openstreetmap.org/way/3',
+        limitation: '未完成历史边界核验',
+        scope: 'public-geographic-reference',
+        crs: 'EPSG:4326',
+      },
+    },
+  ],
+};
 const camera = {
   longitude: 116.5,
   latitude: 39.5,
@@ -158,12 +221,92 @@ const props = {
 beforeEach(() => {
   probe.custom = null;
   probe.images = [];
+  probe.source = null;
+  probe.publicReferences = null;
   probe.query.mockClear();
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     callback(0);
     return 1;
   });
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
+});
+
+it('draws independent reference sources below record layers with separate switches', () => {
+  render(
+    <SpatialWorkspaceMap
+      {...props}
+      publicReferences={publicReferences}
+      publicReferenceState="ready"
+    />,
+  );
+  expect((probe.publicReferences as PublicReferences).features).toHaveLength(3);
+  expect(probe.source).toEqual(features);
+  expect(probe.props.interactiveLayerIds).not.toContain(
+    'workspace-public-watercourse',
+  );
+  const administrative = screen.getByLabelText(
+    copy.publicReferenceKinds.administrative,
+  );
+  expect(administrative instanceof HTMLInputElement).toBe(true);
+  if (!(administrative instanceof HTMLInputElement))
+    throw new Error('Missing public reference switch');
+  expect(administrative.checked).toBe(true);
+  fireEvent.click(
+    screen.getByLabelText(copy.publicReferenceKinds.administrative),
+  );
+  expect(
+    (probe.publicReferences as PublicReferences).features.map(
+      (feature) => feature.properties.kind,
+    ),
+  ).toEqual(['watercourse', 'reference-reach']);
+  fireEvent.click(screen.getByLabelText(copy.publicReferenceKinds.watercourse));
+  expect(
+    (probe.publicReferences as PublicReferences).features.map(
+      (feature) => feature.properties.kind,
+    ),
+  ).toEqual(['reference-reach']);
+  fireEvent.click(
+    screen.getByLabelText(copy.publicReferenceKinds['reference-reach']),
+  );
+  expect((probe.publicReferences as PublicReferences).features).toHaveLength(0);
+  fireEvent.click(screen.getByText(copy.publicReferenceEvidence));
+  expect(screen.getByText('b'.repeat(64))).toBeTruthy();
+  expect(screen.getByText(copy.publicReferenceLimit)).toBeTruthy();
+});
+
+it('uses noninteractive SVG reference geometry without adding a record location', () => {
+  const { container } = render(
+    <SpatialWorkspaceMap
+      {...props}
+      webGLAvailable={false}
+      publicReferences={publicReferences}
+    />,
+  );
+  expect(
+    container.querySelectorAll('[data-public-reference-kind]'),
+  ).toHaveLength(3);
+  expect(
+    container
+      .querySelector('[data-public-reference-kind="reference-reach"]')
+      ?.getAttribute('pointer-events'),
+  ).toBe('none');
+  expect(container.querySelectorAll('[data-planar-geometry]')).toHaveLength(2);
+  expect(probe.source).toBeNull();
+});
+
+it('keeps record geometry available when public references fail closed', () => {
+  render(
+    <SpatialWorkspaceMap
+      {...props}
+      publicReferences={null}
+      publicReferenceState="invalid"
+    />,
+  );
+  expect(screen.getByRole('status').textContent).toContain(
+    copy.publicReferenceUnavailable,
+  );
+  expect(probe.source).toEqual(features);
+  expect((probe.publicReferences as PublicReferences).features).toHaveLength(0);
 });
 afterEach(() => {
   cleanup();

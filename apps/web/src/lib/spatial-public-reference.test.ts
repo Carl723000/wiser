@@ -15,23 +15,23 @@ const line = {
     [117, 40],
   ],
 };
-const polygon = {
+const polygon = (offset = 0) => ({
   type: 'Polygon' as const,
   coordinates: [
     [
-      [116, 39],
-      [117, 39],
-      [117, 40],
-      [116, 39],
+      [116 + offset, 39],
+      [116.1 + offset, 39],
+      [116.1 + offset, 40],
+      [116 + offset, 39],
     ],
   ],
-};
+});
 const regional = {
   type: 'FeatureCollection',
   features: [
     ...Array.from({ length: 4 }, (_, index) => ({
       type: 'Feature',
-      geometry: polygon,
+      geometry: polygon(index),
       properties: {
         name: `区${index}`,
         geometry_role: 'ADMINISTRATIVE_REFERENCE_AREA',
@@ -75,8 +75,12 @@ const reaches = {
         'geographical-reference-only; not same-as or observation-boundary',
       monthlyObservationIdentityConfirmed: false,
       professionalReview: 'pending',
+      nativeWayIds: [123456 + index],
       sourceOriginals: [
-        { originalPath: '/private/original.json', originalSha256: 'a'.repeat(64) },
+        {
+          originalPath: '/private/original.json',
+          originalSha256: 'a'.repeat(64),
+        },
       ],
     },
   })),
@@ -102,7 +106,9 @@ describe('fixed public reference input', () => {
     ]);
     expect(JSON.stringify(parsed)).not.toContain('/private/original.json');
     expect(JSON.stringify(parsed)).not.toContain('originalMonthlyRecordId');
-    expect(parsed.features[0].properties.sourceFileSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(parsed.features[0].properties.sourceFileSha256).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
   });
 
   it('rejects an altered coordinate system or rights rather than drawing it', () => {
@@ -148,7 +154,7 @@ describe('fixed public reference input', () => {
           id: 'record-1',
           geometry: original.geometry,
           properties: {
-            sourceId: 'source',
+            sourceId: original.properties.fixedSourceId,
             versionId: original.properties.originalSha256[0],
             recordId: 'record-1',
             positionId: 'position-1',
@@ -184,6 +190,24 @@ describe('fixed public reference input', () => {
         watercourse: true,
         'reference-reach': true,
       }).features,
+    ).toHaveLength(5);
+    expect(
+      visiblePublicReferences(
+        parsed,
+        {
+          ...recordFeatures,
+          features: [
+            {
+              ...recordFeatures.features[0],
+              properties: {
+                ...recordFeatures.features[0].properties,
+                sourceId: 'unrelated-source',
+              },
+            },
+          ],
+        },
+        { administrative: true, watercourse: true, 'reference-reach': true },
+      ).features,
     ).toHaveLength(5);
   });
 

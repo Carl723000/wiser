@@ -11,6 +11,11 @@ import {
   parseLocalReadinessFacts,
   readableLocalReadinessFacts,
 } from './spatial-readiness-input';
+import {
+  fixedPublicReferenceHashes,
+  parseFixedPublicReferences,
+  type PublicReferences,
+} from './spatial-public-reference';
 
 export type LocalSpatialState =
   'ready' | 'disabled' | 'unavailable' | 'invalid';
@@ -19,6 +24,53 @@ export interface LocalSpatialInput {
   pack: WorkspacePack | null;
   readinessState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
   readinessFacts?: ProjectReadinessInput | null;
+  publicReferenceState?: 'ready' | 'invalid' | 'unavailable';
+  publicReferences?: PublicReferences | null;
+}
+
+async function loadPublicReferences(
+  environment: Record<string, string | undefined>,
+): Promise<
+  Pick<LocalSpatialInput, 'publicReferenceState' | 'publicReferences'>
+> {
+  const regional = environment.WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON;
+  const reaches = environment.WISER_SPATIAL_REACH_REFERENCE_GEOJSON;
+  if (!regional && !reaches) return {};
+  const read = async (
+    path: string | undefined,
+    expected: string,
+    maxBytes: number,
+  ): Promise<unknown> => {
+    if (!path) return null;
+    if (!isAbsolute(path) || !path.endsWith('.geojson'))
+      throw new Error('Invalid local reference path');
+    const info = await stat(path);
+    if (!info.isFile() || info.size > maxBytes)
+      throw new Error('Invalid local reference size');
+    const bytes = await readFile(path);
+    if (
+      bytes.length > maxBytes ||
+      createHash('sha256').update(bytes).digest('hex') !== expected
+    )
+      throw new Error('Local reference changed');
+    return JSON.parse(bytes.toString('utf8'));
+  };
+  try {
+    const [regionalInput, reachInput] = await Promise.all([
+      read(regional, fixedPublicReferenceHashes.regional, 1024 * 1024),
+      read(reaches, fixedPublicReferenceHashes.reaches, 256 * 1024),
+    ]);
+    return {
+      publicReferenceState: 'ready',
+      publicReferences: parseFixedPublicReferences(regionalInput, reachInput),
+    };
+  } catch (error) {
+    return {
+      publicReferenceState:
+        error instanceof Error && 'code' in error ? 'unavailable' : 'invalid',
+      publicReferences: null,
+    };
+  }
 }
 
 async function loadReadinessFacts(
@@ -100,6 +152,7 @@ export async function loadLocalSpatialWorkspace(
       state: 'ready',
       pack,
       ...(await loadReadinessFacts(environment, pack)),
+      ...(await loadPublicReferences(environment)),
     };
   } catch {
     return { state: 'invalid', pack: null };

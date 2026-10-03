@@ -112,7 +112,10 @@ it('keeps uncertain retries idempotent, requires a reason and refreshes after in
     target: { value: '核对原始许可，批准本次发布' },
   });
   fireEvent.click(screen.getByRole('button', { name: '确认发布' }));
-  await screen.findByRole('alert');
+  // The external-source list can also report its own independent alert.
+  await screen.findByText('来源许可暂不可用，请刷新后重试。', {
+    selector: '[role="alert"]',
+  });
   fireEvent.click(screen.getByRole('button', { name: '确认发布' }));
   await screen.findByText('许可已发布，成员授权另行办理。');
   expect(new Headers(calls[0].headers).get('idempotency-key')).toBe(

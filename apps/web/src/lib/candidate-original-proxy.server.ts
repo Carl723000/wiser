@@ -1,8 +1,12 @@
 import 'server-only';
-import { IngestionCandidateReferenceSchema } from '@wiser/data-contracts';
+import {
+  candidateSavedReferenceKey,
+  IngestionCandidateReferenceSchema,
+} from '@wiser/data-contracts';
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
 import {
   DataFoundationApiError,
+  createDataFoundationDal,
   type DataFoundationWebConfig,
 } from './data-foundation-dal.server';
 import {
@@ -118,6 +122,8 @@ function deliveryBody(
   length: number,
   signal: AbortSignal,
   request: Request,
+  authorizeSaved?: () => Promise<void>,
+  cancelSaved?: () => void,
 ): ReadableStream<Uint8Array> {
   const reader = upstream.body?.getReader();
   if (!reader) throw new DataFoundationApiError('contract', 502);
@@ -159,18 +165,25 @@ function deliveryBody(
           delivered += chunk.value.byteLength;
           if (delivered > length)
             throw new DataFoundationApiError('contract', 502);
+          if (authorizeSaved) await authorizeSaved();
+          if (finished) return;
           value.enqueue(chunk.value);
-        } catch {
+        } catch (error) {
           if (finished) return;
           finished = true;
           signal.removeEventListener('abort', stop);
           cancelReader();
-          value.error(new DataFoundationApiError('contract', 502));
+          value.error(
+            authorizeSaved && error instanceof DataFoundationApiError
+              ? error
+              : new DataFoundationApiError('contract', 502),
+          );
         }
       },
       cancel() {
         finished = true;
         signal.removeEventListener('abort', stop);
+        cancelSaved?.();
         cancelReader();
       },
     },
@@ -191,14 +204,18 @@ export async function proxyCandidateOriginal(
     reviewHash: search.get('reviewHash'),
   });
   const asset = PlatformUuidSchema.safeParse(options.assetId);
+  const saved = search.has('savedViewId')
+    ? PlatformUuidSchema.safeParse(search.get('savedViewId'))
+    : undefined;
   const range = request.headers.get('range');
   if (
     !reference.success ||
     !asset.success ||
+    (saved && !saved.success) ||
     !['GET', 'HEAD'].includes(request.method) ||
     [...search.keys()].some(
       (key) =>
-        !['reviewHash', 'locale'].includes(key) ||
+        !['reviewHash', 'locale', 'savedViewId'].includes(key) ||
         search.getAll(key).length !== 1,
     ) ||
     (search.has('locale') &&
@@ -207,9 +224,11 @@ export async function proxyCandidateOriginal(
   ) {
     throw new DataFoundationApiError('invalid-request', 422);
   }
+  const savedCancellation = saved?.success ? new AbortController() : undefined;
   const signal = AbortSignal.any([
     request.signal,
     AbortSignal.timeout(120_000),
+    ...(savedCancellation ? [savedCancellation.signal] : []),
   ]);
   if (signal.aborted) throw abortError(request);
   const authenticate = async () => {
@@ -230,6 +249,41 @@ export async function proxyCandidateOriginal(
     }
   };
   const token = await authenticate();
+  const authorizeSaved = saved?.success
+    ? async () => {
+        // Each call performs the standard API's complete-manifest check.
+        // A view ID is navigation context; it never grants original access.
+        const dal = createDataFoundationDal({
+          config: options.config,
+          createAuthClient: options.createAuthClient,
+          fetch: options.fetch,
+          now: options.now,
+        });
+        const opened = await within(
+          dal.candidateSavedView(
+            'open',
+            { viewId: saved.data.toLowerCase() },
+            undefined,
+            signal,
+          ),
+          signal,
+          request,
+        );
+        if (!('references' in opened))
+          throw new DataFoundationApiError('contract', 502);
+        if (
+          !opened.references.some(
+            (ref) =>
+              candidateSavedReferenceKey(ref) ===
+              candidateSavedReferenceKey(reference.data),
+          )
+        )
+          throw new DataFoundationApiError('not-found', 404);
+        if ((await authenticate()) !== token)
+          throw new DataFoundationApiError('authentication', 401);
+      }
+    : undefined;
+  if (authorizeSaved) await authorizeSaved();
   const url = new URL(
     `/api/data/v1/tenants/${options.config.tenantId}/projects/${options.config.projectId}/ingestions/${reference.data.ingestionId}/candidates/${reference.data.processingBatchId}/assets/${asset.data}/content`,
     options.config.apiOrigin,
@@ -263,6 +317,7 @@ export async function proxyCandidateOriginal(
       throw statusError(upstream.status);
     if ((await authenticate()) !== token)
       throw new DataFoundationApiError('authentication', 401);
+    if (authorizeSaved) await authorizeSaved();
     const headers = new Headers({
       'cache-control':
         'private, no-cache, no-store, max-age=0, must-revalidate',
@@ -297,10 +352,20 @@ export async function proxyCandidateOriginal(
       discard(upstream.body);
       return new Response(null, { status: upstream.status, headers });
     }
-    return new Response(deliveryBody(upstream, length, signal, request), {
-      status: upstream.status,
-      headers,
-    });
+    return new Response(
+      deliveryBody(
+        upstream,
+        length,
+        signal,
+        request,
+        authorizeSaved,
+        savedCancellation ? () => savedCancellation.abort() : undefined,
+      ),
+      {
+        status: upstream.status,
+        headers,
+      },
+    );
   } catch (error) {
     discard(upstream.body);
     throw error;

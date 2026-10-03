@@ -910,6 +910,7 @@ function CandidateSession({
                             fixed,
                             asset.assetId,
                             locale,
+                            openedView?.savedView.viewId,
                           )}
                         >
                           {copy.downloadOriginal}
@@ -1115,6 +1116,7 @@ function CandidateSession({
                       fixed,
                       selectedRow.assetId,
                       locale,
+                      openedView?.savedView.viewId,
                     )}
                   >
                     {copy.downloadOriginal}

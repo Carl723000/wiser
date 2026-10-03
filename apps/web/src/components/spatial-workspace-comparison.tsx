@@ -2,6 +2,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { RegionId, WorkspacePack } from '@/lib/spatial-workspace-contract';
 import type { SpatialWorkspaceCopy } from '@/lib/spatial-workspace-copy';
+import type { PublicReferences } from '@/lib/spatial-public-reference';
 import {
   compareWorkspaceRecords,
   filterSpatialWorkspace,
@@ -26,6 +27,8 @@ export interface SpatialWorkspaceComparisonProps {
   onChange: Dispatch<SetStateAction<SpatialWorkspaceView>>;
   onSelect: (selection: NonNullable<WorkspaceSelection>) => void;
   invalidations?: readonly WorkspaceInvalidation[];
+  publicReferences?: PublicReferences | null;
+  publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
 }
 export function SpatialWorkspaceComparison({
   active = true,
@@ -35,6 +38,8 @@ export function SpatialWorkspaceComparison({
   onChange,
   onSelect,
   invalidations = [],
+  publicReferences = null,
+  publicReferenceState = 'absent',
 }: SpatialWorkspaceComparisonProps) {
   const scopes = view.comparison;
   const scopeView = (
@@ -213,6 +218,8 @@ export function SpatialWorkspaceComparison({
               <SpatialWorkspaceMap
                 active={active}
                 features={filtered.features}
+                publicReferences={publicReferences}
+                publicReferenceState={publicReferenceState}
                 rasterReports={workspaceRasterOverlays(
                   pack,
                   scopeView(scope),

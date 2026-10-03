@@ -6,6 +6,54 @@ import { describe, expect, it } from 'vitest';
 import { loadLocalSpatialWorkspace } from './spatial-workspace-local';
 
 describe('explicit local spatial processing input', () => {
+  it('fails closed on changed public-reference bytes without exposing local paths', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wiser-reference-test-'));
+    const packPath = join(directory, 'pack.json');
+    const referencePath = join(directory, 'reference.geojson');
+    const env = {
+      NODE_ENV: 'development',
+      WISER_AUTH_MODE: 'off',
+      WISER_SPATIAL_WORKSPACE_MODE: 'local',
+      WISER_SPATIAL_INPUT_MANIFEST: packPath,
+      WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON: referencePath,
+    };
+    try {
+      await writeFile(
+        packPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          generatedAt: '2026-10-04',
+          processingVersion: 'p1',
+          sources: [],
+          records: [],
+          regions: [],
+          topicPackages: [],
+          rasterReports: [],
+        }),
+      );
+      await writeFile(
+        referencePath,
+        '{"privatePath":"/private/never-serialize"}',
+      );
+      const result = await loadLocalSpatialWorkspace(env, 'localhost:3410');
+      expect(result).toMatchObject({
+        state: 'ready',
+        publicReferenceState: 'invalid',
+        publicReferences: null,
+      });
+      expect(JSON.stringify(result)).not.toMatch(
+        /privatePath|wiser-reference-test-/,
+      );
+      expect(
+        await loadLocalSpatialWorkspace(env, 'public.example.org'),
+      ).toEqual({
+        state: 'disabled',
+        pack: null,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it('does not read a manifest in production, a signed-in live environment, or on a public host', async () => {
     const env = {
       NODE_ENV: 'development',

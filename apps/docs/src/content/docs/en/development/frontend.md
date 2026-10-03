@@ -282,6 +282,8 @@ The account control links to `/[locale]/account/agents` for the current user’s
 
 Enabling requires non-production, `WISER_AUTH_MODE=off`, `WISER_SPATIAL_WORKSPACE_MODE=local` and a loopback Host. `WISER_SPATIAL_INPUT_MANIFEST` names an absolute JSON path. Missing input, malformed input and inconsistent versions have separate closed states; no fixture fallback is permitted. This configuration is for a scoped development preview, not target deployment.
 
+For an optional offline public geographic background, set `WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON` to the absolute `spatial-reference.geojson` path and/or `WISER_SPATIAL_REACH_REFERENCE_GEOJSON` to the absolute `reference-ranges.geojson` path. The former must match SHA-256 `955998aa4f119709801e288aa765c9333c9f0a8c108c00c30fa9a1bbc986b7b9` (at most 1 MiB); the latter must match `1843e403c2f4ccf2f7cff8c64cd339dd3729133f99592ce6b62b3e3650525269` (at most 256 KiB). Source originals and ODbL attribution remain visible in the map disclosure. If any configured reference file changes or becomes unavailable, the entire public background closes while the record map remains usable. Local file access stays behind the same non-production/Auth-off/loopback gate. This is an independent public reference layer, not a candidate position, monthly reach boundary or authenticated Data map fallback.
+
 The server validates source and geometry versions, hash shape and display rights, strips original paths and unknown fields, and removes undisplayable sources and related records. Derived PNGs use a bounded loopback-only `spatial-workspace-media` route, disabled in production. Existing Auth, Data API, RLS, intake and professional approval remain separate acceptance paths.
 
 ### Workbench reading and exercises

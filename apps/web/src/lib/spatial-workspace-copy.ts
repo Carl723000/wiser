@@ -32,6 +32,18 @@ export interface SpatialWorkspaceCopy {
   readingPanel: string;
   readingPanes: { map: string; results: string; evidence: string };
   offlineReference: string;
+  publicReferenceLayers: string;
+  publicReferenceKinds: {
+    administrative: string;
+    watercourse: string;
+    'reference-reach': string;
+  };
+  publicReferenceLimit: string;
+  publicReferenceEvidence: string;
+  publicReferenceSource: string;
+  publicReferenceFileHash: string;
+  publicReferenceOriginalHash: string;
+  publicReferenceUnavailable: string;
   referenceHint: string;
   flatView: string;
   spaceView: string;

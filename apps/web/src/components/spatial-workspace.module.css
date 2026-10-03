@@ -240,6 +240,24 @@
 .mapPanel {
   min-width: 0;
 }
+.publicReferenceControls {
+  min-width: 0;
+  margin: 0 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+.publicReferenceControls > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.publicReferenceControls details,
+.publicReferenceControls li {
+  overflow-wrap: anywhere;
+}
+.publicReferenceControls code {
+  font-size: 0.8rem;
+}
 .mapLegend,
 .mapSelection {
   display: grid;
