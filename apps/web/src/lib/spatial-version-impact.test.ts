@@ -87,6 +87,116 @@ describe('fixed version impact', () => {
     );
     expect(result.recordIds).toEqual([record.id]);
   });
+  it('propagates a geometry processing-rule change using the referenced source and fixed version', () => {
+    const record = syntheticReviewRecord();
+    const position = record.positions[0];
+    const dependent = {
+      ...record,
+      processingVersion: 'independent-monthly-parser',
+      positions: [
+        position,
+        {
+          ...position,
+          id: 'other-reference',
+          geometrySourceId: 'unrelated-geometry-source',
+        },
+      ],
+    };
+    const before = JSON.stringify(dependent);
+    const result = versionImpact(
+      [dependent],
+      [
+        {
+          sourceId: position.geometrySourceId!,
+          previousVersionId: position.geometryVersionId!,
+          nextVersionId: position.geometryVersionId!,
+          reason: 'rule-changed',
+          previousProcessingVersion: 'geometry-conversion-rule',
+        },
+      ],
+      [
+        {
+          id: 'dependent-topic',
+          title: 'Synthetic dependent topic',
+          regionIds: dependent.regionIds,
+          sourceIds: [dependent.sourceId],
+          recordIds: [dependent.id],
+          question: 'Synthetic question',
+          gaps: [],
+        },
+      ],
+    );
+    expect(result.recordIds).toEqual([dependent.id]);
+    expect(result.objectIds).toEqual([dependent.objectId]);
+    expect(result.positionIds).toEqual([position.id]);
+    expect(result.needIds).toEqual(dependent.needIds);
+    expect(result.regionIds).toEqual(dependent.regionIds);
+    expect(result.topicIds).toEqual(['dependent-topic']);
+    expect(result.findings).toEqual([
+      {
+        recordId: dependent.id,
+        sourceId: position.geometrySourceId!,
+        reason: 'rule-changed',
+      },
+    ]);
+    expect(JSON.stringify(dependent)).toBe(before);
+  });
+  it('includes every matching geometry reference without widening unrelated source or version scopes', () => {
+    const record = syntheticReviewRecord();
+    const position = record.positions[0];
+    const matching = {
+      ...record,
+      positions: [position, { ...position, id: 'second-reference' }],
+    };
+    const wrongVersion = {
+      ...record,
+      id: 'wrong-geometry-version',
+      positions: [{ ...position, geometryVersionId: 'different-version' }],
+    };
+    const wrongSource = {
+      ...record,
+      id: 'wrong-geometry-source',
+      positions: [{ ...position, geometrySourceId: 'different-source' }],
+    };
+    const change = {
+      sourceId: position.geometrySourceId!,
+      previousVersionId: position.geometryVersionId!,
+      nextVersionId: position.geometryVersionId!,
+      reason: 'rule-changed' as const,
+    };
+    const result = versionImpact(
+      [matching, wrongVersion, wrongSource],
+      [change, change],
+      [],
+    );
+    expect(result.recordIds).toEqual([matching.id]);
+    expect(result.positionIds).toEqual([position.id, 'second-reference']);
+    expect(result.findings).toHaveLength(1);
+  });
+  it('keeps rule changes narrow for own records without a matching geometry dependency', () => {
+    const record = syntheticReviewRecord();
+    const oldRule = { ...record, positions: [] };
+    const otherRule = {
+      ...oldRule,
+      id: 'other-own-rule',
+      processingVersion: 'different-rule',
+    };
+    const result = versionImpact(
+      [oldRule, otherRule],
+      [
+        {
+          sourceId: record.sourceId,
+          previousVersionId: record.versionId,
+          nextVersionId: record.versionId,
+          reason: 'rule-changed',
+          previousProcessingVersion: record.processingVersion,
+        },
+      ],
+      [],
+    );
+    expect(result.recordIds).toEqual([oldRule.id]);
+    expect(result.positionIds).toEqual([]);
+  });
   it('deduplicates overlapping impacts and does not mutate records', () => {
     const record = syntheticReviewRecord();
     const frozen = JSON.stringify(record);
