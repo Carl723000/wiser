@@ -12,6 +12,8 @@ import {
 
 const id = (n: number) =>
   `30000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const alphaId = (n: number) =>
+  `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const context: DataCapabilityExecutionContext = {
   principal: {
     actorId: id(1),
@@ -70,6 +72,7 @@ const managedScope = context.authorization.resourceAccess!.scope;
 if (managedScope.mode !== 'managed') throw Error('Expected managed fixture');
 class Client implements PostgresDataReadClient {
   queries: string[] = [];
+  pendingScopeValues: readonly unknown[] | undefined;
   operation: Record<string, unknown> = operationRow;
   eventMessage = 'Review required.';
   access: Record<string, unknown> = {
@@ -84,8 +87,9 @@ class Client implements PostgresDataReadClient {
     submitted_actor_type: 'human',
     submitted_delegator_actor_id: null,
   };
-  query(sql: string) {
+  query(sql: string, values?: readonly unknown[]) {
     this.queries.push(sql);
+    if (sql.includes('data.intake.scope')) this.pendingScopeValues = values;
     if (sql.includes('data.operation.intake-access'))
       return Promise.resolve({ rows: [this.access] });
     if (sql.includes('data.operation.get'))
@@ -122,12 +126,13 @@ function read(
   capability: (typeof capabilities)[number],
   actor = context,
   after?: string,
+  operationId = id(4),
 ) {
   return runtime(client)
     .executors.find((e) => e.id === capability)!
     .execute(
       {
-        operationId: id(4),
+        operationId,
         ...(capability === 'data.operation.events'
           ? { first: 1, ...(after ? { after } : {}) }
           : {}),
@@ -146,6 +151,119 @@ function reviewer(actorId = id(90)) {
   };
 }
 describe('managed standard intake Operation reads', () => {
+  it.each(capabilities)(
+    'accepts a schema-valid uppercase UUID for %s without changing the identity',
+    async (capability) => {
+      const client = new Client();
+      client.access = { ...client.access, operation_id: alphaId(4) };
+      client.operation = { ...client.operation, operation_id: alphaId(4) };
+      await expect(
+        read(client, capability, context, undefined, alphaId(4).toUpperCase()),
+      ).resolves.toBeDefined();
+      const { resourceAccess: _, ...legacy } = context.authorization;
+      await expect(
+        read(
+          client,
+          capability,
+          { ...context, authorization: legacy },
+          undefined,
+          alphaId(4).toUpperCase(),
+        ),
+      ).resolves.toBeDefined();
+    },
+  );
+  it.each(capabilities)(
+    'canonicalizes validated scope and immutable human responsibility for %s',
+    async (capability) => {
+      const client = new Client();
+      client.access = {
+        ...client.access,
+        tenant_id: alphaId(10),
+        project_id: alphaId(11),
+        actor_id: alphaId(1),
+        capability_id: 'data.uploadSession.create',
+        intake_responsibility: {
+          actorId: alphaId(1).toUpperCase(),
+          actorType: 'human',
+          purpose: 'standard-intake',
+        },
+      };
+      client.operation = {
+        ...client.operation,
+        tenant_id: alphaId(10),
+        project_id: alphaId(11),
+      };
+      const uppercase = {
+        ...context,
+        principal: {
+          ...context.principal,
+          actorId: alphaId(1).toUpperCase(),
+          authUserId: alphaId(1).toUpperCase(),
+        },
+        authorization: {
+          ...context.authorization,
+          tenantId: alphaId(10).toUpperCase(),
+          projectId: alphaId(11).toUpperCase(),
+        },
+      };
+      await expect(read(client, capability, uppercase)).resolves.toBeDefined();
+      expect(client.pendingScopeValues?.slice(0, 3)).toEqual([
+        alphaId(1),
+        'human',
+        '',
+      ]);
+      client.access = {
+        ...client.access,
+        intake_responsibility: {
+          actorId: alphaId(90).toUpperCase(),
+          actorType: 'human',
+          purpose: 'standard-intake',
+        },
+      };
+      await expect(read(client, capability, uppercase)).rejects.toMatchObject({
+        statusCode: 404,
+      });
+    },
+  );
+  it.each(capabilities)(
+    'canonicalizes an agent and delegator without treating another delegator as owner for %s',
+    async (capability) => {
+      const client = new Client();
+      client.access = {
+        ...client.access,
+        actor_id: alphaId(90),
+        submitted_by_actor_id: alphaId(90),
+        submitted_actor_type: 'agent',
+        submitted_delegator_actor_id: alphaId(1),
+      };
+      const agent = {
+        ...context,
+        principal: {
+          actorId: alphaId(90).toUpperCase(),
+          actorType: 'agent' as const,
+          authenticationMethod: 'delegated_credential' as const,
+          credentialId: id(91),
+          delegationId: id(92),
+          delegatedBy: alphaId(1).toUpperCase(),
+        },
+      };
+      await expect(read(client, capability, agent)).resolves.toBeDefined();
+      expect(client.pendingScopeValues?.slice(0, 3)).toEqual([
+        alphaId(90),
+        'agent',
+        alphaId(1),
+      ]);
+      await expect(
+        read(client, capability, {
+          ...agent,
+          principal: {
+            ...agent.principal,
+            delegatedBy: alphaId(93).toUpperCase(),
+          },
+        }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    },
+  );
   it('keeps completed and published standard-ingestion Operation DTO behavior', async () => {
     const client = new Client();
     client.operation = {
