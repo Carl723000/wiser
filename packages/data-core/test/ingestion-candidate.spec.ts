@@ -53,7 +53,7 @@ describe('ingestion candidate fixed-input boundary', () => {
       core.matchesFrozenIngestionCandidate({ ...current, state }, batch),
     ).toBe(false);
   });
-  it('denies policy withdrawal, revision change and unknown responsibility context', () => {
+  it('denies policy withdrawal, revision change and unknown governance context', () => {
     for (const reviewGovernance of [
       undefined,
       {},

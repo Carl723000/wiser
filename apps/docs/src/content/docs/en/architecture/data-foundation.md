@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a0952585
+lastReviewedCommit: def7525c
 ---
 
 ## What runs today
@@ -484,3 +484,7 @@ Pure window statistics preserve encoded values, individual channel masks, explic
 ### Local readiness reading adapter
 
 The local Web workbench consumes the pure rule through the explicit `@wiser/data-core/project-readiness` entry. Question drilldowns retain their actual work/version/asset, object/record, field, check, coverage-cell, task and use-check grains. The adapter keeps pending records pending and ignores synthetic supplements. Displayable geometry-reference counts include every still-readable fixed position reference, not only the representative geometry used in a rule record; neither count represents sampling sites. A declared publication series may correct the date role for this readonly coverage inspection only; original workbench records remain unchanged. These local facts do not grant access, publish materials, persist candidates or replace authenticated HTTP acceptance.
+
+## Frozen candidate contracts
+
+Ingestion candidates use the strict `ingestion-candidate` reference: ingestion ID, frozen review SHA-256 and processing-batch ID. It is rejected by the published-version reference schema. Completed parser batches preserve original asset hashes and explicit READY, PARTIAL or UNAVAILABLE outcomes; unknown record/feature counts remain null. Record pages preserve original values, source locators, source order and unique row identities, with one fixed asset, declared columns, at most 200 rows, a 256 KiB record-value limit and a 3 MiB page budget. The pure integrity guard rejects changed input, duplicate originals, a changed/withdrawn review policy or a session that is no longer REVIEW_REQUIRED. These schemas and guard do not authorize reads or register a REST, GraphQL or MCP operation. Live Auth/ownership, durable candidate storage, parser execution and transport readback must be integrated and verified separately; current published queries and the managed Capability admission policy remain unchanged.

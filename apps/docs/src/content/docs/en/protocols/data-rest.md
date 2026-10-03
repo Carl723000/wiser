@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a0952585
+lastReviewedCommit: def7525c
 ---
 
 ## Protocol boundary
@@ -415,3 +415,7 @@ Managed graph expansion/path queries constrain every node and relationship to th
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
 Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+
+## Frozen candidate contracts
+
+Candidate contract types are separate from published-version inputs. They currently add no operation, field or Tool to this protocol. Their strict identities, parser outcomes and bounded record pages are documented in [Data Foundation architecture](/en/architecture/data-foundation/#frozen-candidate-contracts); live candidate authorization and transport integration are separate acceptance work.

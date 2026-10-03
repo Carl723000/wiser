@@ -137,6 +137,7 @@ describe('frozen ingestion candidate contracts', () => {
     cyclic['self'] = cyclic;
     for (const values of [
       { c1: 'x'.repeat(262145) },
+      { c1: '河'.repeat(100_000) },
       { c1: deep },
       { c1: cyclic },
     ]) {
@@ -147,6 +148,33 @@ describe('frozen ingestion candidate contracts', () => {
         }).success,
       ).toBe(false);
     }
+  });
+  it('does not execute user-defined accessors or custom JSON serialization', () => {
+    let invoked = false;
+    const values = Object.defineProperty({}, 'c1', {
+      enumerable: true,
+      get() {
+        invoked = true;
+        return 'private';
+      },
+    });
+    expect(
+      contracts.IngestionCandidateRecordSchema.safeParse({ ...record, values })
+        .success,
+    ).toBe(false);
+    const custom = {
+      toJSON() {
+        invoked = true;
+        return 'private';
+      },
+    };
+    expect(
+      contracts.IngestionCandidateRecordSchema.safeParse({
+        ...record,
+        values: { c1: custom },
+      }).success,
+    ).toBe(false);
+    expect(invoked).toBe(false);
   });
   it('returns a bounded page from only one fixed asset and rejects record repetition', () => {
     const page = {
@@ -191,5 +219,18 @@ describe('frozen ingestion candidate contracts', () => {
         }).success,
       ).toBe(false);
     }
+    const oversized = {
+      ...page,
+      columns: [{ key: 'c1', label: '原文' }],
+      records: Array.from({ length: 16 }, (_, i) => ({
+        ...record,
+        index: i + 1,
+        recordId: `10000000-0000-4000-8000-${String(i + 10).padStart(12, '0')}`,
+        values: { c1: 'x'.repeat(240_000) },
+      })),
+    };
+    expect(
+      contracts.IngestionCandidateRecordPageSchema.safeParse(oversized).success,
+    ).toBe(false);
   });
 });

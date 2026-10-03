@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a0952585
+lastReviewedCommit: def7525c
 ---
 
 ## 只做 HTTP 适配
@@ -302,3 +302,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 关系列表1.7新增可选的`pageMode: "BOUNDED_PROJECT"`，`first`最多500，仅适用于已有项目业务`queryId`。每页仍核查清单所有者、到期、当前来源与证据权限及固定关系版本。单条关系不会被截断；完整结果（关系、总数和游标）的UTF-8 JSON最多1 MiB，单条超限时校验失败，不返回空续页。传输协议的外层封装不包含在此结果预算内。
 
 未指定新模式时保持100条上限及原行为，1.6发现模式原样归档，更早版本不变。客户端先发现1.7能力再启用，不支持时使用旧路径。固定项目清单不代替每页鉴权；此改动减少往返次数，不改变全范围校验成本，实际性能须另行测量。
+
+## 候选固定输入契约
+
+候选契约与已发布版本输入分别定义，当前未在本协议新增操作、字段或Tool。严格身份、解析状态及有界记录页见[数据基座架构](/zh-CN/architecture/data-foundation/#候选固定输入契约)；候选当前权限核对与接口接线仍需另行验收。

@@ -9,6 +9,8 @@ import {
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
 import { SourceRegistrationSchema } from './source-registration.ts';
 export * from './source-registration.ts';
+export * from './review-governance.ts';
+export * from './candidate.ts';
 
 export const IngestionStateSchema = z.enum([
   'RECEIVED',
@@ -31,23 +33,6 @@ export const IngestionStateSchema = z.enum([
   'CANCELLED',
 ]);
 export type IngestionState = z.infer<typeof IngestionStateSchema>;
-
-// Trusted authority metadata, never accepted as an ingestion command input.
-export const IngestionReviewPolicySchema = z.strictObject({
-  mode: z.literal('REQUIRE_INDEPENDENT_REVIEW'),
-  revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-});
-export type IngestionReviewPolicy = z.infer<typeof IngestionReviewPolicySchema>;
-export const IngestionReviewGovernanceContextSchema = z.strictObject({
-  frozen: IngestionReviewPolicySchema,
-  current: IngestionReviewPolicySchema,
-});
-
-export const IngestionSubmissionResponsibilitySchema = z.strictObject({
-  actorId: PlatformUuidSchema,
-  actorType: z.enum(['human', 'agent', 'service']),
-  delegatedBy: PlatformUuidSchema.optional(),
-});
 
 export const IngestionV1Schema = z.strictObject({
   ingestionId: PlatformUuidSchema,
