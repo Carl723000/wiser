@@ -88,8 +88,8 @@ it('uses the frozen candidate path and verified server scope without exposing st
   expect(result.headers.get('cache-control')).toContain('no-store');
   expect(result.headers.get('location')).toBeNull();
   expect(result.headers.get('set-cookie')).toBeNull();
-  const [url, init] = fetch.mock.calls[0]!;
-  expect(String(url)).toContain(
+  const [url, init] = fetch.mock.calls[0];
+  expect(url instanceof Request ? url.url : url.toString()).toContain(
     `/ingestions/${ingestionId}/candidates/${processingBatchId}/assets/${assetId}/content?reviewHash=${'a'.repeat(64)}`,
   );
   const sent = new Headers(init?.headers);
@@ -166,31 +166,36 @@ it('keeps HEAD and unsatisfiable ranges empty and forwards a validated single ra
   );
   expect(await head.text()).toBe('');
   expect(head.headers.get('content-length')).toBe('5');
-  const empty = await proxyCandidateOriginal(options(fetch));
+  const empty = await proxyCandidateOriginal(
+    options(fetch, undefined, { headers: { range: 'bytes=9-' } }),
+  );
   expect(await empty.text()).toBe('');
   expect(empty.headers.get('content-length')).toBe('0');
 });
-it.each([
+const invalidResponseHeaders: ReadonlyArray<Record<string, string>> = [
   { 'content-length': '33554433' },
   { 'content-length': '0' },
   { 'content-length': 'NaN' },
   { 'content-length': '2', 'content-range': 'bytes 1-3/5' },
-])('rejects invalid lengths and range claims: %j', async (headers) => {
-  const status = headers['content-range'] ? 206 : 200;
-  await expect(
-    proxyCandidateOriginal(
-      options(vi.fn(() => Promise.resolve(original('or', status, headers)))),
-    ),
-  ).rejects.toMatchObject({ status: 502 });
-});
+];
+it.each(invalidResponseHeaders)(
+  'rejects invalid lengths and range claims: %j',
+  async (headers) => {
+    const status = headers['content-range'] ? 206 : 200;
+    await expect(
+      proxyCandidateOriginal(
+        options(vi.fn(() => Promise.resolve(original('or', status, headers)))),
+      ),
+    ).rejects.toMatchObject({ status: 502 });
+  },
+);
 it('does not disclose failed upstream diagnostics', async () => {
   const fetch = vi.fn(() =>
     Promise.resolve(new Response('private credentials', { status: 403 })),
   );
-  await expect(proxyCandidateOriginal(options(fetch))).rejects.toMatchObject({
-    status: 403,
-    message: expect.not.stringContaining('private'),
-  });
+  const reading = proxyCandidateOriginal(options(fetch));
+  await expect(reading).rejects.toMatchObject({ status: 403 });
+  await expect(reading).rejects.not.toThrow('private');
 });
 it('cancels delivery when the reader leaves without retaining the original', async () => {
   let cancelled = false;
@@ -207,6 +212,7 @@ it('cancels delivery when the reader leaves without retaining the original', asy
   );
   await response.body!.cancel();
   expect(cancelled).toBe(true);
+  expect(body.locked).toBe(false);
 });
 it('rejects a caller that has already cancelled without fetching', async () => {
   const controller = new AbortController();
@@ -217,3 +223,132 @@ it('rejects a caller that has already cancelled without fetching', async () => {
   });
   expect(input.fetch).not.toHaveBeenCalled();
 });
+
+it('does not drain the original until the caller requests bytes', async () => {
+  let pulls = 0;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new TextEncoder().encode('world'));
+        controller.close();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const response = await proxyCandidateOriginal(
+    options(vi.fn(() => Promise.resolve(original(body)))),
+  );
+  expect(pulls).toBe(0);
+  expect(await response.text()).toBe('world');
+  expect(pulls).toBe(1);
+});
+
+it('rejects a truncated or oversized stream rather than reporting a successful original', async () => {
+  for (const value of ['wor', 'world!']) {
+    const response = await proxyCandidateOriginal(
+      options(vi.fn(() => Promise.resolve(original(value)))),
+    );
+    await expect(response.text()).rejects.toMatchObject({ status: 502 });
+  }
+});
+
+it('returns a safe failure even if upstream body cancellation never settles', async () => {
+  const body = new ReadableStream<Uint8Array>({
+    cancel: () => new Promise(() => undefined),
+  });
+  await expect(
+    proxyCandidateOriginal(
+      options(
+        vi.fn(() => Promise.resolve(new Response(body, { status: 403 }))),
+      ),
+    ),
+  ).rejects.toMatchObject({ status: 403 });
+}, 1_000);
+
+it('cancels and refuses a late upstream response after the caller aborts', async () => {
+  const controller = new AbortController();
+  let resolve: (response: Response) => void = () => undefined;
+  const fetching = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  const input = options(
+    vi.fn(() => fetching),
+    undefined,
+    { signal: controller.signal },
+  );
+  const reading = proxyCandidateOriginal(input);
+  while (!vi.isMockFunction(input.fetch) || input.fetch.mock.calls.length === 0)
+    await Promise.resolve();
+  controller.abort();
+  await expect(reading).rejects.toMatchObject({ status: 499 });
+  let cancelled = false;
+  resolve(
+    original(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    ),
+  );
+  await Promise.resolve();
+  expect(cancelled).toBe(true);
+});
+
+it.each(['bytes=1-2', 'bytes=-2', null])(
+  'rejects a range response for different requested bytes: %s',
+  async (range) => {
+    const fetch = vi.fn(() =>
+      Promise.resolve(
+        original('wo', 206, {
+          'content-length': '2',
+          'content-range': 'bytes 0-1/5',
+        }),
+      ),
+    );
+    await expect(
+      proxyCandidateOriginal(
+        options(fetch, undefined, { headers: range === null ? {} : { range } }),
+      ),
+    ).rejects.toMatchObject({ status: 502 });
+  },
+);
+
+it('rejects an unsatisfiable claim for a valid range', async () => {
+  const fetch = vi.fn(() =>
+    Promise.resolve(original('private', 416, { 'content-range': 'bytes */5' })),
+  );
+  await expect(
+    proxyCandidateOriginal(
+      options(fetch, undefined, { headers: { range: 'bytes=1-2' } }),
+    ),
+  ).rejects.toMatchObject({ status: 502 });
+});
+
+it.each([
+  ['bytes=3-', 'bytes 3-4/5', 'ld'],
+  ['bytes=3-100', 'bytes 3-4/5', 'ld'],
+  ['bytes=-2', 'bytes 3-4/5', 'ld'],
+  ['bytes=-100', 'bytes 0-4/5', 'world'],
+])(
+  'preserves a valid requested interval: %s',
+  async (range, contentRange, body) => {
+    const response = await proxyCandidateOriginal(
+      options(
+        vi.fn(() =>
+          Promise.resolve(
+            original(body, 206, {
+              'content-length': String(body.length),
+              'content-range': contentRange,
+            }),
+          ),
+        ),
+        undefined,
+        { headers: { range } },
+      ),
+    );
+    expect(response.status).toBe(206);
+    expect(await response.text()).toBe(body);
+  },
+);

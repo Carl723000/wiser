@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: e2d2842742f1b6a820566821573d6689b74acb26
+lastReviewedCommit: d99902262503bd5f5f7002480c393e2efecea798
 ---
 
 ## What runs today
@@ -540,3 +540,5 @@ All references, including inactive members, require current maintenance plus imm
 Create/revoke use atomic command, audit and Outbox transactions; their request identity also binds actor type, delegator and purpose without widening legacy commands. Stable asset/record anchors are verified inside the fixed batch. Open returns `kind: ingestion-candidate-view` with the immutable manifest and a fresh request for the existing three candidate reads; old authority cursors are not persisted. Original values, null/zero and native geometry remain unchanged. Only the current owner/responsible human can revoke; configuration is immutable and candidates remain intact.
 
 Apply additive 0042 after 0037–0041 and reprovision runtime roles. Forced invoker RLS intersects current authority with every candidate; API-only access excludes Worker writes. Reprovision retains column-only `UPDATE(revoked_at)` and denies DELETE. Synthetic transport/recovery checks and a conditionally enabled rollback SQL fixture do not establish live Auth/Worker/database/browser recovery or controlled export acceptance; those remain explicit integration gates. Earlier published saved contracts and archives are unchanged. Recovery disables the four new capabilities or restores a compatible build while preserving candidate and saved history; do not drop/reset tables or rewrite applied migrations.
+
+The candidate-original Web route `/api/data-foundation/candidate-assets/:ingestionId/:processingBatchId/:assetId` accepts only a fixed `reviewHash` and optional locale; the browser cannot inject tenant, project, purpose or storage location. It verifies the existing session before dispatch and after the response, then streams the candidate API result without a second full-original buffer. Strict 1-byte through 32-MiB lengths and single ranges, backpressure, cancellation and a 120-second deadline cover delivery; truncated or excess content terminates rather than becoming a successful original. Delivery is attachment-only and sandboxed, with empty HEAD/416 bodies. Published-original behavior is unchanged. This Web wiring is not live Auth, storage or full material-chain acceptance. Partial responses must match the requested byte interval exactly, including suffixes and clamped ends; an unsatisfiable response is accepted only when that same request is outside the declared original. Cancellation releases the upstream reader without awaiting a stalled cancellation promise.

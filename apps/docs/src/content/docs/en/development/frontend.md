@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
+lastReviewedAt: 2026-10-04
+lastReviewedCommit: d99902262503bd5f5f7002480c393e2efecea798
 ---
 
 ## Two frontend applications
@@ -307,3 +307,5 @@ An optional absolute `WISER_SPATIAL_READINESS_INPUT_MANIFEST` JSON file requires
 Unrelated object selection reuses the current readiness calculation. An absent stale-record scope uses a stable empty value; actual source, requirement, window, date-role and stale-fact changes still recalculate. The browser performance check retains its existing latency thresholds and records the fixed input and renderer separately from physical-device acceptance.
 
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
+
+The candidate-original Web route `/api/data-foundation/candidate-assets/:ingestionId/:processingBatchId/:assetId` accepts only a fixed `reviewHash` and optional locale; the browser cannot inject tenant, project, purpose or storage location. It verifies the existing session before dispatch and after the response, then streams the candidate API result without a second full-original buffer. Strict 1-byte through 32-MiB lengths and single ranges, backpressure, cancellation and a 120-second deadline cover delivery; truncated or excess content terminates rather than becoming a successful original. Delivery is attachment-only and sandboxed, with empty HEAD/416 bodies. Published-original behavior is unchanged. This Web wiring is not live Auth, storage or full material-chain acceptance.
