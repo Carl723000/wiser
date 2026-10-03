@@ -967,6 +967,51 @@ const candidateReference = {
   processingBatchId: GEO_VERSION_ID,
   reviewHash: 'a'.repeat(64),
 };
+
+const candidateViewId = 'abcdefab-cdef-4abc-8abc-abcdefabcdef';
+const candidateViewMetadata = {
+  kind: 'ingestion-candidate-view' as const,
+  viewId: candidateViewId,
+  title: 'Pending source',
+  visibility: 'private',
+  createdAt: '2026-10-04T00:00:00Z',
+  revokedAt: null,
+};
+function candidateViewInput() {
+  return {
+    title: candidateViewMetadata.title,
+    visibility: 'private',
+    references: [candidateReference],
+    viewSpec: {
+      page: {
+        kind: 'records',
+        reference: candidateReference,
+        assetId: USER_ID,
+        first: 10,
+      },
+    },
+  };
+}
+function candidateViewOpen() {
+  const input = candidateViewInput();
+  return {
+    kind: 'ingestion-candidate-view',
+    savedView: candidateViewMetadata,
+    references: input.references,
+    viewSpec: input.viewSpec,
+    request: {
+      capabilityId: 'data.ingestion.candidate.records',
+      input: { ...candidateReference, assetId: USER_ID, first: 10 },
+    },
+  };
+}
+function candidateViewOutput(action: 'create' | 'list' | 'open' | 'revoke') {
+  if (action === 'create') return { savedView: candidateViewMetadata };
+  if (action === 'list')
+    return { items: [candidateViewMetadata], nextCursor: null };
+  if (action === 'open') return candidateViewOpen();
+  return { viewId: candidateViewId, revoked: true };
+}
 const candidateAsset = {
   assetId: USER_ID,
   sourceHash: 'b'.repeat(64),
@@ -1505,5 +1550,345 @@ describe('fixed candidate transport', () => {
     ).rejects.toMatchObject({ status: 422 });
     expect(auth).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('fixed candidate saved-view transport', () => {
+  it.each(['create', 'list', 'open', 'revoke'] as const)(
+    'uses the registered %s method, path, identity and fixed server scope',
+    async (action) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(candidateViewOutput(action))),
+      );
+      const input =
+        action === 'create'
+          ? candidateViewInput()
+          : action === 'list'
+            ? { first: 2, after: 'cursor:one/+ =' }
+            : { viewId: candidateViewId };
+      const key =
+        action === 'create' || action === 'revoke' ? SESSION_ID : undefined;
+      await expect(
+        candidateDal(fetch).candidateSavedView(action, input, key),
+      ).resolves.toEqual(candidateViewOutput(action));
+      const [url, init] = fetch.mock.calls[0];
+      if (typeof url !== 'string' || !init)
+        throw Error('Expected HTTP request');
+      const parsed = new URL(url);
+      const capability =
+        DATA_CAPABILITY_REGISTRY[`data.ingestion.candidate.view.${action}`];
+      expect(parsed.pathname).toBe(
+        capability.restMapping.path.replace(':viewId', candidateViewId),
+      );
+      expect(init.method).toBe(capability.restMapping.method);
+      expect(init.cache).toBe('no-store');
+      expect(init.redirect).toBe('error');
+      expect(new Headers(init.headers).get('x-wiser-tenant-id')).toBe(
+        TENANT_ID,
+      );
+      expect(new Headers(init.headers).get('x-wiser-project-id')).toBe(
+        PROJECT_ID,
+      );
+      expect(new Headers(init.headers).get('x-wiser-purpose')).toBe('review');
+      expect(new Headers(init.headers).get('authorization')).toBe(
+        `Bearer ${accessToken()}`,
+      );
+      expect(new Headers(init.headers).get('idempotency-key')).toBe(
+        key ?? null,
+      );
+      if (action === 'list') {
+        expect(Object.fromEntries(parsed.searchParams)).toEqual({
+          first: '2',
+          after: 'cursor:one/+ =',
+        });
+        expect(init.body).toBeUndefined();
+      } else {
+        expect(parsed.search).toBe('');
+        expect(init.body).toBe(
+          JSON.stringify(action === 'create' ? input : {}),
+        );
+      }
+    },
+  );
+  it('uses an opened fixed request in the existing three-read candidate DAL', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json(candidateViewOpen()))
+      .mockResolvedValueOnce(Response.json(candidatePage('records')));
+    const dal = candidateDal(fetch);
+    const opened = await dal.candidateSavedView('open', {
+      viewId: candidateViewId,
+    });
+    expect(opened).toMatchObject({ kind: 'ingestion-candidate-view' });
+    const request = (opened as ReturnType<typeof candidateViewOpen>).request;
+    await expect(dal.candidate('records', request.input)).resolves.toEqual(
+      candidatePage('records'),
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ['create', { ...candidateViewInput(), tenantId: USER_ID }, SESSION_ID],
+    [
+      'create',
+      {
+        ...candidateViewInput(),
+        references: [{ ...candidateReference, versionId: USER_ID }],
+      },
+      SESSION_ID,
+    ],
+    ['create', { ...candidateViewInput(), references: [] }, SESSION_ID],
+    [
+      'create',
+      {
+        ...candidateViewInput(),
+        viewSpec: {
+          page: {
+            ...candidateViewInput().viewSpec.page,
+            reference: { ...candidateReference, reviewHash: 'b'.repeat(64) },
+          },
+        },
+      },
+      SESSION_ID,
+    ],
+    ['create', candidateViewInput(), undefined],
+    ['revoke', { viewId: candidateViewId }, 'bad-key'],
+    ['list', { first: 101 }, undefined],
+    ['list', { queryId: PROJECT_ID }, undefined],
+    ['open', { viewId: '../private' }, undefined],
+    [
+      'open',
+      { viewId: candidateViewId, references: [candidateReference] },
+      undefined,
+    ],
+  ] as const)(
+    'rejects invalid %s input or command identity before authentication',
+    async (action, input, key) => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth).candidateSavedView(action, input, key),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['create', 'list', 'open', 'revoke'] as const)(
+    'rejects unknown fields in strict %s output',
+    async (action) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            ...candidateViewOutput(action),
+            internalUrl: 'https://private/storage',
+          }),
+        ),
+      );
+      const input =
+        action === 'create'
+          ? candidateViewInput()
+          : action === 'list'
+            ? {}
+            : { viewId: candidateViewId };
+      await expect(
+        candidateDal(fetch).candidateSavedView(action, input, SESSION_ID),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it.each(['open', 'revoke'] as const)(
+    'rejects a %s result for another saved view',
+    async (action) => {
+      const output =
+        action === 'open'
+          ? {
+              ...candidateViewOpen(),
+              savedView: { ...candidateViewMetadata, viewId: USER_ID },
+            }
+          : { viewId: USER_ID, revoked: true };
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      await expect(
+        candidateDal(fetch).candidateSavedView(
+          action,
+          { viewId: candidateViewId },
+          SESSION_ID,
+        ),
+      ).rejects.toMatchObject({ status: 502 });
+    },
+  );
+  it('preserves semantic UUID identity for an uppercase saved-view path', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(candidateViewOpen())),
+    );
+    await expect(
+      candidateDal(fetch).candidateSavedView('open', {
+        viewId: candidateViewId.toUpperCase(),
+      }),
+    ).resolves.toEqual(candidateViewOpen());
+  });
+  it.each([
+    { savedView: { ...candidateViewMetadata, kind: 'exploration-view' } },
+    {
+      request: {
+        ...candidateViewOpen().request,
+        input: {
+          ...candidateViewOpen().request.input,
+          reviewHash: 'b'.repeat(64),
+        },
+      },
+    },
+    {
+      request: {
+        ...candidateViewOpen().request,
+        input: { ...candidateViewOpen().request.input, assetId: SESSION_ID },
+      },
+    },
+    { references: [] },
+    {
+      savedView: {
+        ...candidateViewMetadata,
+        revokedAt: '2026-10-04T01:00:00Z',
+      },
+    },
+  ])(
+    'rejects a non-candidate, revoked or inconsistent fixed open response %j',
+    async (change) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json({ ...candidateViewOpen(), ...change })),
+      );
+      await expect(
+        candidateDal(fetch).candidateSavedView('open', {
+          viewId: candidateViewId,
+        }),
+      ).rejects.toMatchObject({ status: 502 });
+    },
+  );
+  it.each([
+    { items: [], nextCursor: 'next' },
+    {
+      items: [
+        candidateViewMetadata,
+        { ...candidateViewMetadata, viewId: USER_ID },
+      ],
+      nextCursor: null,
+    },
+    { items: [candidateViewMetadata, candidateViewMetadata], nextCursor: null },
+    {
+      items: [{ ...candidateViewMetadata, revokedAt: '2026-10-04T01:00:00Z' }],
+      nextCursor: null,
+    },
+  ])(
+    'rejects inconsistent or oversized saved-list pages %j',
+    async (output) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      await expect(
+        candidateDal(fetch).candidateSavedView('list', { first: 1 }),
+      ).rejects.toMatchObject({ status: 502 });
+    },
+  );
+  it('accepts an empty terminal saved-list page and sends the default page size', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json({ items: [], nextCursor: null })),
+    );
+    await expect(
+      candidateDal(fetch).candidateSavedView('list', {}),
+    ).resolves.toEqual({ items: [], nextCursor: null });
+    const [url] = fetch.mock.calls[0];
+    if (typeof url !== 'string') throw Error('Expected URL');
+    expect(new URL(url).searchParams.get('first')).toBe('20');
+  });
+  it.each([64, 128 * 1024])(
+    'bounds response bytes by the saved-view/config limit %i',
+    async (limit) => {
+      const cancel = vi.fn();
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(limit + 1));
+              },
+              cancel,
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      );
+      await expect(
+        candidateDal(fetch, {
+          responseLimitBytes: limit === 64 ? limit : 4 * 1024 * 1024,
+        }).candidateSavedView('list', {}),
+      ).rejects.toMatchObject({ status: 502 });
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+  it('keeps the deadline active while reading a saved configuration', async () => {
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch, { requestTimeoutMs: 20 }).candidateSavedView('open', {
+        viewId: candidateViewId,
+      }),
+    ).rejects.toMatchObject({ status: 504 });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('passes cancellation through mutation delivery without falling back to published views', async () => {
+    const caller = new AbortController();
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('private upstream body'),
+              );
+              queueMicrotask(() => caller.abort());
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch).candidateSavedView(
+        'create',
+        candidateViewInput(),
+        SESSION_ID,
+        caller.signal,
+      ),
+    ).rejects.toMatchObject({ status: 499 });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+  });
+  it('requires verified session and keeps upstream denials safe and final', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(new Response('private SQL diagnostic', { status: 403 })),
+    );
+    await expect(
+      candidateDal(fetch).candidateSavedView('open', {
+        viewId: candidateViewId,
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: 'Data Foundation request failed: authorization.',
+    });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
