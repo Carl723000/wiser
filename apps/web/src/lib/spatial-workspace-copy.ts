@@ -55,6 +55,9 @@ export interface SpatialWorkspaceCopy {
   smallScaleHint: string;
   aggregationSummary: string;
   overlapPick: string;
+  mapLegend: string;
+  mapLegendHint: string;
+  selectedLocation: string;
   recordsTitle: string;
   recordSearch: string;
   emptyRecords: string;

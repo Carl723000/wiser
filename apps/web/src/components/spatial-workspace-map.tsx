@@ -27,6 +27,7 @@ import {
   type WorkspaceRasterSettings,
 } from '@/lib/spatial-workspace-view';
 import styles from './spatial-workspace.module.css';
+import { ContextHelp } from './context-help';
 
 maplibre.setWorkerUrl('/vendor/maplibre/6.11.2/maplibre-gl-worker.mjs');
 const offlineStyle: maplibre.StyleSpecification = {
@@ -40,6 +41,24 @@ const interactiveLayers = [
   'workspace-lines',
   'workspace-points',
 ];
+const roleDashes: maplibre.ExpressionSpecification = [
+  'match',
+  ['get', 'role'],
+  'reference',
+  ['literal', [3, 2]],
+  'applicable-area',
+  ['literal', [1, 2]],
+  ['literal', [1, 0]],
+];
+function planarRoleDashes(
+  role: WorkspaceMapFeatures['features'][number]['properties']['role'],
+) {
+  return role === 'reference'
+    ? '6 4'
+    : role === 'applicable-area'
+      ? '2 4'
+      : undefined;
+}
 const grid: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
@@ -372,8 +391,13 @@ export function SpatialWorkspaceMap({
   }, []);
   useEffect(() => {
     setHits((current) =>
-      current.filter((hit) =>
-        features.features.some((feature) => feature.id === hit.id),
+      features.features.filter((feature) =>
+        current.some(
+          (hit) =>
+            feature.id === hit.id &&
+            feature.properties.sourceId === hit.properties.sourceId &&
+            feature.properties.versionId === hit.properties.versionId,
+        ),
       ),
     );
   }, [features]);
@@ -518,8 +542,99 @@ export function SpatialWorkspaceMap({
     setHits([]);
   };
   const flat = !available || failed;
+  const selectedFeature = features.features.find(
+    (feature) =>
+      feature.properties.recordId === selection?.recordId &&
+      feature.properties.positionId === selection?.positionId,
+  );
+  const featureLabel = (feature: WorkspaceMapFeatures['features'][number]) =>
+    [
+      feature.properties.label,
+      copy.positionRoles[feature.properties.role],
+      feature.properties.sourceTitle,
+      feature.properties.positionExpression,
+    ]
+      .filter(Boolean)
+      .join(' · ');
   return (
     <div className={styles.mapPanel}>
+      <div
+        className={styles.mapLegend}
+        role="group"
+        aria-label={copy.mapLegend}
+      >
+        <div>
+          <strong>{copy.mapLegend}</strong>
+          <ContextHelp label={copy.mapLegend}>{copy.mapLegendHint}</ContextHelp>
+        </div>
+        <div>
+          {workspaceRecordKinds
+            .filter((kind) =>
+              features.features.some(
+                (feature) => feature.properties.kind === kind,
+              ),
+            )
+            .map((kind) => (
+              <span key={kind}>
+                <i
+                  aria-hidden="true"
+                  style={{
+                    background:
+                      colors.kinds[workspaceRecordKinds.indexOf(kind)],
+                  }}
+                />
+                {copy.kinds[kind]}
+              </span>
+            ))}
+        </div>
+        <div>
+          {Array.from(
+            new Set(
+              features.features.map((feature) => feature.properties.role),
+            ),
+          ).map((role) => (
+            <span key={role}>
+              <svg width="30" height="12" aria-hidden="true">
+                <line
+                  x1="0"
+                  x2="30"
+                  y1="6"
+                  y2="6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeDasharray={planarRoleDashes(role)}
+                />
+              </svg>
+              {copy.positionRoles[role]}
+            </span>
+          ))}
+        </div>
+      </div>
+      {selectedFeature ? (
+        <div
+          className={styles.mapSelection}
+          role="region"
+          aria-label={copy.selectedLocation}
+        >
+          <strong>{selectedFeature.properties.label}</strong>
+          <span>{copy.positionRoles[selectedFeature.properties.role]}</span>
+          {selectedFeature.properties.positionExpression ? (
+            <span>{selectedFeature.properties.positionExpression}</span>
+          ) : null}
+          {selectedFeature.properties.role === 'reference' ? (
+            <strong>{copy.referenceLocation}</strong>
+          ) : null}
+          <details key={selectedFeature.id}>
+            <summary>{copy.locationEvidence}</summary>
+            {selectedFeature.properties.sourceTitle ? (
+              <p>{selectedFeature.properties.sourceTitle}</p>
+            ) : null}
+            {selectedFeature.properties.scaleNote ? (
+              <p>{selectedFeature.properties.scaleNote}</p>
+            ) : null}
+          </details>
+        </div>
+      ) : null}
       <div className={styles.mapToolbar} aria-label={copy.mapTitle}>
         {(
           [
@@ -842,7 +957,11 @@ export function SpatialWorkspaceMap({
                 id="workspace-lines"
                 type="line"
                 filter={['!=', ['geometry-type'], 'Point']}
-                paint={{ 'line-color': colorExpression, 'line-width': 2 }}
+                paint={{
+                  'line-color': colorExpression,
+                  'line-width': 2,
+                  'line-dasharray': roleDashes,
+                }}
               />
               <Layer
                 id="workspace-points"
@@ -851,8 +970,14 @@ export function SpatialWorkspaceMap({
                 paint={{
                   'circle-color': colorExpression,
                   'circle-radius': 5,
-                  'circle-stroke-width': 1,
-                  'circle-stroke-color': colors.surface,
+                  'circle-opacity': [
+                    'case',
+                    ['==', ['get', 'role'], 'reference'],
+                    0,
+                    1,
+                  ],
+                  'circle-stroke-color': colorExpression,
+                  'circle-stroke-width': 2,
                 }}
               />
               <Layer
@@ -863,7 +988,11 @@ export function SpatialWorkspaceMap({
                   selectedFilter,
                   ['!=', ['geometry-type'], 'Point'],
                 ]}
-                paint={{ 'line-color': colors.selected, 'line-width': 4 }}
+                paint={{
+                  'line-color': colors.selected,
+                  'line-width': 4,
+                  'line-dasharray': roleDashes,
+                }}
               />
               <Layer
                 id="workspace-selected-points"
@@ -873,7 +1002,18 @@ export function SpatialWorkspaceMap({
                   selectedFilter,
                   ['==', ['geometry-type'], 'Point'],
                 ]}
-                paint={{ 'circle-color': colors.selected, 'circle-radius': 8 }}
+                paint={{
+                  'circle-color': colors.selected,
+                  'circle-radius': 8,
+                  'circle-opacity': [
+                    'case',
+                    ['==', ['get', 'role'], 'reference'],
+                    0,
+                    1,
+                  ],
+                  'circle-stroke-color': colors.selected,
+                  'circle-stroke-width': 3,
+                }}
               />
             </Source>
             <Source
@@ -975,7 +1115,7 @@ export function SpatialWorkspaceMap({
                 key={feature.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`${feature.properties.label} · ${copy.kinds[feature.properties.kind]} · ${feature.properties.positionId}`}
+                aria-label={featureLabel(feature)}
                 data-planar-geometry={feature.id}
                 onClick={() => {
                   if (!drawBounds) choose(feature);
@@ -987,7 +1127,7 @@ export function SpatialWorkspaceMap({
                   }
                 }}
               >
-                <title>{`${feature.properties.label} · ${feature.properties.sourceId} · ${feature.properties.versionId}`}</title>
+                <title>{featureLabel(feature)}</title>
                 {geometryPaths(feature.geometry, planar.project).map(
                   ({ path, fill }, index) => (
                     <path
@@ -1002,8 +1142,18 @@ export function SpatialWorkspaceMap({
                             ]
                           : 'none'
                       }
-                      fillOpacity="0.2"
+                      fillOpacity={
+                        feature.geometry.type.includes('Point') &&
+                        feature.properties.role === 'reference'
+                          ? 0
+                          : 0.2
+                      }
                       fillRule="evenodd"
+                      strokeDasharray={
+                        feature.geometry.type.includes('Point')
+                          ? undefined
+                          : planarRoleDashes(feature.properties.role)
+                      }
                       stroke={
                         selection?.recordId === feature.properties.recordId &&
                         selection.positionId === feature.properties.positionId
@@ -1081,9 +1231,9 @@ export function SpatialWorkspaceMap({
                 }}
                 aria-pressed={selected}
                 onClick={() => choose(feature)}
-                title={`${feature.properties.label} · ${feature.properties.sourceId} · ${feature.properties.versionId}`}
+                title={featureLabel(feature)}
               >
-                {copy.kinds[feature.properties.kind]} ·{' '}
+                {copy.positionRoles[feature.properties.role]} ·{' '}
                 {feature.properties.label}
               </button>
             ))}
@@ -1103,14 +1253,23 @@ export function SpatialWorkspaceMap({
         >
           <p>{copy.overlapPick}</p>
           {hits.map((feature) => (
-            <button
-              type="button"
-              key={feature.id}
-              onClick={() => choose(feature)}
-            >
-              {feature.properties.label} · {feature.properties.sourceId} ·{' '}
-              {feature.properties.versionId} · {feature.properties.positionId}
-            </button>
+            <div key={feature.id}>
+              <button
+                type="button"
+                key={feature.id}
+                onClick={() => choose(feature)}
+              >
+                {featureLabel(feature)}
+              </button>
+              <details>
+                <summary>{copy.technicalDetails}</summary>
+                <p>
+                  {feature.properties.sourceId} · {feature.properties.versionId}{' '}
+                  · {feature.properties.recordId} ·{' '}
+                  {feature.properties.positionId}
+                </p>
+              </details>
+            </div>
           ))}
         </div>
       ) : null}

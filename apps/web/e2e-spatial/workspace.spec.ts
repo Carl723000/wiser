@@ -29,7 +29,7 @@ test('map role legend and selected reference remain readable across locales, mob
         reference: 'Reference location or extent',
         limit: 'Reference extent; not an exact location',
         map: 'Map',
-        fullscreen: 'Fullscreen workspace',
+        fullscreen: 'Expand workspace',
       },
     ],
   ] as const) {

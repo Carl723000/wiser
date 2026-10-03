@@ -327,6 +327,10 @@ export interface WorkspaceMapProperties {
   kind: WorkspaceRecord['kind'];
   role: WorkspacePosition['role'];
   label: string;
+  /** Display context from the already-authorized source and exact position. */
+  sourceTitle?: string;
+  positionExpression?: string;
+  scaleNote?: string | null;
 }
 export type WorkspaceMapFeatures = FeatureCollection<
   Geometry,
@@ -625,6 +629,13 @@ export function filterSpatialWorkspace(
     features: [],
   };
   for (const record of candidates) {
+    const source = readableSource(
+      pack,
+      record.sourceId,
+      record.versionId,
+      invalidations,
+      record.id,
+    );
     const positions = workspaceDisplayPositions(
       pack,
       record,
@@ -666,6 +677,9 @@ export function filterSpatialWorkspace(
           kind: record.kind,
           role: position.role,
           label: record.objectLabel,
+          sourceTitle: source?.title,
+          positionExpression: position.expression,
+          scaleNote: position.scaleNote,
         },
       });
   }

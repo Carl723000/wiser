@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: abadb253f003d27a8c7156da796d2e2551343c36
+lastReviewedCommit: a7f2dbb9ee6950cc6dcc400b3bc5eadc1550ee99
 ---
 
 ## What this guide governs
@@ -174,3 +174,5 @@ Narrow spatial reading uses Map, Results and Evidence labels instead of shrinkin
 Locating or resetting a map remains effective after reading evidence, resizing or returning from fullscreen. Reopening a selected record preserves its specific permitted position and fixed geometry evidence rather than silently choosing the first position.
 
 Evidence reading starts with the original value, source, time, review state and executable original link. Full technical identifiers move into named, keyboard-operable disclosures. Missing information and reference-location limits remain visible. Optional identity explanations use shared contextual help, while withdrawing a source removes both visible and expanded technical evidence.
+
+Map legends describe only displayed material categories and location roles. Reference geometries retain dashed boundaries or hollow points after selection; applicable extents use dotted boundaries. A selected exact location retains its original expression and scale note. Overlap choices show readable source and position names, with fixed identifiers in closed technical details. Withdrawn or version-replaced choices are removed. This display does not create geometry, merge objects, resolve candidates, or approve location accuracy.

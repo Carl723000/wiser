@@ -240,6 +240,45 @@
 .mapPanel {
   min-width: 0;
 }
+.mapLegend,
+.mapSelection {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.mapLegend > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.mapLegend > div > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.mapLegend i {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+}
+.mapLegend button[data-context-help] {
+  text-align: center;
+}
+.mapSelection {
+  background: var(--accent-soft);
+}
+.overlapPicker button {
+  width: 100%;
+  text-align: start;
+}
+.overlapPicker details {
+  overflow-wrap: anywhere;
+}
 .mapToolbar {
   margin-bottom: 0.5rem;
 }

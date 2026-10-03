@@ -1591,6 +1591,10 @@ const zhCN = {
       aggregationSummary:
         '当前尺度合并显示 {count} 个位置标记，可在资料清单逐条查看。',
       overlapPick: '此处有多个来源内位置，请选择要查看的记录。',
+      mapLegend: '地图图例',
+      mapLegendHint:
+        '颜色区分资料类别；虚线及空心点表示参考位置，点线表示适用范围。位置角色以原文为准。',
+      selectedLocation: '当前地图位置',
       recordsTitle: '区域资料清单',
       recordSearch: '查找对象或来源',
       emptyRecords: '当前条件没有匹配记录，可重置筛选或查看其他范围。',
@@ -5128,6 +5132,10 @@ const en: typeof zhCN = {
         'At this scale, {count} location markers are grouped. Read each record in the material list.',
       overlapPick:
         'Several source-local locations occur here. Choose the record to inspect.',
+      mapLegend: 'Map legend',
+      mapLegendHint:
+        'Colors distinguish material categories. Dashed lines and hollow points mark reference locations; dotted lines mark applicable extents. Location roles follow the original evidence.',
+      selectedLocation: 'Current map location',
       recordsTitle: 'Regional material records',
       recordSearch: 'Find object or source',
       emptyRecords:

@@ -1273,7 +1273,7 @@ it('carries readable source and position context only from display-permitted fix
   expect(filtered.features.features[0].geometry).toBe(position.geometry);
   const withdrawn = {
     ...scoped,
-    materials: scoped.materials.map((material) =>
+    sources: scoped.sources.map((material) =>
       material.id === geometrySource.id
         ? { ...material, rights: { ...material.rights, displayAllowed: false } }
         : material,
