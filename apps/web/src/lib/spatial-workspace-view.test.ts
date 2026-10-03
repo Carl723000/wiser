@@ -776,6 +776,63 @@ describe('comparison and permitted topic exports', () => {
     },
   };
 
+  it.each([
+    ['source-defined index', 'index', '3', '4'],
+    ['total-nitrogen', 'mg/L', '1.2', '1.5'],
+  ])(
+    'keeps %s values side by side without an evidenced measurement definition',
+    (metric, unit, a, b) => {
+      const left = { ...numeric, metric, unit, value: a };
+      const right = {
+        ...numeric,
+        id: 'undefined-measurement-next',
+        metric,
+        unit,
+        value: b,
+      };
+      const original = JSON.stringify([left, right]);
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.difference).toBeNull();
+      expect(JSON.stringify([left, right])).toBe(original);
+    },
+  );
+
+  it('does not make missing statistical grain comparable with a descriptive scale note', () => {
+    const left = {
+      ...numeric,
+      positions: [{ ...samplingPosition, scaleNote: 'monthly data' }],
+    };
+    const right = { ...left, id: 'undefined-statistic-next', value: '1.5' };
+    const result = compareWorkspaceRecords(left, right, pack);
+    expect(result.state).toBe('side-by-side');
+    expect(result.difference).toBeNull();
+  });
+
+  it('does not accept an unresolvable fixed definition reference', () => {
+    const left = {
+      ...numeric,
+      measurement: {
+        definition: {
+          definitionId: 'absent-definition',
+          definitionVersion: 'v1',
+          sourceId: source.id,
+          sourceVersionId: source.versionId,
+          sourceSha256: source.originalSha256,
+        },
+        track: 'SYNTHETIC' as const,
+        denominator: null,
+      },
+    };
+    const result = compareWorkspaceRecords(
+      left,
+      { ...left, id: 'absent-definition-next', value: '1.5' },
+      pack,
+    );
+    expect(result.state).toBe('side-by-side');
+    expect(result.difference).toBeNull();
+  });
+
   it.each<{ name: string; positions: WorkspacePosition[] }>([
     { name: 'missing sampling position', positions: [] },
     { name: 'reference river only', positions: [position] },
