@@ -32,6 +32,7 @@ const IDEMPOTENCY_KEY = 'd2000000-0000-4000-8000-000000000009';
 const NOW = new Date('2026-08-22T05:00:00.000Z');
 const SHA256 = 'a'.repeat(64);
 const REVIEW_HASH = 'b'.repeat(64);
+const REVIEW_POLICY = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
 
 const context: DataCapabilityExecutionContext = {
   principal: {
@@ -98,6 +99,8 @@ class FakeClient implements PostgresDataCommandClient {
   submittedActorId: string | null = 'd2000000-0000-4000-8000-000000000090';
   submittedActorType: string | null = 'human';
   submittedDelegatorId: string | null = null;
+  frozenReviewPolicy: unknown = null;
+  currentReviewPolicy: unknown = null;
 
   query(
     text: string,
@@ -240,6 +243,8 @@ class FakeClient implements PostgresDataCommandClient {
             submitted_by_actor_id: this.submittedActorId,
             submitted_actor_type: this.submittedActorType,
             submitted_delegator_actor_id: this.submittedDelegatorId,
+            review_policy_snapshot: this.frozenReviewPolicy,
+            current_review_policy: this.currentReviewPolicy,
           },
         ],
         rowCount: 1,
@@ -1386,6 +1391,317 @@ describe('PostgreSQL Data Foundation command executors', () => {
       ).toBe(false);
     },
   );
+
+  it.each([
+    { actor: ACTOR_ID, type: 'human', delegator: null },
+    { actor: ACTOR_ID.toUpperCase(), type: 'human', delegator: null },
+    {
+      actor: 'd2000000-0000-4000-8000-000000000090',
+      type: 'agent',
+      delegator: ACTOR_ID,
+    },
+    { actor: null, type: null, delegator: null },
+    {
+      actor: 'd2000000-0000-4000-8000-000000000090',
+      type: 'agent',
+      delegator: null,
+    },
+  ])(
+    'denies governed professional self rejection or unprovable responsibility %j',
+    async (fixture) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+      value.pool.client.currentReviewPolicy = REVIEW_POLICY;
+      value.pool.client.submittedActorId = fixture.actor;
+      value.pool.client.submittedActorType = fixture.type;
+      value.pool.client.submittedDelegatorId = fixture.delegator;
+      await expect(
+        executor(value.runtime, 'data.ingestion.reject').execute(
+          {
+            ingestionId: INGESTION_ID,
+            expectedVersion: 1,
+            reasonCode: 'QUALITY_GATE_FAILED',
+            reason: 'invalid',
+          },
+          context,
+        ),
+      ).rejects.toMatchObject({
+        code: 'INDEPENDENT_REVIEW_REQUIRED',
+        statusCode: 403,
+      });
+      const sql = value.pool.client.calls.map(({ text }) => text).join('\n');
+      expect(sql).not.toContain('data.ingestion.review.insert');
+      expect(sql).not.toContain('data.ingestion.reject.update');
+      expect(sql).not.toContain('data.command.outbox.insert');
+    },
+  );
+
+  it.each(['agent', 'service'] as const)(
+    'denies governed professional rejection by a %s',
+    async (actorType) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+      value.pool.client.currentReviewPolicy = REVIEW_POLICY;
+      await expect(
+        executor(value.runtime, 'data.ingestion.reject').execute(
+          {
+            ingestionId: INGESTION_ID,
+            expectedVersion: 1,
+            reasonCode: 'QUALITY_GATE_FAILED',
+            reason: 'invalid',
+          },
+          {
+            ...context,
+            principal: {
+              actorId: ACTOR_ID,
+              actorType,
+              authenticationMethod: 'delegated_credential',
+              delegationId: randomUUID(),
+              credentialId: randomUUID(),
+              delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: 'INDEPENDENT_REVIEW_REQUIRED',
+        statusCode: 403,
+      });
+      expect(
+        value.pool.client.calls.some(({ text }) =>
+          text.includes('data.ingestion.review.insert'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    { frozen: REVIEW_POLICY, current: { ...REVIEW_POLICY, revision: 2 } },
+    { frozen: REVIEW_POLICY, current: null },
+    { frozen: null, current: REVIEW_POLICY },
+    { frozen: REVIEW_POLICY, current: { mode: 'UNKNOWN', revision: 1 } },
+  ])(
+    'denies professional rejection after a governed policy conflict %j',
+    async ({ frozen, current }) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      value.pool.client.frozenReviewPolicy = frozen;
+      value.pool.client.currentReviewPolicy = current;
+      await expect(
+        executor(value.runtime, 'data.ingestion.reject').execute(
+          {
+            ingestionId: INGESTION_ID,
+            expectedVersion: 1,
+            reasonCode: 'QUALITY_GATE_FAILED',
+            reason: 'invalid',
+          },
+          context,
+        ),
+      ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+      expect(
+        value.pool.client.calls.some(({ text }) =>
+          text.includes('data.ingestion.review.insert'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it('records an independent governed human rejection once and reopens the same result on replay', async () => {
+    const value = runtime();
+    value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+    value.pool.client.operationStatus = 'WAITING_REVIEW';
+    value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+    value.pool.client.currentReviewPolicy = REVIEW_POLICY;
+    const input = {
+      ingestionId: INGESTION_ID,
+      expectedVersion: 1,
+      reasonCode: 'QUALITY_GATE_FAILED',
+      reason: 'invalid',
+    };
+    const output = await executor(
+      value.runtime,
+      'data.ingestion.reject',
+    ).execute(input, context);
+    expect(output).toMatchObject({
+      ingestion: { ingestionId: INGESTION_ID, state: 'REJECTED', version: 2 },
+    });
+    value.pool.client.ingestionState = 'REJECTED';
+    value.pool.client.ingestionVersion = 2;
+    value.pool.client.operationStatus = 'FAILED';
+    expect(
+      await executor(value.runtime, 'data.ingestion.reject').execute(
+        input,
+        context,
+      ),
+    ).toEqual(output);
+    expect(
+      value.pool.client.calls.filter(({ text }) =>
+        text.includes('data.ingestion.review.insert'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      value.pool.client.calls.some(({ text }) =>
+        /insert into catalog\.data_item_version/i.test(text),
+      ),
+    ).toBe(false);
+  });
+
+  it.each(['agent', 'service'] as const)(
+    'rechecks governed professional rejection replay from a %s',
+    async (actorType) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+      value.pool.client.currentReviewPolicy = REVIEW_POLICY;
+      const input = {
+        ingestionId: INGESTION_ID,
+        expectedVersion: 1,
+        reasonCode: 'QUALITY_GATE_FAILED',
+        reason: 'invalid',
+      };
+      await executor(value.runtime, 'data.ingestion.reject').execute(
+        input,
+        context,
+      );
+      value.pool.client.ingestionState = 'REJECTED';
+      value.pool.client.ingestionVersion = 2;
+      await expect(
+        executor(value.runtime, 'data.ingestion.reject').execute(input, {
+          ...context,
+          principal: {
+            actorId: ACTOR_ID,
+            actorType,
+            authenticationMethod: 'delegated_credential',
+            delegationId: randomUUID(),
+            credentialId: randomUUID(),
+            delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'INDEPENDENT_REVIEW_REQUIRED' });
+      expect(
+        value.pool.client.calls.filter(({ text }) =>
+          text.includes('data.ingestion.review.insert'),
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each([{ ...REVIEW_POLICY, revision: 2 }, null])(
+    'rechecks governed professional rejection replay against changed or withdrawn policy %j',
+    async (current) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+      value.pool.client.currentReviewPolicy = REVIEW_POLICY;
+      const input = {
+        ingestionId: INGESTION_ID,
+        expectedVersion: 1,
+        reasonCode: 'QUALITY_GATE_FAILED',
+        reason: 'invalid',
+      };
+      await executor(value.runtime, 'data.ingestion.reject').execute(
+        input,
+        context,
+      );
+      value.pool.client.ingestionState = 'REJECTED';
+      value.pool.client.ingestionVersion = 2;
+      value.pool.client.currentReviewPolicy = current;
+      await expect(
+        executor(value.runtime, 'data.ingestion.reject').execute(
+          input,
+          context,
+        ),
+      ).rejects.toMatchObject({ code: 'STATE_CONFLICT' });
+      expect(
+        value.pool.client.calls.filter(({ text }) =>
+          text.includes('data.ingestion.review.insert'),
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it('denies rejection replay when current session access no longer returns a row', async () => {
+    const value = runtime();
+    value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+    value.pool.client.operationStatus = 'WAITING_REVIEW';
+    value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+    value.pool.client.currentReviewPolicy = REVIEW_POLICY;
+    const input = {
+      ingestionId: INGESTION_ID,
+      expectedVersion: 1,
+      reasonCode: 'QUALITY_GATE_FAILED',
+      reason: 'invalid',
+    };
+    await executor(value.runtime, 'data.ingestion.reject').execute(
+      input,
+      context,
+    );
+    value.pool.client.zeroRowCountFor = 'data.ingestion.session.lock';
+    await expect(
+      executor(value.runtime, 'data.ingestion.reject').execute(input, context),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(
+      value.pool.client.calls.filter(({ text }) =>
+        text.includes('data.ingestion.review.insert'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('preserves ungoverned legacy self rejection and its cached response', async () => {
+    const value = runtime();
+    value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+    value.pool.client.operationStatus = 'WAITING_REVIEW';
+    value.pool.client.submittedActorId = ACTOR_ID;
+    const input = {
+      ingestionId: INGESTION_ID,
+      expectedVersion: 1,
+      reasonCode: 'QUALITY_GATE_FAILED',
+      reason: 'invalid',
+    };
+    const output = await executor(
+      value.runtime,
+      'data.ingestion.reject',
+    ).execute(input, context);
+    value.pool.client.ingestionState = 'REJECTED';
+    value.pool.client.ingestionVersion = 2;
+    expect(
+      await executor(value.runtime, 'data.ingestion.reject').execute(
+        input,
+        context,
+      ),
+    ).toEqual(output);
+    expect(
+      value.pool.client.calls.filter(({ text }) =>
+        text.includes('data.ingestion.review.insert'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('preserves caller cancellation as a separate non-review exit despite governed policy conflict', async () => {
+    const value = runtime();
+    value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+    value.pool.client.operationStatus = 'WAITING_REVIEW';
+    value.pool.client.submittedActorId = ACTOR_ID;
+    value.pool.client.frozenReviewPolicy = REVIEW_POLICY;
+    value.pool.client.currentReviewPolicy = null;
+    const output = await executor(
+      value.runtime,
+      'data.operation.cancel',
+    ).execute(
+      { operationId: OPERATION_ID, expectedVersion: 2, reason: 'withdrawn' },
+      context,
+    );
+    expect(output).toMatchObject({ status: 'CANCELLED' });
+    const sql = value.pool.client.calls.map(({ text }) => text).join('\n');
+    expect(sql).toContain('data.ingestion.cancel.update');
+    expect(sql).not.toContain('data.ingestion.review.insert');
+  });
 
   it('rejects uppercase self approval before writing a review decision', async () => {
     const value = runtime();
