@@ -153,6 +153,28 @@ class RasterReportTests(unittest.TestCase):
         products.append(deepcopy(products[0]))
         self.assertIn("DUPLICATE_BAND", issue_codes(products))
 
+    def test_missing_or_degenerate_affine_blocks_a_checked_report(self):
+        products = fixture()
+        self.assertIn("INVALID_TRANSFORM", issue_codes(products))
+        for product in products:
+            product["transform"] = [20, 20, 400000, 20, 20, 4400060]
+        self.assertIn("INVALID_TRANSFORM", issue_codes(products))
+
+    def test_nonfinite_reversed_and_missing_ranges_are_not_valid_statistics(self):
+        for change in ({"min": float("nan")}, {"max": float("inf")},
+                       {"min": 10, "max": 2}, {"min": None}):
+            products = fixture()
+            products[0]["stats"].update(change)
+            with self.subTest(change=change):
+                self.assertIn("INVALID_PIXEL_RANGE", issue_codes(products))
+
+    def test_boolean_pixel_and_scl_counts_are_not_integer_evidence(self):
+        products = fixture()
+        products[0]["stats"].update(validPixels=True, noDataPixels=11)
+        self.assertIn("INVALID_PIXEL_COUNTS", issue_codes(products))
+        products[2]["classFrequency"] = {"4": True, "6": 11}
+        self.assertIn("INVALID_QUALITY_COUNTS", issue_codes(products))
+
 
 if __name__ == "__main__":
     unittest.main()
