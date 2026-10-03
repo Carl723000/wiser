@@ -1165,7 +1165,9 @@ export function compareWorkspaceRecords(
       : null;
   const a = number(left.value),
     b = number(right.value);
-  if (a === null || b === null) reasons.push('numeric');
+  const difference = a === null || b === null ? null : b - a;
+  if (difference === null || !Number.isFinite(difference))
+    reasons.push('numeric');
   for (const record of [left, right]) {
     const invalid = matchingInvalidation(
       invalidations,
@@ -1190,7 +1192,7 @@ export function compareWorkspaceRecords(
   return {
     state: reasons.length ? ('side-by-side' as const) : ('comparable' as const),
     reasons,
-    difference: reasons.length || a === null || b === null ? null : b - a,
+    difference: reasons.length ? null : difference,
   };
 }
 

@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5c8d978f41259a748da34365e0d95a8d1aeab78a
+lastReviewedCommit: b9a59361e49fc483a4a3186bd6877ecf9fda869f
 ---
 
 ## What this guide governs
@@ -158,3 +158,5 @@ An empty list names the current scope and gives an available action. A failure s
 The specialist behavior and exact versioned query contracts live in [Data Foundation architecture](/en/architecture/data-foundation/) and the [Data REST reference](/en/protocols/data-rest/). Route structure, session-bound data reads, and browser verification live in [Frontend development](/en/development/frontend/). These technical references may use protocol vocabulary; the ordinary workspace follows the writing rules above.
 
 The local spatial workbench starts with region/time, then shows real sources, original locators and readiness. Dossiers explain location roles and content before exact-version evidence; administrative references are never precise river reaches. Candidate exercises have distinct status and exit controls, and exercise decisions never appear as professional approval. Matrix need slots are planned uses, not received datasets.
+
+Numeric comparison checks both the original values and the computed result. Non-numeric inputs or an out-of-range difference retain side-by-side evidence and original values, with a null difference and a blocking reason. Valid zero values and zero differences are not missing data.

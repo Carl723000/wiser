@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5c8d978f41259a748da34365e0d95a8d1aeab78a
+lastReviewedCommit: b9a59361e49fc483a4a3186bd6877ecf9fda869f
 ---
 
 ## 这份文档约束什么
@@ -158,3 +158,5 @@ WISER Portal
 专业行为与固定版本查询契约见[数据基座架构](/architecture/data-foundation/)和 [Data REST 协议](/protocols/data-rest/)；路由结构、会话授权读取及浏览器验证见[前端开发](/development/frontend/)。这些技术参考可以使用协议术语，普通工作区仍遵循以上文案规则。
 
 本机空间资料工作台先选区域与时期，再查看真实来源、原文定位和就绪情况。档案先解释位置角色与内容，再提供固定版本回查；行政参考范围不称为精确河段。候选演练有独立标识与退出操作，演练决定不能呈现为专业批准。矩阵需求位置是规划用途，不是已收到的数据套数。
+
+数值比较分别核对原值和计算结果。原值不可计算或相减结果超出有限数值范围时，保留并排查证及原值，差值为空并显示阻断原因；有效0值和0差值不当作缺失。
