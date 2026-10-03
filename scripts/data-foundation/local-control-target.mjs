@@ -51,7 +51,9 @@ export function parseLocalSupabaseTarget(text, workdir) {
 }
 
 export async function readLocalSupabaseTarget(environment, rootDirectory) {
-  const selected = environment['WISER_LOCAL_SUPABASE_WORKDIR'] || rootDirectory;
+  const configured = environment['WISER_LOCAL_SUPABASE_WORKDIR'];
+  const selected =
+    configured === undefined || configured === '' ? rootDirectory : configured;
   if (
     typeof selected !== 'string' ||
     selected.trim().length === 0 ||
@@ -71,7 +73,9 @@ export async function readLocalSupabaseTarget(environment, rootDirectory) {
 }
 
 export function assertLocalProject(target, environment) {
-  const selected = environment['COMPOSE_PROJECT_NAME'] || 'wiser';
+  const configured = environment['COMPOSE_PROJECT_NAME'];
+  const selected =
+    configured === undefined || configured === '' ? 'wiser' : configured;
   if (selected !== target.projectId)
     throw targetError('Compose and control project differ');
 }
@@ -90,6 +94,7 @@ function localUrl(value, protocols, label) {
   if (
     !protocols.includes(url.protocol) ||
     !LOOPBACK_HOSTS.includes(url.hostname) ||
+    url.search.length > 0 ||
     url.hash.length > 0
   ) {
     throw targetError(label);
@@ -108,7 +113,8 @@ export function assertLocalSupabaseStatus(status, target) {
     Number(api.port || (api.protocol === 'https:' ? 443 : 80)) !==
       target.apiPort ||
     Number(database.port || 5432) !== target.databasePort ||
-    database.pathname !== '/postgres'
+    database.pathname !== '/postgres' ||
+    database.username !== 'postgres'
   ) {
     throw targetError('Auth or database does not match control configuration');
   }
@@ -127,6 +133,14 @@ export function assertLocalDatabaseContainer(output, target) {
     throw targetError('database container inspection');
   }
   const bindings = document?.ports?.['5432/tcp'];
+  const mounts = document?.mounts;
+  const databaseMounts = Array.isArray(mounts)
+    ? mounts.filter(
+        (mount) =>
+          mount?.Destination === '/var/lib/postgresql' ||
+          mount?.Destination?.startsWith('/var/lib/postgresql/'),
+      )
+    : [];
   if (
     document?.name !== `/supabase_db_${target.projectId}` ||
     document?.running !== true ||
@@ -134,7 +148,11 @@ export function assertLocalDatabaseContainer(output, target) {
     bindings.length === 0 ||
     bindings.some(
       (binding) => binding?.HostPort !== String(target.databasePort),
-    )
+    ) ||
+    databaseMounts.length !== 1 ||
+    databaseMounts[0]?.Type !== 'volume' ||
+    databaseMounts[0]?.Name !== `supabase_db_${target.projectId}` ||
+    databaseMounts[0]?.RW !== true
   ) {
     throw targetError(
       'database container does not match control configuration',
@@ -198,20 +216,123 @@ export function assertLocalComposeProject(output, target) {
   for (const volume of Object.values(document.volumes ?? {})) {
     if (
       volume?.external === true ||
+      volume?.driver_opts !== undefined ||
+      (volume?.driver !== undefined && volume.driver !== 'local') ||
       typeof volume?.name !== 'string' ||
       !volume.name.startsWith(`${target.projectId}_`)
     )
       throw targetError('shared or mismatched volume');
   }
+  for (const [service, [source, destination]] of Object.entries(
+    PERSISTENT_MOUNTS,
+  )) {
+    const entry = document.services?.[service];
+    if (entry === undefined) continue;
+    const mounts = entry.volumes;
+    if (!Array.isArray(mounts)) throw targetError('missing persistent mount');
+    const storage = mounts.filter(
+      (mount) =>
+        mount?.target === destination ||
+        mount?.target?.startsWith(`${destination}/`),
+    );
+    if (
+      storage.length !== 1 ||
+      storage[0]?.target !== destination ||
+      storage[0]?.type !== 'volume' ||
+      storage[0]?.source !== source ||
+      storage[0]?.read_only === true ||
+      document.volumes?.[source] === undefined
+    )
+      throw targetError('mismatched persistent mount');
+  }
+  for (const entry of Object.values(document.services ?? {})) {
+    for (const mount of entry?.volumes ?? []) {
+      if (
+        mount?.type === 'volume' &&
+        document.volumes?.[mount.source] === undefined
+      )
+        throw targetError('undeclared persistent volume');
+    }
+  }
   return document;
+}
+
+const PERSISTENT_MOUNTS = Object.freeze({
+  'data-postgres': ['data-postgres-data', '/var/lib/postgresql'],
+  seaweedfs: ['seaweedfs-data', '/data'],
+  weaviate: ['weaviate-data', '/var/lib/weaviate'],
+  opensearch: ['opensearch-data', '/usr/share/opensearch/data'],
+  'opensearch-dashboards': [
+    'opensearch-dashboards-data',
+    '/usr/share/opensearch-dashboards/data',
+  ],
+  neo4j: ['neo4j-data', '/data'],
+  geoserver: ['geoserver-data', '/opt/geoserver_data'],
+  clamav: ['clamav-data', '/var/lib/clamav'],
+});
+
+function serviceUrl(value, host, port, path, username, protocols) {
+  let address;
+  try {
+    address = new URL(value);
+  } catch {
+    throw targetError('service connection');
+  }
+  if (
+    !protocols.includes(address.protocol) ||
+    address.hostname !== host ||
+    Number(
+      address.port ||
+        (address.protocol === 'https:'
+          ? 443
+          : address.protocol.startsWith('postgres')
+            ? 5432
+            : 80),
+    ) !== port ||
+    address.pathname !== path ||
+    address.username !== username ||
+    address.search !== '' ||
+    address.hash !== ''
+  )
+    throw targetError('service connection differs from local target');
+}
+
+// Placeholders are used only to compile configuration. They never start a
+// container, authenticate, or replace the persisted runtime secrets.
+export function localBootstrapEnvironment(environment, target) {
+  return {
+    ...environment,
+    WISER_AUTH_MODE: 'supabase',
+    SUPABASE_URL: `http://host.docker.internal:${target.apiPort}`,
+    NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${target.apiPort}`,
+    DATABASE_URL: `postgresql://postgres:configuration-only@host.docker.internal:${target.databasePort}/postgres`,
+    EXCON_V2_MODE: 'postgres',
+    EXCON_JOURNAL_DATABASE_URL: `postgresql://wiser_excon_api:configuration-only@host.docker.internal:${target.databasePort}/postgres`,
+  };
 }
 
 export function assertLocalComposeTarget(output, target, environment) {
   const document = assertLocalComposeProject(output, target);
-  for (const [service, key, fallback] of [
-    ['api', 'DATA_API_ORIGIN', 'http://127.0.0.1:3101'],
-    ['web', 'DATA_WEB_ORIGIN', 'http://127.0.0.1:3100'],
-    ['mcp-http', 'DATA_MCP_ORIGIN', 'http://127.0.0.1:13004'],
+  for (const service of Object.keys(PERSISTENT_MOUNTS)) {
+    if (document.services?.[service] === undefined)
+      throw targetError('missing persistent service');
+  }
+  if (target.projectId !== 'wiser') {
+    for (const entry of Object.values(document.services ?? {})) {
+      for (const binding of entry?.ports ?? []) {
+        if (
+          !LOOPBACK_HOSTS.includes(binding?.host_ip) ||
+          !/^[1-9]\d{0,4}$/.test(String(binding?.published)) ||
+          Number(binding.published) > 65_535
+        )
+          throw targetError('isolated service must bind a loopback port');
+      }
+    }
+  }
+  for (const [service, key, fallback, internalPort] of [
+    ['api', 'DATA_API_ORIGIN', 'http://127.0.0.1:3101', 3001],
+    ['web', 'DATA_WEB_ORIGIN', 'http://127.0.0.1:3100', 3000],
+    ['mcp-http', 'DATA_MCP_ORIGIN', 'http://127.0.0.1:13004', 3004],
   ]) {
     const address = localUrl(
       environment[key] ?? fallback,
@@ -232,7 +353,11 @@ export function assertLocalComposeTarget(output, target, environment) {
     if (
       !Array.isArray(bindings) ||
       bindings.length === 0 ||
-      bindings.some((binding) => String(binding?.published) !== expected)
+      bindings.some(
+        (binding) =>
+          String(binding?.published) !== expected ||
+          Number(binding?.target) !== internalPort,
+      )
     )
       throw targetError('service port differs from smoke origin');
   }
@@ -245,5 +370,88 @@ export function assertLocalComposeTarget(output, target, environment) {
   ]) {
     if (document.services?.[service]?.environment?.[key] !== apiOrigin)
       throw targetError('asset origin differs from API origin');
+  }
+  const httpProtocols = ['http:', 'https:'];
+  const postgresProtocols = ['postgres:', 'postgresql:'];
+  for (const service of ['api', 'web', 'data-worker', 'mcp-http']) {
+    const values = document.services?.[service]?.environment;
+    serviceUrl(
+      values?.SUPABASE_URL,
+      'host.docker.internal',
+      target.apiPort,
+      '/',
+      '',
+      httpProtocols,
+    );
+  }
+  const browserAuth = localUrl(
+    document.services.web.environment?.NEXT_PUBLIC_SUPABASE_URL,
+    httpProtocols,
+    'browser Auth',
+  );
+  if (
+    Number(browserAuth.port || 80) !== target.apiPort ||
+    browserAuth.pathname !== '/' ||
+    browserAuth.username !== '' ||
+    browserAuth.password !== ''
+  )
+    throw targetError('browser Auth differs from local target');
+  for (const service of ['api', 'worker'])
+    serviceUrl(
+      document.services?.[service]?.environment?.DATABASE_URL,
+      'host.docker.internal',
+      target.databasePort,
+      '/postgres',
+      'postgres',
+      postgresProtocols,
+    );
+  serviceUrl(
+    document.services.api.environment?.EXCON_JOURNAL_DATABASE_URL,
+    'host.docker.internal',
+    target.databasePort,
+    '/postgres',
+    'wiser_excon_api',
+    postgresProtocols,
+  );
+  for (const [service, role] of [
+    ['api', 'wiser_data_api'],
+    ['data-worker', 'wiser_data_worker'],
+  ]) {
+    const values = document.services?.[service]?.environment;
+    serviceUrl(
+      values?.DATA_DATABASE_URL,
+      'data-postgres',
+      5432,
+      '/wiser_data',
+      role,
+      postgresProtocols,
+    );
+    serviceUrl(
+      values?.DATA_S3_ENDPOINT,
+      'seaweedfs',
+      8333,
+      '/',
+      '',
+      httpProtocols,
+    );
+    const fileAddress = localUrl(
+      values?.DATA_S3_PUBLIC_ENDPOINT,
+      httpProtocols,
+      'file origin',
+    );
+    const filePort = String(
+      fileAddress.port || (fileAddress.protocol === 'https:' ? 443 : 80),
+    );
+    if (
+      fileAddress.pathname !== '/' ||
+      fileAddress.username !== '' ||
+      fileAddress.password !== '' ||
+      !(document.services.seaweedfs.ports ?? []).some(
+        (binding) =>
+          String(binding.published) === filePort &&
+          Number(binding.target) === 8333,
+      )
+    )
+      throw targetError('public file origin differs from storage binding');
   }
 }

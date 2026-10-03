@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   DATA_SERVICES,
@@ -12,6 +17,7 @@ import {
   validateCapabilities,
   verifyFixtureBundle,
   runPostgresSql,
+  runCompose,
 } from './operations.mjs';
 
 test('parses Docker Compose JSON arrays and line-delimited records', () => {
@@ -28,6 +34,60 @@ test('parses Docker Compose JSON arrays and line-delimited records', () => {
     services,
   );
 });
+
+for (const existing of [false, true]) {
+  test(`compiled local Compose includes ${existing ? 'the unchanged manual override' : 'an empty override for a clean clone'}`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'wiser-compose-isolation-'));
+    try {
+      await mkdir(join(directory, 'supabase'));
+      await writeFile(
+        join(directory, 'supabase/config.toml'),
+        'project_id = "wiser"\n[api]\nport = 56321\n[db]\nport = 56322\n',
+      );
+      await writeFile(
+        join(directory, 'compose.yaml'),
+        'name: wiser\nservices:\n  dummy:\n    image: test-only:never-started\n',
+      );
+      const override = 'services:\n  dummy:\n    labels:\n      manual: keep\n';
+      if (existing)
+        await writeFile(join(directory, 'compose.override.yaml'), override);
+      const output = await runCompose(
+        ['config', '--format', 'json'],
+        {
+          environment: {
+            ...process.env,
+            COMPOSE_PROJECT_NAME: 'wiser',
+            WISER_LOCAL_SUPABASE_WORKDIR: directory,
+          },
+        },
+        {
+          rootDirectory: directory,
+          runCommand: async (command, args, options) => {
+            assert.equal(command, 'docker');
+            return (
+              await promisify(execFile)(command, args, {
+                cwd: directory,
+                env: options.environment,
+              })
+            ).stdout;
+          },
+        },
+      );
+      const configuration = JSON.parse(output);
+      assert.equal(configuration.name, 'wiser');
+      const after = await readFile(
+        join(directory, 'compose.override.yaml'),
+        'utf8',
+      );
+      if (existing) {
+        assert.equal(after, override);
+        assert.equal(configuration.services.dummy.labels.manual, 'keep');
+      } else assert.equal(after, 'services: {}\n');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test('requires every long-running Data Foundation service to be healthy', () => {
   const healthy = DATA_SERVICES.map((Service) => ({
@@ -136,7 +196,10 @@ test('SQL adapter uses the explicitly selected control and Compose environment',
     { environment },
     {
       readTarget: async (selected) => {
-      assert.ok(selected === environment, 'explicit SQL environment was not propagated');
+        assert.ok(
+          selected === environment,
+          'explicit SQL environment was not propagated',
+        );
         return {
           projectId: 'wiser-isolated',
           workdir: '/tmp/isolated-control',

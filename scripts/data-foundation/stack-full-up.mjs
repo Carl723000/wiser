@@ -9,6 +9,7 @@ import {
   assertLocalComposeTarget,
   assertLocalProject,
   localSupabaseArguments,
+  localBootstrapEnvironment,
   readLocalSupabaseTarget,
 } from './local-control-target.mjs';
 
@@ -25,7 +26,7 @@ export async function startFullWiserStack(
   );
   assertLocalProject(target, environment);
   const configuration = await compose(['config', '--format', 'json'], {
-    environment,
+    environment: localBootstrapEnvironment(environment, target),
   });
   assertLocalComposeTarget(configuration, target, environment);
   await execute('pnpm', localSupabaseArguments(target, 'start'), {

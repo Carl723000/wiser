@@ -7,6 +7,7 @@ import { inspect } from 'node:util';
 
 import { ROOT_DIRECTORY } from './operations.mjs';
 import { localRuntimeSecrets, startDataFoundation } from './up.mjs';
+import { localComposeFixture } from './local-control-fixture.test-support.mjs';
 
 const publishableKey = 'sb_publishable_1234567890abcdefghijklmnop';
 const journalPassword = 'synthetic_local_password_1234567890';
@@ -48,6 +49,14 @@ function harness(overrides = {}) {
         { HostIp: '127.0.0.1', HostPort: String(target.databasePort) },
       ],
     },
+    mounts: [
+      {
+        Type: 'volume',
+        Name: `supabase_db_${target.projectId}`,
+        Destination: '/var/lib/postgresql/data',
+        RW: true,
+      },
+    ],
     ...overrides.inspection,
   };
   const status =
@@ -77,25 +86,7 @@ function harness(overrides = {}) {
     runCompose: async (args, options) => {
       calls.push({ kind: 'compose', args, options });
       if (args[0] === 'config')
-        return JSON.stringify({
-          name: target.projectId,
-          services: {
-            api: {
-              ports: [{ published: '3641' }],
-              environment: {
-                DATA_PUBLIC_API_ORIGIN: environment.DATA_API_ORIGIN,
-              },
-            },
-            web: { ports: [{ published: '3640' }] },
-            'mcp-http': { ports: [{ published: '14004' }] },
-            'data-worker': {
-              environment: {
-                DATA_STAC_ASSET_BASE_URL: environment.DATA_API_ORIGIN,
-              },
-            },
-          },
-          volumes: { data: { name: `${target.projectId}_data` } },
-        });
+        return JSON.stringify(localComposeFixture(target, environment));
     },
   };
   return { target, environment, dependencies, calls };

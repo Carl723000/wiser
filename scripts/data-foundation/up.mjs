@@ -19,6 +19,7 @@ import {
   assertLocalProject,
   assertLocalSupabaseStatus,
   localJournalDatabaseUrl,
+  localBootstrapEnvironment,
   localSupabaseArguments,
   readLocalSupabaseTarget,
 } from './local-control-target.mjs';
@@ -56,9 +57,7 @@ export async function localRuntimeSecrets(workdir = ROOT_DIRECTORY) {
     return parsed;
   } catch (error) {
     if (error?.code !== 'ENOENT') {
-      throw new Error('Local WISER runtime secret state is invalid.', {
-        cause: error,
-      });
+      throw new Error('Local WISER runtime secret state is invalid.');
     }
   }
   const created = {
@@ -75,7 +74,12 @@ export async function localRuntimeSecrets(workdir = ROOT_DIRECTORY) {
   }).catch(async (error) => {
     if (error?.code !== 'EEXIST') throw error;
   });
-  const persisted = JSON.parse(await readFile(path, 'utf8'));
+  let persisted;
+  try {
+    persisted = JSON.parse(await readFile(path, 'utf8'));
+  } catch {
+    throw new Error('Local WISER runtime secret state is invalid.');
+  }
   if (!validLocalSecrets(persisted)) {
     throw new Error('Local WISER runtime secret state is invalid.');
   }
@@ -125,7 +129,7 @@ export async function startDataFoundation(
   const target = await readTarget(environment, ROOT_DIRECTORY);
   assertLocalProject(target, environment);
   const composeConfiguration = await compose(['config', '--format', 'json'], {
-    environment,
+    environment: localBootstrapEnvironment(environment, target),
   });
   assertLocalComposeTarget(composeConfiguration, target, environment);
   const statusOutput = await execute(
@@ -140,19 +144,13 @@ export async function startDataFoundation(
     [
       'inspect',
       '--format',
-      '{"name":{{json .Name}},"running":{{json .State.Running}},"ports":{{json .NetworkSettings.Ports}}}',
+      '{"name":{{json .Name}},"running":{{json .State.Running}},"ports":{{json .NetworkSettings.Ports}},"mounts":{{json .Mounts}}}',
       `supabase_db_${target.projectId}`,
     ],
     { environment },
   );
   assertLocalDatabaseContainer(databaseInspection, target);
   const localSecrets = await readSecrets(target.workdir);
-  await provisionExconRuntime(
-    localSecrets.exconJournalPassword,
-    environment,
-    target,
-    execute,
-  );
   const accessToken = await signIn(status, {
     email: environment['WISER_LOCAL_OPERATOR_EMAIL'] ?? LOCAL_OPERATOR_EMAIL,
     password:
@@ -190,6 +188,16 @@ export async function startDataFoundation(
     EXCON_PROJECT_ID: projectId,
     EXCON_PURPOSE: 'excon-api',
   };
+  const finalConfiguration = await compose(['config', '--format', 'json'], {
+    environment: runtimeEnvironment,
+  });
+  assertLocalComposeTarget(finalConfiguration, target, environment);
+  await provisionExconRuntime(
+    localSecrets.exconJournalPassword,
+    environment,
+    target,
+    execute,
+  );
   await compose(['up', '-d', '--build', '--wait'], {
     capture: false,
     environment: runtimeEnvironment,

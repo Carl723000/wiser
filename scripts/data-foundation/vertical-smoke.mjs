@@ -237,13 +237,15 @@ export function createRuntime(options, adapters = {}) {
     10_000,
     stepId,
   );
+  const environment = options.environment ?? process.env;
+  const executeSql = adapters.runPostgresSql ?? runPostgresSql;
   return Object.freeze({
     fetch: options.fetch ?? globalThis.fetch,
     wait: options.wait ?? defaultWait,
     postgresSql:
-      options.postgresSql ?? adapters.runPostgresSql ?? runPostgresSql,
+      options.postgresSql ?? ((sql) => executeSql(sql, { environment })),
     randomUuid: options.randomUuid ?? randomUUID,
-    environment: options.environment ?? process.env,
+    environment,
     now,
     deadline: now() + maximumDurationMs,
     requestTimeoutMs,

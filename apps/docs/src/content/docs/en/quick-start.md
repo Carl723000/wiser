@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5cab4732a15b09f0d1183aaad20b6dc768236095
+lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
 ---
 
 Use this page when running WISER in your own development environment for the first time. For public data access or external-client connection, see the [public use guide](/en/development/wiser-data-guide/). For standalone applications, ports, configuration, and troubleshooting, see the [local development environment](/en/development/local-environment/).

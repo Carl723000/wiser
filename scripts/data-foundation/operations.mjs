@@ -154,12 +154,13 @@ export function runCommand(
 
 export async function runCompose(args, options, dependencies = {}) {
   const execute = dependencies.runCommand ?? runCommand;
+  const rootDirectory = dependencies.rootDirectory ?? ROOT_DIRECTORY;
   const environment = options?.environment ?? process.env;
   const target = await (dependencies.readTarget ?? readLocalSupabaseTarget)(
     environment,
-    ROOT_DIRECTORY,
+    rootDirectory,
   );
-  const prefix = localComposeArguments(target, environment, ROOT_DIRECTORY);
+  const prefix = localComposeArguments(target, environment, rootDirectory);
   if (args[0] !== 'config') {
     const configuration = await execute(
       'docker',
@@ -181,7 +182,7 @@ export function runPostgresSql(sql, options, dependencies = {}) {
       '-ec',
       'exec psql -X -q -v ON_ERROR_STOP=1 --no-align --tuples-only --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"',
     ],
-    { input: sql },
+    { ...options, input: sql },
     dependencies,
   );
 }

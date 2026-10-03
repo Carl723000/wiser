@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { startFullWiserStack } from './stack-full-up.mjs';
+import { localComposeFixture } from './local-control-fixture.test-support.mjs';
 
 test('complete local startup passes the same isolated environment to every child', async () => {
   const environment = {
@@ -16,36 +17,19 @@ test('complete local startup passes the same isolated environment to every child
     ...environment,
     DATA_API_BEARER_TOKEN: 'synthetic-local-access-token-not-for-real-service',
   };
+  const target = {
+    workdir: environment.WISER_LOCAL_SUPABASE_WORKDIR,
+    projectId: 'wiser-isolated',
+    apiPort: 57321,
+    databasePort: 57322,
+  };
   await startFullWiserStack(environment, {
-    readTarget: async () => ({
-      workdir: environment.WISER_LOCAL_SUPABASE_WORKDIR,
-      projectId: 'wiser-isolated',
-      apiPort: 57321,
-      databasePort: 57322,
-    }),
+    readTarget: async () => target,
     runCommand: async (command, args, options) => {
       calls.push({ command, args, options });
     },
     runCompose: async () =>
-      JSON.stringify({
-        name: 'wiser-isolated',
-        services: {
-          api: {
-            ports: [{ published: '3641' }],
-            environment: {
-              DATA_PUBLIC_API_ORIGIN: environment.DATA_API_ORIGIN,
-            },
-          },
-          web: { ports: [{ published: '3640' }] },
-          'mcp-http': { ports: [{ published: '14004' }] },
-          'data-worker': {
-            environment: {
-              DATA_STAC_ASSET_BASE_URL: environment.DATA_API_ORIGIN,
-            },
-          },
-        },
-        volumes: { data: { name: 'wiser-isolated_data' } },
-      }),
+      JSON.stringify(localComposeFixture(target, environment)),
     startDataFoundation: async (selectedEnvironment) => {
       assert.equal(selectedEnvironment, environment);
       return { environment: startedEnvironment };

@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 5cab4732a15b09f0d1183aaad20b6dc768236095
+lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
 ---
 
 本页适合第一次在自己的开发环境运行 WISER。现网资料查阅与外部客户端连接请使用[现网使用指南](/development/wiser-data-guide/)；单独启动应用、端口、配置和排障见[本机开发环境](/development/local-environment/)。
