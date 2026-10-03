@@ -176,6 +176,22 @@ describe('frozen ingestion candidate contracts', () => {
     ).toBe(false);
     expect(invoked).toBe(false);
   });
+  it('rejects arrays with inherited serialization before executing it', () => {
+    let invoked = false;
+    const customArray = [1];
+    Object.setPrototypeOf(customArray, {
+      toJSON() {
+        invoked = true;
+        return 'replacement';
+      },
+    });
+    const result = contracts.IngestionCandidateRecordSchema.safeParse({
+      ...record,
+      values: { c1: customArray },
+    });
+    expect(invoked).toBe(false);
+    expect(result.success).toBe(false);
+  });
   it('returns a bounded page from only one fixed asset and rejects record repetition', () => {
     const page = {
       reference,

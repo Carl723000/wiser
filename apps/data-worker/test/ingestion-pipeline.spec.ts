@@ -503,6 +503,58 @@ describe('Agent-native ingestion pipeline', () => {
     );
   });
 
+  it('processes a governed candidate before waiting and resumes the same checkpoint after a temporary failure', async () => {
+    const value = setup();
+    const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+    value.authority.reviewGovernance = { frozen: policy, current: policy };
+    let attempts = 0;
+    const handler = createIngestionPipelineHandler({
+      ...value.options,
+      pendingCandidate: {
+        async process(candidate) {
+          await Promise.resolve();
+          attempts += 1;
+          expect(candidate.jobId).toBe(job.jobId);
+          expect(value.authority.state).toBe('REVIEW_REQUIRED');
+          expect(value.authority.commits).toBe(0);
+          if (attempts === 1)
+            throw new DataJobHandlerError('CANDIDATE_TEMPORARY', true, 'retry');
+          return { status: 'READY', parsedRecordCount: 2 };
+        },
+      },
+    });
+    await expect(handler(job)).rejects.toMatchObject({
+      category: 'CANDIDATE_TEMPORARY',
+      retryable: true,
+    });
+    const frozenHash = value.authority.frozenCheckpoint?.reviewHash;
+    const version = value.authority.version;
+    await expect(handler({ ...job, attemptCount: 2 })).resolves.toMatchObject({
+      status: 'WAITING_REVIEW',
+      result: { state: 'REVIEW_REQUIRED', candidate: { status: 'READY' } },
+    });
+    expect(attempts).toBe(2);
+    expect(value.authority.frozenCheckpoint?.reviewHash).toBe(frozenHash);
+    expect(value.authority.version).toBe(version);
+    expect(value.authority.commits).toBe(0);
+  });
+
+  it('never invokes candidate persistence for the unmanaged automatic-publication path', async () => {
+    const value = setup();
+    let attempts = 0;
+    const handler = createIngestionPipelineHandler({
+      ...value.options,
+      pendingCandidate: {
+        process() {
+          attempts += 1;
+          return Promise.resolve({ status: 'READY' });
+        },
+      },
+    });
+    await expect(handler(job)).resolves.toMatchObject({ status: 'SUCCEEDED' });
+    expect(attempts).toBe(0);
+  });
+
   it.each([
     null,
     { frozen: { mode: 'UNKNOWN', revision: 1 }, current: null },
