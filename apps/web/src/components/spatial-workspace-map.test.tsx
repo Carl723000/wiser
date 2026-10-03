@@ -11,7 +11,10 @@ import type { ReactNode } from 'react';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { renderToStaticMarkup, renderToString } from 'react-dom/server';
 import { hydrateRoot, type Root } from 'react-dom/client';
-import type { WorkspaceMapFeatures } from '@/lib/spatial-workspace-view';
+import type {
+  WorkspaceMapFeatures,
+  WorkspaceSelection,
+} from '@/lib/spatial-workspace-view';
 import type { WorkspaceRasterReport } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
 import { SpatialWorkspaceMap } from './spatial-workspace-map';
@@ -228,6 +231,93 @@ it('retains an actual selectable planar geometry view without WebGL', () => {
     positionId: 'p1',
   });
 });
+
+it.each<{
+  name: string;
+  selection: WorkspaceSelection;
+  selectedPosition: string | null;
+}>([
+  {
+    name: 'the first position',
+    selection: { recordId: 'shared-record', positionId: 'p1' },
+    selectedPosition: 'p1',
+  },
+  {
+    name: 'the second position',
+    selection: { recordId: 'shared-record', positionId: 'p2' },
+    selectedPosition: 'p2',
+  },
+  {
+    name: 'a record without a position',
+    selection: { recordId: 'shared-record' },
+    selectedPosition: null,
+  },
+  {
+    name: 'an unavailable position',
+    selection: { recordId: 'shared-record', positionId: 'missing' },
+    selectedPosition: null,
+  },
+  {
+    name: 'another record with the same position ID',
+    selection: { recordId: 'other-record', positionId: 'p1' },
+    selectedPosition: null,
+  },
+  { name: 'no selection', selection: null, selectedPosition: null },
+])(
+  'highlights only the exact planar position for $name',
+  ({ selection, selectedPosition }) => {
+    const sameRecordFeatures: WorkspaceMapFeatures = {
+      ...features,
+      features: features.features.map((feature) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          recordId: 'shared-record',
+          kind: 'observation',
+        },
+      })),
+    };
+    const original = JSON.stringify(sameRecordFeatures);
+    const { container, rerender } = render(
+      <SpatialWorkspaceMap
+        {...props}
+        features={sameRecordFeatures}
+        selection={selection}
+        webGLAvailable={false}
+      />,
+    );
+    for (const feature of sameRecordFeatures.features) {
+      const paths = container.querySelectorAll(
+        `[data-planar-geometry="${feature.id}"] path`,
+      );
+      expect(paths.length).toBeGreaterThan(0);
+      for (const path of paths)
+        expect(path.getAttribute('stroke-width')).toBe(
+          feature.properties.positionId === selectedPosition ? '4' : '2',
+        );
+    }
+    fireEvent.keyDown(screen.getByRole('button', { name: /原线/ }), {
+      key: 'Enter',
+    });
+    expect(props.onSelect).toHaveBeenLastCalledWith({
+      recordId: 'shared-record',
+      positionId: 'p2',
+    });
+    rerender(
+      <SpatialWorkspaceMap
+        {...props}
+        features={sameRecordFeatures}
+        selection={null}
+        webGLAvailable={false}
+      />,
+    );
+    for (const path of container.querySelectorAll(
+      '[data-planar-geometry] path',
+    ))
+      expect(path.getAttribute('stroke-width')).toBe('2');
+    expect(JSON.stringify(sameRecordFeatures)).toBe(original);
+  },
+);
 
 it('renders accessible SVG titles as a single text child without server warnings', () => {
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
