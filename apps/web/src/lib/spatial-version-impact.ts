@@ -17,6 +17,14 @@ export interface VersionChange {
   nextVersionId: string | null;
   reason: ImpactReason;
   previousProcessingVersion?: string;
+  /** Fixed local dependent references; never an authorization or source edit. */
+  scope?:
+    | { kind: 'records'; recordIds: readonly string[] }
+    | {
+        kind: 'positions';
+        recordId: string;
+        positionIds: readonly string[];
+      };
 }
 export interface VersionImpact {
   recordIds: string[];
@@ -43,10 +51,28 @@ export function versionImpact(
   for (const change of changes) {
     if (change.reason === 'new-period' || change.previousVersionId === null)
       continue;
+    // Permission withdrawal and a missing fixed source concern the entire
+    // reference. A correction hint cannot leave its other dependents visible.
+    const scope =
+      change.reason === 'rights-withdrawn' || change.reason === 'source-missing'
+        ? undefined
+        : change.scope;
     for (const record of records) {
+      if (
+        (scope?.kind === 'records' && !scope.recordIds.includes(record.id)) ||
+        (scope?.kind === 'positions' && scope.recordId !== record.id)
+      )
+        continue;
+      const ownPositions =
+        scope?.kind === 'positions'
+          ? record.positions.filter((position) =>
+              scope.positionIds.includes(position.id),
+            )
+          : record.positions;
       const own =
         record.sourceId === change.sourceId &&
         record.versionId === change.previousVersionId &&
+        (scope?.kind !== 'positions' || ownPositions.length > 0) &&
         (change.reason !== 'rule-changed' ||
           change.previousProcessingVersion === undefined ||
           record.processingVersion === change.previousProcessingVersion);
@@ -55,12 +81,14 @@ export function versionImpact(
       const geometry = record.positions.filter(
         (position) =>
           position.geometrySourceId === change.sourceId &&
-          position.geometryVersionId === change.previousVersionId,
+          position.geometryVersionId === change.previousVersionId &&
+          (scope?.kind !== 'positions' ||
+            scope.positionIds.includes(position.id)),
       );
       if (!own && !geometry.length) continue;
       affected.add(record.id);
       objects.add(record.objectId);
-      (own ? record.positions : geometry).forEach((position) =>
+      (own ? ownPositions : geometry).forEach((position) =>
         positions.add(position.id),
       );
       record.needIds.forEach((id) => needs.add(id));

@@ -58,7 +58,7 @@ export function SpatialWorkspaceShell({
     () =>
       target
         ? versionImpact(
-            [target],
+            pack.records,
             [
               {
                 sourceId: target.sourceId,
@@ -66,6 +66,7 @@ export function SpatialWorkspaceShell({
                 nextVersionId: target.versionId,
                 reason: 'rule-changed',
                 previousProcessingVersion: target.processingVersion,
+                scope: { kind: 'records', recordIds: [target.id] },
               },
             ],
             pack.topicPackages,

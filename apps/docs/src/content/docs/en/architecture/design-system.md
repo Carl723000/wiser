@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: b45faeb91338cf5ea63305c8a2fdc9a9690cdb4e
+lastReviewedCommit: 73e83185990e0b5fe062351af4fe3f3e03a76209
 ---
 
 ## Design direction
@@ -129,3 +129,5 @@ Evidence dossiers show source/provider, native time, original values, review sta
 Readiness cards use text-backed fact-availability badges and shared semantic tokens. The focused inspector groups source references, records and workflow facts separately, with bounded lists and scrollable coverage tables. Help remains keyboard/touch accessible; missing tasks and invalid coverage input stay visible. Chinese/English, light/dark and 390px/desktop surfaces share the same facts and actions.
 
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
+
+Fixed-input dependency checks accept explicit record sets or an exact record/position set for source and rule corrections. They evaluate the complete permitted input and keep unrelated records and positions unchanged; an empty scope never falls back to the entire source. Permission withdrawal or a missing fixed source remains source-wide. The synthetic exercise uses the same complete-input check, without editing or persisting real source content. This local dependency result does not establish an authenticated correction workflow.
