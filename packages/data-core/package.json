@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./project-readiness": "./src/project-readiness.ts",
-    "./measurement-comparison": "./src/measurement-comparison.ts"
+    "./measurement-comparison": "./src/measurement-comparison.ts",
+    "./candidate-monthly-projection": "./src/candidate-monthly-projection.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

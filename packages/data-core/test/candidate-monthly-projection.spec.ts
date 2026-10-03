@@ -5,6 +5,7 @@ import type {
   IngestionCandidateRecordPage,
   IngestionCandidateReference,
 } from '@wiser/data-contracts';
+import { projectCandidateMonthlyReport as publicProjection } from '@wiser/data-core/candidate-monthly-projection';
 import {
   projectCandidateMonthlyReport,
   type CandidateMonthlyProjectionInput,
@@ -130,8 +131,20 @@ function fixture() {
     createdAt: '2026-10-03T10:00:00Z',
   };
   const pages: IngestionCandidateRecordPage[] = [
-    { reference, assetId, columns, records: records.slice(0, 6), nextCursor: 'next' },
-    { reference, assetId, columns, records: records.slice(6), nextCursor: null },
+    {
+      reference,
+      assetId,
+      columns,
+      records: records.slice(0, 6),
+      nextCursor: 'next',
+    },
+    {
+      reference,
+      assetId,
+      columns,
+      records: records.slice(6),
+      nextCursor: null,
+    },
   ];
   return { batch, pages, fixed };
 }
@@ -170,6 +183,10 @@ function withCells(
 }
 
 describe('fixed candidate monthly semantic projection', () => {
+  it('is available at the explicit data-core subpath', () => {
+    expect(publicProjection).toBe(projectCandidateMonthlyReport);
+  });
+
   it('derives publication month only from matching document titles and keeps exact raw categories and provenance', () => {
     const result = projectCandidateMonthlyReport(fixture());
     expect(result.kind).toBe('READY');
@@ -179,7 +196,10 @@ describe('fixed candidate monthly semantic projection', () => {
     expect(result.records[0]).toMatchObject({
       candidateReference: reference,
       source: { workId: fixed.workId, assetId, originalSha256: sourceHash },
-      sourceLocalIdentity: { recordId: '10000000-0000-4000-8000-000000000005', index: 5 },
+      sourceLocalIdentity: {
+        recordId: '10000000-0000-4000-8000-000000000005',
+        index: 5,
+      },
       objectType: 'RIVER_REACH',
       originalName: '永定河山峡段\n（官厅坝下-三家店）',
       waterSystemOriginal: '永定河水系',
@@ -189,8 +209,8 @@ describe('fixed candidate monthly semantic projection', () => {
       locators: {
         title: 'word/document.xml#paragraph:1',
         row: 'word/document.xml#table:1/row:2',
-        nameCell: 'word/document.xml#table:1/row:2/cell:2',
-        categoryCell: 'word/document.xml#table:1/row:2/cell:4',
+        nameCell: 'word/document.xml#table:1/row:2/column:2',
+        categoryCell: 'word/document.xml#table:1/row:2/column:4',
       },
     });
     expect(result.records[1]).toMatchObject({
@@ -198,23 +218,77 @@ describe('fixed candidate monthly semantic projection', () => {
       waterSystemOriginal: '永定河水系',
       rawCategory: '无水',
       locators: {
-        waterSystemCell: 'word/document.xml#table:1/row:2/cell:1',
+        waterSystemCell: 'word/document.xml#table:1/row:2/column:1',
         row: 'word/document.xml#table:1/row:3',
       },
     });
-    expect(result.records[2]).toMatchObject({ objectType: 'LAKE', originalName: '团城湖' });
-    expect(result.records[3]).toMatchObject({ objectType: 'RESERVOIR', rawCategory: '封闭无法监测' });
-    expect(JSON.stringify(result)).not.toMatch(/versionId|geometryKey|observationDate/);
+    expect(result.records[2]).toMatchObject({
+      objectType: 'LAKE',
+      originalName: '团城湖',
+    });
+    expect(result.records[3]).toMatchObject({
+      objectType: 'RESERVOIR',
+      rawCategory: '封闭无法监测',
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /versionId|geometryKey|observationDate/,
+    );
   });
 
   it('rejects partial, incomplete, mismatched or changed-original pages without partial projected rows', () => {
     const original = fixture();
-    const cases: [CandidateMonthlyProjectionInput, CandidateMonthlyUnparsedReason][] = [
-      [{ ...original, pages: original.pages.slice(0, 1) }, 'INCOMPLETE_RECORD_PAGES'],
-      [{ ...original, pages: [{ ...original.pages[0]!, nextCursor: null }, original.pages[1]!] }, 'INCOMPLETE_RECORD_PAGES'],
-      [{ ...original, batch: { ...original.batch, status: 'PARTIAL' } }, 'SOURCE_NOT_READY'],
-      [{ ...original, fixed: { ...fixed, sourceHash: 'c'.repeat(64) } }, 'SOURCE_CHANGED'],
-      [{ ...original, pages: [{ ...original.pages[0]!, reference: { ...reference, reviewHash: 'c'.repeat(64) } }, original.pages[1]!] }, 'SOURCE_CHANGED'],
+    const cases: [
+      CandidateMonthlyProjectionInput,
+      CandidateMonthlyUnparsedReason,
+    ][] = [
+      [
+        { ...original, pages: original.pages.slice(0, 1) },
+        'INCOMPLETE_RECORD_PAGES',
+      ],
+      [
+        {
+          ...original,
+          pages: [
+            { ...original.pages[0]!, nextCursor: null },
+            original.pages[1]!,
+          ],
+        },
+        'INCOMPLETE_RECORD_PAGES',
+      ],
+      [
+        {
+          ...original,
+          batch: {
+            ...original.batch,
+            status: 'PARTIAL',
+            assets: [
+              {
+                ...original.batch.assets[0]!,
+                status: 'PARTIAL',
+                reason: 'PARTIAL_PARSE',
+              },
+            ],
+          },
+        },
+        'SOURCE_NOT_READY',
+      ],
+      [
+        { ...original, fixed: { ...fixed, sourceHash: 'c'.repeat(64) } },
+        'SOURCE_CHANGED',
+      ],
+      [
+        {
+          ...original,
+          pages: [
+            {
+              ...original.pages[0]!,
+              reference: { ...reference, reviewHash: 'c'.repeat(64) },
+            },
+            original.pages[1]!,
+          ],
+        },
+        'SOURCE_CHANGED',
+      ],
     ];
     for (const [input, reason] of cases) {
       const result = projectCandidateMonthlyReport(input);
@@ -227,8 +301,18 @@ describe('fixed candidate monthly semantic projection', () => {
   it('refuses conflicting titles, an unrecognized header and missing physical structure', () => {
     const original = fixture();
     const cases = [
-      changedRecord(original.pages, 2, (record) => ({ ...record, values: { ...record.values, c1: '表2 2023年5月重点湖泊水质状况' } })),
-      changedRecord(original.pages, 4, (record) => withCells(record, [cell(1, '水系'), cell(2, '河流'), cell(3, '所在区'), cell(4, '现状水质类别')])),
+      changedRecord(original.pages, 2, (record) => ({
+        ...record,
+        values: { ...record.values, c1: '表2 2023年5月重点湖泊水质状况' },
+      })),
+      changedRecord(original.pages, 4, (record) =>
+        withCells(record, [
+          cell(1, '水系'),
+          cell(2, '河流'),
+          cell(3, '所在区'),
+          cell(4, '现状水质类别'),
+        ]),
+      ),
       changedRecord(original.pages, 6, (record) => {
         const values = { ...record.values };
         delete values.c3;
@@ -246,14 +330,85 @@ describe('fixed candidate monthly semantic projection', () => {
   it('fails closed on a malformed vertical continuation or unrecognized merged column', () => {
     const original = fixture();
     for (const mutation of [
-      (cells: ReturnType<typeof cell>[]) => [{ ...cells[0]!, verticalMerge: 'continue' as const }, ...cells.slice(1)],
-      (cells: ReturnType<typeof cell>[]) => [cells[0]!, { ...cells[1]!, columnSpan: 2 }, ...cells.slice(2)],
+      (cells: ReturnType<typeof cell>[]) => [
+        { ...cells[0]!, verticalMerge: 'continue' as const },
+        ...cells.slice(1),
+      ],
+      (cells: ReturnType<typeof cell>[]) => [
+        cells[0]!,
+        { ...cells[1]!, columnSpan: 2 },
+        ...cells.slice(2),
+      ],
     ]) {
       const pages = changedRecord(original.pages, 5, (record) => {
         const c3 = record.values.c3 as { cells: ReturnType<typeof cell>[] };
         return withCells(record, mutation(c3.cells));
       });
-      expect(projectCandidateMonthlyReport({ ...original, pages })).toMatchObject({ kind: 'NOT_PARSED', reason: 'UNKNOWN_LAYOUT', records: [] });
+      expect(
+        projectCandidateMonthlyReport({ ...original, pages }),
+      ).toMatchObject({
+        kind: 'NOT_PARSED',
+        reason: 'UNKNOWN_LAYOUT',
+        records: [],
+      });
     }
+  });
+
+  it('retains an actual empty category instead of inventing a class or sampling date', () => {
+    const original = fixture();
+    const pages = changedRecord(original.pages, 10, (record) => {
+      const c3 = record.values.c3 as { cells: ReturnType<typeof cell>[] };
+      return withCells(
+        record,
+        c3.cells.map((entry) =>
+          entry.column === 3 ? { ...entry, text: '' } : entry,
+        ),
+      );
+    });
+    const result = projectCandidateMonthlyReport({ ...original, pages });
+    expect(result.kind).toBe('READY');
+    if (result.kind !== 'READY') return;
+    expect(result.records[3]).toMatchObject({
+      rawCategory: '',
+      time: { value: '2023-04', role: 'PUBLICATION' },
+    });
+  });
+
+  it('rejects wrong row locators, duplicate source order and unexpected fifth tables', () => {
+    const original = fixture();
+    const wrongLocator = changedRecord(original.pages, 8, (record) => ({
+      ...record,
+      values: { ...record.values, c2: 'word/document.xml#table:2/row:99' },
+    }));
+    const duplicateIndex = changedRecord(original.pages, 7, (record) => ({
+      ...record,
+      index: 6,
+    }));
+    const fifthTable = changedRecord(original.pages, 11, (record) => {
+      const c3 = record.values.c3 as {
+        kind: string;
+        sourcePart: string;
+        tableIndex: number;
+        rowIndex: number;
+        cells: ReturnType<typeof cell>[];
+      };
+      return {
+        ...record,
+        values: {
+          ...record.values,
+          c2: 'word/document.xml#table:5/row:1',
+          c3: { ...c3, tableIndex: 5 },
+        },
+      };
+    });
+    expect(
+      projectCandidateMonthlyReport({ ...original, pages: wrongLocator }),
+    ).toMatchObject({ kind: 'NOT_PARSED', reason: 'UNKNOWN_LAYOUT' });
+    expect(
+      projectCandidateMonthlyReport({ ...original, pages: duplicateIndex }),
+    ).toMatchObject({ kind: 'NOT_PARSED', reason: 'INCOMPLETE_RECORD_PAGES' });
+    expect(
+      projectCandidateMonthlyReport({ ...original, pages: fifthTable }),
+    ).toMatchObject({ kind: 'NOT_PARSED', reason: 'UNKNOWN_LAYOUT' });
   });
 });
