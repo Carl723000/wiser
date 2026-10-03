@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: b3df42fdf0767fdd626e61a2534b29bb2d2c4b44
+lastReviewedCommit: 15a277c611c43f60f8f1d56806fa6ccb2398a2a5
 ---
 
 ## What this guide governs
@@ -168,3 +168,5 @@ The local comparison position guard requires exactly one sampling declaration pe
 The local version-impact calculation includes records that reference a geometry source and its fixed version when the geometry processing rule changes. The dependent record's own parser version does not identify that geometry rule. All matching references require rechecking; unrelated source/version references remain excluded. This calculation does not update records, recompute results, or constitute durable dependency or browser acceptance.
 
 Map selection retains the specific position within a record. Other positions of that record do not become selected together; a record without a selected position remains readable in its dossier.
+
+Narrow spatial reading uses Map, Results and Evidence labels instead of shrinking the desktop columns. Region selection uses a compact select and filters start collapsed. Pane changes preserve scope, exact record/position, source version, camera and loaded results; evidence selection and location actions name their destination. Withdrawn evidence is removed from mounted hidden panes as well as the visible pane. This local reading behavior does not establish authenticated intake, review or publication.

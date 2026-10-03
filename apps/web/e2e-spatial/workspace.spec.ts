@@ -226,7 +226,7 @@ test('two non-Yongding record/reference/source chains, time and spatial countere
       dossier.getByRole('button', { name: '查看此位置', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
     const fixed = await dossier.getByRole('link').first().getAttribute('href');
-    const wrong = new URL(fixed!, 'http://127.0.0.1:3410');
+    const wrong = new URL(fixed!, page.url());
     wrong.searchParams.set('version', 'missing-fixed-version');
     const response = await page.request.get(wrong.href);
     expect(response.status()).toBe(404);
@@ -321,4 +321,204 @@ test('Chinese keyboard, reduced motion, English dark layout and truthful no-WebG
       path: join(output, 'english-dark-390.png'),
       fullPage: true,
     });
+});
+
+test.describe('narrow spatial reading', () => {
+  test.use({ hasTouch: true });
+  for (const locale of ['zh-CN', 'en'] as const) {
+    test(`${locale} narrow reading preserves the map, filters, exact evidence and fullscreen return`, async ({
+      page,
+    }) => {
+      const labels =
+        locale === 'zh-CN'
+          ? {
+              panes: '查阅区域',
+              map: '地图',
+              zoom: '放大地图',
+              results: '结果',
+              evidence: '证据',
+              dossier: '对象证据档案',
+              filters: '资料筛选',
+              start: '起始日期',
+              end: '结束日期',
+              records: '区域资料清单',
+              locate: '查看此位置',
+              sourceHeading: '提取记录与原文定位',
+              fullscreen: '全屏工作区',
+              spatial: '空间与证据',
+            }
+          : {
+              panes: 'Reading pane',
+              map: 'Map',
+              zoom: 'Zoom in',
+              results: 'Results',
+              evidence: 'Evidence',
+              dossier: 'Object evidence dossier',
+              filters: 'Filter materials',
+              start: 'Start date',
+              end: 'End date',
+              records: 'Regional material records',
+              locate: 'Inspect this location',
+              sourceHeading: 'Extracted records and original locators',
+              fullscreen: 'Expand workspace',
+              spatial: 'Space and evidence',
+            };
+      await page.addInitScript(() => {
+        const original = Object.getOwnPropertyDescriptor(
+          HTMLCanvasElement.prototype,
+          'getContext',
+        )?.value as HTMLCanvasElement['getContext'];
+        HTMLCanvasElement.prototype.getContext = function (
+          this: HTMLCanvasElement,
+          ...args: Parameters<typeof original>
+        ) {
+          if (String(args[0]).startsWith('webgl')) return null;
+          return original.apply(this, args);
+        } as typeof original;
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(
+        `/${locale}/data-foundation/spatial-workspace?record=monthly-2023-04%3At1%3Ar14`,
+      );
+      const workspace = page.getByTestId('spatial-workspace');
+      const tabs = workspace.getByRole('tablist', { name: labels.panes });
+      const evidence = tabs.getByRole('tab', {
+        name: labels.evidence,
+        exact: true,
+      });
+      const mapTab = tabs.getByRole('tab', { name: labels.map, exact: true });
+      const results = tabs.getByRole('tab', {
+        name: labels.results,
+        exact: true,
+      });
+      await expect(evidence).toHaveAttribute('aria-selected', 'true');
+      await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
+      const dossier = workspace.getByRole('region', { name: labels.dossier });
+      await expect(dossier).toContainText('monthly-2023-04:t1:r14');
+      await expect(dossier).toContainText('table:1/row:14');
+      const sourceHref = await dossier
+        .getByRole('link')
+        .first()
+        .getAttribute('href');
+      const map = workspace.getByTestId('spatial-geographic-map');
+      const originalMap = await map.elementHandle();
+      await expect(map).toHaveAttribute('data-renderer', 'planar');
+      await dossier.getByRole('button', { name: labels.locate }).click();
+      await expect(mapTab).toHaveAttribute('aria-selected', 'true');
+      await expect(workspace.getByRole('tabpanel')).toBeFocused();
+      await expect(map).toBeVisible();
+      const camera = await map.getAttribute('data-camera');
+      const filter = workspace
+        .locator('details')
+        .filter({
+          has: page.locator('summary', { hasText: labels.filters }),
+        })
+        .first();
+      await expect(filter).not.toHaveAttribute('open', '');
+      await filter.locator('summary').first().click();
+      await workspace
+        .getByLabel(labels.start, { exact: true })
+        .fill('2023-04-01');
+      await workspace
+        .getByLabel(labels.end, { exact: true })
+        .fill('2023-04-30');
+      await filter.locator('summary').first().click();
+      const count = await workspace
+        .getByTestId('spatial-record-count')
+        .textContent();
+      await mapTab.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(results).toBeFocused();
+      const records = workspace.getByRole('region', { name: labels.records });
+      await expect(records).toBeVisible();
+      await expect(map).not.toBeVisible();
+      await records
+        .getByRole('button')
+        .filter({ hasText: '潮白河上段' })
+        .filter({ hasText: '2023-04' })
+        .first()
+        .click();
+      await expect(evidence).toHaveAttribute('aria-selected', 'true');
+      await expect(workspace.getByRole('tabpanel')).toBeFocused();
+      await expect(dossier).toContainText('monthly-2023-04:t1:r14');
+      await expect(dossier.getByRole('link').first()).toHaveAttribute(
+        'href',
+        sourceHref!,
+      );
+      await expect(workspace.getByTestId('spatial-record-count')).toHaveText(
+        count!,
+      );
+      await expect(map).toHaveAttribute('data-camera', camera!);
+      const sourcePage = await page.context().newPage();
+      await sourcePage.goto(new URL(sourceHref!, page.url()).href);
+      await expect(
+        sourcePage.getByRole('heading', { name: labels.sourceHeading }),
+      ).toBeVisible();
+      await expect(sourcePage.locator('blockquote').first()).not.toBeEmpty();
+      await sourcePage.close();
+      await page
+        .getByRole('button', { name: labels.fullscreen, exact: true })
+        .click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(evidence).toHaveAttribute('aria-selected', 'true');
+      await mapTab.tap();
+      await expect(map).toBeVisible();
+      expect(
+        await map.evaluate((node, original) => node === original, originalMap),
+      ).toBe(true);
+      await expect(map).toHaveAttribute('data-camera', camera!);
+      const horizontal = await page.evaluate(
+        () => document.documentElement.scrollWidth - innerWidth,
+      );
+      expect(horizontal).toBeLessThanOrEqual(1);
+      if (output) {
+        await tabs.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: join(output, `${locale}-single-pane-map-390.png`),
+        });
+        await evidence.tap();
+        await tabs.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: join(output, `${locale}-single-pane-evidence-390.png`),
+        });
+      }
+      await evidence.focus();
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await expect(tabs).toHaveCount(0);
+      await expect(map).toBeVisible();
+      await expect(records).toBeVisible();
+      await expect(dossier).toBeVisible();
+      await expect(dossier.getByRole('link').first()).toHaveAttribute(
+        'href',
+        sourceHref!,
+      );
+      expect(
+        await map.evaluate((node, original) => node === original, originalMap),
+      ).toBe(true);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(evidence).toHaveAttribute('aria-selected', 'true');
+      await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
+      await expect(workspace.getByTestId('spatial-record-count')).toHaveText(
+        count!,
+      );
+      await expect(
+        page.getByRole('tab', { name: labels.spatial, exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      const zoom = workspace.getByRole('button', {
+        name: labels.zoom,
+        exact: true,
+      });
+      await zoom.focus();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(mapTab).toHaveAttribute('aria-selected', 'true');
+      await expect(zoom).toBeFocused();
+      await expect(zoom).toBeVisible();
+      expect(
+        await map.evaluate((node, original) => node === original, originalMap),
+      ).toBe(true);
+    });
+  }
 });

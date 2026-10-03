@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Locale } from '@/lib/i18n';
 import type {
   RegionId,
@@ -36,6 +36,8 @@ import { SpatialWorkspaceMap } from './spatial-workspace-map';
 import styles from './spatial-workspace.module.css';
 
 const noInvalidations: readonly WorkspaceInvalidation[] = [];
+const readingPanes = ['map', 'results', 'evidence'] as const;
+type ReadingPane = (typeof readingPanes)[number];
 type SavedScene = {
   id: string;
   name: string;
@@ -90,6 +92,43 @@ export function SpatialWorkspace({
   sourceHref,
   storageKey = defaultStorageKey,
 }: SpatialWorkspaceProps) {
+  const readingId = useId();
+  const [narrow, setNarrow] = useState(false);
+  const [readingPane, setReadingPane] = useState<ReadingPane>(
+    selectedRecordId ? 'evidence' : 'map',
+  );
+  const readingTabs = useRef<HTMLDivElement>(null);
+  const paneElements = useRef<Partial<Record<ReadingPane, HTMLDivElement>>>({});
+  const paneButtons = useRef<Partial<Record<ReadingPane, HTMLButtonElement>>>(
+    {},
+  );
+  const focusPane = useRef(false);
+  const showPane = (pane: ReadingPane, focusContent = false) => {
+    focusPane.current = focusContent && narrow;
+    setReadingPane(pane);
+  };
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(max-width: 800px)');
+    const update = () => {
+      if (query.matches) {
+        const focused = readingPanes.find((pane) =>
+          paneElements.current[pane]?.contains(document.activeElement),
+        );
+        if (focused) setReadingPane(focused);
+      } else if (readingTabs.current?.contains(document.activeElement))
+        focusPane.current = true;
+      setNarrow(query.matches);
+    };
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!focusPane.current) return;
+    focusPane.current = false;
+    paneElements.current[readingPane]?.focus();
+  });
   const [view, setView] = useState(() =>
       createSpatialWorkspaceView(pack, regionId),
     ),
@@ -193,6 +232,7 @@ export function SpatialWorkspace({
             positionId: dossier.positions[0]?.id ?? null,
           },
         };
+        setReadingPane('evidence');
       }
     }
     if (next !== previous) {
@@ -241,6 +281,7 @@ export function SpatialWorkspace({
     return () => window.removeEventListener('storage', changed);
   }, [storageKey]);
   const changeRegion = (id: RegionId) => {
+    showPane('map');
     setView(switchSpatialWorkspaceRegion(view, pack, id));
     setBoundsText('');
     setBoundsInvalid(false);
@@ -293,6 +334,7 @@ export function SpatialWorkspace({
         };
     }
     setView({ ...view, selection: picked, camera });
+    showPane(locate ? 'map' : 'evidence', true);
     onSelectRecord?.(picked.recordId);
   };
   const writeScenes = (next: SavedScene[]) => {
@@ -334,6 +376,7 @@ export function SpatialWorkspace({
       return;
     }
     setView(restored.view);
+    showPane(restored.view.selection ? 'evidence' : 'map', true);
     setBoundsText(restored.view.bounds?.join(',') ?? '');
     setBoundsInvalid(false);
     setDrawBounds(false);
@@ -359,6 +402,7 @@ export function SpatialWorkspace({
       ...switchSpatialWorkspaceRegion(view, pack, target),
       topicId: id,
     });
+    showPane('map', true);
     setBoundsText('');
     setBoundsInvalid(false);
     setDrawBounds(false);
@@ -381,6 +425,7 @@ export function SpatialWorkspace({
     setMessage(copy.exported);
   };
   const resetFilters = () => {
+    showPane('map');
     const next = createSpatialWorkspaceView(pack, view.regionId);
     setView({ ...next, mode: view.mode, camera: view.camera });
     setBoundsText('');
@@ -458,16 +503,32 @@ export function SpatialWorkspace({
         <span className={styles.status}>{copy.localOnly}</span>
       </header>
       <nav className={styles.regionNavigation} aria-label={copy.region}>
-        {workspaceRegionIds.map((id) => (
-          <button
-            type="button"
-            key={id}
-            aria-current={view.regionId === id ? 'page' : undefined}
-            onClick={() => changeRegion(id)}
-          >
-            {copy.regions[id]}
-          </button>
-        ))}
+        {narrow ? (
+          <label>
+            {copy.region}
+            <select
+              value={view.regionId}
+              onChange={(event) => changeRegion(event.target.value as RegionId)}
+            >
+              {workspaceRegionIds.map((id) => (
+                <option key={id} value={id}>
+                  {copy.regions[id]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          workspaceRegionIds.map((id) => (
+            <button
+              type="button"
+              key={id}
+              aria-current={view.regionId === id ? 'page' : undefined}
+              onClick={() => changeRegion(id)}
+            >
+              {copy.regions[id]}
+            </button>
+          ))
+        )}
       </nav>
       <div className={styles.breadcrumb}>
         <button type="button" onClick={() => changeRegion('bth')}>
@@ -497,7 +558,7 @@ export function SpatialWorkspace({
           </>
         ) : null}
       </div>
-      <details className={styles.filters} open>
+      <details className={styles.filters} open={!narrow}>
         <summary>{copy.filters}</summary>
         <div className={styles.filterGrid}>
           <label>
@@ -735,190 +796,281 @@ export function SpatialWorkspace({
           {copy.enableComparison ?? copy.comparisonTitle}
         </label>
       </div>
+      {narrow ? (
+        <div
+          className={styles.readingTabs}
+          role="tablist"
+          aria-label={copy.readingPanel}
+          ref={readingTabs}
+        >
+          {readingPanes.map((pane, index) => (
+            <button
+              key={pane}
+              type="button"
+              role="tab"
+              id={`${readingId}-tab-${pane}`}
+              aria-controls={`${readingId}-panel-${pane}`}
+              aria-selected={readingPane === pane}
+              tabIndex={readingPane === pane ? 0 : -1}
+              ref={(element) => {
+                if (element) paneButtons.current[pane] = element;
+              }}
+              onClick={() => showPane(pane)}
+              onKeyDown={(event) => {
+                const target =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? readingPanes.length - 1
+                      : event.key === 'ArrowRight'
+                        ? (index + 1) % readingPanes.length
+                        : event.key === 'ArrowLeft'
+                          ? (index + readingPanes.length - 1) %
+                            readingPanes.length
+                          : null;
+                if (target === null) return;
+                event.preventDefault();
+                const next = readingPanes[target];
+                showPane(next);
+                paneButtons.current[next]?.focus();
+              }}
+            >
+              {copy.readingPanes[pane]}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div
         className={
           view.comparison.enabled ? styles.comparisonLayout : styles.mainLayout
         }
       >
         <div className={styles.mapAndRecords}>
-          {view.comparison.enabled ? (
-            <SpatialWorkspaceComparison
-              pack={pack}
-              view={view}
-              copy={copy}
-              onChange={setView}
-              onSelect={selectRecord}
-              invalidations={invalidations}
-            />
-          ) : (
-            <section aria-label={copy.mapTitle}>
-              <h2>{copy.mapTitle}</h2>
-              <SpatialWorkspaceMap
-                features={filtered.features}
-                rasterReports={workspaceRasterOverlays(
-                  pack,
-                  view,
-                  invalidations,
-                )}
-                rasterSettings={view.raster}
-                onRasterChange={(raster) =>
-                  setView((previous) => ({ ...previous, raster }))
-                }
-                camera={view.camera}
-                mode={view.mode}
-                selection={selection}
+          <div
+            className={styles.readingPane}
+            role={narrow ? 'tabpanel' : undefined}
+            id={`${readingId}-panel-map`}
+            aria-labelledby={narrow ? `${readingId}-tab-map` : undefined}
+            hidden={narrow && readingPane !== 'map'}
+            tabIndex={-1}
+            ref={(element) => {
+              if (element) paneElements.current.map = element;
+            }}
+          >
+            {view.comparison.enabled ? (
+              <SpatialWorkspaceComparison
+                pack={pack}
+                view={view}
                 copy={copy}
-                onCamera={(camera) =>
-                  setView((previous) => ({ ...previous, camera }))
-                }
+                onChange={setView}
                 onSelect={selectRecord}
-                bounds={view.bounds}
-                drawBounds={drawBounds}
-                onBounds={(bounds) => {
-                  setView({ ...view, bounds });
-                  setBoundsText(
-                    bounds.map((value) => Number(value.toFixed(6))).join(','),
-                  );
-                  setDrawBounds(false);
-                  setBoundsInvalid(false);
-                }}
+                invalidations={invalidations}
               />
-            </section>
-          )}
-          {attribution.length ? (
-            <details className={styles.attribution}>
-              <summary>{copy.sourceAttribution}</summary>
-              {attribution.map((source) => (
-                <details
-                  key={`${source.id}:${source.versionId}`}
-                  open={view.expandedSources.includes(source.id)}
-                  onToggle={(event) => {
-                    const expanded = event.currentTarget.open;
-                    setView((previous) => ({
-                      ...previous,
-                      expandedSources: expanded
-                        ? [...new Set([...previous.expandedSources, source.id])]
-                        : previous.expandedSources.filter(
-                            (id) => id !== source.id,
-                          ),
-                    }));
+            ) : (
+              <section aria-label={copy.mapTitle}>
+                <h2>{copy.mapTitle}</h2>
+                <SpatialWorkspaceMap
+                  features={filtered.features}
+                  rasterReports={workspaceRasterOverlays(
+                    pack,
+                    view,
+                    invalidations,
+                  )}
+                  rasterSettings={view.raster}
+                  onRasterChange={(raster) =>
+                    setView((previous) => ({ ...previous, raster }))
+                  }
+                  camera={view.camera}
+                  mode={view.mode}
+                  selection={selection}
+                  copy={copy}
+                  onCamera={(camera) =>
+                    setView((previous) => ({ ...previous, camera }))
+                  }
+                  onSelect={selectRecord}
+                  bounds={view.bounds}
+                  drawBounds={drawBounds}
+                  onBounds={(bounds) => {
+                    setView({ ...view, bounds });
+                    setBoundsText(
+                      bounds.map((value) => Number(value.toFixed(6))).join(','),
+                    );
+                    setDrawBounds(false);
+                    setBoundsInvalid(false);
                   }}
-                >
-                  <summary>
-                    {source.title} · {source.versionId}
-                  </summary>
-                  <p>
-                    {source.provider} · {source.rights.note}
-                  </p>
-                  {source.coverageNote ? <p>{source.coverageNote}</p> : null}
-                  {workspaceEvidenceUrl(source.evidenceUrl) ? (
-                    <a
-                      href={workspaceEvidenceUrl(source.evidenceUrl)!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {copy.openOriginal}
-                    </a>
-                  ) : null}
-                </details>
-              ))}
-            </details>
-          ) : null}
-          <section className={styles.records} aria-label={copy.recordsTitle}>
-            <h2>{copy.recordsTitle}</h2>
-            <div className={styles.recordList}>
-              {filtered.locatedRecords.slice(0, recordLimit).map(recordButton)}
-            </div>
-            {!filtered.records.length ? <p>{copy.emptyRecords}</p> : null}
-            {filtered.locatedRecords.length > recordLimit ? (
-              <button
-                type="button"
-                onClick={() => setRecordLimit((limit) => limit + 40)}
-              >
-                {copy.recordsTitle} ·{' '}
-                {Math.min(recordLimit, filtered.locatedRecords.length)} /{' '}
-                {filtered.locatedRecords.length} ↓
-              </button>
+                />
+              </section>
+            )}
+            {attribution.length ? (
+              <details className={styles.attribution}>
+                <summary>{copy.sourceAttribution}</summary>
+                {attribution.map((source) => (
+                  <details
+                    key={`${source.id}:${source.versionId}`}
+                    open={view.expandedSources.includes(source.id)}
+                    onToggle={(event) => {
+                      const expanded = event.currentTarget.open;
+                      setView((previous) => ({
+                        ...previous,
+                        expandedSources: expanded
+                          ? [
+                              ...new Set([
+                                ...previous.expandedSources,
+                                source.id,
+                              ]),
+                            ]
+                          : previous.expandedSources.filter(
+                              (id) => id !== source.id,
+                            ),
+                      }));
+                    }}
+                  >
+                    <summary>
+                      {source.title} · {source.versionId}
+                    </summary>
+                    <p>
+                      {source.provider} · {source.rights.note}
+                    </p>
+                    {source.coverageNote ? <p>{source.coverageNote}</p> : null}
+                    {workspaceEvidenceUrl(source.evidenceUrl) ? (
+                      <a
+                        href={workspaceEvidenceUrl(source.evidenceUrl)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {copy.openOriginal}
+                      </a>
+                    ) : null}
+                  </details>
+                ))}
+              </details>
             ) : null}
-          </section>
-          {filtered.unlocatedRecords.length ? (
-            <section
-              className={styles.records}
-              aria-label={copy.unlocatedTitle}
-            >
-              <h2>{copy.unlocatedTitle}</h2>
-              <p className={styles.hint}>{copy.unlocatedHint}</p>
+          </div>
+          <div
+            className={styles.readingPane}
+            role={narrow ? 'tabpanel' : undefined}
+            id={`${readingId}-panel-results`}
+            aria-labelledby={narrow ? `${readingId}-tab-results` : undefined}
+            hidden={narrow && readingPane !== 'results'}
+            tabIndex={-1}
+            ref={(element) => {
+              if (element) paneElements.current.results = element;
+            }}
+          >
+            <section className={styles.records} aria-label={copy.recordsTitle}>
+              <h2>{copy.recordsTitle}</h2>
               <div className={styles.recordList}>
-                {filtered.unlocatedRecords
+                {filtered.locatedRecords
                   .slice(0, recordLimit)
                   .map(recordButton)}
               </div>
-              {filtered.unlocatedRecords.length > recordLimit ? (
+              {!filtered.records.length ? <p>{copy.emptyRecords}</p> : null}
+              {filtered.locatedRecords.length > recordLimit ? (
                 <button
                   type="button"
                   onClick={() => setRecordLimit((limit) => limit + 40)}
                 >
-                  {copy.unlocatedTitle} · {recordLimit} /{' '}
-                  {filtered.unlocatedRecords.length} ↓
+                  {copy.recordsTitle} ·{' '}
+                  {Math.min(recordLimit, filtered.locatedRecords.length)} /{' '}
+                  {filtered.locatedRecords.length} ↓
                 </button>
               ) : null}
             </section>
-          ) : null}
-          {filtered.outsideRecords.length ? (
-            <details className={styles.records}>
-              <summary>
-                {copy.outsideBounds} · {filtered.outsideRecords.length}
-              </summary>
-              <div className={styles.recordList}>
-                {filtered.outsideRecords.slice(0, recordLimit).map((record) => (
-                  <div key={record.id}>
-                    <span>
-                      {record.objectLabel} · {record.time.start ?? copy.unknown}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setView({
-                          ...view,
-                          bounds: null,
-                          selection: {
-                            recordId: record.id,
-                            positionId:
-                              workspaceDisplayPositions(
-                                pack,
-                                record,
-                                invalidations,
-                              )[0]?.id ?? null,
-                          },
-                        });
-                        setBoundsText('');
-                        onSelectRecord?.(record.id);
-                      }}
-                    >
-                      {copy.clearBounds} · {copy.selectRecord}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </details>
-          ) : null}
+            {filtered.unlocatedRecords.length ? (
+              <section
+                className={styles.records}
+                aria-label={copy.unlocatedTitle}
+              >
+                <h2>{copy.unlocatedTitle}</h2>
+                <p className={styles.hint}>{copy.unlocatedHint}</p>
+                <div className={styles.recordList}>
+                  {filtered.unlocatedRecords
+                    .slice(0, recordLimit)
+                    .map(recordButton)}
+                </div>
+                {filtered.unlocatedRecords.length > recordLimit ? (
+                  <button
+                    type="button"
+                    onClick={() => setRecordLimit((limit) => limit + 40)}
+                  >
+                    {copy.unlocatedTitle} · {recordLimit} /{' '}
+                    {filtered.unlocatedRecords.length} ↓
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
+            {filtered.outsideRecords.length ? (
+              <details className={styles.records}>
+                <summary>
+                  {copy.outsideBounds} · {filtered.outsideRecords.length}
+                </summary>
+                <div className={styles.recordList}>
+                  {filtered.outsideRecords
+                    .slice(0, recordLimit)
+                    .map((record) => (
+                      <div key={record.id}>
+                        <span>
+                          {record.objectLabel} ·{' '}
+                          {record.time.start ?? copy.unknown}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setView({
+                              ...view,
+                              bounds: null,
+                              selection: {
+                                recordId: record.id,
+                                positionId:
+                                  workspaceDisplayPositions(
+                                    pack,
+                                    record,
+                                    invalidations,
+                                  )[0]?.id ?? null,
+                              },
+                            });
+                            setBoundsText('');
+                            showPane('evidence', true);
+                            onSelectRecord?.(record.id);
+                          }}
+                        >
+                          {copy.clearBounds} · {copy.selectRecord}
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </details>
+            ) : null}
+          </div>
         </div>
-        <SpatialWorkspaceDossier
-          pack={pack}
-          recordId={selection?.recordId ?? null}
-          positionId={selection?.positionId}
-          copy={copy}
-          invalidations={invalidations}
-          sourcePins={view.sourcePins}
-          notices={scopeNotices}
-          onSelectRecord={(id) =>
-            selectRecord({ recordId: id, positionId: null })
-          }
-          onSelectPosition={(recordId, positionId) =>
-            selectRecord({ recordId, positionId }, true)
-          }
-          sourceHref={sourceHref}
-        />
+        <div
+          className={styles.readingPane}
+          role={narrow ? 'tabpanel' : undefined}
+          id={`${readingId}-panel-evidence`}
+          aria-labelledby={narrow ? `${readingId}-tab-evidence` : undefined}
+          hidden={narrow && readingPane !== 'evidence'}
+          tabIndex={-1}
+          ref={(element) => {
+            if (element) paneElements.current.evidence = element;
+          }}
+        >
+          <SpatialWorkspaceDossier
+            pack={pack}
+            recordId={selection?.recordId ?? null}
+            positionId={selection?.positionId}
+            copy={copy}
+            invalidations={invalidations}
+            sourcePins={view.sourcePins}
+            notices={scopeNotices}
+            onSelectRecord={(id) =>
+              selectRecord({ recordId: id, positionId: null })
+            }
+            onSelectPosition={(recordId, positionId) =>
+              selectRecord({ recordId, positionId }, true)
+            }
+            sourceHref={sourceHref}
+          />
+        </div>
       </div>
       <div className={styles.bottomLayout}>
         <section className={styles.saved} aria-label={copy.saveTitle}>

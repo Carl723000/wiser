@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: b3df42fdf0767fdd626e61a2534b29bb2d2c4b44
+lastReviewedCommit: 15a277c611c43f60f8f1d56806fa6ccb2398a2a5
 ---
 
 ## Two frontend applications
@@ -291,3 +291,5 @@ The workspace combines spatial evidence, readiness/review and raster inspection 
 Synthetic review changes only independent local exercise state. Regeneration previews stale matrix, dossier and comparison dependencies; ending the exercise restores real reading state. Separate scene storage keys prevent overwriting real state or approving knowledge. Final SVG screen coordinates use deterministic precision to avoid server/browser last-bit hydration differences; original geometry and anchor-error calculations are not rounded.
 
 Packs are bounded to80 pinned source versions,5000 records and150000 geometry vertices. Images accept only local derived PNG paths; external images and credential-bearing evidence URLs are rejected, and original paths are not serialized. Raster inspection separates encoded pixels, file masks, NoData declarations, product quantification, display stretches and licensing.
+
+The spatial component listens to `(max-width: 800px)` and adds a local reading-pane state without changing the shared query or saved-scene contracts. The map, result and dossier wrappers stay mounted; hidden wrappers have no accessible controls. Result/position actions transfer focus to the active pane. Width changes preserve a focused content pane or move removed tab focus to its content. Unit regressions cover exact selection, late camera updates, withdrawals and width changes; the local browser suite checks both locales, fixed-source navigation, planar fallback, fullscreen return and desktop restoration. These viewport checks do not represent a physical phone or authenticated end-to-end acceptance.

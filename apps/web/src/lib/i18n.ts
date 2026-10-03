@@ -1563,6 +1563,8 @@ const zhCN = {
       stopDrawing: '结束框选',
       clearFilters: '重置资料筛选',
       mapTitle: '资料位置与地理参考',
+      readingPanel: '查阅区域',
+      readingPanes: { map: '地图', results: '结果', evidence: '证据' },
       offlineReference: '离线地理参考',
       referenceHint: '只显示本批许可几何与经纬网；位置与范围的依据见资料档案。',
       flatView: '切换平面视图',
@@ -5086,6 +5088,8 @@ const en: typeof zhCN = {
       stopDrawing: 'Finish rectangle selection',
       clearFilters: 'Reset material filters',
       mapTitle: 'Material locations and geographic reference',
+      readingPanel: 'Reading pane',
+      readingPanes: { map: 'Map', results: 'Results', evidence: 'Evidence' },
       offlineReference: 'Offline geographic reference',
       referenceHint:
         'Only licensed geometries from this batch and a graticule are shown. Read the material dossier for location and extent evidence.',

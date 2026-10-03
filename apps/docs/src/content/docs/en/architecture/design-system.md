@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: b3df42fdf0767fdd626e61a2534b29bb2d2c4b44
+lastReviewedCommit: 15a277c611c43f60f8f1d56806fa6ccb2398a2a5
 ---
 
 ## Design direction
@@ -121,3 +121,5 @@ For exact route, query, map, and browser-test behavior, use [Frontend developmen
 The local spatial workbench reuses shared themes, fullscreen and contextual help. Region, fixed version, unknown location, reference extent and exercise status use text as well as visual cues. Map and list share selection; comparison panes retain independent cameras. A no-WebGL planar fallback is explicit. Screen-coordinate precision supports consistent rendering without changing source precision.
 
 Planar fallback and WebGL maps identify a selected geometry by both record and position. Other positions of the same record retain their ordinary style; a record-only or unavailable position selection does not highlight a geometry. Keyboard selection preserves the exact pair and clearing the selection restores ordinary styling without modifying source geometry.
+
+At widths up to 800 px, the local spatial workbench exposes one named Map, Results or Evidence reading pane. Hidden panes remain mounted to retain map state and reading position, while their controls leave keyboard navigation. Tabs support arrows, Home and End. Selecting a result opens its evidence, and locating an evidenced position returns to the same map. Resizing keeps a focused reading control visible; desktop retains its concurrent layout.

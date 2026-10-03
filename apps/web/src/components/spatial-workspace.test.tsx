@@ -812,6 +812,35 @@ describe('narrow spatial reading panes', () => {
     expect(mapProbe.mounts).toBe(1);
   });
 
+  it.each([
+    ['地图', 'Move map'],
+    ['结果', /潮白河原文对象/],
+  ] as const)(
+    'keeps the focused %s control visible when a desktop layout becomes narrow',
+    (pane, control) => {
+      narrow = false;
+      render(
+        <SpatialWorkspace
+          pack={pack}
+          locale="zh-CN"
+          copy={zh}
+          selectedRecordId={sampleRecord.id}
+        />,
+      );
+      const focused = screen.getByRole('button', { name: control });
+      focused.focus();
+      act(() => {
+        narrow = true;
+        viewportChanged?.();
+      });
+      expect(
+        screen.getByRole('tab', { name: pane }).getAttribute('aria-selected'),
+      ).toBe('true');
+      expect(screen.getByRole('tabpanel').contains(focused)).toBe(true);
+      expect(document.activeElement).toBe(focused);
+    },
+  );
+
   it('does not let a hidden map callback reset the active pane, filters or selected evidence', () => {
     render(<SpatialWorkspace pack={pack} locale="zh-CN" copy={zh} />);
     const delayedCamera = mapProbe.camera!;

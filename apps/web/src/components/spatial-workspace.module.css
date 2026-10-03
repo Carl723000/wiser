@@ -218,6 +218,25 @@
 .mapAndRecords > section > h2 {
   margin-bottom: 0.6rem;
 }
+.readingPane {
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+.readingPane[hidden] {
+  display: none;
+}
+.readingTabs {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface);
+}
+.readingTabs > button {
+  flex: 1 1 0;
+}
 .mapPanel {
   min-width: 0;
 }
@@ -401,7 +420,7 @@
   gap: 1rem;
   min-width: 0;
 }
-.comparisonLayout > .dossier {
+.comparisonLayout > .readingPane > .dossier {
   max-height: none;
 }
 .comparison {
@@ -502,6 +521,14 @@
   }
 }
 @media (max-width: 800px) {
+  .readingPane {
+    max-height: calc(100dvh - 8rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .readingPane > .dossier {
+    overflow: visible;
+  }
   .comparisonWindows,
   .bottomLayout {
     grid-template-columns: minmax(0, 1fr);

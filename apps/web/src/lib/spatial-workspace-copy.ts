@@ -29,6 +29,8 @@ export interface SpatialWorkspaceCopy {
   stopDrawing: string;
   clearFilters: string;
   mapTitle: string;
+  readingPanel: string;
+  readingPanes: { map: string; results: string; evidence: string };
   offlineReference: string;
   referenceHint: string;
   flatView: string;
