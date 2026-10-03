@@ -16,8 +16,8 @@ checkPaths:
   - AGENTS.md
   - .docpact/config.yaml
   - .github/workflows/**
-lastReviewedAt: 2026-10-03
-lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
+lastReviewedAt: 2026-10-04
+lastReviewedCommit: d99902262503bd5f5f7002480c393e2efecea798
 ---
 
 # Contributing / 贡献指南
@@ -71,3 +71,5 @@ Red commits are recoverable checkpoints / Red 提交是可恢复检查点。允�
 - 不提交真实密钥、访问令牌、个人数据或 Codex 登录文件。
 - `public` schema 的表必须启用 RLS；隐藏事实与裁决数据进入非暴露 schema。
 - AI provider 输出必须经过本地 schema 校验，且不能决定确定性评分。
+
+受管标准接收任务的 `data-managed-operation-reads.integration.spec.ts` 与候选固定保存的 `ingestion-candidate-saved.spec.ts` 均纳入上述串行隔离 Data PostgreSQL 通道；本机覆盖率检查中的条件跳过不能替代实际 RLS 验证。 / Managed intake Operation ownership and fixed candidate-view persistence run in the same serial isolated Data PostgreSQL lane; conditional skips in unit coverage are not live RLS evidence.
