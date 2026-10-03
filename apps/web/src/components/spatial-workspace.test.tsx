@@ -255,6 +255,259 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe('spatial result table reading', () => {
+  const manyRecords = (located: boolean, count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      ...sampleRecord,
+      id: `${located ? 'located' : 'unlocated'}-${index}`,
+      objectId: `object-${index}`,
+      objectLabel: `${located ? '已定位' : '未定位'}资料 ${index + 1}`,
+      positions: located ? sampleRecord.positions : [],
+    }));
+  const locales = [
+    ['zh-CN', zh, '下一页', '上一页'],
+    ['en', en, 'Next page', 'Previous page'],
+  ] as const;
+
+  it.each(locales)(
+    'distinguishes same-name fixed sources and preserves original ranges, roles, zero and missing values in %s',
+    (locale, copy) => {
+      const source = { ...pack.sources[0], versionId: 'v2', title: '修订报告' };
+      const records: WorkspaceRecord[] = [
+        {
+          ...sampleRecord,
+          value: '0',
+          time: {
+            start: '2023',
+            end: '2024',
+            precision: 'year',
+            role: 'publication',
+          },
+        },
+        {
+          ...sampleRecord,
+          id: 'same-name-revision',
+          versionId: 'v2',
+          value: null,
+          unit: null,
+          positions: sampleRecord.positions.map((position) => ({
+            ...position,
+            geometryVersionId: 'v2',
+          })),
+        },
+      ];
+      const data = { ...pack, sources: [...pack.sources, source], records };
+      const original = JSON.stringify(data);
+      render(
+        <SpatialWorkspace
+          pack={data}
+          locale={locale}
+          copy={copy}
+          sourceHref={(id, versionId) =>
+            `/source?source=${id}&version=${versionId}`
+          }
+        />,
+      );
+      const table = screen.getByRole('table', { name: copy.recordsTitle });
+      const rows = within(table).getAllByRole('row').slice(1);
+      expect(rows).toHaveLength(2);
+      for (const fact of [
+        '2023',
+        '2024',
+        copy.timePrecisions.year,
+        copy.timeRoles.publication,
+        '0',
+        'mg/L',
+        '固定版本公开报告',
+        '公开机构',
+        copy.pending,
+        copy.positionRoles.reference,
+        '潮白河参考线',
+      ])
+        expect(rows[0].textContent).toContain(fact);
+      expect(rows[1].textContent).toContain('修订报告');
+      expect(
+        within(rows[1]).getAllByText(copy.unknown).length,
+      ).toBeGreaterThanOrEqual(2);
+      fireEvent.click(
+        within(rows[1]).getByRole('button', {
+          name: sampleRecord.objectLabel,
+          exact: true,
+        }),
+      );
+      const dossier = screen.getByRole('region', { name: copy.dossierTitle });
+      expect(
+        within(dossier)
+          .getByRole('link', { name: copy.openOriginal })
+          .getAttribute('href'),
+      ).toBe('/source?source=report&version=v2');
+      expect(JSON.stringify(data)).toBe(original);
+    },
+  );
+
+  it.each(locales)(
+    'bounds each result table independently and selects an exact later-page record without resetting the map in %s',
+    (locale, copy, nextLabel, previousLabel) => {
+      const onSelectRecord = vi.fn();
+      render(
+        <SpatialWorkspace
+          pack={{
+            ...pack,
+            records: [...manyRecords(true, 81), ...manyRecords(false, 82)],
+          }}
+          locale={locale}
+          copy={copy}
+          onSelectRecord={onSelectRecord}
+        />,
+      );
+      const located = screen.getByRole('region', { name: copy.recordsTitle });
+      const unresolved = screen.getByRole('region', {
+        name: copy.unlocatedTitle,
+      });
+      const map = screen.getByTestId('workspace-map');
+      fireEvent.click(within(map).getByRole('button', { name: 'Move map' }));
+      for (const region of [located, unresolved])
+        expect(within(region).getAllByRole('row')).toHaveLength(41);
+      expect(
+        within(unresolved)
+          .getByRole('button', { name: previousLabel })
+          .getAttribute('disabled'),
+      ).not.toBeNull();
+      fireEvent.click(
+        within(unresolved).getByRole('button', { name: nextLabel }),
+      );
+      expect(
+        within(unresolved).queryByRole('button', {
+          name: '未定位资料 1',
+          exact: true,
+        }),
+      ).toBeNull();
+      expect(
+        within(located).getByRole('button', {
+          name: '已定位资料 1',
+          exact: true,
+        }),
+      ).toBeTruthy();
+      fireEvent.click(
+        within(unresolved).getByRole('button', {
+          name: '未定位资料 41',
+          exact: true,
+        }),
+      );
+      expect(onSelectRecord).toHaveBeenLastCalledWith('unlocated-40');
+      expect(map.getAttribute('data-bearing')).toBe('35');
+      expect(mapProbe.mounts).toBe(1);
+      expect(
+        within(unresolved)
+          .getByRole('button', { name: '未定位资料 41', exact: true })
+          .getAttribute('aria-pressed'),
+      ).toBe('true');
+      fireEvent.click(
+        within(unresolved).getByRole('button', { name: nextLabel }),
+      );
+      expect(within(unresolved).getAllByRole('row')).toHaveLength(3);
+      expect(
+        within(unresolved)
+          .getByRole('button', { name: nextLabel })
+          .getAttribute('disabled'),
+      ).not.toBeNull();
+      fireEvent.click(
+        within(unresolved).getByRole('button', { name: previousLabel }),
+      );
+      expect(
+        within(unresolved)
+          .getByRole('button', { name: '未定位资料 41', exact: true })
+          .getAttribute('aria-pressed'),
+      ).toBe('true');
+    },
+  );
+
+  it('resets the page for a new filter while removing a withdrawn source from mounted results and later pages', () => {
+    const data = { ...pack, records: manyRecords(false, 85) };
+    const props = { pack: data, locale: 'zh-CN' as const, copy: zh };
+    const { rerender } = render(<SpatialWorkspace {...props} />);
+    const unresolved = screen.getByRole('region', { name: zh.unlocatedTitle });
+    const table = within(unresolved).getByRole('table', {
+      name: zh.unlocatedTitle,
+    });
+    fireEvent.click(within(unresolved).getByRole('button', { name: '下一页' }));
+    fireEvent.change(screen.getByLabelText(zh.recordSearch), {
+      target: { value: '未定位资料 1' },
+    });
+    expect(
+      within(table).getByRole('button', { name: '未定位资料 1', exact: true }),
+    ).toBeTruthy();
+    expect(
+      within(unresolved)
+        .getByRole('button', { name: '上一页' })
+        .getAttribute('disabled'),
+    ).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(zh.recordSearch), {
+      target: { value: '' },
+    });
+    fireEvent.click(within(unresolved).getByRole('button', { name: '下一页' }));
+    fireEvent.click(
+      within(unresolved).getByRole('button', {
+        name: '未定位资料 41',
+        exact: true,
+      }),
+    );
+    rerender(
+      <SpatialWorkspace
+        {...props}
+        invalidations={[{ sourceId: 'report', state: 'revoked' }]}
+      />,
+    );
+    expect(
+      screen.queryByRole('table', { name: zh.unlocatedTitle, hidden: true }),
+    ).toBeNull();
+    expect(screen.queryByText('未定位资料 41')).toBeNull();
+    expect(screen.queryByText('固定版本公开报告')).toBeNull();
+    expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+      '0',
+    );
+  });
+
+  it('preserves the rectangle recovery action with the exact outside record', () => {
+    render(
+      <SpatialWorkspace
+        pack={{ ...pack, records: [sampleRecord] }}
+        locale="zh-CN"
+        copy={zh}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(zh.bbox), {
+      target: { value: '113,36,114,37' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: zh.applyBounds }));
+    const summary = screen.getByText(`${zh.outsideBounds} · 1`);
+    const outside = summary.closest('details')!;
+    fireEvent.click(summary);
+    expect(
+      within(outside).getByRole('table', { name: zh.outsideBounds }),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(outside).getByRole('button', {
+        name: sampleRecord.objectLabel,
+        exact: true,
+      }),
+    );
+    expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+      '1',
+    );
+    expect(
+      JSON.parse(
+        screen.getByTestId('workspace-map').getAttribute('data-selection')!,
+      ),
+    ).toEqual({ recordId: sampleRecord.id, positionId: 'pos-line' });
+    expect(
+      within(screen.getByRole('region', { name: zh.dossierTitle })).getByText(
+        '潮白河 7.8 mg/L',
+      ),
+    ).toBeTruthy();
+  });
+});
+
 describe('business-first evidence reading', () => {
   const version = 'f'.repeat(64);
   const digest = 'a'.repeat(64);
