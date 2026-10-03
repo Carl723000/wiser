@@ -61,6 +61,8 @@ class FakeClient implements IngestionRuntimeClient {
   failVersionInsertOnce = false;
   forceJsonMediaType = false;
   trustedHashes = true;
+  reviewPolicySnapshot?: unknown;
+  currentReviewPolicy?: unknown;
 
   query(
     text: string,
@@ -96,6 +98,8 @@ class FakeClient implements IngestionRuntimeClient {
             : null,
           content_blob_id: this.trustedHashes ? blobIds[ordinal] : null,
           frozen_checkpoint: this.frozenCheckpoint ?? null,
+          review_policy_snapshot: this.reviewPolicySnapshot ?? null,
+          current_review_policy: this.currentReviewPolicy ?? null,
         })),
       });
     }
@@ -110,6 +114,8 @@ class FakeClient implements IngestionRuntimeClient {
             policy_version: '9',
             operation_id: operationId,
             intended_uses: ['dispatch'],
+            review_policy_snapshot: this.reviewPolicySnapshot ?? null,
+            current_review_policy: this.currentReviewPolicy ?? null,
           },
         ],
       });
@@ -335,6 +341,69 @@ function authority(pool = new FakePool(), objectStore = new FakeObjectStore()) {
 }
 
 describe('Postgres ingestion authority adapter', () => {
+  it('refuses a changed server review policy before exposing an authority checkpoint', async () => {
+    const value = authority();
+    value.pool.client.reviewPolicySnapshot = {
+      mode: 'REQUIRE_INDEPENDENT_REVIEW',
+      revision: 1,
+    };
+    value.pool.client.currentReviewPolicy = {
+      mode: 'REQUIRE_INDEPENDENT_REVIEW',
+      revision: 2,
+    };
+    await expect(
+      value.authority.load({
+        tenantId,
+        projectId,
+        ingestionId,
+        securityLevel: 'L0_PUBLIC',
+        policyVersion: 9,
+      }),
+    ).rejects.toMatchObject({
+      category: 'INGESTION_REVIEW_GOVERNANCE_CONFLICT',
+      retryable: false,
+    });
+    expect(value.objectStore.calls).toHaveLength(0);
+  });
+
+  it('rejects a direct automatic approval at the authority port for a governed project', async () => {
+    const value = authority();
+    const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+    value.pool.client.reviewPolicySnapshot = policy;
+    value.pool.client.currentReviewPolicy = policy;
+    value.pool.client.state = 'SPATIOTEMPORAL_ALIGNED';
+    value.pool.client.version = 10;
+    const original = frozenCheckpoint();
+    const base = {
+      assetIds: original.assetIds,
+      assetManifest: { ...original.assetManifest, reviewGovernance: policy },
+      quality: original.quality,
+      alignment: original.alignment,
+    };
+    await expect(
+      value.authority.freezeCheckpoint({
+        tenantId,
+        projectId,
+        ingestionId,
+        expectedState: 'SPATIOTEMPORAL_ALIGNED',
+        expectedVersion: 10,
+        toState: 'APPROVED',
+        securityLevel: 'L0_PUBLIC',
+        policyVersion: 9,
+        checkpoint: { ...base, reviewHash: canonicalPipelineHash(base) },
+        evidence,
+      }),
+    ).rejects.toMatchObject({
+      category: 'INGESTION_REVIEW_GOVERNANCE_CONFLICT',
+      retryable: false,
+    });
+    expect(
+      value.pool.client.queries.some(({ text }) =>
+        text.includes('ingestion.runtime.review-checkpoint'),
+      ),
+    ).toBe(false);
+  });
+
   it('loads ordered authoritative assets under four RLS settings', async () => {
     const runtime = authority();
     const checkpoint = await runtime.authority.load({

@@ -89,6 +89,9 @@ class FakeClient implements PostgresDataCommandClient {
   resumeTimeoutAt: string | null = '2026-08-22T04:59:00.000Z';
   zeroRowCountFor: string | undefined;
   released = false;
+  submittedActorId: string | null = 'd2000000-0000-4000-8000-000000000090';
+  submittedActorType: string | null = 'human';
+  submittedDelegatorId: string | null = null;
 
   query(
     text: string,
@@ -223,6 +226,9 @@ class FakeClient implements PostgresDataCommandClient {
             operation_id: OPERATION_ID,
             created_at: NOW.toISOString(),
             asset_ids: [ASSET_ID],
+            submitted_by_actor_id: this.submittedActorId,
+            submitted_actor_type: this.submittedActorType,
+            submitted_delegator_actor_id: this.submittedDelegatorId,
           },
         ],
         rowCount: 1,
@@ -1330,6 +1336,79 @@ describe('PostgreSQL Data Foundation command executors', () => {
       ),
     ).toBe(true);
   });
+
+  it.each([
+    { actor: ACTOR_ID, type: 'human', delegator: null },
+    {
+      actor: 'd2000000-0000-4000-8000-000000000090',
+      type: 'agent',
+      delegator: ACTOR_ID,
+    },
+    { actor: null, type: null, delegator: null },
+    {
+      actor: 'd2000000-0000-4000-8000-000000000090',
+      type: 'agent',
+      delegator: null,
+    },
+  ])(
+    'rejects self-review, delegated self-review and unprovable responsibility %j',
+    async (fixture) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      value.pool.client.submittedActorId = fixture.actor;
+      value.pool.client.submittedActorType = fixture.type;
+      value.pool.client.submittedDelegatorId = fixture.delegator;
+      await expect(
+        executor(value.runtime, 'data.ingestion.approve').execute(
+          { ingestionId: INGESTION_ID, expectedVersion: 1 },
+          context,
+        ),
+      ).rejects.toMatchObject({
+        code: 'INDEPENDENT_REVIEW_REQUIRED',
+        statusCode: 403,
+      });
+      expect(
+        value.pool.client.calls.some(({ text }) =>
+          text.includes('data.ingestion.review.insert'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each(['agent', 'service'] as const)(
+    'rejects final approval from a %s even with publishing scopes',
+    async (actorType) => {
+      const value = runtime();
+      value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+      value.pool.client.operationStatus = 'WAITING_REVIEW';
+      const agentContext = {
+        ...context,
+        principal: {
+          actorId: ACTOR_ID,
+          actorType,
+          authenticationMethod: 'delegated_credential' as const,
+          delegationId: randomUUID(),
+          credentialId: randomUUID(),
+          delegatedBy: 'd2000000-0000-4000-8000-000000000090',
+        },
+      };
+      await expect(
+        executor(value.runtime, 'data.ingestion.approve').execute(
+          { ingestionId: INGESTION_ID, expectedVersion: 1 },
+          agentContext,
+        ),
+      ).rejects.toMatchObject({
+        code: 'INDEPENDENT_REVIEW_REQUIRED',
+        statusCode: 403,
+      });
+      expect(
+        value.pool.client.calls.some(({ text }) =>
+          text.includes('data.ingestion.review.insert'),
+        ),
+      ).toBe(false);
+    },
+  );
 
   it('HEAD-verifies a multipart completion retry after the S3 side effect', async () => {
     const value = runtime();
