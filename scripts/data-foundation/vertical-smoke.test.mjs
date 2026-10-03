@@ -2,10 +2,30 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  createRuntime,
   VERTICAL_SMOKE_STEP_IDS,
   VerticalSmokeError,
   runDataFoundationVerticalSmoke,
 } from './vertical-smoke.mjs';
+
+test('programmatic smoke binds default SQL to the same environment as HTTP and Auth', async () => {
+  const environment = {
+    COMPOSE_PROJECT_NAME: 'wiser-isolated',
+    DATA_API_ORIGIN: 'http://127.0.0.1:3641',
+  };
+  const runtime = createRuntime(
+    { environment },
+    {
+      runPostgresSql: async (sql, options) => {
+        assert.equal(sql, 'select 1;');
+        assert.equal(options?.environment, environment);
+        return '1';
+      },
+    },
+  );
+  assert.equal(runtime.environment, environment);
+  assert.equal(await runtime.postgresSql('select 1;'), '1');
+});
 
 const TENANT_ID = 'b1000000-0000-4000-8000-000000000001';
 const PROJECT_ID = 'b2000000-0000-4000-8000-000000000001';

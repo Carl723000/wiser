@@ -11,6 +11,7 @@ import {
   requireResetConfirmation,
   validateCapabilities,
   verifyFixtureBundle,
+  runPostgresSql,
 } from './operations.mjs';
 
 test('parses Docker Compose JSON arrays and line-delimited records', () => {
@@ -122,4 +123,33 @@ test('requires an exact destructive reset confirmation', () => {
       WISER_DATA_RESET_CONFIRM: 'reset-wiser-data-foundation',
     }),
   );
+});
+
+test('SQL adapter uses the explicitly selected control and Compose environment', async () => {
+  const environment = {
+    COMPOSE_PROJECT_NAME: 'wiser-isolated',
+    WISER_LOCAL_SUPABASE_WORKDIR: '/tmp/isolated-control',
+  };
+  const calls = [];
+  await runPostgresSql(
+    'select 1;',
+    { environment },
+    {
+      readTarget: async (selected) => {
+      assert.ok(selected === environment, 'explicit SQL environment was not propagated');
+        return {
+          projectId: 'wiser-isolated',
+          workdir: '/tmp/isolated-control',
+        };
+      },
+      runCommand: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (args.includes('config'))
+          return JSON.stringify({ name: 'wiser-isolated', volumes: {} });
+        return '1';
+      },
+    },
+  );
+  assert.equal(calls.at(-1).options.environment, environment);
+  assert.equal(calls.at(-1).options.input, 'select 1;');
 });

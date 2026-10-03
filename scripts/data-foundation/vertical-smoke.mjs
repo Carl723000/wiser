@@ -7,6 +7,12 @@ import {
   parseSupabaseStatusEnvironment,
   signInLocalOperator,
 } from './supabase-runtime.mjs';
+import {
+  assertLocalProject,
+  assertLocalSupabaseStatus,
+  localSupabaseArguments,
+  readLocalSupabaseTarget,
+} from './local-control-target.mjs';
 
 export const VERTICAL_SMOKE_STEP_IDS = Object.freeze([
   'upload-session-created',
@@ -200,7 +206,7 @@ function defaultWait(milliseconds, signal) {
   });
 }
 
-function createRuntime(options) {
+export function createRuntime(options, adapters = {}) {
   const stepId = VERTICAL_SMOKE_STEP_IDS[0];
   const now = options.now ?? Date.now;
   const maximumDurationMs = numberOption(
@@ -234,7 +240,8 @@ function createRuntime(options) {
   return Object.freeze({
     fetch: options.fetch ?? globalThis.fetch,
     wait: options.wait ?? defaultWait,
-    postgresSql: options.postgresSql ?? runPostgresSql,
+    postgresSql:
+      options.postgresSql ?? adapters.runPostgresSql ?? runPostgresSql,
     randomUuid: options.randomUuid ?? randomUUID,
     environment: options.environment ?? process.env,
     now,
@@ -367,12 +374,18 @@ async function resolveAuth(options, runtime, stepId) {
       let status;
       let bearerToken;
       try {
+        const target = await readLocalSupabaseTarget(
+          environment,
+          ROOT_DIRECTORY,
+        );
+        assertLocalProject(target, environment);
         const output = await runCommand(
           'pnpm',
-          ['exec', 'supabase', 'status', '-o', 'env'],
+          localSupabaseArguments(target, 'status', ['-o', 'env']),
           { environment },
         );
         status = parseSupabaseStatusEnvironment(output);
+        assertLocalSupabaseStatus(status, target);
         bearerToken = await signInLocalOperator(status, {
           email:
             environment['WISER_LOCAL_OPERATOR_EMAIL'] ?? DEFAULT_OPERATOR_EMAIL,

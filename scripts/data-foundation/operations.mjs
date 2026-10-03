@@ -3,6 +3,11 @@ import { spawn } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
+import {
+  assertLocalComposeProject,
+  localComposeArguments,
+  readLocalSupabaseTarget,
+} from './local-control-target.mjs';
 
 export const ROOT_DIRECTORY = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -147,15 +152,26 @@ export function runCommand(
   });
 }
 
-export function runCompose(args, options) {
-  return runCommand(
-    'docker',
-    ['compose', '--profile', 'data-foundation', ...args],
-    options,
+export async function runCompose(args, options, dependencies = {}) {
+  const execute = dependencies.runCommand ?? runCommand;
+  const environment = options?.environment ?? process.env;
+  const target = await (dependencies.readTarget ?? readLocalSupabaseTarget)(
+    environment,
+    ROOT_DIRECTORY,
   );
+  const prefix = localComposeArguments(target, environment, ROOT_DIRECTORY);
+  if (args[0] !== 'config') {
+    const configuration = await execute(
+      'docker',
+      [...prefix, 'config', '--format', 'json'],
+      { environment },
+    );
+    assertLocalComposeProject(configuration, target);
+  }
+  return execute('docker', [...prefix, ...args], options);
 }
 
-export function runPostgresSql(sql) {
+export function runPostgresSql(sql, options, dependencies = {}) {
   return runCompose(
     [
       'exec',
@@ -166,6 +182,7 @@ export function runPostgresSql(sql) {
       'exec psql -X -q -v ON_ERROR_STOP=1 --no-align --tuples-only --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"',
     ],
     { input: sql },
+    dependencies,
   );
 }
 

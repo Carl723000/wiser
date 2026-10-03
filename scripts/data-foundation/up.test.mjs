@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { inspect } from 'node:util';
 
 import { ROOT_DIRECTORY } from './operations.mjs';
-import { startDataFoundation } from './up.mjs';
+import { localRuntimeSecrets, startDataFoundation } from './up.mjs';
 
 const publishableKey = 'sb_publishable_1234567890abcdefghijklmnop';
 const journalPassword = 'synthetic_local_password_1234567890';
@@ -72,6 +76,26 @@ function harness(overrides = {}) {
     },
     runCompose: async (args, options) => {
       calls.push({ kind: 'compose', args, options });
+      if (args[0] === 'config')
+        return JSON.stringify({
+          name: target.projectId,
+          services: {
+            api: {
+              ports: [{ published: '3641' }],
+              environment: {
+                DATA_PUBLIC_API_ORIGIN: environment.DATA_API_ORIGIN,
+              },
+            },
+            web: { ports: [{ published: '3640' }] },
+            'mcp-http': { ports: [{ published: '14004' }] },
+            'data-worker': {
+              environment: {
+                DATA_STAC_ASSET_BASE_URL: environment.DATA_API_ORIGIN,
+              },
+            },
+          },
+          volumes: { data: { name: `${target.projectId}_data` } },
+        });
     },
   };
   return { target, environment, dependencies, calls };
@@ -91,7 +115,9 @@ test('isolated bootstrap uses one control directory, database and journal port',
   );
   assert.equal(roleWrite.args[2], 'supabase_db_wiser-isolated');
   assert.match(roleWrite.options.input, /alter role wiser_excon_api/);
-  const compose = setup.calls.find((call) => call.kind === 'compose');
+  const compose = setup.calls.find(
+    (call) => call.kind === 'compose' && call.args[0] === 'up',
+  );
   assert.equal(
     compose.options.environment.EXCON_JOURNAL_DATABASE_URL,
     `postgresql://wiser_excon_api:${journalPassword}@host.docker.internal:57322/postgres`,
@@ -163,7 +189,9 @@ for (const [label, changes] of [
       0,
     );
     assert.equal(
-      setup.calls.filter((call) => call.kind === 'compose').length,
+      setup.calls.filter(
+        (call) => call.kind === 'compose' && call.args[0] === 'up',
+      ).length,
       0,
     );
   });
@@ -179,7 +207,9 @@ test('keeps the default local operator and existing runtime role', async () => {
     },
   });
   await startDataFoundation(setup.environment, setup.dependencies);
-  const compose = setup.calls.find((call) => call.kind === 'compose');
+  const compose = setup.calls.find(
+    (call) => call.kind === 'compose' && call.args[0] === 'up',
+  );
   assert.equal(compose.options.environment.WISER_AUTH_MODE, 'supabase');
   assert.equal(compose.options.environment.EXCON_V2_MODE, 'postgres');
   assert.match(
@@ -192,4 +222,22 @@ test('keeps the default local operator and existing runtime role', async () => {
     ).args[2],
     'supabase_db_wiser',
   );
+});
+
+test('invalid local secret state never exposes its contents in an error cause', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'wiser-secret-isolation-'));
+  try {
+    await mkdir(join(directory, '.wiser/local'), { recursive: true });
+    const marker = 'SYNTHETIC';
+    await writeFile(
+      join(directory, '.wiser/local/runtime-secrets.json'),
+      `{"token":${marker}}`,
+    );
+    await assert.rejects(localRuntimeSecrets(directory), (error) => {
+      assert.doesNotMatch(inspect(error), new RegExp(marker));
+      return true;
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

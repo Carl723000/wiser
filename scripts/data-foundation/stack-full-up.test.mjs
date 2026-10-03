@@ -26,6 +26,26 @@ test('complete local startup passes the same isolated environment to every child
     runCommand: async (command, args, options) => {
       calls.push({ command, args, options });
     },
+    runCompose: async () =>
+      JSON.stringify({
+        name: 'wiser-isolated',
+        services: {
+          api: {
+            ports: [{ published: '3641' }],
+            environment: {
+              DATA_PUBLIC_API_ORIGIN: environment.DATA_API_ORIGIN,
+            },
+          },
+          web: { ports: [{ published: '3640' }] },
+          'mcp-http': { ports: [{ published: '14004' }] },
+          'data-worker': {
+            environment: {
+              DATA_STAC_ASSET_BASE_URL: environment.DATA_API_ORIGIN,
+            },
+          },
+        },
+        volumes: { data: { name: 'wiser-isolated_data' } },
+      }),
     startDataFoundation: async (selectedEnvironment) => {
       assert.equal(selectedEnvironment, environment);
       return { environment: startedEnvironment };
