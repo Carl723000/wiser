@@ -657,6 +657,33 @@ function databaseFixture(
   return { port: port as unknown as CandidatePort, signer, queries, client };
 }
 describe('pending original fixed authority database boundary', () => {
+  it('uses canonical current UUIDs for original-read RLS, including an uppercase reviewer', async () => {
+    const f = databaseFixture();
+    const reviewer = {
+      ...context,
+      principal: {
+        ...context.principal,
+        actorId: actorId.toUpperCase(),
+        authUserId: actorId.toUpperCase(),
+      },
+      authorization: {
+        ...context.authorization,
+        scopes: ['data.operation.read', 'data.publish'],
+      },
+    };
+    await f.port.authorizeCandidateDownload({
+      context: reviewer,
+      reference,
+      assetId,
+    });
+    expect(
+      f.queries
+        .find((query) => query.text.includes('data.ingestion.candidate.scope'))
+        ?.values?.slice(0, 3),
+    ).toEqual([actorId, 'human', '']);
+    expect(f.signer).not.toHaveBeenCalled();
+  });
+
   it('signs only the original upload derived from a current fixed candidate and audits it', async () => {
     const f = databaseFixture();
     const r = await f.port.createCandidateDownload({

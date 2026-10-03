@@ -10,9 +10,15 @@ import {
   createPostgresDataReadRuntime,
   type PostgresDataReadClient,
 } from '../src/data-foundation/postgres-read-executors.js';
+import {
+  canReadPendingSubmission,
+  ownsPendingSubmission,
+} from '../src/data-foundation/managed-ingestion-access.js';
 
 const id = (n: number) =>
   `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const alphaId = (n: number) =>
+  `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const reference = {
   kind: 'ingestion-candidate',
   ingestionId: id(4),
@@ -59,14 +65,16 @@ const context: DataCapabilityExecutionContext = {
 };
 class Client implements PostgresDataReadClient {
   queries: string[] = [];
+  pendingScopeValues: readonly unknown[] | undefined;
   hasCandidate = true;
   responsibility: Record<string, unknown> = {
     submitted_by_actor_id: id(1),
     submitted_actor_type: 'human',
     submitted_delegator_actor_id: null,
   };
-  query(text: string) {
+  query(text: string, values?: readonly unknown[]) {
     this.queries.push(text);
+    if (text.includes('data.intake.scope')) this.pendingScopeValues = values;
     if (text.includes('data.ingestion.get'))
       return Promise.resolve({
         rows: [
@@ -113,6 +121,87 @@ function get(client: Client, actor = context) {
     .execute({ ingestionId: id(4) }, actor);
 }
 describe('managed ingestion discovery', () => {
+  it('uses one UUID identity for pending ownership and independent review', () => {
+    const sameActor = {
+      ...context,
+      principal: {
+        ...context.principal,
+        actorId: alphaId(1).toUpperCase(),
+        authUserId: alphaId(1).toUpperCase(),
+      },
+    };
+    const responsibility = { actorId: alphaId(1), actorType: 'human' };
+    expect(ownsPendingSubmission(sameActor, responsibility)).toBe(true);
+    expect(
+      canReadPendingSubmission(sameActor, responsibility, {
+        maintainer: false,
+        reviewer: true,
+      }),
+    ).toBe(false);
+    expect(
+      ownsPendingSubmission(
+        {
+          ...sameActor,
+          principal: { ...sameActor.principal, actorId: alphaId(90) },
+        },
+        responsibility,
+      ),
+    ).toBe(false);
+  });
+
+  it('does not expose an author to themselves as an uppercase independent reviewer', async () => {
+    const client = new Client();
+    client.responsibility.submitted_by_actor_id = alphaId(1);
+    const reviewer = {
+      ...context,
+      principal: {
+        ...context.principal,
+        actorId: alphaId(1).toUpperCase(),
+        authUserId: alphaId(1).toUpperCase(),
+      },
+      authorization: {
+        ...context.authorization,
+        scopes: ['data.operation.read', 'data.publish'],
+      },
+    };
+    await expect(get(client, reviewer)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(client.pendingScopeValues?.[0]).toBe(alphaId(1));
+  });
+
+  it('accepts uppercase owner and delegator UUIDs but rejects another delegator', async () => {
+    const client = new Client();
+    client.responsibility.submitted_by_actor_id = alphaId(90);
+    client.responsibility.submitted_actor_type = 'agent';
+    client.responsibility.submitted_delegator_actor_id = alphaId(1);
+    const agent = {
+      ...context,
+      principal: {
+        actorId: alphaId(90).toUpperCase(),
+        actorType: 'agent' as const,
+        authenticationMethod: 'delegated_credential' as const,
+        credentialId: id(91),
+        delegationId: id(92),
+        delegatedBy: alphaId(1).toUpperCase(),
+      },
+    };
+    await expect(get(client, agent)).resolves.toBeDefined();
+    expect(client.pendingScopeValues?.slice(0, 3)).toEqual([
+      alphaId(90),
+      'agent',
+      alphaId(1),
+    ]);
+    await expect(
+      get(client, {
+        ...agent,
+        principal: {
+          ...agent.principal,
+          delegatedBy: alphaId(93).toUpperCase(),
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
   it('returns the actual frozen candidate reference instead of a published version', async () => {
     const output = await get(new Client());
     expect(output).toMatchObject({ candidateReference: reference });

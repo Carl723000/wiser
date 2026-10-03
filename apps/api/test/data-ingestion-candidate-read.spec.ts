@@ -12,6 +12,8 @@ import type { DataCapabilityExecutionContext } from '../src/data-foundation/capa
 
 const id = (n: number) =>
   `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const alphaId = (n: number) =>
+  `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const reference = {
   kind: 'ingestion-candidate',
   ingestionId: id(1),
@@ -143,6 +145,26 @@ async function read(
 }
 
 describe('pending candidate standard read executors', () => {
+  it('passes only canonical trusted actor and delegator UUIDs to candidate RLS', async () => {
+    const client = new Client();
+    const agent = {
+      ...context,
+      principal: {
+        actorId: alphaId(8).toUpperCase(),
+        actorType: 'agent' as const,
+        authenticationMethod: 'delegated_credential' as const,
+        credentialId: id(9),
+        delegationId: id(10),
+        delegatedBy: alphaId(7).toUpperCase(),
+      },
+    };
+    await expect(read(client, 'get', reference, agent)).resolves.toBeDefined();
+    expect(
+      client.queries
+        .find((query) => query.text.includes('data.ingestion.candidate.scope'))
+        ?.values?.slice(0, 3),
+    ).toEqual([alphaId(8), 'agent', alphaId(7)]);
+  });
   it('admits managed candidate maintenance while preserving source permissions and current authority checks', async () => {
     const client = new Client();
     const candidateExecutors = runtime(client).executors;

@@ -1387,6 +1387,53 @@ describe('PostgreSQL Data Foundation command executors', () => {
     },
   );
 
+  it('rejects uppercase self approval before writing a review decision', async () => {
+    const value = runtime();
+    value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+    value.pool.client.operationStatus = 'WAITING_REVIEW';
+    await expect(
+      executor(value.runtime, 'data.ingestion.approve').execute(
+        { ingestionId: INGESTION_ID, expectedVersion: 1 },
+        {
+          ...context,
+          principal: {
+            ...context.principal,
+            actorId: ACTOR_ID.toUpperCase(),
+            authUserId: ACTOR_ID.toUpperCase(),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'INDEPENDENT_REVIEW_REQUIRED' });
+    expect(
+      value.pool.client.calls.some(({ text }) =>
+        text.includes('data.ingestion.review.insert'),
+      ),
+    ).toBe(false);
+  });
+
+  it('sends the validated current actor UUID canonically in the command transaction scope', async () => {
+    const value = runtime();
+    value.pool.client.ingestionState = 'REVIEW_REQUIRED';
+    value.pool.client.operationStatus = 'WAITING_REVIEW';
+    const reviewerId = 'd2000000-0000-4000-8000-000000000090';
+    await executor(value.runtime, 'data.ingestion.approve').execute(
+      { ingestionId: INGESTION_ID, expectedVersion: 1 },
+      {
+        ...context,
+        principal: {
+          ...context.principal,
+          actorId: reviewerId.toUpperCase(),
+          authUserId: reviewerId.toUpperCase(),
+        },
+      },
+    );
+    expect(
+      value.pool.client.calls
+        .find(({ text }) => text.includes('data.command.scope'))
+        ?.values?.slice(5, 8),
+    ).toEqual([reviewerId, 'human', '']);
+  });
+
   it.each(['agent', 'service'] as const)(
     'rejects final approval from a %s even with publishing scopes',
     async (actorType) => {
