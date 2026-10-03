@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-core/**
   - packages/data-infra/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-09-15
-lastReviewedCommit: f9bc654295360ff2d97eb6dba31d54599b2f313f
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 # WISER Data Worker / 数据基座 Worker
@@ -69,6 +69,8 @@ pnpm --filter @wiser/data-worker dev
 运行时 DSN 必须使用 Data Foundation 的受限 Worker role，不得使用迁移 owner；Supabase 仍是唯一身份权威，Worker 只接收 Tenant/Project 等 scoped references。 / The runtime DSN must use the restricted Data Worker role, never the migration owner. Supabase remains the sole identity authority; this process receives only scoped Tenant/Project references.
 
 Worker 的 authority 写入必须沿合法状态边且每次精确推进一个 `row_version`；review checkpoint 只有在 ID、plan、hash、状态、批准者、安全等级和 policy 全部相同时才允许幂等重放，批准转换使用独立的受控 SQL。数据库 trigger 会对 runtime role 再次执行这些约束。 / Worker authority writes must follow legal state edges and advance exactly one `row_version`. Review checkpoints permit idempotent replay only when identity, plan, hash, status, approver, security level, and policy all match; approval uses its dedicated guarded SQL. Database triggers enforce the same boundary for the runtime role.
+
+服务器独立审核策略启用后，即使公开且高置信度，Worker 仍冻结策略修订并返回待审；客户端参数不能覆盖。load/freeze/commit 均核对当前策略，旧检查点或撤销策略不能继续提交；正式版本保留同一绑定。提交／委托责任不可改，最终批准须由独立真人经 API 执行。/ With server independent review enabled, Worker freezes the policy revision and waits even for public, high-confidence input. Client flags cannot override it. Load/freeze/commit recheck current policy; stale checkpoints or withdrawn policies cannot proceed. Version manifests retain the binding, submission/delegation responsibility is immutable, and final approval goes through the API as an independent human.
 
 ## Health and metrics / 健康与指标
 

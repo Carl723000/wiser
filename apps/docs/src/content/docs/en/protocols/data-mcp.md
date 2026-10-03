@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-23
-lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## HTTP adapter only
@@ -141,6 +141,8 @@ GET Tools encode only boolean, number, string, or string-array queries, and URL-
 `data_geo_intersect` resolves DataItem targets to a visible committed Version before collecting all sibling extents and never falls back to an older Version. Current catalog/version Tool outputs require `tileAvailability`; Agents may use its booleans to decide whether to offer governed vector/raster routes, but must not infer upstream service health or COG conformance.
 
 ### Ingestion
+
+`data_ingestion_approve` does not give an AI final approval authority. It shares REST's verified-human, non-submitter/non-delegator checks and rechecks authority on replay. Server-configured `REQUIRE_INDEPENDENT_REVIEW` also pauses public/high-confidence input. Tools cannot change that policy through arguments; use the existing waiting Operation and authorized independent human review. See [upload and ingestion](./data-rest.md#upload-and-ingestion).
 
 If an old queued ingestion exceeded its queue deadline without a Worker claim, fetch its Operation version and call `data_ingestion_resume` with the original ingestion ID, that `expectedVersion`, and a fresh command key. The Tool preserves the same Operation and refuses a claimed or terminal task. Poll that Operation after the project Worker starts.
 

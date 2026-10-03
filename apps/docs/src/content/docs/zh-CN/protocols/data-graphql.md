@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 26b4d35fec914ff5391b09f47c7cdee6439f70af
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## 入口与权威契约
@@ -84,6 +84,8 @@ Connection 返回 `nodes` 与 `pageInfo { endCursor hasNextPage }`。其余分�
 `geoIntersect` 会先选择 DataItem target 的可见已提交 Version，再收集全部 sibling extent；target 缺失、不可见、无 extent 或彼此不相交时返回同样的空结果，绝不回退历史版本。当前 catalog 输出必须包含 `DataItemVersion.tileAvailability { vector raster }`；它表示受控 source 可路由，不代表 GIS 上游健康或 COG 证明。
 
 ## Mutation fields
+
+`approveDataIngestion` 与 REST 共用服务器策略、不可变责任和独立真人校验，重放同样检查。只有 publish scope 不足以允许 Agent/service 或提交人批准。策略不是调用方可填写的 mutation 字段；配置独立审核后，公开、高置信度输入也保持待审。冲突处理和原命令 schema 见[上传与入库](./data-rest.md#上传与入库)。
 
 `CreateIngestionInput.sourceRegistration` 是入库 1.1 严格描述的可选 JSON 映射。GraphQL 与 REST 使用相同的清单绑定、授权、幂等、校验和“仅来源登记”语义；JSON scalar 不绕过 Capability schema。
 

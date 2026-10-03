@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: ce7c39fbcc4aebc5bca1f67ee80634b7ce544c4d
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -80,6 +80,10 @@ Migration `20260927162820_persistent_agent_connections.sql` permits a null Deleg
 Migration `20260926084756_resource_batch_agent_purpose.sql` only expands the private batch purpose constraint to the two explicit Web and AI/MCP purposes. Declarative schema `06_resource_batches.sql` and pgTAP case 12 retain that same constraint; seed grants no resource access. The batch integration suite uses `WISER_RESOURCE_TEST_DATABASE_URL` against a disposable migrated and seeded database to verify purpose-specific preview, approval, execution and renewal. Apply the additive migration before the API/Web runtime. Back up the control database and runtime first. Once an AI/MCP batch is recorded, recovery must retain a runtime that can read both purposes and preserve the immutable history; old Web-only readers cannot decode those records. Previously saved previews require regeneration because the fingerprint now binds purpose.
 
 ## Data Foundation change workflow
+
+Apply `0033_ingestion_review_governance.sql`, `0034_review_policy_guard_runtime_permissions.sql`, `0035_reviewed_version_source_guard.sql` and `0036_reviewed_session_creation_guard.sql` before the matching API/Worker. They add a scoped server policy and immutable Auth subject references, bind checkpoints/version manifests, and enforce independent approval. A governed version requires its matching reviewed ingestion; choosing an unrelated catalog ID cannot bypass the gate. A governed session cannot be created in an approved/committed/published state; approval is a guarded transition. Policy changes require the migration/maintenance owner, increment revision and row version, and retain the row on withdrawal; runtime roles have read-only policy access. Fixed-search-path trigger guards use their migration owner for locks, check scoped references, and verify the original API caller role for approval. Ordinary queries retain forced RLS.
+
+The focused `ingestion-review-governance.spec.ts` runs with the same disposable PostgreSQL variables as source registration and rolls back synthetic data. It covers self/delegated/Agent/service/Worker approval, unreviewed version writes, wrong policy binding, revision changes, withdrawal and cross-project visibility. Do not edit an applied checksum: repair through a subsequent migration and rerun runtime provisioning. This changes neither Supabase's identity authority nor reconciliation's creator-confirmation workflow.
 
 `0010_source_registration.sql` adds immutable source-registration JSON to `ingestion.session`, under its existing forced RLS. Source identity and declared limitations cannot change during state transitions; the descriptor is also frozen into the committed Version manifest. The focused `packages/data-infra/test/migrations/source-registration.spec.ts` test runs with `WISER_DATA_PG_INTEGRATION=1` and `DATA_TEST_DATABASE_URL` pointing to a disposable migrated database. It verifies a role without BYPASSRLS, cross-project invisibility, legal transitions and rejection of descriptor edits. Real research files remain outside seed data and Git.
 

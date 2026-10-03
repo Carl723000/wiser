@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: ce7c39fbcc4aebc5bca1f67ee80634b7ce544c4d
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -80,6 +80,10 @@ Agent 授权与交换集成测试通过 `WISER_AGENT_TEST_DATABASE_URL` 连接�
 迁移 `20260926084756_resource_batch_agent_purpose.sql` 仅将私有批次用途约束扩展为明确的网页与 AI/MCP 两种用途。声明式结构 `06_resource_batches.sql` 和 pgTAP 第 12 组保持同一约束，seed 不授予资源访问权。批次集成套件通过 `WISER_RESOURCE_TEST_DATABASE_URL` 连接可丢弃、已迁移并填充测试种子的数据库，核验用途隔离的预览、审批、执行和续期。部署前备份控制库和运行配置，先应用追加迁移，再更新 API/Web。产生 AI/MCP 批次后，恢复版本须能读取两种用途并保留不可变历史；旧版仅支持网页用途的读取器无法解析这些记录。此前保存的预览因指纹增加用途绑定而须重新生成。
 
 ## Data Foundation 变更流程
+
+先应用 `0033_ingestion_review_governance.sql`、`0034_review_policy_guard_runtime_permissions.sql`、`0035_reviewed_version_source_guard.sql` 和 `0036_reviewed_session_creation_guard.sql`，再使用对应 API/Worker。它们增加限定范围的服务器策略及不可变 Auth 主体引用，绑定检查点和版本清单，执行独立批准约束。受管版本必须对应已审核入库单，不能通过另选目录 ID 绕过。受管入库单不能直接创建为已批准、已提交或已发布状态；批准必须经过受控转换。策略仅由迁移／维护所有者变更，修订号及行版本同步递增，撤销时保留历史行；runtime role 只能读取策略。固定 search path 的触发器守卫以迁移所有者取得锁，核对范围引用，并在批准时检查原 API 调用角色。普通查询保留强制 RLS。
+
+聚焦测试 `ingestion-review-governance.spec.ts` 使用与来源登记相同的一次性 PostgreSQL 配置，合成数据最终回滚。它覆盖自审、委托、Agent/service/Worker 批准拒绝、未审核版本写入、策略绑定错误、修订变更、撤销和跨项目不可见。已执行 checksum 不得修改；通过后续迁移修复，并重新执行 runtime provisioning。Supabase 身份权威和格式副本对账的创建人确认流程不变。
 
 `0010_source_registration.sql` 在 `ingestion.session` 中增加不可变的来源登记 JSON，复用现有强制 RLS。状态转换不能修改来源身份与声明限制；正式版本清单也冻结该描述。聚焦测试 `packages/data-infra/test/migrations/source-registration.spec.ts` 使用 `WISER_DATA_PG_INTEGRATION=1`，并将 `DATA_TEST_DATABASE_URL` 指向可丢弃且已迁移的数据库，验证无 BYPASSRLS 的角色、跨项目不可见、合法转换和描述修改拒绝。真实研究材料不进入 seed 或 Git。
 

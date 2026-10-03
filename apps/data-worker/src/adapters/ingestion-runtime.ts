@@ -3,6 +3,10 @@ import { once } from 'node:events';
 import { createConnection } from 'node:net';
 import { Readable } from 'node:stream';
 import { SourceRegistrationSchema } from '@wiser/data-contracts';
+import {
+  matchesFrozenIngestionReviewPolicy,
+  resolveIngestionReviewGovernance,
+} from '@wiser/data-core';
 
 import {
   IngestionPipelinePortError,
@@ -44,7 +48,10 @@ const LOAD_SQL = `
 /* ingestion.runtime.load */
 select session.state, session.row_version, session.requested_security_level,
   session.security_level, session.policy_version, session.operation_id,
-  session.expected_version, session.source_registration,
+  session.expected_version, session.source_registration, session.review_policy_snapshot,
+  (select jsonb_build_object('mode', mode, 'revision', revision)
+     from ingestion.project_review_policy where tenant_id = session.tenant_id
+       and project_id = session.project_id and enabled) as current_review_policy,
   version.version_id, frozen.plan as frozen_checkpoint,
   asset.asset_id, input.ordinal, asset.storage_key, asset.media_type,
   asset.byte_size, blob.content_blob_id,
@@ -112,8 +119,12 @@ order by input.ordinal, asset.asset_id
 const LOCK_SQL = `
 /* ingestion.runtime.lock */
 select state, row_version, requested_security_level, security_level,
-  policy_version, operation_id, intended_uses, expected_version, source_registration
-from ingestion.session
+  policy_version, operation_id, intended_uses, expected_version, source_registration,
+  review_policy_snapshot,
+  (select jsonb_build_object('mode', mode, 'revision', revision)
+     from ingestion.project_review_policy where tenant_id = session.tenant_id
+       and project_id = session.project_id and enabled) as current_review_policy
+from ingestion.session as session
 where tenant_id = $1::uuid and project_id = $2::uuid
   and ingestion_id = $3::uuid
   and security_level = $4 and policy_version = $5::bigint
@@ -610,6 +621,18 @@ function jsonRecord(value: unknown): Readonly<Record<string, unknown>> {
   }
 }
 
+function trustedReviewGovernance(row: Readonly<Record<string, unknown>>) {
+  if (row.review_policy_snapshot == null && row.current_review_policy == null)
+    return undefined;
+  const resolved = resolveIngestionReviewGovernance({
+    frozen: row.review_policy_snapshot,
+    current: row.current_review_policy,
+  });
+  if (resolved.kind !== 'REQUIRES_REVIEW')
+    throw runtimeError('INGESTION_REVIEW_GOVERNANCE_CONFLICT', false);
+  return { frozen: resolved.policy, current: resolved.policy };
+}
+
 function frozenCheckpoint(value: unknown): FrozenIngestionCheckpoint {
   const candidate = jsonRecord(value);
   const reviewHash = candidate.reviewHash;
@@ -807,6 +830,7 @@ export class PostgresIngestionAuthority implements IngestionAuthorityPort {
       if (result.rows.length < 1)
         throw runtimeError('INGESTION_NOT_FOUND', false);
       const first = result.rows[0]!;
+      const reviewGovernance = trustedReviewGovernance(first);
       const sourceRegistration =
         first.source_registration == null
           ? undefined
@@ -862,6 +886,7 @@ export class PostgresIngestionAuthority implements IngestionAuthorityPort {
         securityLevel,
         policyVersion,
         assets: Object.freeze(assets),
+        ...(reviewGovernance === undefined ? {} : { reviewGovernance }),
         ...(sourceRegistration === undefined ? {} : { sourceRegistration }),
         ...(typeof versionId === 'string' ? { versionId } : {}),
         ...(persistedFrozen === null || persistedFrozen === undefined
@@ -1181,6 +1206,17 @@ export class PostgresIngestionAuthority implements IngestionAuthorityPort {
       const planId = uuidV5(
         `${request.ingestionId}:${checkpoint.reviewHash}:review`,
       );
+      const governance = trustedReviewGovernance(row);
+      if (
+        governance !== undefined &&
+        (request.toState !== 'REVIEW_REQUIRED' ||
+          !matchesFrozenIngestionReviewPolicy(
+            governance.frozen,
+            checkpoint.assetManifest.reviewGovernance,
+          ))
+      ) {
+        throw runtimeError('INGESTION_REVIEW_GOVERNANCE_CONFLICT', false);
+      }
       const persisted = await client.query(REVIEW_CHECKPOINT_SQL, [
         planId,
         request.tenantId,
@@ -1266,6 +1302,19 @@ export class PostgresIngestionAuthority implements IngestionAuthorityPort {
     const checkpoint = frozenCheckpoint(request.checkpoint);
     const assetFacts = frozenAssets(checkpoint);
     const persisted = await this.load(request);
+    const governance = resolveIngestionReviewGovernance(
+      persisted.reviewGovernance,
+    );
+    if (
+      governance.kind === 'CONFLICT' ||
+      (governance.kind === 'REQUIRES_REVIEW' &&
+        !matchesFrozenIngestionReviewPolicy(
+          governance.policy,
+          checkpoint.assetManifest.reviewGovernance,
+        ))
+    ) {
+      throw runtimeError('INGESTION_REVIEW_GOVERNANCE_CONFLICT', false);
+    }
     if (
       persisted.state === 'COMMITTED' ||
       persisted.state === 'PROJECTING' ||
@@ -1353,6 +1402,11 @@ export class PostgresIngestionAuthority implements IngestionAuthorityPort {
       throw runtimeError('INGESTION_AUTHORITY_INVALID', false);
     }
     const finalManifest = Object.freeze({
+      ...(checkpoint.assetManifest.reviewGovernance === undefined
+        ? {}
+        : {
+            reviewGovernance: checkpoint.assetManifest.reviewGovernance,
+          }),
       ...(sourceRegistration === undefined
         ? {}
         : { sourceRegistration, validationScope: 'SOURCE_REGISTRATION' }),
@@ -1410,6 +1464,16 @@ export class PostgresIngestionAuthority implements IngestionAuthorityPort {
         integer(row, 'policy_version') !== request.policyVersion
       ) {
         throw runtimeError('INGESTION_AUTHORITY_CONFLICT', false);
+      }
+      const governance = trustedReviewGovernance(row);
+      if (
+        governance !== undefined &&
+        !matchesFrozenIngestionReviewPolicy(
+          governance.frozen,
+          checkpoint.assetManifest.reviewGovernance,
+        )
+      ) {
+        throw runtimeError('INGESTION_REVIEW_GOVERNANCE_CONFLICT', false);
       }
       const frozen = await client.query(FROZEN_CHECKPOINT_LOCK_SQL, [
         request.tenantId,

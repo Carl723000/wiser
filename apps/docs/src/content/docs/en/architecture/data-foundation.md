@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 30a76bda7ffcf2b7347a9bc2e0ec559a80400c2b
+lastReviewedCommit: a0952585
 ---
 
 ## What runs today
@@ -114,6 +114,10 @@ MCP Evidence/STAC Resources read through real HTTP authority boundaries. Evidenc
 Only an approved frozen review checkpoint can create a formal version. One data-postgres transaction commits DataItemVersion, quality/lineage facts, Operation event, Audit, and Outbox. Supabase, data-postgres, and S3 never pretend to share a distributed transaction.
 
 ## Deterministic ingestion and Agent boundary
+
+Projects may enable the server-owned `REQUIRE_INDEPENDENT_REVIEW` policy. Ingestion freezes its mode/revision together with immutable submitter and delegator references from verified Auth; the same policy is included in the review hash and committed asset manifest. Even public, high-confidence input then stops at review. Missing, withdrawn or changed policy fails closed; a client flag cannot disable it. These scoped references do not create another identity authority.
+
+Final approval requires an authorized human distinct from both the submitter and its delegator, including idempotent replay. Unknown historical responsibility is not guessed. Worker/runtime database guards reject automatic approval and unreviewed version commits/publication. Projects without a configured policy retain the existing automatic path; real professional review remains a separate decision.
 
 Research bundles may select the optional `sourceRegistration` profile on ingestion. Migration `0010_source_registration.sql` stores its immutable descriptor on the RLS-protected ingestion Session. A bounded JSON manifest binds the declared source, original paths/hashes, sanitized derivatives, partial/sample/empty states, and every uploaded asset to exact size and SHA-256. It rejects missing, duplicate, unlisted or changed assets; zero-byte sources are explicitly recorded without fabricating a nonempty upload.
 

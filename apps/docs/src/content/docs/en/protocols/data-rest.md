@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 26b4d35fec914ff5391b09f47c7cdee6439f70af
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## Protocol boundary
@@ -183,6 +183,8 @@ MapLibre never embeds the API Bearer in a tile URL. An authenticated browser req
 After authority checks, an exact TiTiler PNG coverage miss (`404` JSON containing only `detail: Tile(x=…, y=…, z=…) is outside bounds`, with coordinates matching the request) becomes a transparent 256-pixel PNG. Missing assets, authorization failures, malformed or other error responses remain failures. A successful HEAD stays HEAD; only a PNG HEAD coverage candidate is retried once as GET within the same timeout and body limit. Responses remain audited and `no-store`.
 
 ## Upload and ingestion
+
+Review policy and submission responsibility are server-owned; upload/create/submit inputs add no bypass flag. With `REQUIRE_INDEPENDENT_REVIEW` enabled, inspect the existing Operation at `WAITING_REVIEW`. Approval requires a verified human with the existing publish authorization who is neither submitter nor delegator. Agent/service approval or unprovable independence returns `INDEPENDENT_REVIEW_REQUIRED` (403); changed policy or checkpoint binding returns a state conflict. Idempotent approval replay rechecks current authority. Rejection and creator-confirmed reconciliation retain their existing contracts.
 
 `data.ingestion.create` 1.1 accepts optional `sourceRegistration`; ingestion get/reject 1.1 preserve that descriptor. Their 1.0 schemas remain in the immutable discovery archive. Obtain the full strict schema from discovery. The descriptor contains source/bundle identity, kind, name, provider, access state, explicit completeness, limitations, and `manifestAssetId` / `manifestSha256`. The manifest asset must be among the completed upload assets supplied to ingestion.
 

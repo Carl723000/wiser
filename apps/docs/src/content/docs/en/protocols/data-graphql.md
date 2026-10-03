@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 26b4d35fec914ff5391b09f47c7cdee6439f70af
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## Endpoint and authority contract
@@ -84,6 +84,8 @@ Connections expose `nodes` and `pageInfo { endCursor hasNextPage }`; other pages
 `geoIntersect` selects a DataItem target's visible committed Version before collecting every sibling extent; missing, hidden, extent-free, or disjoint targets return the same empty result and never fall back to history. `DataItemVersion.tileAvailability { vector raster }` is required on current catalog outputs and indicates routable governed sources, not GIS upstream health or COG proof.
 
 ## Mutation fields
+
+`approveDataIngestion` uses the same server policy, immutable responsibility and independent-human checks as REST, including replay. A publish scope alone does not let an Agent/service or submitter approve. The policy is not a caller-supplied mutation field; configured independent review keeps public/high-confidence input pending. See [upload and ingestion](./data-rest.md#upload-and-ingestion) for conflicts and the unchanged command schemas.
 
 `CreateIngestionInput.sourceRegistration` is an optional JSON projection of the strict ingestion 1.1 descriptor. GraphQL and REST use the same manifest binding, authorization, idempotency, validation and source-registration-only semantics; the JSON scalar does not bypass the Capability schema.
 

@@ -1,5 +1,10 @@
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { createHash, randomUUID } from 'node:crypto';
+import {
+  isIndependentIngestionReviewer,
+  matchesFrozenIngestionReviewPolicy,
+  resolveIngestionReviewGovernance,
+} from '@wiser/data-core';
 
 import {
   ANALYSIS_PARSER_VERSION,
@@ -57,7 +62,10 @@ select
   set_config('wiser.project_id', $2, true),
   set_config('wiser.max_security_level', $3, true),
   set_config('wiser.policy_version', $4, true),
-  set_config('statement_timeout', $5, true)
+  set_config('statement_timeout', $5, true),
+  set_config('wiser.actor_id', $6, true),
+  set_config('wiser.actor_type', $7, true),
+  set_config('wiser.delegated_by', $8, true)
 `;
 
 const IDEMPOTENCY_LOCK_SQL = `
@@ -278,11 +286,12 @@ insert into ingestion.session (
   ingestion_id, tenant_id, project_id, operation_id, owner_project_id,
   state, intended_uses, expected_version, requested_security_level,
   security_level, policy_version, row_version, created_at, updated_at,
-  source_registration
+  source_registration, submitted_by_actor_id, submitted_actor_type,
+  submitted_delegator_actor_id
 ) values (
   $1::uuid, $2::uuid, $3::uuid, $4::uuid, $3::uuid, 'RECEIVED',
   $5::text[], 1, $6, $6, $7::bigint, 1, $8::timestamptz,
-  $8::timestamptz, $9::jsonb
+  $8::timestamptz, $9::jsonb, $10::uuid, $11, $12::uuid
 )
 `;
 
@@ -302,8 +311,12 @@ const INGESTION_LOCK_SQL = `
 /* data.ingestion.session.lock */
 select ingestion_id, state, row_version, intended_uses,
   requested_security_level, security_level, policy_version, operation_id,
-  created_at, updated_at
-from ingestion.session
+  created_at, updated_at, submitted_by_actor_id, submitted_actor_type,
+  submitted_delegator_actor_id, review_policy_snapshot,
+  (select jsonb_build_object('mode', mode, 'revision', revision)
+     from ingestion.project_review_policy where tenant_id = session.tenant_id
+       and project_id = session.project_id and enabled) as current_review_policy
+from ingestion.session as session
 where ingestion_id = $1::uuid
   and tenant_id = $2::uuid and project_id = $3::uuid
   and security.security_rank(security_level) <= security.security_rank($4)
@@ -668,6 +681,7 @@ export type PostgresDataCommandErrorCode =
   | 'INVALID_CONFIGURATION'
   | 'INVALID_INPUT'
   | 'OWNER_PROJECT_MISMATCH'
+  | 'INDEPENDENT_REVIEW_REQUIRED'
   | 'SECURITY_LEVEL_EXCEEDED'
   | 'IDEMPOTENCY_KEY_REQUIRED'
   | 'IDEMPOTENCY_CONFLICT'
@@ -683,6 +697,7 @@ const ERROR_STATUS: Readonly<Record<PostgresDataCommandErrorCode, number>> = {
   INVALID_CONFIGURATION: 500,
   INVALID_INPUT: 422,
   OWNER_PROJECT_MISMATCH: 403,
+  INDEPENDENT_REVIEW_REQUIRED: 403,
   SECURITY_LEVEL_EXCEEDED: 403,
   IDEMPOTENCY_KEY_REQUIRED: 422,
   IDEMPOTENCY_CONFLICT: 409,
@@ -749,6 +764,32 @@ interface StoredCommandLedger {
 
 function commandError(code: PostgresDataCommandErrorCode) {
   return new PostgresDataCommandError(code);
+}
+
+function assertIndependentReview(
+  row: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+) {
+  const responsibility = {
+    actorId: row['submitted_by_actor_id'],
+    actorType: row['submitted_actor_type'],
+    ...(row['submitted_delegator_actor_id'] == null
+      ? {}
+      : { delegatedBy: row['submitted_delegator_actor_id'] }),
+  };
+  if (!isIndependentIngestionReviewer(context.principal, responsibility))
+    throw commandError('INDEPENDENT_REVIEW_REQUIRED');
+  const governance =
+    row['review_policy_snapshot'] == null &&
+    row['current_review_policy'] == null
+      ? undefined
+      : {
+          frozen: row['review_policy_snapshot'],
+          current: row['current_review_policy'],
+        };
+  const resolved = resolveIngestionReviewGovernance(governance);
+  if (resolved.kind === 'CONFLICT') throw commandError('STATE_CONFLICT');
+  return resolved.kind === 'REQUIRES_REVIEW' ? resolved.policy : undefined;
 }
 
 function isAssetAlreadyBoundError(error: unknown): boolean {
@@ -1117,6 +1158,9 @@ export class CommandTransactions {
           context.effectiveMaxSecurityLevel,
           String(context.authorization.authzVersion),
           statementTimeout(context),
+          context.principal.actorId,
+          context.principal.actorType,
+          context.principal.delegatedBy ?? '',
         ]),
       );
       await applyResourceReadScope(
@@ -2342,6 +2386,9 @@ export function createPostgresDataCommandRuntime(
               input.sourceRegistration === undefined
                 ? null
                 : JSON.stringify(input.sourceRegistration),
+              context.principal.actorId,
+              context.principal.actorType,
+              context.principal.delegatedBy ?? null,
             ]),
           );
           for (const [ordinal, assetId] of input.assetIds.entries()) {
@@ -2579,6 +2626,8 @@ export function createPostgresDataCommandRuntime(
 
     define('data.ingestion.approve', async (raw, context) => {
       const input = ApproveIngestionInputSchema.parse(raw);
+      if (context.principal.actorType !== 'human')
+        throw commandError('INDEPENDENT_REVIEW_REQUIRED');
       return transactions.run(
         'data.ingestion.approve',
         input,
@@ -2592,6 +2641,7 @@ export function createPostgresDataCommandRuntime(
             'REVIEW_REQUIRED',
             context,
           );
+          const reviewPolicy = assertIndependentReview(ingestion.row, context);
           const operationId = text(ingestion.row, 'operation_id');
           const lockedOperation = await lockOperation(
             transactions,
@@ -2627,6 +2677,22 @@ export function createPostgresDataCommandRuntime(
             frozenPlan['reviewHash'] !== reviewHash
           ) {
             throw commandError('STATE_CONFLICT');
+          }
+          if (reviewPolicy !== undefined) {
+            const manifest = frozenPlan['assetManifest'];
+            if (
+              manifest === null ||
+              typeof manifest !== 'object' ||
+              Array.isArray(manifest) ||
+              !matchesFrozenIngestionReviewPolicy(
+                reviewPolicy,
+                (manifest as Readonly<Record<string, unknown>>)[
+                  'reviewGovernance'
+                ],
+              )
+            ) {
+              throw commandError('STATE_CONFLICT');
+            }
           }
           const securityLevel = maximumSecurity(
             text(ingestion.row, 'requested_security_level') as SecurityLevel,
@@ -2747,6 +2813,20 @@ export function createPostgresDataCommandRuntime(
             eventType: 'data.ingestion.approved',
             securityLevel,
           };
+        },
+        async (client, _timestamp, ledger) => {
+          const rows = await transactions.query(
+            client,
+            context,
+            INGESTION_LOCK_SQL,
+            [input.ingestionId, ...scopeValues(context)],
+          );
+          const row = singleRow(rows);
+          if (row === undefined) throw commandError('NOT_FOUND');
+          assertIndependentReview(row, context);
+          return DATA_CAPABILITY_REGISTRY[
+            'data.ingestion.approve'
+          ].outputSchema.parse(ledger.result);
         },
       );
     }),

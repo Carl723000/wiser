@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 26b4d35fec914ff5391b09f47c7cdee6439f70af
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## 协议边界
@@ -183,6 +183,8 @@ MapLibre 不把 API Bearer 放进 tile URL。登录后的浏览器只请求同�
 权威授权通过后，只有 TiTiler PNG 返回坐标与当前请求完全一致的越界响应（`404` JSON 且仅含 `detail: Tile(x=…, y=…, z=…) is outside bounds`）才转换为透明的 256 像素 PNG。资产缺失、权限拒绝、格式异常及其他错误仍然失败。正常 HEAD 保持 HEAD；只有 PNG HEAD 的越界候选响应才在同一超时和正文上限内补取一次 GET。响应继续审计并使用 `no-store`。
 
 ## 上传与入库
+
+审核策略和提交责任由服务器维护，upload/create/submit 输入不增加绕过参数。启用 `REQUIRE_INDEPENDENT_REVIEW` 后，通过已有 Operation 查看 `WAITING_REVIEW`。批准人须为已验证、具备原发布授权且不同于提交人和委托人的真人；Agent/service 批准或无法证明独立性时返回 `INDEPENDENT_REVIEW_REQUIRED`（403），策略或检查点绑定变化返回状态冲突。幂等批准重放仍核对当前权威。拒绝操作及创建人确认的格式副本对账保留原契约。
 
 `data.ingestion.create` 1.1 接受可选 `sourceRegistration`，ingestion get/reject 1.1 保留该描述；1.0 schema 仍可从不可变发现归档读取。完整严格字段以 discovery 为准，包含来源/数据包身份、类型、名称、提供方、访问状态、明确的完整性、限制说明以及 `manifestAssetId` / `manifestSha256`。清单资产必须属于本次入库引用的已完成上传资产。
 

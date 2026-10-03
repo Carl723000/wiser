@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-09-23
-lastReviewedCommit: c61d5ca533bfba41dc71b47eb96c8744bb517f5f
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: a0952585
 ---
 
 ## 只做 HTTP 适配
@@ -141,6 +141,8 @@ GET Tool 只编码 boolean、number、string 或 string array query；path param
 `data_geo_intersect` 先把 DataItem target 解析为可见已提交 Version，再收集全部 sibling extent，绝不回退旧 Version。当前 catalog/version Tool 输出必须带有 `tileAvailability`；Agent 可用布尔量决定是否提供受控 vector/raster route，但不得由此推断上游服务健康或 COG 合规。
 
 ### 入库
+
+`data_ingestion_approve` 不授予 AI 最终批准权。它共用 REST 的真人、非提交人／委托人校验，重放仍核对权威。服务器配置的 `REQUIRE_INDEPENDENT_REVIEW` 也使公开、高置信度输入停在待审；Tool 参数不能改变该策略。继续使用已有待审 Operation，由有权限的独立真人审核。详见[上传与入库](./data-rest.md#上传与入库)。
 
 如果旧入库任务在 Worker 尚未领取时超过排队期限，先读取原 Operation 版本，再用原入库单 ID、该 `expectedVersion` 和新的命令键调用 `data_ingestion_resume`。此 Tool 保留原 Operation，拒绝已领取或终态任务。项目 Worker 启动后继续轮询同一 Operation。
 

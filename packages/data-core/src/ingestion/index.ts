@@ -1,6 +1,58 @@
-import type { IngestionState } from '@wiser/data-contracts';
+import {
+  IngestionReviewGovernanceContextSchema,
+  IngestionReviewPolicySchema,
+  IngestionSubmissionResponsibilitySchema,
+  type IngestionReviewPolicy,
+  type IngestionState,
+} from '@wiser/data-contracts';
 
 import { DataFoundationDomainError } from '../domain-error.js';
+
+export function isIndependentIngestionReviewer(
+  reviewer: { readonly actorId: string; readonly actorType: string },
+  responsibility: unknown,
+): boolean {
+  if (reviewer.actorType !== 'human') return false;
+  const parsed =
+    IngestionSubmissionResponsibilitySchema.safeParse(responsibility);
+  if (!parsed.success) return false;
+  const submitter = parsed.data;
+  if (submitter.actorType !== 'human' && submitter.delegatedBy === undefined)
+    return false;
+  return (
+    submitter.actorId !== reviewer.actorId &&
+    submitter.delegatedBy !== reviewer.actorId
+  );
+}
+
+export function resolveIngestionReviewGovernance(
+  value: unknown,
+):
+  | { readonly kind: 'LEGACY' }
+  | { readonly kind: 'REQUIRES_REVIEW'; readonly policy: IngestionReviewPolicy }
+  | { readonly kind: 'CONFLICT' } {
+  if (value === undefined) return { kind: 'LEGACY' };
+  const parsed = IngestionReviewGovernanceContextSchema.safeParse(value);
+  if (
+    !parsed.success ||
+    parsed.data.frozen.revision !== parsed.data.current.revision
+  ) {
+    return { kind: 'CONFLICT' };
+  }
+  return { kind: 'REQUIRES_REVIEW', policy: Object.freeze(parsed.data.frozen) };
+}
+
+export function matchesFrozenIngestionReviewPolicy(
+  policy: IngestionReviewPolicy,
+  value: unknown,
+): boolean {
+  const parsed = IngestionReviewPolicySchema.safeParse(value);
+  return (
+    parsed.success &&
+    parsed.data.mode === policy.mode &&
+    parsed.data.revision === policy.revision
+  );
+}
 
 type IngestionTransitionPolicy = Readonly<
   Record<IngestionState, readonly IngestionState[]>

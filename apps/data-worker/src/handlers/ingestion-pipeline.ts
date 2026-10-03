@@ -9,6 +9,8 @@ import {
 } from '@wiser/data-infra';
 import {
   evaluateQualityGate,
+  matchesFrozenIngestionReviewPolicy,
+  resolveIngestionReviewGovernance,
   transitionIngestionState,
   type DeterministicQualityCheck,
   type QualityGateDecision,
@@ -113,6 +115,7 @@ export interface IngestionAuthorityPort {
     readonly assets: readonly IngestionAssetCheckpoint[];
     readonly frozenCheckpoint?: FrozenIngestionCheckpoint;
     readonly sourceRegistration?: SourceRegistration;
+    readonly reviewGovernance?: unknown;
   }>;
   transition(request: IngestionTransitionRequest): Promise<{
     readonly state: PipelineIngestionState;
@@ -723,6 +726,30 @@ export function createIngestionPipelineHandler(
       securityLevel,
       policyVersion,
     });
+    const governance = resolveIngestionReviewGovernance(
+      checkpoint.reviewGovernance,
+    );
+    if (governance.kind === 'CONFLICT') {
+      throw safeFailure('INGESTION_REVIEW_GOVERNANCE_CONFLICT', false);
+    }
+    const reviewPolicy =
+      governance.kind === 'REQUIRES_REVIEW' ? governance.policy : undefined;
+    if (
+      reviewPolicy !== undefined &&
+      [
+        'REVIEW_REQUIRED',
+        'APPROVED',
+        'COMMITTED',
+        'PROJECTING',
+        'PUBLISHED',
+      ].includes(checkpoint.state) &&
+      !matchesFrozenIngestionReviewPolicy(
+        reviewPolicy,
+        checkpoint.frozenCheckpoint?.assetManifest.reviewGovernance,
+      )
+    ) {
+      throw safeFailure('INGESTION_REVIEW_GOVERNANCE_CONFLICT', false);
+    }
     if (
       !Number.isSafeInteger(checkpoint.version) ||
       checkpoint.version < input.expectedVersion
@@ -1285,6 +1312,7 @@ export function createIngestionPipelineHandler(
     );
 
     const assetManifest = Object.freeze({
+      ...(reviewPolicy === undefined ? {} : { reviewGovernance: reviewPolicy }),
       ...(sourceRegistration === undefined
         ? {}
         : { sourceRegistration, validationScope: 'SOURCE_REGISTRATION' }),
@@ -1329,6 +1357,7 @@ export function createIngestionPipelineHandler(
     });
 
     const reviewRequired =
+      reviewPolicy !== undefined ||
       checkpoint.securityLevel !== 'L0_PUBLIC' ||
       classifications.some(
         (classification) =>
