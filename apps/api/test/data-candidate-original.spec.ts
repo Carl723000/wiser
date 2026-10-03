@@ -72,7 +72,7 @@ interface CandidatePort {
 }
 function fixture(
   options: {
-    body?: Uint8Array;
+    body?: Uint8Array | ReadableStream<Uint8Array>;
     current?: PlatformRequestContext;
     revoke?: boolean;
     sign?: () => void;
@@ -116,7 +116,7 @@ function fixture(
             ),
           createCandidateDownload: download,
           authorizeCandidateDownload: authorize,
-        } as never,
+        },
         assetContentFetch: fetch,
       }),
     ],
@@ -207,6 +207,73 @@ describe('fixed pending original HTTP delivery', () => {
       expect(f.download).not.toHaveBeenCalled();
     },
   );
+  it('verifies copied bytes when a reader reuses its underlying buffer', async () => {
+    const shared = new Uint8Array(1);
+    let offset = 0;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (offset === original.length) {
+            controller.close();
+            return;
+          }
+          shared[0] = original[offset++]!;
+          controller.enqueue(shared);
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const f = fixture({ body });
+    const r = await f.app.inject({ method: 'GET', url, headers });
+    expect(r.statusCode).toBe(200);
+    expect(r.rawPayload).toEqual(Buffer.from(original));
+  });
+  it.each(['bytes=1-0', 'bytes=-0'])(
+    'rejects unsatisfiable single ranges: %s',
+    async (range) => {
+      const f = fixture();
+      const r = await f.app.inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, range },
+      });
+      expect(r.statusCode).toBe(416);
+      expect(r.body).toBe('');
+    },
+  );
+  it.each(['bytes=0-1,3-4', 'bytes=1-a'])(
+    'rejects unsupported range syntax: %s',
+    async (range) => {
+      const f = fixture();
+      const r = await f.app.inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, range },
+      });
+      expect(r.statusCode).toBe(422);
+      expect(f.download).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { ...context, authorization: { ...context.authorization, purpose: ' ' } },
+    {
+      ...context,
+      principal: { ...context.principal, expiresAt: '2020-01-01T00:00:00Z' },
+    },
+    { ...context, principal: { ...context.principal, delegatedBy: actorId } },
+    {
+      ...context,
+      authorization: { ...context.authorization, tenantId: actorId },
+    },
+  ])(
+    'rejects unavailable purpose, identity or tenant authority',
+    async (current) => {
+      const f = fixture({ current });
+      const r = await f.app.inject({ method: 'GET', url, headers });
+      expect(r.statusCode).toBe(403);
+      expect(f.download).not.toHaveBeenCalled();
+    },
+  );
   it('returns body-free HEAD and rejects unsatisfiable ranges after original verification', async () => {
     const f = fixture();
     const head = await f.app.inject({ method: 'HEAD', url, headers });
@@ -267,7 +334,7 @@ function databaseFixture(
       planVersionDownload: () =>
         Promise.reject(new Error('no published version')),
       planCandidateDownload: signer,
-    } as never,
+    },
   });
   return { port: port as unknown as CandidatePort, signer, queries, client };
 }

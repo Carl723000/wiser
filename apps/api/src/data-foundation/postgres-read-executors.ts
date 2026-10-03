@@ -1,3 +1,7 @@
+import {
+  candidateReadAuthority,
+  setCandidateReadAuthority,
+} from './candidate-read-authority.js';
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { createHash } from 'node:crypto';
 
@@ -35,15 +39,6 @@ select
   set_config('wiser.policy_version', $4, true)
 `;
 
-const SET_CANDIDATE_SCOPE_SQL = `
-/* data.ingestion.candidate.scope */
-select set_config('wiser.actor_id',$1,true), set_config('wiser.actor_type',$2,true),
-  set_config('wiser.delegated_by',$3,true),
-  set_config('wiser.candidate_maintainer',$4::text,true),
-  set_config('wiser.candidate_reviewer',$5::text,true),
-  set_config('wiser.candidate_purpose',$6,true),
-  set_config('statement_timeout','10000',true)
-`;
 const CANDIDATE_BATCH_SQL = `
 /* data.ingestion.candidate.batch */
 select batch.processing_batch_id,batch.ingestion_id,encode(batch.review_hash,'hex') as review_hash,
@@ -1048,35 +1043,14 @@ function candidateReadExecutors(
     client: PostgresDataReadClient,
     context: DataCapabilityExecutionContext,
   ) => {
-    const principal = context.principal;
-    const validPrincipal =
-      principal.actorType === 'human' ||
-      ((principal.actorType === 'agent' || principal.actorType === 'service') &&
-        principal.authenticationMethod === 'delegated_credential' &&
-        Boolean(principal.delegatedBy));
-    const scopes = context.authorization.scopes;
-    const maintainer =
-      validPrincipal &&
-      scopes.includes('data.operation.read') &&
-      scopes.includes('data.ingestion.write');
-    const reviewer =
-      principal.actorType === 'human' &&
-      scopes.includes('data.operation.read') &&
-      scopes.includes('data.publish');
+    const { maintainer, reviewer } = candidateReadAuthority(context);
     if (!maintainer && !reviewer)
       throw new PostgresDataReadError(
         'CANDIDATE_READ_FORBIDDEN',
         403,
         'The current identity cannot read pending candidates.',
       );
-    await client.query(SET_CANDIDATE_SCOPE_SQL, [
-      principal.actorId,
-      principal.actorType,
-      principal.delegatedBy ?? '',
-      maintainer,
-      reviewer,
-      context.authorization.purpose,
-    ]);
+    await setCandidateReadAuthority(client, context);
   };
   const loadBatch = async (
     client: PostgresDataReadClient,

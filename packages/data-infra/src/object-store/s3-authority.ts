@@ -452,6 +452,29 @@ export function createS3AuthorityObjectStore(
       };
     },
 
+    async planCandidateDownload(input) {
+      validateAuthorityObject(input);
+      validateTtl(input.ttlSeconds);
+      if (!options.presignInternal)
+        throw authorityError('OBJECT_STORE_UNAVAILABLE');
+      const key = quarantineKey(input);
+      let url: string;
+      try {
+        url = await options.presignInternal(
+          new GetObjectCommand({ Bucket: options.bucket, Key: key }),
+          input.ttlSeconds,
+        );
+      } catch {
+        throw authorityError('OBJECT_STORE_UNAVAILABLE');
+      }
+      return {
+        bucket: options.bucket,
+        key,
+        url,
+        expiresAt: expiration(clock, input.ttlSeconds),
+      };
+    },
+
     async planVersionDownload(input) {
       const presign = input.internal
         ? options.presignInternal

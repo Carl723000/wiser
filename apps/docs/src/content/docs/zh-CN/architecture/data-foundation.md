@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: c62b13d630afa068d4aa4cbf23c78ac2e3641455
+lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
 ---
 
 ## 当前可运行能力
@@ -510,3 +510,9 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 分页游标绑定引用、视图、原件、当前身份／委托人、用途、策略和资料授权范围；每页最多 200 项且不超过 3 MiB。SQL 先取有界字节前缀，再按最后实际返回的完整记录续读；超限单条几何明确失败。null、数值零、空文本保持区别。几何保留规范 WGS84 点／线／面／集合、来源 CRS 和原文定位，不生成中心点或猜测站点。REST、GraphQL、MCP／Skill 共用同一能力边界。本切片尚不替代真实 Auth／PostgreSQL／浏览器验收、原件下载接线和完整候选保存流程。
 
 候选原件沿用标准流水线的 `FINGERPRINTED` 状态：未绑定目录版本，扫描结果为 CLEAN，输入、资产与内容对象的哈希一致，字节数量一致。`0039_candidate_fingerprinted_original.sql` 只更正候选守卫的状态接线，保留 0037、0038 校验和及既有生命周期约束；不重新扫描、不降级为 QUARANTINED、不创建 RAW 原件或发布版本。
+
+### 固定候选原件读取
+
+候选原件通过独立的鉴权 REST 内容入口读取，请求固定完整候选引用及一个原件，不创建已发布版本、不向调用方重定向存储地址。`0041_candidate_original_reads.sql` 原样保留已发布原件与归属明确的隔离上传策略，仅增加固定引用、当前 API 权限下的待审指纹原件读取。候选记录和原件共用当前主体、委托、用途及期限检查；不可变提交责任和独立审核仍由强制 RLS 约束。
+
+API 只对标准内部隔离对象签名，发送任何字节前核对完整 SHA-256 与准确长度，再核对当前权限和固定引用。GET、HEAD 与单段字节范围共用核验。当前原型支持 1 字节至 32 MiB，超限明确失败；响应禁止缓存、按附件交付并限制浏览器执行，输出各块继续核验权限。授权审计不等于已完成下载。这些实现检查不替代真实 Auth／PostgreSQL／存储／浏览器验收和候选保存流程。

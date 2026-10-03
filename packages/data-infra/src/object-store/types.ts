@@ -114,6 +114,10 @@ export interface S3AuthorityObjectStore {
     readonly sha256: string;
     readonly ttlSeconds: number;
   }): Promise<VersionDownloadPlan>;
+  /** Server-internal delivery only, prior to a published version. */
+  planCandidateDownload(
+    input: AuthorityObjectInput & { readonly ttlSeconds: number },
+  ): Promise<VersionDownloadPlan>;
   completeQuarantineMultipart(
     input: AuthorityObjectInput & {
       readonly multipartUploadId: string;

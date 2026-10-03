@@ -296,7 +296,58 @@ describe('frozen ingestion candidate authority storage', () => {
             )
           ).rows,
         ).toEqual([{ record_values: raw, source_id: 'table:1/row:5' }]);
+        // Pending originals require the entire fixed reference, not a broad
+        // published-resource grant. Exercise real forced RLS and related blobs.
+        const originalRows = async () => ({
+          assets: (
+            await client.query(
+              'select asset_id from catalog.asset where asset_id=$1',
+              [asset],
+            )
+          ).rows,
+          blobs: (
+            await client.query(
+              'select content_blob_id from catalog.content_blob where content_blob_id=$1',
+              [blob],
+            )
+          ).rows,
+        });
+        await client.query(
+          `select set_config('wiser.resource_scope',$1,true),set_config('wiser.resource_action','original.read',true),
+            set_config('wiser.candidate_original_ingestion',$2,true),set_config('wiser.candidate_original_batch',$3,true),
+            set_config('wiser.candidate_original_review_hash',$4,true),set_config('wiser.candidate_original_asset',$5,true)`,
+          [
+            JSON.stringify({
+              mode: 'managed',
+              permissions: {},
+              validUntil: '2099-01-01T00:00:00Z',
+            }),
+            ingestion,
+            batch,
+            reviewHash,
+            asset,
+          ],
+        );
+        expect(await originalRows()).toEqual({
+          assets: [{ asset_id: asset }],
+          blobs: [{ content_blob_id: blob }],
+        });
+        await client.query(
+          "select set_config('wiser.candidate_original_review_hash',$1,true)",
+          ['f'.repeat(64)],
+        );
+        expect(await originalRows()).toEqual({ assets: [], blobs: [] });
+        await client.query(
+          "select set_config('wiser.candidate_original_review_hash',$1,true),set_config('wiser.candidate_original_batch',$2,true)",
+          [reviewHash, randomUUID()],
+        );
+        expect(await originalRows()).toEqual({ assets: [], blobs: [] });
+        await client.query(
+          "select set_config('wiser.candidate_original_batch',$1,true)",
+          [batch],
+        );
         await setActor(other);
+        expect(await originalRows()).toEqual({ assets: [], blobs: [] });
         expect(
           (
             await client.query(
@@ -317,7 +368,12 @@ describe('frozen ingestion candidate authority storage', () => {
             )
           ).rows,
         ).toHaveLength(1);
+        expect(await originalRows()).toEqual({
+          assets: [{ asset_id: asset }],
+          blobs: [{ content_blob_id: blob }],
+        });
         await setActor(actor);
+        expect(await originalRows()).toEqual({ assets: [], blobs: [] });
         expect(
           (
             await client.query(
@@ -340,6 +396,19 @@ describe('frozen ingestion candidate authority storage', () => {
         ).toEqual([]);
         await client.query(
           "select set_config('wiser.candidate_maintainer','true',true)",
+        );
+        expect(await originalRows()).toEqual({
+          assets: [{ asset_id: asset }],
+          blobs: [{ content_blob_id: blob }],
+        });
+        await client.query(
+          "select set_config('wiser.candidate_original_asset',$1,true)",
+          [randomUUID()],
+        );
+        expect(await originalRows()).toEqual({ assets: [], blobs: [] });
+        await client.query(
+          "select set_config('wiser.candidate_original_asset',$1,true),set_config('wiser.resource_scope','',true)",
+          [asset],
         );
         await client.query(
           "select set_config('wiser.actor_type','agent',true),set_config('wiser.delegated_by',$1,true)",

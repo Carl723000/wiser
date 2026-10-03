@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: c62b13d630afa068d4aa4cbf23c78ac2e3641455
+lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -245,3 +245,5 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 新增 `0038_ingestion_candidate_reads.sql` 衔接 0037，不修改已应用的校验和。invoker 候选读取守卫保留当前 Worker 租约访问；API 读取需可信的当前维护权限及不可变身份／委托人匹配，或独立人工审核权限。身份不明／变化、权限／策略撤回和旧检查点均拒绝。回滚型 PostgreSQL 用例增加维护撤回、自审读取拒绝、独立人工读取及身份类型／委托人不匹配；须在依次应用0037、0038、0039并重新配置角色的一次性数据库运行，跳过不等于 SQL／RLS 验收。
 
 0038 后追加 `0039_candidate_fingerprinted_original.sql`，候选守卫读取标准流程中已指纹绑定、扫描 CLEAN 的原件，并要求输入／资产／内容对象哈希及字节数一致。回滚用例沿用合法生命周期，QUARANTINED／FINGERPRINTED／RAW 原约束保留；不得通过重写已应用迁移更正守卫。
+
+`0041_candidate_original_reads.sql` 在受管接收迁移 0040 之后增加 invoker 固定原件守卫，原样保留既有 `catalog.asset.resource_read_scope` 限制，只追加当前 API 受权、未发布 FINGERPRINTED 候选原件的读取。它不扩大已发布授权、不改业务行、不批准资料；既有内容对象策略跟随 RLS 可见资产。适配器核对候选／输入／资产／内容对象哈希与字节数、CLEAN 扫描及标准隔离路径，追加范围内授权审计并只使用内部签名。顺序迁移后重新配置运行角色。HTTP／适配器单元检查不等于 SQL／RLS 验收；回滚用例须在隔离且已迁移的数据库运行，跳过项继续标为未验证。

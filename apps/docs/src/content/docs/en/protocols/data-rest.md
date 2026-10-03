@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: c62b13d630afa068d4aa4cbf23c78ac2e3641455
+lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
 ---
 
 ## Protocol boundary
@@ -418,10 +418,16 @@ Managed projects admit the explicit resource-aware capability set. Ingestion, op
 
 ## Frozen candidate contracts
 
-Candidate contract types are separate from published-version inputs. They currently add no operation, field or Tool to this protocol. Their strict identities, parser outcomes and bounded record pages are documented in [Data Foundation architecture](/en/architecture/data-foundation/#frozen-candidate-contracts); live candidate authorization and transport integration are separate acceptance work.
+Candidate contract types are separate from published-version inputs. The operations below retain this separate identity. Their strict references, parser outcomes and bounded record pages are documented in [Data Foundation architecture](/en/architecture/data-foundation/#frozen-candidate-contracts); live authorization and transport acceptance remain separate from schema checks.
 
 ### Pending ingestion candidates (1.0)
 
 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId` and `/:assetId/records` / `/:assetId/geometry` map to `data.ingestion.candidate.get/records/geometry`. Input fixes `kind: ingestion-candidate`, `ingestionId`, `processingBatchId`, lowercase SHA-256 `reviewHash`, optional `first` (default 50; max 200) and `after`; records/geometry also require `assetId`. REST identity path fields must not be repeated in the query. `versionId` is rejected. Summary totals cover the whole candidate batch while `assets` is paged; unknown outcomes retain null counts. Rows preserve raw fields and locators; map rows preserve canonical point/line/area geometry and source CRS. Follow only the returned cursor, bound to current authority and the complete fixed selection. The 3 MiB limit may reduce the row count; it never truncates values.
 
 Current maintenance authority for the immutable submitter/delegator or independent human review authority is checked on each continuation, in addition to scope/security/policy. Published-source grants are unchanged. Candidate parsing and reading do not approve or publish a source. Original download and saved-candidate workflows require their own integration; live Auth/database/browser validation remains a separate gate.
+
+### Pending original content
+
+`GET` / `HEAD /api/data/v1/tenants/:tenantId/projects/:projectId/ingestions/:ingestionId/candidates/:processingBatchId/assets/:assetId/content?reviewHash=<sha256>` uses the same verified bearer, tenant/project and purpose headers. The only query parameter is the frozen lowercase SHA-256 `reviewHash`; aliases such as `versionId`, repeated parameters and `assetId: source` are rejected. Maintenance for the immutable submitter/delegator or independent human review authority is necessary. Catalog-only authority does not grant candidate-original access.
+
+The route proxies the exact original after full hash/size verification, including for HEAD and a single byte range. It never returns a signed URL or storage address. Originals must be from 1 byte through 32 MiB; a changed, truncated, oversized or unavailable object produces a sanitized failure without original bytes. A valid range returns 206; an unsatisfiable single range returns 416; malformed/multiple ranges return validation failure. Content is private/no-store, attachment-only and sandboxed. Current authority and candidate binding are rechecked before delivery and for each output chunk; already delivered bytes cannot be recalled. The audit records authorized access, not successful receipt. Existing published-original routes retain their behavior. Live service acceptance and candidate saving remain open gates.

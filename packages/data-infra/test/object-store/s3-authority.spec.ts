@@ -46,7 +46,7 @@ it('signs frozen pending originals only for server-internal delivery from canoni
   const presign = vi.fn(() =>
     Promise.resolve('https://public.example/never-expose'),
   );
-  const presignInternal = vi.fn(() =>
+  const presignInternal = vi.fn<S3AuthorityPresigner>(() =>
     Promise.resolve('http://private-store/pending'),
   );
   const store = createS3AuthorityObjectStore({
@@ -77,6 +77,29 @@ it('signs frozen pending originals only for server-internal delivery from canoni
     Bucket: 'authority',
     Key: `tenants/${TENANT_ID}/projects/${PROJECT_ID}/quarantine/${UPLOAD_ID}/object`,
   });
+});
+
+it('does not fall back to public signing for pending originals', async () => {
+  const presign = vi.fn<S3AuthorityPresigner>(() =>
+    Promise.resolve('https://public.example/never-expose'),
+  );
+  const store = createS3AuthorityObjectStore({
+    bucket: 'authority',
+    client: new MemoryS3Client(),
+    presign,
+  });
+  await expect(
+    store.planCandidateDownload({
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      uploadId: UPLOAD_ID,
+      sizeBytes: SIZE,
+      contentType: 'application/octet-stream',
+      sha256: HASH,
+      ttlSeconds: 60,
+    }),
+  ).rejects.toMatchObject({ code: 'OBJECT_STORE_UNAVAILABLE' });
+  expect(presign).not.toHaveBeenCalled();
 });
 
 interface StoredObject {

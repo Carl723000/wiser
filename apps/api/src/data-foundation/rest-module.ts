@@ -9,6 +9,7 @@ import { z } from 'zod';
 import {
   DATA_CAPABILITY_IDS,
   DATA_CAPABILITY_REGISTRY,
+  IngestionCandidateReferenceSchema,
   OperationEventPageSchema,
   RelationListInputSchema,
   type DataCapabilityId,
@@ -23,6 +24,12 @@ import {
   type ExecuteDataCapabilityInput,
 } from './capability-handler.js';
 import type { WiserApiModule } from '../platform/modules.js';
+import { candidateReadAuthority } from './candidate-read-authority.js';
+import {
+  MAX_CANDIDATE_ORIGINAL_BYTES,
+  type CandidateOriginalPort,
+  type CandidateOriginalDownload,
+} from './postgres-candidate-original.js';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -60,7 +67,7 @@ export interface DataFoundationRestCapabilityHandler {
   readonly execute: (input: ExecuteDataCapabilityInput) => Promise<unknown>;
 }
 
-export interface DataFoundationAssetDownloadPort {
+export interface DataFoundationAssetDownloadPort extends Partial<CandidateOriginalPort> {
   createDownload(input: {
     readonly context: PlatformRequestContext;
     readonly internal?: boolean;
@@ -672,6 +679,172 @@ export function createDataFoundationRestModule(
         });
       }
       if (options.assetDownload !== undefined) {
+        app.route({
+          method: ['GET', 'HEAD'],
+          url: '/api/data/v1/tenants/:tenantId/projects/:projectId/ingestions/:ingestionId/candidates/:processingBatchId/assets/:assetId/content',
+          handler: async (request, reply) => {
+            setNoStore(reply);
+            const params = record(request.params);
+            const query = record(request.query);
+            const assetId = params?.['assetId'];
+            const reference = IngestionCandidateReferenceSchema.safeParse({
+              kind: 'ingestion-candidate',
+              ingestionId: params?.['ingestionId'],
+              processingBatchId: params?.['processingBatchId'],
+              reviewHash: query?.['reviewHash'],
+            });
+            const tenantId = params?.['tenantId'];
+            const projectId = params?.['projectId'];
+            const range = request.headers.range;
+            if (
+              !reference.success ||
+              !query ||
+              Object.keys(query).length !== 1 ||
+              typeof tenantId !== 'string' ||
+              !UUID_PATTERN.test(tenantId) ||
+              typeof projectId !== 'string' ||
+              !UUID_PATTERN.test(projectId) ||
+              typeof assetId !== 'string' ||
+              !UUID_PATTERN.test(assetId) ||
+              (range !== undefined &&
+                !/^bytes=(?:[0-9]{1,15}-[0-9]{0,15}|-[0-9]{1,15})$/.test(range))
+            )
+              return sendError(request, reply, errors.validation);
+            const resolved = await resolveContext(request, options.resolver);
+            if ('error' in resolved)
+              return sendError(request, reply, resolved.error);
+            const authority = candidateReadAuthority(resolved.context);
+            if (
+              (!authority.maintainer && !authority.reviewer) ||
+              resolved.context.authorization.tenantId !== tenantId ||
+              resolved.context.authorization.projectId !== projectId
+            )
+              return sendError(request, reply, errors.forbidden);
+            const port = options.assetDownload!;
+            if (
+              !port.createCandidateDownload ||
+              !port.authorizeCandidateDownload
+            )
+              return sendError(request, reply, errors.unavailable);
+            const input = {
+              context: resolved.context,
+              reference: reference.data,
+              assetId,
+            };
+            const authorize = async () => {
+              const fresh = await resolveContext(request, options.resolver);
+              if ('error' in fresh)
+                throw Object.assign(new Error('Original access unavailable'), {
+                  code: 'FORBIDDEN',
+                });
+              if (!sameDeliveryAuthority(resolved.context, fresh.context))
+                throw Object.assign(new Error('Original access unavailable'), {
+                  code: 'FORBIDDEN',
+                });
+              await port.authorizeCandidateDownload!({
+                ...input,
+                context: fresh.context,
+              });
+            };
+            const controller = new AbortController();
+            const close = () => controller.abort();
+            reply.raw.once('close', close);
+            try {
+              const download = await port.createCandidateDownload(input);
+              const url = new URL(download.url);
+              if (
+                !['http:', 'https:'].includes(url.protocol) ||
+                url.username ||
+                url.password ||
+                !Number.isFinite(Date.parse(download.expiresAt)) ||
+                Date.parse(download.expiresAt) <= Date.now()
+              )
+                return sendError(request, reply, errors.unavailable);
+              await authorize();
+              const upstream = await (
+                options.assetContentFetch ?? globalThis.fetch
+              )(download.url, {
+                method: 'GET',
+                redirect: 'error',
+                signal: AbortSignal.any([
+                  controller.signal,
+                  AbortSignal.timeout(120000),
+                ]),
+              });
+              if (upstream.status !== 200 || !upstream.body) {
+                await upstream.body?.cancel();
+                return sendError(request, reply, errors.unavailable);
+              }
+              // Quarantine keys are not published immutable objects. Verify the
+              // complete bounded original before releasing any byte, even ranges.
+              const bytes = await verifyCandidateOriginal(
+                upstream.body,
+                download,
+              );
+              await authorize();
+              const type =
+                upstream.headers.get('content-type') ??
+                'application/octet-stream';
+              if (type.length > 256 || /[\r\n]/.test(type))
+                return sendError(request, reply, errors.unavailable);
+              const selected = candidateOriginalRange(range, bytes.length);
+              reply
+                .header('X-Content-Type-Options', 'nosniff')
+                .header(
+                  'Content-Security-Policy',
+                  "default-src 'none'; sandbox; frame-ancestors 'self'",
+                )
+                .header('Content-Disposition', 'attachment')
+                .header('Content-Type', type)
+                .header('Accept-Ranges', 'bytes');
+              if (!selected) {
+                reply
+                  .status(416)
+                  .header('Content-Range', `bytes */${bytes.length}`);
+                return reply.send();
+              }
+              const { start, end } = selected;
+              reply
+                .status(range === undefined ? 200 : 206)
+                .header('Content-Length', String(end - start + 1));
+              if (range !== undefined)
+                reply.header(
+                  'Content-Range',
+                  `bytes ${start}-${end}/${bytes.length}`,
+                );
+              if (request.method === 'HEAD') return reply.send();
+              const selectedBytes = bytes.subarray(start, end + 1);
+              const stream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                  for (
+                    let offset = 0;
+                    offset < selectedBytes.length;
+                    offset += 65536
+                  )
+                    controller.enqueue(
+                      selectedBytes.subarray(offset, offset + 65536),
+                    );
+                  controller.close();
+                },
+              });
+              return reply.send(
+                Readable.from(
+                  authorizedAssetStream(stream, async () => {
+                    try {
+                      await authorize();
+                      return true;
+                    } catch {
+                      return false;
+                    }
+                  }),
+                  { objectMode: false },
+                ),
+              );
+            } catch (error) {
+              return sendError(request, reply, mapError(error));
+            }
+          },
+        });
         for (const delivery of ['redirect', 'content'] as const)
           app.route({
             method: delivery === 'content' ? ['GET', 'HEAD'] : 'GET',
@@ -906,4 +1079,67 @@ export function createDataFoundationRestModule(
       }
     },
   };
+}
+
+async function verifyCandidateOriginal(
+  body: ReadableStream<Uint8Array>,
+  expected: CandidateOriginalDownload,
+): Promise<Buffer> {
+  const unavailable = () =>
+    Object.assign(new Error('Original verification unavailable'), {
+      code: 'UNAVAILABLE',
+    });
+  const reader = body.getReader();
+  let complete = false;
+  try {
+    if (
+      !Number.isSafeInteger(expected.sizeBytes) ||
+      expected.sizeBytes < 1 ||
+      expected.sizeBytes > MAX_CANDIDATE_ORIGINAL_BYTES ||
+      !/^[a-f0-9]{64}$/.test(expected.sha256)
+    )
+      throw unavailable();
+    const bytes = Buffer.alloc(expected.sizeBytes);
+    const hash = createHash('sha256');
+    let length = 0;
+    while (true) {
+      const next = await reader.read();
+      if (next.done) {
+        complete = true;
+        break;
+      }
+      const end = length + next.value.byteLength;
+      if (end > expected.sizeBytes) throw unavailable();
+      bytes.set(next.value, length);
+      hash.update(bytes.subarray(length, end));
+      length = end;
+    }
+    if (length !== expected.sizeBytes || hash.digest('hex') !== expected.sha256)
+      throw unavailable();
+    return bytes;
+  } catch {
+    throw unavailable();
+  } finally {
+    try {
+      if (!complete) await reader.cancel();
+    } catch {
+      /* Preserve the sanitized error. */
+    }
+    reader.releaseLock();
+  }
+}
+
+function candidateOriginalRange(range: string | undefined, length: number) {
+  if (range === undefined) return { start: 0, end: length - 1 };
+  const parts = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!parts) return null;
+  if (!parts[1]) {
+    const suffix = Number(parts[2]);
+    return suffix > 0
+      ? { start: Math.max(0, length - suffix), end: length - 1 }
+      : null;
+  }
+  const start = Number(parts[1]);
+  const end = parts[2] ? Math.min(Number(parts[2]), length - 1) : length - 1;
+  return start < length && start <= end ? { start, end } : null;
 }

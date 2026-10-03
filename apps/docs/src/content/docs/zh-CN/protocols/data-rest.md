@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: c62b13d630afa068d4aa4cbf23c78ac2e3641455
+lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
 ---
 
 ## 协议边界
@@ -418,10 +418,16 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 
 ## 候选固定输入契约
 
-候选契约与已发布版本输入分别定义，当前未在本协议新增操作、字段或Tool。严格身份、解析状态及有界记录页见[数据基座架构](/zh-CN/architecture/data-foundation/#候选固定输入契约)；候选当前权限核对与接口接线仍需另行验收。
+候选契约与已发布版本输入分别定义，下列操作保留独立身份。严格引用、解析状态及有界记录页见[数据基座架构](/zh-CN/architecture/data-foundation/#候选固定输入契约)；模式检查与真实鉴权、接口验收分别记录。
 
 ### 待审接收候选（1.0）
 
 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId` and `/:assetId/records` / `/:assetId/geometry` 对应 `data.ingestion.candidate.get/records/geometry`。输入固定 `kind: ingestion-candidate`、`ingestionId`、`processingBatchId`、小写 SHA-256 `reviewHash`，可选 `first`（默认 50、最多 200）和 `after`；记录／几何还需 `assetId`。REST 路径身份字段不能在查询参数中重复；`versionId` 会被拒绝。摘要计数覆盖完整候选批次，`assets` 则是当前原件分页，未解析计数继续为 null。记录保留原值和定位，空间记录保留规范点／线／面几何及来源 CRS。只能沿返回的游标续读，其绑定当前权限与完整固定选择。3 MiB 上限可能缩小返回条数，但不截断字段。
 
 每次续读重查不可变提交者／委托人的当前维护权限，或独立人工审核者的审核权限，同时检查项目、密级和策略。已发布资料授权保持原范围。候选解析与读取不构成批准或发布；原件下载、保存候选流程及真实 Auth／数据库／浏览器仍单独验收。
+
+### 待审原件内容
+
+`GET`／`HEAD /api/data/v1/tenants/:tenantId/projects/:projectId/ingestions/:ingestionId/candidates/:processingBatchId/assets/:assetId/content?reviewHash=<sha256>` 使用既有受验证的 bearer、租户／项目及用途请求头。唯一查询参数是冻结的小写 SHA-256 `reviewHash`；`versionId` 别名、重复参数及 `assetId: source` 均拒绝。必须具备不可变提交者／委托人的当前维护权限，或独立人工审核权限；普通目录查阅权限不授予候选原件访问。
+
+入口完整核对原件哈希和长度后代理字节，HEAD 与单段范围也核对完整原件，不返回签名链接或存储地址。原件须为 1 字节至 32 MiB；改变、截短、超限或不可用时返回不含原件字节的安全错误。有效范围返回 206，无法满足的单段范围返回 416，错误格式／多段范围返回校验失败。响应为私有、禁止缓存的受限附件。发送前及每个输出块重新核验当前权限和候选绑定；已交付字节无法收回。审计记录受权访问，不冒称已成功接收。既有已发布原件入口保留原行为；真实服务验收与候选保存仍未闭合。

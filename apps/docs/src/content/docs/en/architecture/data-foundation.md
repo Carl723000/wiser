@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: c62b13d630afa068d4aa4cbf23c78ac2e3641455
+lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
 ---
 
 ## What runs today
@@ -510,3 +510,9 @@ Candidate reads require `data.operation.read` plus current project maintenance (
 Records and geometry use ordered, reference/view/asset/actor/delegator/purpose/policy/resource-scope-bound cursors, at most 200 entries and a 3 MiB response budget. SQL selects a bounded byte prefix; the cursor advances from the last complete returned row, and a single over-budget geometry fails explicitly. Null, numeric zero and empty text remain distinct. Geometry retains its canonical WGS84 point/line/area or collection plus source CRS and original locator; no centroid or guessed station is created. REST, GraphQL and MCP/Skill use this same Capability boundary. These code and unit checks do not replace live Auth/PostgreSQL/browser acceptance, original-download integration or a complete saved candidate workflow.
 
 Candidate originals use the canonical `FINGERPRINTED` state: no catalog version, a CLEAN scan, equal input/asset/content-blob hashes and byte sizes. `0039_candidate_fingerprinted_original.sql` corrects candidate guard admission without rewriting the 0037/0038 checksums or weakening existing lifecycle constraints. It does not rescan, downgrade to QUARANTINED, create RAW originals or publish versions.
+
+### Frozen candidate originals
+
+Candidate original delivery uses a separate authenticated REST content route with the complete frozen reference and one original asset. It never creates a published version or redirects the caller to storage. Migration `0041_candidate_original_reads.sql` preserves the existing restrictive published/owned-quarantine policies and adds only fixed-reference, current-API-authority access to fingerprinted pending originals. Candidate record and original reads share current principal, delegation, purpose and expiry checks; immutable submission responsibility and independent-review rules remain in forced RLS.
+
+The API signs only the canonical internal quarantine object, verifies its full SHA-256 and exact size before releasing any byte, then rechecks current authority and the frozen reference. GET, HEAD and single byte ranges share this verification. The prototype accepts originals from 1 byte through 32 MiB; larger originals fail explicitly. Delivery is private/no-store, sandboxed and attachment-only, with per-chunk authority rechecks. An authorization audit is not proof of completed download. These implementation checks do not establish live Auth/PostgreSQL/storage/browser acceptance or a saved-candidate workflow.

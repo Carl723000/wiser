@@ -1,6 +1,11 @@
 import { applyResourceReadScope } from './resource-read-scope.js';
 import type { S3AuthorityObjectStore } from '@wiser/data-infra/object-store';
 import type { PlatformRequestContext } from '@wiser/platform-contracts';
+import {
+  PostgresCandidateOriginalPort,
+  type CandidateOriginalInput,
+  type CandidateOriginalDownload,
+} from './postgres-candidate-original.js';
 
 interface AssetDownloadClient {
   query(
@@ -18,7 +23,8 @@ export interface AssetDownloadPool {
 export type AssetDownloadObjectStore = Pick<
   S3AuthorityObjectStore,
   'planVersionDownload'
->;
+> &
+  Partial<Pick<S3AuthorityObjectStore, 'planCandidateDownload'>>;
 
 const SET_SCOPE_SQL = `
 /* data.asset-download.scope */
@@ -79,6 +85,7 @@ export class PostgresDataAssetDownloadPort {
   readonly #pool: AssetDownloadPool;
   readonly #objectStore: AssetDownloadObjectStore;
   readonly #ttlSeconds: number;
+  readonly #candidate: PostgresCandidateOriginalPort | undefined;
 
   constructor(options: {
     readonly pool: AssetDownloadPool;
@@ -98,6 +105,35 @@ export class PostgresDataAssetDownloadPort {
     this.#pool = options.pool;
     this.#objectStore = options.objectStore;
     this.#ttlSeconds = ttlSeconds;
+    this.#candidate =
+      typeof options.objectStore.planCandidateDownload === 'function'
+        ? new PostgresCandidateOriginalPort(
+            options.pool,
+            {
+              planCandidateDownload:
+                options.objectStore.planCandidateDownload.bind(
+                  options.objectStore,
+                ),
+            },
+            ttlSeconds,
+          )
+        : undefined;
+  }
+
+  async createCandidateDownload(
+    input: CandidateOriginalInput,
+  ): Promise<CandidateOriginalDownload> {
+    if (!this.#candidate)
+      throw new PostgresDataAssetDownloadError('UNAVAILABLE');
+    return this.#candidate.createCandidateDownload(input);
+  }
+
+  async authorizeCandidateDownload(
+    input: CandidateOriginalInput,
+  ): Promise<void> {
+    if (!this.#candidate)
+      throw new PostgresDataAssetDownloadError('UNAVAILABLE');
+    await this.#candidate.authorizeCandidateDownload(input);
   }
 
   async createDownload(input: {
