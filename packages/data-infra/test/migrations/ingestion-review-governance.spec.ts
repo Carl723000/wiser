@@ -53,6 +53,13 @@ describe('trusted ingestion review governance', () => {
           `insert into service.operation(operation_id,tenant_id,project_id,capability_id,actor_id,status,security_level,request_payload) values($1,$2,$3,'data.ingestion.create',$4,'PENDING','L0_PUBLIC','{}')`,
           [ingestion, tenant, project, submitter],
         );
+        await denied(
+          client,
+          `insert into ingestion.session(ingestion_id,tenant_id,project_id,operation_id,owner_project_id,state,intended_uses,requested_security_level,security_level,submitted_by_actor_id,submitted_actor_type,approved_by_actor_id,approved_at)
+          values($1,$2,$3,$1,$3,'APPROVED',array['synthetic-review-test'],'L0_PUBLIC','L0_PUBLIC',$4,'human',$5,clock_timestamp())`,
+          [ingestion, tenant, project, submitter, reviewer],
+          '42501',
+        );
         await client.query(
           `insert into ingestion.session(ingestion_id,tenant_id,project_id,operation_id,owner_project_id,state,intended_uses,requested_security_level,security_level,submitted_by_actor_id,submitted_actor_type) values($1,$2,$3,$1,$3,'SPATIOTEMPORAL_ALIGNED',array['synthetic-review-test'],'L0_PUBLIC','L0_PUBLIC',$4,'human')`,
           [ingestion, tenant, project, submitter],
