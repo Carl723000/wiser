@@ -19,6 +19,11 @@ import {
   ExplorationQueryInputSchema,
   ExplorationResultSchema,
   type ExplorationResult,
+  GetIngestionOutputSchema,
+  type IngestionCandidateAssetPage,
+  type IngestionCandidateRecordPage,
+  type IngestionCandidateGeometryPage,
+  type IngestionCandidateReadInputSchema,
 } from '@wiser/data-contracts';
 
 import {
@@ -64,9 +69,14 @@ const UUID_PATTERN =
 const PURPOSE_PATTERN = /^[a-z][a-z0-9-]{0,95}$/;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_RESPONSE_LIMIT_BYTES = 4_194_304;
+const CANDIDATE_RESPONSE_LIMIT_BYTES = 3 * 1024 * 1024;
 const GEO_PAGE_SIZE = 100;
 const MAX_GEO_FEATURES = 10_000;
 const MAX_GEO_PAGES = 101;
+type CandidatePage =
+  | IngestionCandidateAssetPage
+  | IngestionCandidateRecordPage
+  | IngestionCandidateGeometryPage;
 
 function hasControlCharacter(value: string): boolean {
   return [...value].some((character) => {
@@ -144,6 +154,15 @@ export interface DataFoundationDal {
   dataItem(dataItemId: string, versionId?: string): Promise<DataItemDetailDto>;
   versions(dataItemId: string): Promise<DataItemVersionPageDto>;
   ingestion(ingestionId: string): Promise<IngestionDto>;
+  ingestionDetail(
+    ingestionId: string,
+    signal?: AbortSignal,
+  ): Promise<ReturnType<typeof GetIngestionOutputSchema.parse>>;
+  candidate(
+    action: 'get' | 'records' | 'geometry',
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<CandidatePage>;
   operation(operationId: string): Promise<OperationDto>;
   operationEvents(operationId: string): Promise<readonly OperationEventDto[]>;
   search(query: string, after?: string): Promise<SearchPageDto>;
@@ -333,6 +352,10 @@ function validateQuery(value: string, maximum: number): void {
   }
 }
 
+function sameUuid(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
 export function createDataFoundationDal(
   options: DataFoundationDalOptions,
 ): DataFoundationDal {
@@ -352,64 +375,118 @@ export function createDataFoundationDal(
       readonly method?: 'GET' | 'POST';
       readonly body?: unknown;
       readonly acceptedStatuses?: readonly number[];
+      readonly signal?: AbortSignal;
+      readonly responseLimitBytes?: number;
     } = {},
     mode: 'json' | 'sse' = 'json',
   ): Promise<unknown> {
-    const accessToken = await token();
-    const headers = new Headers({
-      Accept:
-        mode === 'sse'
-          ? 'text/event-stream'
-          : 'application/json; charset=utf-8',
-      Authorization: `Bearer ${accessToken}`,
-      'X-WISER-Tenant-ID': options.config.tenantId,
-      'X-WISER-Project-ID': options.config.projectId,
-      'X-WISER-Purpose': options.config.purpose,
-    });
-    if (init.idempotencyKey)
-      headers.set('Idempotency-Key', init.idempotencyKey);
-    if (init.expectedVersion !== undefined)
-      headers.set('If-Match', `"v${init.expectedVersion}"`);
-    if (init.body !== undefined) {
-      headers.set('Content-Type', 'application/json; charset=utf-8');
-    }
-    let response: Response;
-    try {
-      response = await request(`${options.config.apiOrigin}${path}`, {
-        method: init.method ?? 'GET',
-        headers,
-        ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-        cache: 'no-store',
-        redirect: 'error',
-        signal: AbortSignal.timeout(options.config.requestTimeoutMs),
+    const timeout = new AbortController();
+    const timer = setTimeout(
+      () => timeout.abort(),
+      options.config.requestTimeoutMs,
+    );
+    const signal = AbortSignal.any([
+      timeout.signal,
+      ...(init.signal ? [init.signal] : []),
+    ]);
+    const abortError = () =>
+      new DataFoundationApiError(
+        'unavailable',
+        init.signal?.aborted
+          ? 499
+          : init.signal || init.responseLimitBytes !== undefined
+            ? 504
+            : 503,
+      );
+    let onAbort: (() => void) | undefined;
+    const work = async () => {
+      signal.throwIfAborted();
+      const accessToken = await token();
+      signal.throwIfAborted();
+      const headers = new Headers({
+        Accept:
+          mode === 'sse'
+            ? 'text/event-stream'
+            : 'application/json; charset=utf-8',
+        Authorization: `Bearer ${accessToken}`,
+        'X-WISER-Tenant-ID': options.config.tenantId,
+        'X-WISER-Project-ID': options.config.projectId,
+        'X-WISER-Purpose': options.config.purpose,
       });
-    } catch (error) {
-      if (error instanceof DataFoundationApiError) throw error;
-      throw new DataFoundationApiError('unavailable', 503);
-    }
-    if (
-      !response.ok &&
-      !(init.acceptedStatuses ?? []).includes(response.status)
-    ) {
-      throw classifyStatus(response.status);
-    }
-    const contentType = response.headers.get('content-type') ?? '';
-    if (
-      (mode === 'json' &&
-        !contentType.includes('application/json') &&
-        !contentType.includes('application/geo+json')) ||
-      (mode === 'sse' && !contentType.includes('text/event-stream'))
-    ) {
-      throw new DataFoundationApiError('contract', 502);
-    }
-    let text: string;
+      if (init.idempotencyKey)
+        headers.set('Idempotency-Key', init.idempotencyKey);
+      if (init.expectedVersion !== undefined)
+        headers.set('If-Match', `"v${init.expectedVersion}"`);
+      if (init.body !== undefined) {
+        headers.set('Content-Type', 'application/json; charset=utf-8');
+      }
+      let response: Response;
+      try {
+        response = await request(`${options.config.apiOrigin}${path}`, {
+          method: init.method ?? 'GET',
+          headers,
+          ...(init.body === undefined
+            ? {}
+            : { body: JSON.stringify(init.body) }),
+          cache: 'no-store',
+          redirect: 'error',
+          signal,
+        });
+      } catch (error) {
+        if (error instanceof DataFoundationApiError) throw error;
+        throw new DataFoundationApiError('unavailable', 503);
+      }
+      if (signal.aborted) {
+        void response.body?.cancel().catch(() => {});
+        throw abortError();
+      }
+      if (
+        !response.ok &&
+        !(init.acceptedStatuses ?? []).includes(response.status)
+      ) {
+        void response.body?.cancel().catch(() => {});
+        throw classifyStatus(response.status);
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      if (
+        (mode === 'json' &&
+          !contentType.includes('application/json') &&
+          !contentType.includes('application/geo+json')) ||
+        (mode === 'sse' && !contentType.includes('text/event-stream'))
+      ) {
+        void response.body?.cancel().catch(() => {});
+        throw new DataFoundationApiError('contract', 502);
+      }
+      let text: string;
+      try {
+        text = await boundedText(
+          response,
+          Math.min(
+            options.config.responseLimitBytes,
+            init.responseLimitBytes ?? options.config.responseLimitBytes,
+          ),
+          signal,
+        );
+      } catch (error) {
+        if (error instanceof DataFoundationApiError) throw error;
+        throw new DataFoundationApiError('contract', 502);
+      }
+      return mode === 'json' ? json(text) : text;
+    };
     try {
-      text = await boundedText(response, options.config.responseLimitBytes);
+      if (signal.aborted) throw abortError();
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(abortError());
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+      return await Promise.race([work(), aborted]);
     } catch (error) {
-      if (error instanceof DataFoundationApiError) throw error;
-      throw new DataFoundationApiError('contract', 502);
+      if (signal.aborted) throw abortError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      if (onAbort) signal.removeEventListener('abort', onAbort);
     }
-    return mode === 'json' ? json(text) : text;
   }
 
   async function parsed<Result>(
@@ -799,6 +876,82 @@ export function createDataFoundationDal(
       return parsed(
         () => call(`/api/data/v1/ingestions/${ingestionId}`),
         parseIngestion,
+      );
+    },
+    ingestionDetail: (ingestionId, signal) => {
+      validateUuid(ingestionId);
+      const capability = DATA_CAPABILITY_REGISTRY['data.ingestion.get'];
+      return parsed(
+        () =>
+          call(
+            capability.restMapping.path.replace(':ingestionId', ingestionId),
+            {
+              signal,
+              responseLimitBytes: CANDIDATE_RESPONSE_LIMIT_BYTES,
+            },
+          ),
+        (value) => {
+          const detail = GetIngestionOutputSchema.parse(value);
+          if (
+            !sameUuid(detail.ingestion.ingestionId, ingestionId) ||
+            !sameUuid(detail.ingestion.tenantId, options.config.tenantId) ||
+            !sameUuid(detail.ingestion.projectId, options.config.projectId) ||
+            (detail.candidateReference !== null &&
+              !sameUuid(detail.candidateReference.ingestionId, ingestionId))
+          )
+            throw new DataFoundationApiError('contract', 502);
+          return detail;
+        },
+      );
+    },
+    candidate: async (action, input, signal) => {
+      if (action !== 'get' && action !== 'records' && action !== 'geometry')
+        throw new DataFoundationApiError('invalid-request', 422);
+      const capability =
+        DATA_CAPABILITY_REGISTRY[`data.ingestion.candidate.${action}`];
+      const checked = capability.inputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data as ReturnType<
+        typeof IngestionCandidateReadInputSchema.parse
+      > & { assetId?: string };
+      let path: string = capability.restMapping.path;
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(data)) {
+        if (path.includes(`:${key}`))
+          path = path.replace(`:${key}`, encodeURIComponent(String(value)));
+        else if (value !== undefined) query.set(key, String(value));
+      }
+      return parsed(
+        () =>
+          call(`${path}?${query}`, {
+            signal,
+            responseLimitBytes: CANDIDATE_RESPONSE_LIMIT_BYTES,
+          }),
+        (value) => {
+          const page = capability.outputSchema.parse(value) as CandidatePage;
+          const reference = page.reference;
+          const items =
+            'assets' in page
+              ? page.assets
+              : 'records' in page
+                ? page.records
+                : page.features;
+          if (
+            reference.kind !== data.kind ||
+            !sameUuid(reference.ingestionId, data.ingestionId) ||
+            !sameUuid(reference.processingBatchId, data.processingBatchId) ||
+            reference.reviewHash !== data.reviewHash ||
+            ('assetId' in data &&
+              (!('assetId' in page) ||
+                !data.assetId ||
+                !sameUuid(page.assetId, data.assetId))) ||
+            items.length > data.first ||
+            (items.length === 0 && page.nextCursor !== null)
+          )
+            throw new DataFoundationApiError('contract', 502);
+          return page;
+        },
       );
     },
     operation: (operationId) => {

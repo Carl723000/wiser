@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 79a10ae0ea6e4cb366b5c8a9f2e2884947dd930b
+lastReviewedCommit: e2d2842742f1b6a820566821573d6689b74acb26
 ---
 
 ## What runs today
@@ -518,6 +518,12 @@ The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
 
 `data.operation.get/events` admit managed reads only for an exact standard `data.uploadSession.create` or `data.ingestion.create` task. Each read checks fresh trusted Auth, authorized purpose, expiry and resource scope, then immutable upload responsibility or ingestion-session responsibility before reading status, errors or events. Current maintenance permission admits the original actor/type/delegator or its responsible human delegator; current publish permission admits only an independent human reviewer. Unknown legacy responsibility, other tasks and foreign scopes fail without diagnostic leakage. Managed event continuations additionally bind actor, type, delegator and purpose; a new request under another currently authorized purpose is allowed, but cannot reuse that cursor. Managed errors keep the existing stable error-code format and retryable flag, use `HANDLER_UNEXPECTED` for invalid upstream codes, replace free-text diagnostics with `Operation failed.`, and omit event messages. No submission metadata or storage keys are returned. Session RLS and the existing Operation immutability trigger remain in force; no new Operation policy or migration is required. Legacy reads and DTO/discovery archives are unchanged. Resume/cancel, approval/rejection and additional maintenance capabilities remain excluded. Candidate discovery and status reads grant no professional approval or publication. Real Auth, SQL/RLS, Worker and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
+
+### Web candidate read transport
+
+The server-only Web DAL retains the legacy `ingestion` reader and adds strict 1.2 `ingestionDetail`, preserving the nullable candidate reference while checking ingestion identity and the server-configured tenant/project. Its `candidate` reader uses the registered get/records/geometry paths and strict input/output schemas; path identities are consumed into the path while kind, review hash and pagination remain in the GET query. Every response must match the complete frozen reference and requested original asset, stay within `first`, and never return an empty page with a continuation cursor.
+
+The same-origin POST bridge at `/api/data-foundation/candidates/[action]` permits only those three reads. It accepts at most 16 KiB of streamed UTF-8 JSON and forwards browser cancellation. The DAL verifies the existing Session, fixes tenant/project/purpose on the server, rejects redirects and uses no-store requests. A deadline covers authentication waiting, HTTP and continuous body reading; response bytes are limited to the smaller of 3 MiB and the configured Web budget. Cancellation, malformed output and upstream failures expose safe status categories, never raw diagnostics or storage URLs. This transport creates no published version or local-pack fallback and does not establish live Auth/SQL/browser acceptance.
 
 ### Frozen candidate originals
 

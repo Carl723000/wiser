@@ -74,6 +74,23 @@ it('enforces the body limit across chunks and cancels the unread stream', async 
   expect(cancel).toHaveBeenCalledOnce();
   expect(getDal).not.toHaveBeenCalled();
 });
+it('returns 413 even when the oversized request stream never finishes cancellation', async () => {
+  const cancel = vi.fn(() => new Promise<void>(() => {}));
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(16385));
+    },
+    cancel,
+  });
+  await expect(
+    Promise.race([
+      call('get', body),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+    ]),
+  ).resolves.toMatchObject({ status: 413 });
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(getDal).not.toHaveBeenCalled();
+});
 it('does not acquire a session after the browser aborts a stalled request body', async () => {
   const abort = new AbortController();
   const cancel = vi.fn();

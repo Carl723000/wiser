@@ -1053,6 +1053,61 @@ function ingestionDetail() {
 }
 
 describe('fixed candidate transport', () => {
+  it('retains a null candidate reference when no readable batch exists', async () => {
+    const detail = { ...ingestionDetail(), candidateReference: null };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(detail)),
+    );
+    await expect(
+      candidateDal(fetch).ingestionDetail(PROJECT_ID),
+    ).resolves.toEqual(detail);
+  });
+  it('compares ingestion UUID identity without rejecting a valid uppercase path', async () => {
+    const detail = {
+      ...ingestionDetail(),
+      ingestion: {
+        ...ingestionDetail().ingestion,
+        ingestionId: 'abcdefab-cdef-4abc-8abc-abcdefabcdef',
+      },
+      candidateReference: {
+        ...candidateReference,
+        ingestionId: 'abcdefab-cdef-4abc-8abc-abcdefabcdef',
+      },
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(detail)),
+    );
+    await expect(
+      candidateDal(fetch).ingestionDetail(
+        detail.ingestion.ingestionId.toUpperCase(),
+      ),
+    ).resolves.toEqual(detail);
+  });
+  it('compares candidate UUID identities without rejecting canonical lowercase replies', async () => {
+    const reference = {
+      ...candidateReference,
+      ingestionId: 'abcdefab-cdef-4abc-8abc-abcdefabcdef',
+      processingBatchId: 'bcdefabc-defa-4bcd-8bcd-bcdefabcdefa',
+    };
+    const assetId = 'cdefabcd-efab-4cde-8cde-cdefabcdefab';
+    const page = {
+      ...candidatePage('records'),
+      reference,
+      assetId,
+      records: [],
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(page)),
+    );
+    await expect(
+      candidateDal(fetch).candidate('records', {
+        ...reference,
+        ingestionId: reference.ingestionId.toUpperCase(),
+        processingBatchId: reference.processingBatchId.toUpperCase(),
+        assetId: assetId.toUpperCase(),
+      }),
+    ).resolves.toEqual(page);
+  });
   it('preserves the strict 1.2 ingestion detail and leaves the old ingestion method available', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(() =>
       Promise.resolve(Response.json(ingestionDetail())),
@@ -1067,6 +1122,8 @@ describe('fixed candidate transport', () => {
   });
   it.each([
     { ingestion: { ...ingestionDetail().ingestion, ingestionId: USER_ID } },
+    { ingestion: { ...ingestionDetail().ingestion, tenantId: USER_ID } },
+    { ingestion: { ...ingestionDetail().ingestion, projectId: USER_ID } },
     { candidateReference: { ...candidateReference, ingestionId: USER_ID } },
     { candidateReference: undefined },
     { internalStorageKey: 'private/path' },
@@ -1104,7 +1161,7 @@ describe('fixed candidate transport', () => {
         ).candidate(action, input),
       ).resolves.toEqual(candidatePage(action));
       expect(order).toEqual(['claims', 'session', 'fetch']);
-      const url = new URL(fetch.mock.calls[0]![0] as string);
+      const url = new URL(fetch.mock.calls[0][0] as string);
       expect(url.pathname).toBe(
         `/api/data/v1/ingestions/${PROJECT_ID}/candidates/${GEO_VERSION_ID}` +
           (action === 'get' ? '' : `/${USER_ID}/${action}`),
@@ -1115,7 +1172,8 @@ describe('fixed candidate transport', () => {
         first: '10',
         after: input.after,
       });
-      const init = fetch.mock.calls[0]![1]!;
+      const init = fetch.mock.calls[0][1];
+      if (!init) throw Error('Expected HTTP request options');
       const headers = new Headers(init.headers);
       expect(headers.get('authorization')).toBe(`Bearer ${accessToken()}`);
       expect(headers.get('x-wiser-tenant-id')).toBe(TENANT_ID);
@@ -1298,7 +1356,7 @@ describe('fixed candidate transport', () => {
       candidateDal(fetch).candidate('get', candidateReference, caller.signal),
     ).rejects.toMatchObject({ kind: 'unavailable', status: 499 });
     expect(cancel).toHaveBeenCalledOnce();
-    expect(fetch.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
   });
   it('rejects a previously cancelled call before accessing the session', async () => {
     const auth = vi.fn(() => Promise.resolve(authClient([])));
@@ -1318,10 +1376,13 @@ describe('fixed candidate transport', () => {
       Promise.resolve(new Response('private upstream URL', { status: 403 })),
     );
     await expect(
-      candidateDal(
-        fetch,
-        {},
-        () => Promise.resolve(null) as Promise<DataFoundationAuthClient>,
+      candidateDal(fetch, {}, () =>
+        Promise.resolve({
+          auth: {
+            ...authClient([]).auth,
+            getClaims: () => Promise.resolve({ data: null, error: null }),
+          },
+        }),
       ).candidate('get', candidateReference),
     ).rejects.toMatchObject({ status: 401 });
     expect(fetch).not.toHaveBeenCalled();
@@ -1332,5 +1393,117 @@ describe('fixed candidate transport', () => {
       message: 'Data Foundation request failed: authorization.',
     });
     expect(fetch).toHaveBeenCalledOnce();
+  });
+  it.each([{ ingestionId: USER_ID }, { processingBatchId: USER_ID }])(
+    'rejects a response from another ingestion or batch %j',
+    async (change) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            ...candidatePage('get'),
+            reference: { ...candidateReference, ...change },
+          }),
+        ),
+      );
+      await expect(
+        candidateDal(fetch).candidate('get', candidateReference),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it.each(['get', 'records', 'geometry'] as const)(
+    'rejects unknown fields in the %s output',
+    async (action) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            ...candidatePage(action),
+            internalUrl: 'https://private.example/storage',
+          }),
+        ),
+      );
+      await expect(
+        candidateDal(fetch).candidate(action, {
+          ...candidateReference,
+          ...(action === 'get' ? {} : { assetId: USER_ID }),
+        }),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it('retains the default first and allows a terminal empty page without a false continuation', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        Response.json({
+          ...candidatePage('records'),
+          records: [],
+          nextCursor: null,
+        }),
+      ),
+    );
+    await expect(
+      candidateDal(fetch).candidate('records', {
+        ...candidateReference,
+        assetId: USER_ID,
+      }),
+    ).resolves.toMatchObject({ records: [], nextCursor: null });
+    expect(
+      new URL(fetch.mock.calls[0][0] as string).searchParams.get('first'),
+    ).toBe('50');
+  });
+  it('bounds an unresolved verified-session lookup and never starts HTTP after its deadline', async () => {
+    let resolveAuth!: (client: DataFoundationAuthClient) => void;
+    const pendingAuth = new Promise<DataFoundationAuthClient>((resolve) => {
+      resolveAuth = resolve;
+    });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const reading = candidateDal(
+      fetch,
+      { requestTimeoutMs: 20 },
+      () => pendingAuth,
+    ).candidate('get', candidateReference);
+    await expect(reading).rejects.toMatchObject({ status: 504 });
+    resolveAuth(authClient([]));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('preserves the old DAL unavailable status on a fetch deadline', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      () => new Promise<Response>(() => {}),
+    );
+    await expect(
+      candidateDal(fetch, { requestTimeoutMs: 20 }).health(),
+    ).rejects.toMatchObject({ kind: 'unavailable', status: 503 });
+  });
+  it('cancels a late HTTP response even when the transport ignores cancellation', async () => {
+    let resolveFetch!: (response: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const fetch = vi.fn<typeof globalThis.fetch>(() => pendingFetch);
+    const reading = candidateDal(fetch, { requestTimeoutMs: 20 }).candidate(
+      'get',
+      candidateReference,
+    );
+    await expect(reading).rejects.toMatchObject({ status: 504 });
+    const cancel = vi.fn();
+    resolveFetch(
+      new Response(new ReadableStream({ cancel }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('rejects malformed ingestion identity and a non-read candidate action before session access', async () => {
+    const auth = vi.fn(() => Promise.resolve(authClient([])));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const dal = candidateDal(fetch, {}, auth);
+    expect(() => dal.ingestionDetail('../private')).toThrow(
+      DataFoundationApiError,
+    );
+    await expect(
+      dal.candidate('publish' as 'get', candidateReference),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(auth).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

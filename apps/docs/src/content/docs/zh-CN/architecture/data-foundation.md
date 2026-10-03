@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 79a10ae0ea6e4cb366b5c8a9f2e2884947dd930b
+lastReviewedCommit: e2d2842742f1b6a820566821573d6689b74acb26
 ---
 
 ## 当前可运行能力
@@ -518,6 +518,12 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 `data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约继续归档，REST、GraphQL、MCP和Skill采用同一注册契约。只使用返回的引用衔接现有三项候选读取。
 
 `data.operation.get/events`仅允许读取确切的标准`data.uploadSession.create`或`data.ingestion.create`任务。每次先检查可信Auth、当前获权用途、期限及资源范围，再按不可变上传责任或入库会话责任判断归属，随后才读取状态、错误及事件。当前维护权限允许原提交主体／类型／委托人，或负责委托的人类继续查看；当前发布权限只允许独立人类审核者读取。旧记录责任不明、非接收任务及跨人／项目范围均拒绝，且不泄露诊断信息。受管事件游标另外绑定主体、类型、委托及用途；新的当前合法用途可发起新请求，但不能重放原游标。受管错误保留既有稳定错误类别格式和可重试标记，无效上游类别映射为`HANDLER_UNEXPECTED`，自由诊断文字统一为`Operation failed.`，事件不返回原始消息；提交元数据与存储键不进入响应。继续使用会话RLS与既有Operation不可变触发器，不增加Operation策略或迁移。旧范围读取及DTO／发现归档保持原样。恢复／取消、批准／拒绝及其他维护能力仍未放行。候选发现和状态读取不授予专业批准或发布权；真实Auth、SQL／RLS、Worker和浏览器链须单独完成验收，不能由合成测试替代。
+
+### 网页候选读取通道
+
+网页服务端 DAL 保留旧的 `ingestion` 方法，新增严格的 1.2 `ingestionDetail`，保留可为 null 的候选引用，并核对接收编号及服务器配置的租户／项目。`candidate` 方法复用已注册的 get／records／geometry 路径和严格输入／输出契约：路径消耗接收、处理批次及原件编号，GET 查询保留 kind、审核哈希与分页参数。返回结果必须匹配完整固定引用和请求原件，条数不得超过 `first`，空页不能带有续页游标。
+
+同源 POST 入口 `/api/data-foundation/candidates/[action]` 仅提供这三类读取，流式 UTF-8 JSON 请求最多 16 KiB，并传递浏览器取消信号。DAL 验证既有 Session，由服务器固定租户／项目／用途，拒绝重定向并禁止缓存。超时覆盖认证等待、HTTP 请求及正文持续读取；响应以 3 MiB 和网页配置上限中的较小值为限。取消、契约异常及上游失败只返回安全状态分类，不返回原始诊断或存储地址。该通道不创建已发布版本、不回退本机资料包，也不代表真实 Auth／SQL／浏览器验收通过。
 
 ### 固定候选原件读取
 
