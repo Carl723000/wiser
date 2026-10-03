@@ -77,6 +77,39 @@ describe('multi-region readiness', () => {
     expect(result.counts.sources).toBe(1);
     expect(result.needs[1].state).toBe('not-obtained');
   });
+  it('does not invent cleaning or quality-control result sets when no task is recorded', () => {
+    const result = buildReadiness(pack(), 'chaobai');
+    for (const id of ['cleaning', 'quality-control'] as const) {
+      expect(
+        result.questions.find((question) => question.id === id)?.recordIds,
+      ).toEqual([]);
+    }
+  });
+  it('resolves readability by the exact source version rather than the last matching source ID', () => {
+    const restrictedRevision = {
+      ...material,
+      versionId: 'v2',
+      rights: { ...material.rights, displayAllowed: false },
+    };
+    const result = buildReadiness(
+      pack([material, restrictedRevision]),
+      'chaobai',
+    );
+    expect(result.uses.find((use) => use.id === 'archive')?.eligible).toBe(
+      true,
+    );
+  });
+  it('does not include record contents with no matching readable fixed source', () => {
+    const orphan = { ...record, id: 'orphan', versionId: 'not-present' };
+    const result = buildReadiness(
+      pack([material], [record, orphan]),
+      'chaobai',
+    );
+    expect(result.counts.records).toBe(1);
+    expect(
+      result.questions.flatMap((question) => question.recordIds),
+    ).not.toContain('orphan');
+  });
   it('global union deduplicates a source used by several regions and a format copy', () => {
     const duplicate = { ...material, id: 'copy', duplicateOf: 'report' };
     const result = buildReadiness(

@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a7f2dbb9ee6950cc6dcc400b3bc5eadc1550ee99
+lastReviewedCommit: 5bfb45754bb42a0b5f3178b16595b69201b3e4b8
 ---
 
 ## 两个前端应用

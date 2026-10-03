@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-02
-lastReviewedCommit: 72e1d46e86e936997cb2203ee60963532914992d
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: 5bfb45754bb42a0b5f3178b16595b69201b3e4b8
 ---
 
 ## What runs today
