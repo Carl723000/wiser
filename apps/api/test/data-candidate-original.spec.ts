@@ -76,6 +76,8 @@ function fixture(
     current?: PlatformRequestContext;
     revoke?: boolean;
     sign?: () => void;
+    sizeBytes?: number;
+    fetcher?: typeof globalThis.fetch;
   } = {},
 ) {
   let reads = 0;
@@ -85,7 +87,7 @@ function fixture(
       url: 'http://private-store/candidate',
       expiresAt: '2099-01-01T00:00:00Z',
       sha256,
-      sizeBytes: original.byteLength,
+      sizeBytes: options.sizeBytes ?? original.byteLength,
     });
   });
   const authorize = vi.fn(() => {
@@ -95,12 +97,14 @@ function fixture(
       );
     return Promise.resolve();
   });
-  const fetch = vi.fn(() =>
-    Promise.resolve(
-      new Response(options.body ?? original, {
-        headers: { 'content-type': 'application/octet-stream' },
-      }),
-    ),
+  const fetch = vi.fn(
+    options.fetcher ??
+      (() =>
+        Promise.resolve(
+          new Response(options.body ?? original, {
+            headers: { 'content-type': 'application/octet-stream' },
+          }),
+        )),
   );
   const resolver = vi.fn(() => Promise.resolve(options.current ?? context));
   const app = buildApp({
@@ -126,6 +130,43 @@ function fixture(
 }
 
 describe('fixed pending original HTTP delivery', () => {
+  it('bounds concurrent GET, HEAD and Range upstream reads for one responsible actor', async () => {
+    const waiting: Array<(response: Response) => void> = [];
+    const f = fixture({
+      fetcher: () =>
+        waiting.length < 2
+          ? new Promise<Response>((resolve) => waiting.push(resolve))
+          : Promise.resolve(new Response(original)),
+    });
+    const first = f.app.inject({ method: 'GET', url, headers });
+    const second = f.app.inject({ method: 'HEAD', url, headers });
+    try {
+      await vi.waitFor(() => expect(waiting).toHaveLength(2));
+      const excess = await f.app.inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, range: 'bytes=0-0' },
+      });
+      expect(excess.statusCode).toBe(503);
+      expect(excess.headers['retry-after']).toBe('1');
+      expect(excess.body).not.toContain('private-store');
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      for (const resolve of waiting) resolve(new Response(original));
+      await Promise.all([first, second]);
+    }
+  });
+
+  it.each([0, 32 * 1024 * 1024 + 1])(
+    'rejects an invalid authorized size before fetching original bytes: %s',
+    async (sizeBytes) => {
+      const f = fixture({ sizeBytes });
+      const response = await f.app.inject({ method: 'GET', url, headers });
+      expect(response.statusCode).toBe(503);
+      expect(f.fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it('serves exact original bytes without a published version or signed redirect', async () => {
     const f = fixture();
     const r = await f.app.inject({ method: 'GET', url, headers });
