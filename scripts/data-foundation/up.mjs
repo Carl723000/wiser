@@ -23,6 +23,7 @@ import {
   localSupabaseArguments,
   readLocalSupabaseTarget,
 } from './local-control-target.mjs';
+import { resolveLocalDockerEnvironment } from './local-docker-runtime.mjs';
 
 const LOCAL_OPERATOR_EMAIL = 'operator@agent-excon.test';
 const LOCAL_OPERATOR_PASSWORD = 'WiserLocalOperator-2026!';
@@ -48,6 +49,12 @@ function validLocalSecrets(value) {
   );
 }
 
+function invalidLocalSecretState() {
+  // JSON syntax errors can quote saved credentials. Preserve the failure
+  // category without retaining the parser's message or cause chain.
+  return new Error('Local WISER runtime secret state is invalid.');
+}
+
 export async function localRuntimeSecrets(workdir = ROOT_DIRECTORY) {
   const directory = join(workdir, '.wiser/local');
   const path = join(directory, 'runtime-secrets.json');
@@ -57,7 +64,7 @@ export async function localRuntimeSecrets(workdir = ROOT_DIRECTORY) {
     return parsed;
   } catch (error) {
     if (error?.code !== 'ENOENT') {
-      throw new Error('Local WISER runtime secret state is invalid.');
+      throw invalidLocalSecretState();
     }
   }
   const created = {
@@ -78,10 +85,10 @@ export async function localRuntimeSecrets(workdir = ROOT_DIRECTORY) {
   try {
     persisted = JSON.parse(await readFile(path, 'utf8'));
   } catch {
-    throw new Error('Local WISER runtime secret state is invalid.');
+    throw invalidLocalSecretState();
   }
   if (!validLocalSecrets(persisted)) {
-    throw new Error('Local WISER runtime secret state is invalid.');
+    throw invalidLocalSecretState();
   }
   return persisted;
 }
@@ -128,6 +135,7 @@ export async function startDataFoundation(
   const readTarget = dependencies.readTarget ?? readLocalSupabaseTarget;
   const target = await readTarget(environment, ROOT_DIRECTORY);
   assertLocalProject(target, environment);
+  environment = await resolveLocalDockerEnvironment(environment, execute);
   const composeConfiguration = await compose(['config', '--format', 'json'], {
     environment: localBootstrapEnvironment(environment, target),
   });

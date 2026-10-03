@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ROOT_DIRECTORY, runCompose } from './operations.mjs';
 import {
   assertLocalComposeTarget,
   assertLocalDatabaseContainer,
   assertLocalSupabaseStatus,
   localJournalDatabaseUrl,
+  localBootstrapEnvironment,
+  readLocalSupabaseTarget,
 } from './local-control-target.mjs';
 import {
   isolatedEnvironment,
@@ -59,6 +65,73 @@ for (const [label, change] of [
     (document) => {
       document.services.api.environment.SUPABASE_URL =
         'http://host.docker.internal:56321';
+    },
+  ],
+  [
+    'Auth disabled by override',
+    (document) => {
+      document.services.api.environment.WISER_AUTH_MODE = 'off';
+    },
+  ],
+  [
+    'journal switched to memory',
+    (document) => {
+      document.services.api.environment.EXCON_V2_MODE = 'memory';
+    },
+  ],
+  [
+    'external project network',
+    (document) => {
+      document.networks.default = {
+        name: 'wiser_data-foundation',
+        external: true,
+      };
+    },
+  ],
+  [
+    'network with another project name',
+    (document) => {
+      document.networks.default.name = 'wiser_default';
+    },
+  ],
+  [
+    'host networking',
+    (document) => {
+      document.services.api.network_mode = 'host';
+    },
+  ],
+  [
+    'database hostname redirected by extra hosts',
+    (document) => {
+      document.services.api.extra_hosts = { 'data-postgres': '192.0.2.99' };
+    },
+  ],
+  [
+    'fixed container name',
+    (document) => {
+      document.services.api.container_name = 'old-api';
+    },
+  ],
+  [
+    'Data directory redirected to old bind',
+    (document) => {
+      document.services['data-postgres'].volumes.push({
+        type: 'bind',
+        source: '/tmp/old-data',
+        target: '/mnt/old-data',
+        read_only: false,
+      });
+      document.services['data-postgres'].environment = {
+        PGDATA: '/mnt/old-data',
+      };
+    },
+  ],
+  [
+    'Data directory escaping the expected volume',
+    (document) => {
+      document.services['data-postgres'].environment = {
+        PGDATA: '/var/lib/postgresql/../../mnt/old-data',
+      };
     },
   ],
   [
@@ -179,4 +252,43 @@ test('Supabase database mount must belong to the same local project', () => {
       assertLocalDatabaseContainer(JSON.stringify(inspection), isolatedTarget),
     /local.*target/i,
   );
+});
+
+test('the actual default Compose shape remains compatible without invented worker Auth fields', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'wiser-native-default-'));
+  try {
+    await mkdir(join(directory, 'supabase'));
+    await writeFile(
+      join(directory, 'supabase/config.toml'),
+      'project_id = "wiser"\n[api]\nport = 56321\n[db]\nport = 56322\n',
+    );
+    await writeFile(
+      join(directory, 'compose.yaml'),
+      await readFile(join(ROOT_DIRECTORY, 'compose.yaml')),
+    );
+    const environment = {
+      ...process.env,
+      COMPOSE_PROJECT_NAME: 'wiser',
+      WISER_LOCAL_SUPABASE_WORKDIR: directory,
+      DATA_API_ORIGIN: 'http://127.0.0.1:3101',
+      DATA_WEB_ORIGIN: 'http://127.0.0.1:3100',
+      DATA_MCP_ORIGIN: 'http://127.0.0.1:13004',
+    };
+    const target = await readLocalSupabaseTarget(environment, directory);
+    const output = await runCompose(
+      ['config', '--format', 'json'],
+      { environment: localBootstrapEnvironment(environment, target) },
+      { rootDirectory: directory },
+    );
+    const compiled = JSON.parse(output);
+    assert.equal(
+      compiled.services['data-worker'].environment.SUPABASE_URL,
+      undefined,
+    );
+    assert.doesNotThrow(() =>
+      assertLocalComposeTarget(output, target, environment),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

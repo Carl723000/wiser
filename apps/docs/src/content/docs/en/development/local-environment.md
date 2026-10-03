@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
+lastReviewedCommit: c44fcc43f504238f8636b43c87c8d61b01a89a9a
 ---
 
 ## Runtime modes
@@ -35,6 +35,8 @@ lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
 ## Host readiness
 
 Local development must load `compose.override.yaml`, including when using an explicit file list: `docker compose -f compose.yaml -f compose.override.yaml ...`. If a case/runtime file is also needed, retain the local override and review the merge order and effective configuration before starting, rebuilding, or recreating services. Preserve manual local changes; do not silently replace their ports, source mounts, or development commands. Use the same file list for configuration checks and the subsequent Compose operation. `docker compose ... config --quiet` validates the configuration without printing resolved secrets.
+
+The Data operation scripts create a missing override as `services: {}` with owner-only file permissions. An existing override is retained byte for byte. A clean checkout therefore uses the checked-in defaults until an operator supplies an explicit local override.
 
 For an additional Data project, the opt-in `data-worker-project` service uses the same bounded Worker code and dependencies without a host port. Set `DATA_PROJECT_WORKER_TENANT_ID`, `DATA_PROJECT_WORKER_PROJECT_ID`, and `DATA_PROJECT_WORKER_POLICY_VERSION` from verified control-plane context, and set `DATA_PROJECT_WORKER_IMAGE` to the already deployed, matching Worker image. Missing values leave an invalid project/policy and an unavailable image, so the service fails closed. Add `--profile data-foundation-project` to the existing Compose file list and check the merged image, mounts, scope, policy version, and absence of a host port before `up -d data-worker-project`. For an expired legacy ingestion, apply migration 0032 and deploy the matching API first; use `data.ingestion.resume` on the same Operation before enabling the project Worker. The default Worker remains scoped to its existing project.
 
@@ -124,11 +126,23 @@ The Data Foundation Skill's research-bundle helper uses Python 3 with the standa
 
 Compose defaults `DATA_INGESTION_MAX_OBJECT_BYTES` to 64 MiB and honors an explicit environment override. This covers the research case's largest 36,378,636-byte file. It is the Worker's per-object bound; source registration still verifies exact bytes and does not turn partial or unparsed content into analytical data.
 
-`.env.example` is a variable catalog, not a production-ready configuration. The complete stack writes generated local secrets to ignored `.wiser/local/runtime-secrets.json`. Never commit `.env`, database URLs, S3 keys, Supabase service-role keys, HMAC keys, MCP tokens, or Codex login files.
+`.env.example` is a variable catalog, not a production-ready configuration. The complete stack writes generated local secrets to ignored `<control-workdir>/.wiser/local/runtime-secrets.json`; the default control workdir is the repository root. Never commit `.env`, database URLs, S3 keys, Supabase service-role keys, HMAC keys, MCP tokens, or Codex login files.
 
 The browser receives only `NEXT_PUBLIC_SUPABASE_URL` and a publishable key. Database, object-store, projection, and operator credentials remain server-side.
 
+### Separate local control project
+
+Set `WISER_LOCAL_SUPABASE_WORKDIR` in the invoking process environment to a prepared control directory containing `supabase/config.toml`, the matching migrations and seed, and local Auth callbacks. `stack:full:up`, `data:up`, and the default vertical-smoke adapter pass that directory to the CLI. They do not automatically load an arbitrary `.env` into Node's process environment.
+
+`COMPOSE_PROJECT_NAME` must equal that configuration's `project_id`. The configured API and database ports govern CLI status, Auth origins, the control database and EXCON journal connections, and database-container identity. API, web and MCP origins (`DATA_API_ORIGIN`, `DATA_WEB_ORIGIN`, `DATA_MCP_ORIGIN`) must match their final published Compose ports; the API's public origin, Worker's STAC asset origin, and public S3 endpoint must match the selected API and storage bindings. These origins do not rewrite a literal Compose port or URL: update the private override or case file, retain the base and local override in `COMPOSE_FILE`, and review the merged result.
+
+Before a mutating Data Compose operation, the scripts compile the same file list and reject external or mismatched networks and volumes, hostname redirects, fixed container names, storage-path substitutions, and disabled Auth or memory journal mode during complete-stack startup. Custom projects require loopback bindings. This checks configuration ownership, not successful service startup or browser behavior. The scripts inspect the configured Docker endpoint, accept only a local Unix socket, and pin it in their own child environment; they never change the user's global Docker context. Supabase start output and resolved runtime configuration stay captured rather than being printed with keys.
+
+Full-stack migrate, seed and smoke subprocesses inherit the exact runtime environment produced by `data:up`. Separate later invocations must receive the same control directory, Compose project/file list, local Docker endpoint and origins. A role, connection, callback, or credential change still requires its own authorized runtime verification; selecting a new project does not grant access to another one.
+
 ## Logs, stop, and reset
+
+The following commands and reset table describe the default `wiser` project. For a separate control project, keep its selected environment when invoking `data:logs` or `data:down`, then stop only its Supabase instance with `pnpm exec supabase --workdir "$WISER_LOCAL_SUPABASE_WORKDIR" stop` on the same verified local Docker endpoint. Do not use the root `stack:down`, `supabase:reset` or `supabase:verify` shortcuts for that project: they still address the root Supabase configuration. Data reset remains restricted to its existing default-project allowlist and explicit confirmation.
 
 ```bash
 docker compose ps
@@ -149,7 +163,7 @@ Narrow `docker compose logs` to only the failed services; use `docker compose ps
 | confirmation-gated `pnpm data:reset`      | Allowlisted Data PostgreSQL/S3/projection named volumes      | Supabase, observability volumes, `.wiser/local`            |
 | `pnpm observability:down`                 | Stops observability services                                 | Tempo/Loki/Prometheus/Grafana named volumes                |
 
-There is no “delete every local state” command. `.wiser/local/runtime-secrets.json` retains historical HMAC keys required to replay the EXCON journal. Never remove it or generate only a new key while that journal exists. Handle the file through the team's key-rotation process only after every service is stopped, the Supabase/EXCON journal is intentionally reset, and old records no longer need recovery. Data reset alone does not require its removal.
+There is no “delete every local state” command. Each selected control workdir's `.wiser/local/runtime-secrets.json` retains historical HMAC keys required to replay its EXCON journal. Never remove it or generate only a new key while that journal exists. Handle the file through the team's key-rotation process only after every service is stopped, the Supabase/EXCON journal is intentionally reset, and old records no longer need recovery. Data reset alone does not require its removal.
 
 When the complete stack fails, check Docker resources, port conflicts, and failed-service logs before rerunning the convergent `pnpm stack:full:up`.
 

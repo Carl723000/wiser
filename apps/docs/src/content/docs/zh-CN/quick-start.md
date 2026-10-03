@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
+lastReviewedCommit: c44fcc43f504238f8636b43c87c8d61b01a89a9a
 ---
 
 本页适合第一次在自己的开发环境运行 WISER。现网资料查阅与外部客户端连接请使用[现网使用指南](/development/wiser-data-guide/)；单独启动应用、端口、配置和排障见[本机开发环境](/development/local-environment/)。
@@ -47,6 +47,8 @@ pnpm install --frozen-lockfile
 ```bash
 pnpm stack:full:up
 ```
+
+Data 运维脚本会创建缺失的本地覆盖文件，保留已有人工修改。默认控制目录是仓库根目录；可选的 `WISER_LOCAL_SUPABASE_WORKDIR` 指向准备好的独立目录。其项目、回调、端口、Compose 文件和服务地址必须一致，各阶段使用同一个本机 Docker 端点。启动独立项目前，按[本机开发环境](/development/local-environment/)在进程环境中配置这些参数。
 
 该命令启动本机登录服务、产品网页、API、文档站、智能体入口及数据基座所需服务，准备隔离的本机测试资料，并执行跨网页和协议的检查。**命令成功结束**后再打开下面的入口；若失败，按终端提示处理，并到[本机开发环境](/development/local-environment/)查找对应服务的日志和恢复步骤。
 
@@ -88,7 +90,7 @@ pnpm cookbook:scripted
 
 ## 4. 停止
 
-停止 Compose 与 Supabase，但保留命名卷中的本机数据：
+对于默认项目，停止 Compose 与 Supabase，但保留命名卷中的本机数据：
 
 ```bash
 pnpm stack:down
@@ -101,6 +103,8 @@ pnpm data:down
 ```
 
 如需清除本机数据，请先阅读[数据库开发](/development/databases/)中的重置范围和确认要求。
+
+根目录的 `stack:down` 和 Supabase 重置快捷命令仍指向根目录控制配置。若选择了其他控制目录，使用[本机开发环境](/development/local-environment/)中的独立项目停止流程，并保留该目录中的历史运行密钥。
 
 ## 下一步
 

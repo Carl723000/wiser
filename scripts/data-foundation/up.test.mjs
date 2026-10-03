@@ -69,6 +69,8 @@ function harness(overrides = {}) {
     },
     runCommand: async (command, args, options) => {
       calls.push({ kind: 'command', command, args, options });
+      if (command === 'docker' && args[0] === 'context')
+        return JSON.stringify('unix:///tmp/wiser-fixture.sock');
       if (command === 'pnpm') return status;
       if (command === 'docker' && args[0] === 'inspect') {
         return JSON.stringify(inspection);
@@ -106,6 +108,14 @@ test('isolated bootstrap uses one control directory, database and journal port',
   );
   assert.equal(roleWrite.args[2], 'supabase_db_wiser-isolated');
   assert.match(roleWrite.options.input, /alter role wiser_excon_api/);
+  assert.equal(
+    roleWrite.options.environment.DOCKER_HOST,
+    'unix:///tmp/wiser-fixture.sock',
+  );
+  assert.equal(
+    status.options.environment.DOCKER_HOST,
+    roleWrite.options.environment.DOCKER_HOST,
+  );
   const compose = setup.calls.find(
     (call) => call.kind === 'compose' && call.args[0] === 'up',
   );
@@ -122,6 +132,10 @@ test('isolated bootstrap uses one control directory, database and journal port',
     'http://127.0.0.1:57321',
   );
   assert.equal(started.environment, compose.options.environment);
+  assert.equal(
+    started.environment.DOCKER_HOST,
+    roleWrite.options.environment.DOCKER_HOST,
+  );
   assert.equal(
     setup.calls.find((call) => call.kind === 'secrets').workdir,
     setup.target.workdir,

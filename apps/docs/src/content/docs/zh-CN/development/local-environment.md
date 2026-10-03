@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
+lastReviewedCommit: c44fcc43f504238f8636b43c87c8d61b01a89a9a
 ---
 
 ## 运行模式
@@ -35,6 +35,8 @@ lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
 ## 宿主准备
 
 本地开发必须加载 `compose.override.yaml`，显式指定文件时也要包含它：`docker compose -f compose.yaml -f compose.override.yaml ...`。如果还需要 case/runtime 文件，仍须保留本地 override，并在启动、构建或重建服务前核对合并顺序和最终配置。保留用户手动修改的本地配置，不得静默覆盖其中的端口、源码挂载或开发命令。配置检查与后续 Compose 操作使用同一组文件；`docker compose ... config --quiet` 可校验配置而不打印解析后的秘密。
+
+Data 运维脚本仅在本地 override 不存在时，以仅文件所有者可读写的权限创建 `services: {}`；已有文件的字节保持不变。因此，干净克隆先使用仓库默认配置，再由操作人员提供明确的本机覆盖。
 
 额外 Data 项目可启用独立的 `data-worker-project` 服务，复用有界 Worker 代码与依赖，不暴露主机端口。由已核验的控制面上下文设置 `DATA_PROJECT_WORKER_TENANT_ID`、`DATA_PROJECT_WORKER_PROJECT_ID` 和 `DATA_PROJECT_WORKER_POLICY_VERSION`，并将 `DATA_PROJECT_WORKER_IMAGE` 指向已经部署且与 API 匹配的 Worker 镜像。缺失配置会留下无效项目/策略值和不可用镜像，使服务拒绝启动。在既有 Compose 文件列表上增加 `--profile data-foundation-project`，先核对合并后的镜像、挂载、范围、策略版本与无主机端口，再执行 `up -d data-worker-project`。对于已过期的旧入库任务，应先应用迁移 0032、部署匹配的 API，再对同一 Operation 使用 `data.ingestion.resume`，最后启动该项目 Worker。默认 Worker 仍只处理原项目。
 
@@ -118,11 +120,23 @@ Data Foundation Skill 的研究数据包辅助脚本使用 Python 3 标准库。
 
 Compose 的 `DATA_INGESTION_MAX_OBJECT_BYTES` 默认是 64 MiB，并允许显式环境配置覆盖，可容纳本案例最大的 36,378,636 字节文件。这是 Worker 的单对象上限；来源登记仍逐一校验精确内容，不把部分下载或未解析内容宣称为可分析数据。
 
-`.env.example` 是变量目录，不是可直接用于生产的配置。完整栈会把本机生成的秘密保存在被 Git 忽略的 `.wiser/local/runtime-secrets.json`。不要提交 `.env`、数据库 URL、S3 key、Supabase service-role、HMAC key、MCP token 或 Codex 登录文件。
+`.env.example` 是变量目录，不是可直接用于生产的配置。完整栈会把本机生成的秘密保存在被 Git 忽略的 `<控制目录>/.wiser/local/runtime-secrets.json`；默认控制目录仍是仓库根目录。不要提交 `.env`、数据库 URL、S3 key、Supabase service-role、HMAC key、MCP token 或 Codex 登录文件。
 
 浏览器只能接收 `NEXT_PUBLIC_SUPABASE_URL` 与 publishable key；数据库、对象存储、投影与 operator credential 必须保留在服务端。
 
+### 独立本机控制项目
+
+在调用进程的环境中设置 `WISER_LOCAL_SUPABASE_WORKDIR`，指向已准备好 `supabase/config.toml`、对应迁移、seed 和本机 Auth 回调的控制目录。`stack:full:up`、`data:up` 和纵切 smoke 的默认适配器会把该目录传给 CLI；Node 脚本不会自动把任意 `.env` 文件加载到进程环境中。
+
+`COMPOSE_PROJECT_NAME` 必须与配置中的 `project_id` 相同。配置的 API 和数据库端口决定 CLI 状态、Auth 地址、控制库与 EXCON journal 连接，以及数据库容器身份。`DATA_API_ORIGIN`、`DATA_WEB_ORIGIN` 和 `DATA_MCP_ORIGIN` 必须对应最终 Compose 映射端口；API 公开地址、Worker 的 STAC 原件地址和公开 S3 地址也须与所选 API、存储映射一致。设置这些地址不会改写 Compose 中的固定端口或 URL：需要修改私有 override 或 case 文件，在 `COMPOSE_FILE` 中保留 base 与本地 override，并核对合并结果。
+
+Data Compose 写操作前，脚本编译同一组文件，拒绝外部或归属不符的网络与卷、主机名重定向、固定容器名和存储路径替换；完整栈启动还校验 Supabase Auth 与 PostgreSQL journal 模式。独立项目的主机端口必须绑定回环地址。这是配置归属检查，不代表服务启动或网页验收通过。脚本检查 Docker 端点，仅接受本机 Unix socket，并只在自己的子进程环境中固定端点，不修改用户全局 Docker context。Supabase 启动输出和解析后的运行配置保留在程序内部，不带着密钥打印。
+
+完整栈的 migrate、seed、smoke 子进程继承 `data:up` 生成的同一套运行环境；后续单独执行命令时，也要传入相同控制目录、Compose 项目与文件列表、本机 Docker 端点及各服务地址。角色、连接、回调或凭据变化仍须按授权实测；选择新项目不会获得其他项目的访问权限。
+
 ## 日志、停止与重置
+
+以下命令和重置表适用于默认 `wiser` 项目。独立控制项目应保持其所选环境执行 `data:logs` 或 `data:down`，再在同一个已核验本机 Docker 端点上用 `pnpm exec supabase --workdir "$WISER_LOCAL_SUPABASE_WORKDIR" stop` 仅停止对应 Supabase。不要对独立项目使用根目录的 `stack:down`、`supabase:reset` 或 `supabase:verify` 快捷命令，它们仍指向根目录的 Supabase 配置。Data reset 仍限定既有默认项目白名单与明确确认，不扩展删除范围。
 
 ```bash
 docker compose ps
@@ -143,7 +157,7 @@ pnpm stack:down
 | 确认式 `pnpm data:reset`                  | allowlist 内的 Data PostgreSQL/S3/投影 named volumes | Supabase、observability volumes、`.wiser/local`          |
 | `pnpm observability:down`                 | 停止观测服务                                         | Tempo/Loki/Prometheus/Grafana named volumes              |
 
-仓库没有“一键删除所有本机状态”的命令。`.wiser/local/runtime-secrets.json` 保存 EXCON journal 重放所需的历史 HMAC key，现有 journal 仍在时不得删除或只生成新 key。只有在所有服务停止、Supabase/EXCON journal 已明确重置且不需要恢复旧记录时，才可以按团队密钥轮换流程处理该文件；Data reset 本身不需要删除它。
+仓库没有“一键删除所有本机状态”的命令。各所选控制目录的 `.wiser/local/runtime-secrets.json` 保存对应 EXCON journal 重放所需的历史 HMAC key，现有 journal 仍在时不得删除或只生成新 key。只有在所有服务停止、Supabase/EXCON journal 已明确重置且不需要恢复旧记录时，才可以按团队密钥轮换流程处理该文件；Data reset 本身不需要删除它。
 
 若完整栈失败，先检查 Docker 资源、端口占用和失败服务日志，再重新运行可幂等收敛的 `pnpm stack:full:up`。
 

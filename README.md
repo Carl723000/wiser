@@ -17,7 +17,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
+lastReviewedCommit: c44fcc43f504238f8636b43c87c8d61b01a89a9a
 ---
 
 # WISER · 水地图
@@ -64,6 +64,8 @@ pnpm install --frozen-lockfile
 pnpm stack:full:up
 ```
 
+Data 运维脚本仅在 `compose.override.yaml` 缺失时创建空覆盖文件，保留已有人工配置。独立本机控制项目在进程环境中设置 `WISER_LOCAL_SUPABASE_WORKDIR` 及匹配的 Compose 项目、端口与服务地址，详见[本机环境配置](./apps/docs/src/content/docs/zh-CN/development/local-environment.md)。脚本使用同一个已核验本机 Docker 端点，并将同一套运行环境传给 migrate、seed 和 smoke。
+
 首次构建和 Data 端到端 smoke 会花费一些时间；命令成功返回后，默认服务和 Data 验证路径可用。Agent EXCON live Web/MCP 仍需要后文所述的专用 credential。打开：
 
 - 产品界面：<http://127.0.0.1:3100/zh-CN>
@@ -78,13 +80,13 @@ operator@agent-excon.test
 WiserLocalOperator-2026!
 ```
 
-停止服务并保留本机数据：
+停止默认项目的服务并保留本机数据：
 
 ```bash
 pnpm stack:down
 ```
 
-第一次完整运行见[快速开始](./apps/docs/src/content/docs/zh-CN/quick-start.md)；分步运行、日志、全部端口与故障排查见[本机开发环境](./apps/docs/src/content/docs/zh-CN/development/local-environment.md)。`stack:down` 会保留命名卷和 `.wiser/local` 中的本机重放密钥；不要在仍需恢复 EXCON journal 时删除这些历史 key。
+第一次完整运行见[快速开始](./apps/docs/src/content/docs/zh-CN/quick-start.md)；分步运行、日志、全部端口、独立项目停止与故障排查见[本机开发环境](./apps/docs/src/content/docs/zh-CN/development/local-environment.md)。`stack:down` 会保留命名卷和 `.wiser/local` 中的本机重放密钥；不要在仍需恢复 EXCON journal 时删除这些历史 key。所选控制目录保存自己的运行密钥，根目录停止、重置快捷命令不会自动选择该目录。
 
 ## 开发与验证
 

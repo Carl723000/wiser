@@ -189,6 +189,7 @@ test('SQL adapter uses the explicitly selected control and Compose environment',
   const environment = {
     COMPOSE_PROJECT_NAME: 'wiser-isolated',
     WISER_LOCAL_SUPABASE_WORKDIR: '/tmp/isolated-control',
+    DOCKER_HOST: 'unix:///tmp/wiser-fixture.sock',
   };
   const calls = [];
   await runPostgresSql(

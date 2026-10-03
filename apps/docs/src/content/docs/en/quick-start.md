@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
+lastReviewedCommit: c44fcc43f504238f8636b43c87c8d61b01a89a9a
 ---
 
 Use this page when running WISER in your own development environment for the first time. For public data access or external-client connection, see the [public use guide](/en/development/wiser-data-guide/). For standalone applications, ports, configuration, and troubleshooting, see the [local development environment](/en/development/local-environment/).
@@ -47,6 +47,8 @@ Run these commands from the repository root. Do not create a second lockfile in 
 ```bash
 pnpm stack:full:up
 ```
+
+The Data operation scripts create a missing local override without replacing an existing one. The default control directory is the repository root; an optional `WISER_LOCAL_SUPABASE_WORKDIR` selects a prepared separate directory. Its project, callbacks, ports, Compose files and service origins must agree, and all stages use one local Docker endpoint. Configure these in the process environment following the [local environment guide](/en/development/local-environment/) before starting a separate project.
 
 This starts local sign-in, the product web app, API, documentation, agent entrypoint, and Data Foundation services. It prepares isolated local test data and checks the web and protocol paths. Open the entrypoints below **after the command succeeds**. If it fails, follow the terminal message and use the [local environment guide](/en/development/local-environment/) for service logs and recovery.
 
@@ -88,7 +90,7 @@ After it succeeds, review the corresponding collaboration and evaluation records
 
 ## 4. Stop
 
-Stop Compose and Supabase while preserving data in named volumes:
+For the default project, stop Compose and Supabase while preserving data in named volumes:
 
 ```bash
 pnpm stack:down
@@ -101,6 +103,8 @@ pnpm data:down
 ```
 
 Before clearing local data, read the reset scope and confirmation requirements in [Database development](/en/development/databases/).
+
+The root `stack:down` and Supabase reset shortcuts still target the root control configuration. Use the separate-project stop procedure in the [local environment guide](/en/development/local-environment/) when you selected another control directory; retain that directory's historical runtime keys.
 
 ## Next steps
 

@@ -12,6 +12,7 @@ import {
   localBootstrapEnvironment,
   readLocalSupabaseTarget,
 } from './local-control-target.mjs';
+import { resolveLocalDockerEnvironment } from './local-docker-runtime.mjs';
 
 export async function startFullWiserStack(
   environment = process.env,
@@ -25,6 +26,7 @@ export async function startFullWiserStack(
     ROOT_DIRECTORY,
   );
   assertLocalProject(target, environment);
+  environment = await resolveLocalDockerEnvironment(environment, execute);
   const configuration = await compose(['config', '--format', 'json'], {
     environment: localBootstrapEnvironment(environment, target),
   });

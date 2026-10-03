@@ -13,6 +13,7 @@ import {
   localSupabaseArguments,
   readLocalSupabaseTarget,
 } from './local-control-target.mjs';
+import { resolveLocalDockerEnvironment } from './local-docker-runtime.mjs';
 
 export const VERTICAL_SMOKE_STEP_IDS = Object.freeze([
   'upload-session-created',
@@ -384,7 +385,12 @@ async function resolveAuth(options, runtime, stepId) {
         const output = await runCommand(
           'pnpm',
           localSupabaseArguments(target, 'status', ['-o', 'env']),
-          { environment },
+          {
+            environment: await resolveLocalDockerEnvironment(
+              environment,
+              runCommand,
+            ),
+          },
         );
         status = parseSupabaseStatusEnvironment(output);
         assertLocalSupabaseStatus(status, target);
@@ -1399,8 +1405,22 @@ function comparableEvidence(evidence) {
 }
 
 export async function runDataFoundationVerticalSmoke(options = {}) {
-  const runtime = createRuntime(options);
   const firstStep = VERTICAL_SMOKE_STEP_IDS[0];
+  let selectedOptions = options;
+  if (options.postgresSql === undefined) {
+    try {
+      selectedOptions = {
+        ...options,
+        environment: await resolveLocalDockerEnvironment(
+          options.environment ?? process.env,
+          runCommand,
+        ),
+      };
+    } catch {
+      fail(firstStep, 'INVALID_SMOKE_CONFIGURATION');
+    }
+  }
+  const runtime = createRuntime(selectedOptions);
   const auth = await resolveAuth(options, runtime, firstStep);
   const apiOrigin = origin(
     options.apiOrigin ??

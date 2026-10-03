@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import {
@@ -8,6 +8,7 @@ import {
   localComposeArguments,
   readLocalSupabaseTarget,
 } from './local-control-target.mjs';
+import { resolveLocalDockerEnvironment } from './local-docker-runtime.mjs';
 
 export const ROOT_DIRECTORY = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -155,13 +156,24 @@ export function runCommand(
 export async function runCompose(args, options, dependencies = {}) {
   const execute = dependencies.runCommand ?? runCommand;
   const rootDirectory = dependencies.rootDirectory ?? ROOT_DIRECTORY;
-  const environment = options?.environment ?? process.env;
+  let environment = options?.environment ?? process.env;
   const target = await (dependencies.readTarget ?? readLocalSupabaseTarget)(
     environment,
     rootDirectory,
   );
   const prefix = localComposeArguments(target, environment, rootDirectory);
+  try {
+    await writeFile(
+      join(rootDirectory, 'compose.override.yaml'),
+      'services: {}\n',
+      { flag: 'wx', mode: 0o600 },
+    );
+  } catch (error) {
+    if (error?.code !== 'EEXIST')
+      throw operationError('local Compose override is unavailable');
+  }
   if (args[0] !== 'config') {
+    environment = await resolveLocalDockerEnvironment(environment, execute);
     const configuration = await execute(
       'docker',
       [...prefix, 'config', '--format', 'json'],
@@ -169,7 +181,7 @@ export async function runCompose(args, options, dependencies = {}) {
     );
     assertLocalComposeProject(configuration, target);
   }
-  return execute('docker', [...prefix, ...args], options);
+  return execute('docker', [...prefix, ...args], { ...options, environment });
 }
 
 export function runPostgresSql(sql, options, dependencies = {}) {

@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { readFile, stat } from 'node:fs/promises';
-import { delimiter, join, resolve } from 'node:path';
+import { delimiter, join, posix, resolve } from 'node:path';
 
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]'];
 const MAX_CONFIG_BYTES = 64 * 1024;
@@ -213,6 +213,15 @@ export function assertLocalComposeProject(output, target) {
     throw targetError('Compose inspection');
   }
   if (document?.name !== target.projectId) throw targetError('Compose project');
+  for (const network of Object.values(document.networks ?? {})) {
+    if (
+      network?.external === true ||
+      (network?.driver !== undefined && network.driver !== 'bridge') ||
+      typeof network?.name !== 'string' ||
+      !network.name.startsWith(`${target.projectId}_`)
+    )
+      throw targetError('shared or mismatched network');
+  }
   for (const volume of Object.values(document.volumes ?? {})) {
     if (
       volume?.external === true ||
@@ -244,8 +253,28 @@ export function assertLocalComposeProject(output, target) {
       document.volumes?.[source] === undefined
     )
       throw targetError('mismatched persistent mount');
+    if (
+      mounts.some((mount) => mount?.type === 'bind' && mount.read_only !== true)
+    )
+      throw targetError('unregistered writable storage path');
   }
   for (const entry of Object.values(document.services ?? {})) {
+    if (
+      entry.network_mode !== undefined ||
+      entry.container_name !== undefined ||
+      (entry.external_links?.length ?? 0) > 0
+    )
+      throw targetError('service bypasses project isolation');
+    const hosts = entry.extra_hosts ?? [];
+    const localGatewayOnly = Array.isArray(hosts)
+      ? hosts.every((host) =>
+          /^host\.docker\.internal[:=]host-gateway$/.test(host),
+        )
+      : Object.entries(hosts).every(
+          ([host, address]) =>
+            host === 'host.docker.internal' && address === 'host-gateway',
+        );
+    if (!localGatewayOnly) throw targetError('service hostname redirect');
     for (const mount of entry?.volumes ?? []) {
       if (
         mount?.type === 'volume' &&
@@ -253,6 +282,16 @@ export function assertLocalComposeProject(output, target) {
       )
         throw targetError('undeclared persistent volume');
     }
+  }
+  const pgdata = document.services?.['data-postgres']?.environment?.PGDATA;
+  if (pgdata !== undefined) {
+    if (
+      typeof pgdata !== 'string' ||
+      !posix.isAbsolute(pgdata) ||
+      pgdata.includes('\0') ||
+      !posix.normalize(pgdata).startsWith('/var/lib/postgresql/')
+    )
+      throw targetError('database directory escapes verified storage');
   }
   return document;
 }
@@ -373,8 +412,20 @@ export function assertLocalComposeTarget(output, target, environment) {
   }
   const httpProtocols = ['http:', 'https:'];
   const postgresProtocols = ['postgres:', 'postgresql:'];
+  for (const service of ['api', 'web']) {
+    if (
+      document.services?.[service]?.environment?.WISER_AUTH_MODE !== 'supabase'
+    )
+      throw targetError('Auth mode differs from local target');
+  }
+  if (document.services.api.environment?.EXCON_V2_MODE !== 'postgres')
+    throw targetError('journal mode differs from local target');
   for (const service of ['api', 'web', 'data-worker', 'mcp-http']) {
     const values = document.services?.[service]?.environment;
+    // Auth is consumed by API and web. Other services do not require this
+    // field, but an explicit override must still address the selected control.
+    if (!['api', 'web'].includes(service) && values?.SUPABASE_URL === undefined)
+      continue;
     serviceUrl(
       values?.SUPABASE_URL,
       'host.docker.internal',
@@ -434,6 +485,13 @@ export function assertLocalComposeTarget(output, target, environment) {
       '',
       httpProtocols,
     );
+    // The worker writes through the internal endpoint; only the API must sign
+    // a public file address. Validate optional worker overrides when present.
+    if (
+      service === 'data-worker' &&
+      values?.DATA_S3_PUBLIC_ENDPOINT === undefined
+    )
+      continue;
     const fileAddress = localUrl(
       values?.DATA_S3_PUBLIC_ENDPOINT,
       httpProtocols,

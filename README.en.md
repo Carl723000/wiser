@@ -17,7 +17,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 31b7da2a20686fc5304622fdc188e125ca7c4ca9
+lastReviewedCommit: c44fcc43f504238f8636b43c87c8d61b01a89a9a
 ---
 
 # WISER · Water Intelligence System & Engine for Reconfiguration
@@ -64,6 +64,8 @@ pnpm install --frozen-lockfile
 pnpm stack:full:up
 ```
 
+Data operation scripts create an empty `compose.override.yaml` only if it is missing and preserve existing manual configuration. For a separate local control project, set `WISER_LOCAL_SUPABASE_WORKDIR` and the matching Compose project, ports and origins in the process environment; see [local environment configuration](./apps/docs/src/content/docs/en/development/local-environment.md). The scripts use one verified local Docker endpoint and pass the same runtime environment to migrate, seed and smoke.
+
 The first image build and Data end-to-end smoke can take time. After the command succeeds, default services and the Data verification path are available. Agent EXCON live Web/MCP still needs the dedicated credentials described below. Open:
 
 - Product UI: <http://127.0.0.1:3100/zh-CN>
@@ -78,13 +80,13 @@ operator@agent-excon.test
 WiserLocalOperator-2026!
 ```
 
-Stop services while retaining local data:
+Stop the default project's services while retaining local data:
 
 ```bash
 pnpm stack:down
 ```
 
-See [Quick start](./apps/docs/src/content/docs/en/quick-start.md) for the first complete run, and the [local development environment](./apps/docs/src/content/docs/en/development/local-environment.md) for staged modes, logs, every port, and troubleshooting. `stack:down` retains named volumes and local replay keys in `.wiser/local`; do not delete historical keys while the EXCON journal still needs to recover.
+See [Quick start](./apps/docs/src/content/docs/en/quick-start.md) for the first complete run, and the [local development environment](./apps/docs/src/content/docs/en/development/local-environment.md) for staged modes, logs, every port, separate-project stopping, and troubleshooting. `stack:down` retains named volumes and local replay keys in `.wiser/local`; do not delete historical keys while the EXCON journal still needs to recover. A selected control directory keeps its own runtime keys; the root stop/reset shortcuts do not select it automatically.
 
 ## Develop and verify
 

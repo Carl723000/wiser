@@ -43,6 +43,7 @@ export function localComposeFixture(
   ];
   return {
     name: target.projectId,
+    networks: { default: { name: `${target.projectId}_default` } },
     services: {
       ...Object.fromEntries(
         Object.entries(volumeServices).map(
