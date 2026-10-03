@@ -264,6 +264,24 @@ describe('managed standard intake Operation reads', () => {
       ).rejects.toMatchObject({ statusCode: 404 });
     },
   );
+  it.each(capabilities)(
+    'does not treat an uppercase self reviewer as independent for %s',
+    async (capability) => {
+      const client = new Client();
+      client.access = {
+        ...client.access,
+        actor_id: alphaId(1),
+        submitted_by_actor_id: alphaId(1),
+      };
+      await expect(
+        read(client, capability, reviewer(alphaId(1).toUpperCase())),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      await expect(
+        read(client, capability, reviewer(alphaId(90).toUpperCase())),
+      ).resolves.toBeDefined();
+      expect(client.pendingScopeValues?.[0]).toBe(alphaId(90));
+    },
+  );
   it('keeps completed and published standard-ingestion Operation DTO behavior', async () => {
     const client = new Client();
     client.operation = {

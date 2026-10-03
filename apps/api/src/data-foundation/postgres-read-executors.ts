@@ -32,6 +32,7 @@ import {
   type QualityIssueSummaryDto,
   type SecurityLevel,
 } from '@wiser/data-contracts';
+import { PlatformUuidSchema } from '@wiser/platform-contracts';
 
 import type {
   DataCapabilityAuditPort,
@@ -1064,6 +1065,11 @@ function managedOperationAuthority(context: DataCapabilityExecutionContext) {
   return authority;
 }
 
+function canonicalManagedOperationUuid(value: unknown): string | null {
+  const parsed = PlatformUuidSchema.safeParse(value);
+  return parsed.success ? parsed.data.toLowerCase() : null;
+}
+
 async function requireManagedIntakeOperation(
   client: PostgresDataReadClient,
   context: DataCapabilityExecutionContext,
@@ -1071,20 +1077,50 @@ async function requireManagedIntakeOperation(
   operationId: unknown,
   authority: PendingIntakeAuthority,
 ): Promise<void> {
-  await setPendingIntakeScope(client, context, capabilityId, authority);
+  const requestedOperationId = canonicalManagedOperationUuid(operationId);
+  const tenantId = canonicalManagedOperationUuid(
+    context.authorization.tenantId,
+  );
+  const projectId = canonicalManagedOperationUuid(
+    context.authorization.projectId,
+  );
+  const actorId = canonicalManagedOperationUuid(context.principal.actorId);
+  const delegatedBy =
+    context.principal.delegatedBy === undefined
+      ? undefined
+      : canonicalManagedOperationUuid(context.principal.delegatedBy);
+  if (
+    requestedOperationId === null ||
+    tenantId === null ||
+    projectId === null ||
+    actorId === null ||
+    delegatedBy === null
+  )
+    throw new PostgresDataReadNotFoundError();
+  const scopedContext: DataCapabilityExecutionContext = {
+    ...context,
+    principal: {
+      ...context.principal,
+      actorId,
+      ...(delegatedBy === undefined ? {} : { delegatedBy }),
+    },
+    authorization: { ...context.authorization, tenantId, projectId },
+  };
+  await setPendingIntakeScope(client, scopedContext, capabilityId, authority);
   const row = requireRow(
     (
       await client.query(OPERATION_INTAKE_ACCESS_SQL, [
-        operationId,
-        context.authorization.tenantId,
-        context.authorization.projectId,
+        requestedOperationId,
+        tenantId,
+        projectId,
       ])
     ).rows,
   );
   if (
-    row['operation_id'] !== operationId ||
-    row['tenant_id'] !== context.authorization.tenantId ||
-    row['project_id'] !== context.authorization.projectId
+    canonicalManagedOperationUuid(row['operation_id']) !==
+      requestedOperationId ||
+    canonicalManagedOperationUuid(row['tenant_id']) !== tenantId ||
+    canonicalManagedOperationUuid(row['project_id']) !== projectId
   )
     throw new PostgresDataReadNotFoundError();
   let responsibility: unknown;
@@ -1108,15 +1144,32 @@ async function requireManagedIntakeOperation(
   } else if (
     row['capability_id'] === 'data.ingestion.create' &&
     typeof row['ingestion_id'] === 'string' &&
-    row['owner_project_id'] === context.authorization.projectId
+    canonicalManagedOperationUuid(row['owner_project_id']) === projectId
   ) {
     responsibility = rowSubmissionResponsibility(row);
   } else throw new PostgresDataReadNotFoundError();
   const stored = submissionResponsibility(responsibility);
+  const storedActorId = canonicalManagedOperationUuid(stored?.actorId);
+  const storedDelegator =
+    stored?.delegatedBy === undefined
+      ? undefined
+      : canonicalManagedOperationUuid(stored.delegatedBy);
   if (
     !stored ||
-    stored.actorId !== row['actor_id'] ||
-    !canReadPendingSubmission(context, stored, authority)
+    storedActorId === null ||
+    storedDelegator === null ||
+    storedActorId !== canonicalManagedOperationUuid(row['actor_id']) ||
+    !canReadPendingSubmission(
+      scopedContext,
+      {
+        ...stored,
+        actorId: storedActorId,
+        ...(storedDelegator === undefined
+          ? {}
+          : { delegatedBy: storedDelegator }),
+      },
+      authority,
+    )
   )
     throw new PostgresDataReadNotFoundError();
 }
