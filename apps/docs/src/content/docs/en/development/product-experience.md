@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 6777743dbed212285d2fd437a638cb566d5edd3a
+lastReviewedCommit: 43fd10cfbdeca31e4a4d6ff2096db90002aa923f
 ---
 
 ## What this guide governs
@@ -160,3 +160,5 @@ The specialist behavior and exact versioned query contracts live in [Data Founda
 The local spatial workbench starts with region/time, then shows real sources, original locators and readiness. Dossiers explain location roles and content before exact-version evidence; administrative references are never precise river reaches. Candidate exercises have distinct status and exit controls, and exercise decisions never appear as professional approval. Matrix need slots are planned uses, not received datasets.
 
 Numeric comparison checks both the original values and the computed result. Non-numeric inputs or an out-of-range difference retain side-by-side evidence and original values, with a null difference and a blocking reason. Valid zero values and zero differences are not missing data.
+
+Comparison also rejects unknown units surrounded by whitespace and original dates that lack their declared day/month/year precision. Unit strings stay unchanged and are not automatically converted or made equivalent. Ordinary date filters may still expand calendar boundaries; that expansion supplies no missing precision for comparison. These checks do not establish positional compatibility or professional approval.

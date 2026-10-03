@@ -1110,6 +1110,17 @@ export type WorkspaceComparisonReason =
   | 'numeric'
   | 'permission'
   | 'stale';
+
+function comparisonTimeHasNativePrecision(record: WorkspaceRecord) {
+  const { precision, start, end } = record.time;
+  if (precision === 'unknown' || !workspaceNativeTime(record)) return false;
+  const minimumLength =
+    precision === 'day' ? 10 : precision === 'month' ? 7 : 4;
+  return [start, end].every(
+    (value) => value === null || value.length >= minimumLength,
+  );
+}
+
 export function compareWorkspaceRecords(
   left: WorkspaceRecord,
   right: WorkspaceRecord,
@@ -1130,7 +1141,7 @@ export function compareWorkspaceRecords(
     !left.unit?.trim() ||
     !right.unit?.trim() ||
     left.unit !== right.unit ||
-    /^(unknown|未知)$/i.test(left.unit)
+    /^(unknown|未知)$/i.test(left.unit.trim())
   )
     reasons.push('unit');
   if (
@@ -1138,8 +1149,8 @@ export function compareWorkspaceRecords(
     left.time.role !== right.time.role ||
     left.time.precision === 'unknown' ||
     left.time.precision !== right.time.precision ||
-    !workspaceNativeTime(left) ||
-    !workspaceNativeTime(right)
+    !comparisonTimeHasNativePrecision(left) ||
+    !comparisonTimeHasNativePrecision(right)
   )
     reasons.push('time');
   if (
