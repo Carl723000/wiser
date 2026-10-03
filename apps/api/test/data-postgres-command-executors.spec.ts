@@ -75,6 +75,12 @@ class FakeClient implements PostgresDataCommandClient {
   uploadStatus = 'WAITING_INPUT';
   uploadExpiresAt = '2026-08-22T06:00:00.000Z';
   uploadRequestPayload: unknown;
+  uploadResponsibility: unknown = {
+    actorId: ACTOR_ID,
+    actorType: 'human',
+    purpose: 'operate',
+  };
+  uploadActorId = ACTOR_ID;
   assetSecurity = 'L1_INTERNAL';
   assetLifecycle = 'QUARANTINED';
   assetVersionId: string | null = null;
@@ -152,11 +158,13 @@ class FakeClient implements PostgresDataCommandClient {
         rows: [
           {
             operation_id: String(values[0]),
+            actor_id: this.uploadActorId,
             status: this.uploadStatus,
             row_version: this.uploadVersion,
             security_level: 'L1_INTERNAL',
             policy_version: 7,
             request_payload: this.uploadRequestPayload ?? {
+              intakeResponsibility: this.uploadResponsibility,
               assets: [
                 {
                   assetId: ASSET_ID,
@@ -189,6 +197,8 @@ class FakeClient implements PostgresDataCommandClient {
             lifecycle_state: this.assetLifecycle,
             version_id: this.assetVersionId,
             bound_ingestion_id: this.boundIngestionId,
+            upload_actor_id: this.uploadActorId,
+            upload_intake_responsibility: this.uploadResponsibility,
           },
         ],
         rowCount: 1,
@@ -2707,4 +2717,156 @@ describe('PostgreSQL Data Foundation command executors', () => {
     },
     60_000,
   );
+});
+
+function managedIntakeContext(): DataCapabilityExecutionContext {
+  return {
+    ...context,
+    authorization: {
+      ...context.authorization,
+      resourceAccess: {
+        revision: 1,
+        fingerprint: 'c'.repeat(64),
+        scope: {
+          mode: 'managed',
+          validUntil: '2099-01-01T00:00:00Z',
+          permissions: {
+            'content.read': [],
+            'original.read': [],
+            'result.export': [],
+            'source.discover': [],
+            'external.directory': [],
+          },
+        },
+      },
+    },
+  };
+}
+
+const managedUploadInput = {
+  ownerProjectId: PROJECT_ID,
+  objects: [
+    {
+      fileName: 'stations.geojson',
+      sizeBytes: 4096,
+      mediaType: 'application/geo+json',
+      sha256: SHA256,
+    },
+  ],
+};
+const managedCompleteInput = {
+  uploadSessionId: SESSION_ID,
+  expectedVersion: 1,
+  objects: [{ assetId: ASSET_ID, sizeBytes: 4096, sha256: SHA256 }],
+};
+const managedIngestionInput = {
+  assetIds: [ASSET_ID],
+  intendedUses: ['hydrology-analysis'],
+  requestedSecurityLevel: 'L1_INTERNAL',
+  ownerProjectId: PROJECT_ID,
+};
+
+describe('managed pending intake ownership and fresh authority', () => {
+  it('rejects a revoked maintenance scope before re-signing cached upload metadata', async () => {
+    const value = runtime();
+    const actor = managedIntakeContext();
+    const create = executor(value.runtime, 'data.uploadSession.create');
+    await create.execute(managedUploadInput, actor);
+    value.store.calls.length = 0;
+    await expect(
+      create.execute(managedUploadInput, {
+        ...actor,
+        authorization: {
+          ...actor.authorization,
+          scopes: ['data.operation.read'],
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(value.store.calls).toHaveLength(0);
+  });
+
+  it('binds managed idempotency to the current purpose instead of returning an old upload', async () => {
+    const value = runtime();
+    const actor = managedIntakeContext();
+    const create = executor(value.runtime, 'data.uploadSession.create');
+    await create.execute(managedUploadInput, actor);
+    value.store.calls.length = 0;
+    await expect(
+      create.execute(managedUploadInput, {
+        ...actor,
+        authorization: { ...actor.authorization, purpose: 'other-purpose' },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    expect(value.store.calls).toHaveLength(0);
+  });
+
+  it.each(['foreign', 'unknown', 'changed-delegator'])(
+    'rejects %s upload responsibility before object-store completion',
+    async (kind) => {
+      const value = runtime();
+      const actor = managedIntakeContext();
+      if (kind === 'foreign') {
+        value.pool.client.uploadActorId =
+          'd2000000-0000-4000-8000-000000000090';
+        value.pool.client.uploadResponsibility = {
+          actorId: value.pool.client.uploadActorId,
+          actorType: 'human',
+          purpose: 'operate',
+        };
+      } else if (kind === 'unknown') {
+        value.pool.client.uploadResponsibility = undefined;
+      } else {
+        value.pool.client.uploadResponsibility = {
+          actorId: ACTOR_ID,
+          actorType: 'agent',
+          delegatedBy: 'd2000000-0000-4000-8000-000000000090',
+          purpose: 'operate',
+        };
+      }
+      await expect(
+        executor(value.runtime, 'data.uploadSession.complete').execute(
+          managedCompleteInput,
+          actor,
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(value.store.calls).toHaveLength(0);
+    },
+  );
+
+  it('rejects another submitter before enqueuing an ingestion', async () => {
+    const value = runtime();
+    value.pool.client.operationStatus = 'WAITING_INPUT';
+    await expect(
+      executor(value.runtime, 'data.ingestion.submit').execute(
+        { ingestionId: INGESTION_ID, expectedVersion: 1 },
+        managedIntakeContext(),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(
+      value.pool.client.calls.some(({ text }) =>
+        text.includes('data.ingestion.job.insert'),
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects foreign quarantine assets before rebinding them to a new ingestion', async () => {
+    const value = runtime();
+    value.pool.client.uploadActorId = 'd2000000-0000-4000-8000-000000000090';
+    value.pool.client.uploadResponsibility = {
+      actorId: value.pool.client.uploadActorId,
+      actorType: 'human',
+      purpose: 'operate',
+    };
+    await expect(
+      executor(value.runtime, 'data.ingestion.create').execute(
+        managedIngestionInput,
+        managedIntakeContext(),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(
+      value.pool.client.calls.some(({ text }) =>
+        text.includes('data.ingestion.create'),
+      ),
+    ).toBe(false);
+  });
 });
