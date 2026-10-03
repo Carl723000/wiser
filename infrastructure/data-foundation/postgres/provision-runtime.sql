@@ -173,6 +173,13 @@ grant execute on functions to wiser_data_runtime;
 
 -- Query manifests are immutable, expiring caches owned by the verified caller.
 do $$ begin
+  if to_regclass('ingestion.candidate_batch') is not null then
+    revoke update on ingestion.candidate_batch from wiser_data_runtime;
+    grant update(status,completed_at) on ingestion.candidate_batch to wiser_data_runtime;
+    revoke update on ingestion.candidate_asset from wiser_data_runtime;
+    grant update(status,reason,record_count,feature_count,columns) on ingestion.candidate_asset to wiser_data_runtime;
+    revoke update on ingestion.candidate_record from wiser_data_runtime;
+  end if;
   if to_regclass('ingestion.project_review_policy') is not null then
     revoke insert,update,delete on ingestion.project_review_policy from wiser_data_runtime;
   end if;

@@ -16,7 +16,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: e77f9b15
+lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
 ---
 
 # WISER Data Worker / 数据基座 Worker
@@ -73,6 +73,8 @@ Worker 的 authority 写入必须沿合法状态边且每次精确推进一个 `
 服务器独立审核策略启用后，即使公开且高置信度，Worker 仍冻结策略修订并返回待审；客户端参数不能覆盖。load/freeze/commit 均核对当前策略，旧检查点或撤销策略不能继续提交；正式版本保留同一绑定。提交／委托责任不可改，最终批准须由独立真人经 API 执行。/ With server independent review enabled, Worker freezes the policy revision and waits even for public, high-confidence input. Client flags cannot override it. Load/freeze/commit recheck current policy; stale checkpoints or withdrawn policies cannot proceed. Version manifests retain the binding, submission/delegation responsibility is immutable, and final approval goes through the API as an independent human.
 
 ## Health and metrics / 健康与指标
+
+受管待审入库在冻结检查点后，使用同一已领取Job和默认候选处理器保存原值、定位及几何；恢复时复用同一输入与批次，成功后仍等待独立审核。迁移0037必须先通过校验和Runner执行，再重跑runtime provisioning，使批次／原件只允许更新完成字段、记录保持不可改。原件哈希、当前策略、完整资产集合和提交前租约均须匹配；临时失败回滚，格式／容量缺项保留未知数量和原因。候选不会创建正式版本或进入检索投影；带Auth的HTTP读取与真实数据库／浏览器验收单独执行。/ Governed intake processes the frozen candidate with the same claimed Job and default processor, retaining original values, locators and geometry. Recovery uses the same inputs and batch; success still waits for independent review. Apply migration 0037 through the checked-sum runner and rerun runtime provisioning before this runtime: batches/assets can update only completion fields and records remain immutable. Original hashes, current policy, the complete asset set and the final lease must match. Temporary failure rolls back; format/capacity gaps retain unknown counts and reasons. Candidates create neither published versions nor search projections; authenticated HTTP readback and real database/browser acceptance are separate gates.
 
 来源登记通过现有入库 Handler 执行扫描、指纹与严格清单核对，保留声明的样本/部分/空文件状态，生成 `METADATA_QUALITY` / `DECLARED` 版本；其质量只评价登记完整性。该流程不调用 Tika 或 AI 映射计划，受限来源仍等待有权限的复核，临时清单读取失败可以重试。 / Source registration uses the existing ingestion Handler for scanning, fingerprints and exact manifest reconciliation. It retains sample/partial/empty states and creates `METADATA_QUALITY` / `DECLARED` versions whose quality measures registration integrity. It calls neither Tika nor an AI mapping planner; restricted sources still require authorized review, and temporary manifest reads remain retryable.
 

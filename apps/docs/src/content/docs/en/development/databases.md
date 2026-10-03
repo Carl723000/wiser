@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a0952585
+lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -80,6 +80,8 @@ Migration `20260927162820_persistent_agent_connections.sql` permits a null Deleg
 Migration `20260926084756_resource_batch_agent_purpose.sql` only expands the private batch purpose constraint to the two explicit Web and AI/MCP purposes. Declarative schema `06_resource_batches.sql` and pgTAP case 12 retain that same constraint; seed grants no resource access. The batch integration suite uses `WISER_RESOURCE_TEST_DATABASE_URL` against a disposable migrated and seeded database to verify purpose-specific preview, approval, execution and renewal. Apply the additive migration before the API/Web runtime. Back up the control database and runtime first. Once an AI/MCP batch is recorded, recovery must retain a runtime that can read both purposes and preserve the immutable history; old Web-only readers cannot decode those records. Previously saved previews require regeneration because the fingerprint now binds purpose.
 
 ## Data Foundation change workflow
+
+Apply additive `0037_ingestion_candidate_storage.sql` and rerun runtime-role provisioning before the candidate-enabled Worker. It creates three private forced-RLS tables for frozen pending-review batches, original-asset outcomes and raw records/geometry. Inserts require the current ingestion Job lease and exact original/checkpoint/policy binding; final asset counts must match stored rows and final batch status must match all original outcomes. Completed outcomes and records are immutable. Provisioning restores only batch/asset completion-column updates and no record updates, including after repeated provisioning. Read authority is scoped to the submitter/delegator or current Worker lease; metadata-only and unrelated actors have no candidate content access. The focused `ingestion-candidate.spec.ts` uses a disposable already-migrated database, real runtime roles and rollback-only synthetic fixtures. No published catalog version, Auth grant, projection or real professional approval is created. Live HTTP/managed admission and independent-reviewer read authority still require their own integration; a skipped PostgreSQL check is not runtime acceptance.
 
 Apply `0033_ingestion_review_governance.sql`, `0034_review_policy_guard_runtime_permissions.sql`, `0035_reviewed_version_source_guard.sql` and `0036_reviewed_session_creation_guard.sql` before the matching API/Worker. They add a scoped server policy and immutable Auth subject references, bind checkpoints/version manifests, and enforce independent approval. A governed version requires its matching reviewed ingestion; choosing an unrelated catalog ID cannot bypass the gate. A governed session cannot be created in an approved/committed/published state; approval is a guarded transition. Policy changes require the migration/maintenance owner, increment revision and row version, and retain the row on withdrawal; runtime roles have read-only policy access. Fixed-search-path trigger guards use their migration owner for locks, check scoped references, and verify the original API caller role for approval. Ordinary queries retain forced RLS.
 

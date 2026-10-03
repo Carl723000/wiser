@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a0952585
+lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -80,6 +80,8 @@ Agent 授权与交换集成测试通过 `WISER_AGENT_TEST_DATABASE_URL` 连接�
 迁移 `20260926084756_resource_batch_agent_purpose.sql` 仅将私有批次用途约束扩展为明确的网页与 AI/MCP 两种用途。声明式结构 `06_resource_batches.sql` 和 pgTAP 第 12 组保持同一约束，seed 不授予资源访问权。批次集成套件通过 `WISER_RESOURCE_TEST_DATABASE_URL` 连接可丢弃、已迁移并填充测试种子的数据库，核验用途隔离的预览、审批、执行和续期。部署前备份控制库和运行配置，先应用追加迁移，再更新 API/Web。产生 AI/MCP 批次后，恢复版本须能读取两种用途并保留不可变历史；旧版仅支持网页用途的读取器无法解析这些记录。此前保存的预览因指纹增加用途绑定而须重新生成。
 
 ## Data Foundation 变更流程
+
+使用候选处理Worker前，按校验和Runner追加`0037_ingestion_candidate_storage.sql`，再重跑runtime-role provisioning。迁移建立冻结待审批次、原件解析结果和原值／几何三个私有强制RLS表。写入须匹配当前入库任务租约以及原件、检查点和审核策略；原件完成数量必须与实际记录一致，批次最终状态必须与全部原件结果一致。完成结果和记录不可改。权限重建后也只恢复批次／原件的完成字段更新权，不恢复记录修改权。读取限定提交／委托主体或当前Worker租约，目录信息专用角色和无关主体不能读取候选内容。聚焦`ingestion-candidate.spec.ts`使用已迁移的一次性数据库、真实runtime角色和最终回滚的合成数据，不建立正式版本、Auth授权、图谱投影或真实专业批准。带Auth的HTTP／受管能力准入与独立审核者读取权继续独立接线；跳过PostgreSQL检查不等于运行验收。
 
 先应用 `0033_ingestion_review_governance.sql`、`0034_review_policy_guard_runtime_permissions.sql`、`0035_reviewed_version_source_guard.sql` 和 `0036_reviewed_session_creation_guard.sql`，再使用对应 API/Worker。它们增加限定范围的服务器策略及不可变 Auth 主体引用，绑定检查点和版本清单，执行独立批准约束。受管版本必须对应已审核入库单，不能通过另选目录 ID 绕过。受管入库单不能直接创建为已批准、已提交或已发布状态；批准必须经过受控转换。策略仅由迁移／维护所有者变更，修订号及行版本同步递增，撤销时保留历史行；runtime role 只能读取策略。固定 search path 的触发器守卫以迁移所有者取得锁，核对范围引用，并在批准时检查原 API 调用角色。普通查询保留强制 RLS。
 

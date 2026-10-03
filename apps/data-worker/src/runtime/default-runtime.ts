@@ -23,8 +23,12 @@ import {
 import { PostgresIngestionAuthority } from '../adapters/ingestion-runtime.js';
 import type { DataWorkerRuntimeConfig } from '../config.js';
 import { createIngestionPipelineHandler } from '../handlers/ingestion-pipeline.js';
-import { createExternalAnalysisParser } from '../adapters/analysis-parser.js';
+import {
+  createExternalAnalysisParser,
+  createExternalIngestionCandidateParser,
+} from '../adapters/analysis-parser.js';
 import { createAnalysisHandler } from '../handlers/analysis.js';
+import { createIngestionCandidateProcessor } from '../handlers/ingestion-candidate.js';
 import { DataWorkerScheduler, type DataWorkerLogger } from '../scheduler.js';
 import {
   DataWorkerRuntime,
@@ -83,13 +87,33 @@ export function createDefaultDataWorkerRuntime(
     publicationPool,
     config.workerActorId,
   );
-  const pipeline = createIngestionPipelineHandler(
-    createDefaultIngestionPipelineOptions({
+  const pipeline = createIngestionPipelineHandler({
+    ...createDefaultIngestionPipelineOptions({
       authority: ingestionAuthority,
       reader: objectReader,
       config,
     }),
-  );
+    pendingCandidate: {
+      process: createIngestionCandidateProcessor({
+        pool: ingestionPool,
+        ...(config.analysisParserUrl
+          ? {
+              parseExternal: createExternalIngestionCandidateParser({
+                endpoint: config.analysisParserUrl,
+              }),
+            }
+          : {}),
+        async read(input) {
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of await objectReader.readQuarantineObject(
+            input,
+          ))
+            chunks.push(chunk);
+          return Buffer.concat(chunks);
+        },
+      }),
+    },
+  });
   const ingestionHandler = createProjectionAwareIngestionHandler({
     handler: pipeline,
     publication,

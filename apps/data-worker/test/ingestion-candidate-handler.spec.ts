@@ -4,6 +4,7 @@ import { IngestionCandidateBatchSchema } from '@wiser/data-contracts';
 import {
   AnalysisContentError,
   createIngestionCandidateRecordBinder,
+  parseAnalysisContent,
   type ClaimedDataJob,
   type DataPostgresPool,
 } from '@wiser/data-infra';
@@ -170,9 +171,19 @@ describe('durable frozen ingestion candidates', () => {
     );
     expect(insert).toBeDefined();
     const rows: unknown = JSON.parse(insert!.values.at(-1) as string);
+    const publishedValues: unknown[] = [];
+    for await (const event of parseAnalysisContent({
+      bytes,
+      sourceHash,
+      format: 'csv',
+      assetId: asset,
+      dataItemId: ingestion,
+      versionId: plan,
+    }))
+      if (event.type === 'record') publishedValues.push(event.values);
     expect(rows).toMatchObject([
-      { values: { c1: '潮白河', c2: 'Ⅲ', c3: '' } },
-      { values: { c1: '白河', c2: '0', c3: '' } },
+      { values: publishedValues[0] },
+      { values: publishedValues[1] },
     ]);
     expect(value.calls.at(-1)?.sql).toBe('commit');
     expect(
@@ -182,6 +193,46 @@ describe('durable frozen ingestion candidates', () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it('preserves explicit JSON null, numeric zero and empty string as distinct original values', async () => {
+    const jsonBytes = new TextEncoder().encode(
+      JSON.stringify([{ missing: null, zero: 0, blank: '' }]),
+    );
+    const jsonHash = createHash('sha256').update(jsonBytes).digest('hex');
+    const changed = structuredClone(base);
+    changed.assetManifest.assets[0]!.mediaType = 'application/json';
+    changed.assetManifest.assets[0]!.size = jsonBytes.length;
+    changed.assetManifest.assets[0]!.sourceHash = jsonHash;
+    const reviewHash = canonicalPipelineHash(changed);
+    const value = fixture({
+      checkpoint: {
+        frozen_checkpoint: { ...changed, reviewHash },
+        review_hash: reviewHash,
+      },
+      readBytes: jsonBytes,
+      assets: [
+        {
+          asset_id: asset,
+          ordinal: 0,
+          upload_id: upload,
+          storage_key: base.assetManifest.assets[0]!.quarantineObjectRef,
+          source_hash: jsonHash,
+          media_type: 'application/json',
+          byte_size: jsonBytes.length,
+        },
+      ],
+    });
+    expect(await value.process(job)).toMatchObject({
+      status: 'READY',
+      parsedRecordCount: 1,
+    });
+    const rows: unknown = JSON.parse(
+      value.calls
+        .find((call) => call.sql.includes('candidate.insert-records'))!
+        .values.at(-1) as string,
+    );
+    expect(rows).toMatchObject([{ values: { c1: null, c2: 0, c3: '' } }]);
   });
 
   it.each([
@@ -327,6 +378,7 @@ describe('durable frozen ingestion candidates', () => {
       ],
       async *parseExternal() {
         await Promise.resolve();
+        yield { type: 'schema', columns: [] };
         throw new AnalysisContentError('CAPACITY_LIMIT');
       },
     });
@@ -365,6 +417,7 @@ describe('durable frozen ingestion candidates', () => {
           status: 'READY',
           recordCount: 2,
           featureCount: 0,
+          reason: null,
         },
       ],
     });

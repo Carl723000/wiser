@@ -93,9 +93,9 @@ function boundedOriginalValues(value: unknown): boolean {
     if (typeof item !== 'object' || seen.has(item)) return false;
     const prototype: unknown = Object.getPrototypeOf(item);
     if (
-      !Array.isArray(item) &&
-      prototype !== Object.prototype &&
-      prototype !== null
+      Array.isArray(item)
+        ? prototype !== Array.prototype && prototype !== null
+        : prototype !== Object.prototype && prototype !== null
     )
       return false;
     seen.add(item);

@@ -174,6 +174,10 @@ export interface IngestionAuthorityPort {
 
 export interface IngestionPipelineOptions {
   readonly authority: IngestionAuthorityPort;
+  /** Standard Worker persistence for a governed, frozen pending-review checkpoint. */
+  readonly pendingCandidate?: {
+    process(job: ClaimedDataJob): Promise<Readonly<Record<string, unknown>>>;
+  };
   readonly sourceRegistration?: {
     readManifest(objectRef: string): Promise<string>;
   };
@@ -809,11 +813,16 @@ export function createIngestionPipelineHandler(
       });
     }
     if (checkpoint.state === 'REVIEW_REQUIRED') {
+      const candidate =
+        reviewPolicy === undefined
+          ? undefined
+          : await options.pendingCandidate?.process(job);
       return Object.freeze({
         status: 'WAITING_REVIEW',
         result: Object.freeze({
           ingestionId: input.ingestionId,
           state: checkpoint.state,
+          ...(candidate === undefined ? {} : { candidate }),
         }),
       });
     }
@@ -1394,12 +1403,17 @@ export function createIngestionPipelineHandler(
           'Review checkpoint conflict.',
         );
       }
+      const candidate =
+        reviewPolicy === undefined
+          ? undefined
+          : await options.pendingCandidate?.process(job);
       return Object.freeze({
         status: 'WAITING_REVIEW',
         result: Object.freeze({
           ingestionId: input.ingestionId,
           state: 'REVIEW_REQUIRED',
           qualityGrade: quality.grade,
+          ...(candidate === undefined ? {} : { candidate }),
         }),
       });
     }
