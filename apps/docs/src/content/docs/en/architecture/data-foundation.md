@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 30f32fa76a580c2e8f0ccb8a1f08f9001392a348
+lastReviewedCommit: 5e9494ebce894d7645ac9198994452a0749d0b62
 ---
 
 ## What runs today
@@ -514,6 +514,8 @@ Candidate originals use the canonical `FINGERPRINTED` state: no catalog version,
 ### Managed pending intake and candidate discovery
 
 The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit` and `data.ingestion.get` paths now admit managed projects through their own current maintenance/ownership guards. Writes require both `data.ingestion.write` and `data.operation.read`; fresh trusted identity, purpose, expiry and project scope are checked before cached results or object-store work. Upload responsibility is server-generated immutable Operation metadata. A human owner or the responsible human delegator may continue maintenance; a delegated actor must match the original actor type, actor ID and delegator. Unknown legacy responsibility fails closed. Create only binds completed owned QUARANTINED assets; it neither removes resource scope nor grants access to published content. Managed idempotency also binds actor type, delegator, purpose and resource fingerprint; retries recheck current ownership.
+
+Pending ownership and independent review compare only validated UUID identities, ignoring letter case. The API writes canonical actor and delegator UUIDs into new upload responsibility and trusted transaction scope, so changing case cannot turn an author into an independent reviewer or hide the same owner from current checks. Existing idempotency keys and cursors retain their original scope bindings.
 
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
 

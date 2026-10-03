@@ -32,7 +32,7 @@ import {
   type QualityIssueSummaryDto,
   type SecurityLevel,
 } from '@wiser/data-contracts';
-import { PlatformUuidSchema } from '@wiser/platform-contracts';
+import { canonicalIngestionUuid, sameIngestionUuid } from '@wiser/data-core';
 
 import type {
   DataCapabilityAuditPort,
@@ -1065,11 +1065,6 @@ function managedOperationAuthority(context: DataCapabilityExecutionContext) {
   return authority;
 }
 
-function canonicalManagedOperationUuid(value: unknown): string | null {
-  const parsed = PlatformUuidSchema.safeParse(value);
-  return parsed.success ? parsed.data.toLowerCase() : null;
-}
-
 async function requireManagedIntakeOperation(
   client: PostgresDataReadClient,
   context: DataCapabilityExecutionContext,
@@ -1077,18 +1072,14 @@ async function requireManagedIntakeOperation(
   operationId: unknown,
   authority: PendingIntakeAuthority,
 ): Promise<void> {
-  const requestedOperationId = canonicalManagedOperationUuid(operationId);
-  const tenantId = canonicalManagedOperationUuid(
-    context.authorization.tenantId,
-  );
-  const projectId = canonicalManagedOperationUuid(
-    context.authorization.projectId,
-  );
-  const actorId = canonicalManagedOperationUuid(context.principal.actorId);
+  const requestedOperationId = canonicalIngestionUuid(operationId);
+  const tenantId = canonicalIngestionUuid(context.authorization.tenantId);
+  const projectId = canonicalIngestionUuid(context.authorization.projectId);
+  const actorId = canonicalIngestionUuid(context.principal.actorId);
   const delegatedBy =
     context.principal.delegatedBy === undefined
       ? undefined
-      : canonicalManagedOperationUuid(context.principal.delegatedBy);
+      : canonicalIngestionUuid(context.principal.delegatedBy);
   if (
     requestedOperationId === null ||
     tenantId === null ||
@@ -1117,10 +1108,9 @@ async function requireManagedIntakeOperation(
     ).rows,
   );
   if (
-    canonicalManagedOperationUuid(row['operation_id']) !==
-      requestedOperationId ||
-    canonicalManagedOperationUuid(row['tenant_id']) !== tenantId ||
-    canonicalManagedOperationUuid(row['project_id']) !== projectId
+    canonicalIngestionUuid(row['operation_id']) !== requestedOperationId ||
+    canonicalIngestionUuid(row['tenant_id']) !== tenantId ||
+    canonicalIngestionUuid(row['project_id']) !== projectId
   )
     throw new PostgresDataReadNotFoundError();
   let responsibility: unknown;
@@ -1144,21 +1134,21 @@ async function requireManagedIntakeOperation(
   } else if (
     row['capability_id'] === 'data.ingestion.create' &&
     typeof row['ingestion_id'] === 'string' &&
-    canonicalManagedOperationUuid(row['owner_project_id']) === projectId
+    canonicalIngestionUuid(row['owner_project_id']) === projectId
   ) {
     responsibility = rowSubmissionResponsibility(row);
   } else throw new PostgresDataReadNotFoundError();
   const stored = submissionResponsibility(responsibility);
-  const storedActorId = canonicalManagedOperationUuid(stored?.actorId);
+  const storedActorId = canonicalIngestionUuid(stored?.actorId);
   const storedDelegator =
     stored?.delegatedBy === undefined
       ? undefined
-      : canonicalManagedOperationUuid(stored.delegatedBy);
+      : canonicalIngestionUuid(stored.delegatedBy);
   if (
     !stored ||
     storedActorId === null ||
     storedDelegator === null ||
-    storedActorId !== canonicalManagedOperationUuid(row['actor_id']) ||
+    storedActorId !== canonicalIngestionUuid(row['actor_id']) ||
     !canReadPendingSubmission(
       scopedContext,
       {
@@ -1627,9 +1617,18 @@ export function createPostgresDataReadRuntime(
               rowSubmissionResponsibility(row),
               authority,
             ) &&
-            row['owner_project_id'] === context.authorization.projectId &&
-            row['tenant_id'] === context.authorization.tenantId &&
-            row['project_id'] === context.authorization.projectId;
+            sameIngestionUuid(
+              row['owner_project_id'],
+              context.authorization.projectId,
+            ) &&
+            sameIngestionUuid(
+              row['tenant_id'],
+              context.authorization.tenantId,
+            ) &&
+            sameIngestionUuid(
+              row['project_id'],
+              context.authorization.projectId,
+            );
           if (managed && !authorized) throw new PostgresDataReadNotFoundError();
           const ingestionDetail = ingestion(row);
           const candidateRow = authorized

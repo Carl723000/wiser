@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 30f32fa76a580c2e8f0ccb8a1f08f9001392a348
+lastReviewedCommit: 5e9494ebce894d7645ac9198994452a0749d0b62
 ---
 
 ## 当前可运行能力
@@ -514,6 +514,8 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 ### 受管待审接收与候选发现
 
 标准`data.uploadSession.create/complete`、`data.ingestion.create/submit`及`data.ingestion.get`通过当前维护权限和归属守卫接入受管项目。写入同时要求`data.ingestion.write`和`data.operation.read`，在返回旧回执或处理对象存储前检查可信身份、用途、期限及当前项目。上传责任由服务器保存于不可变Operation请求信息；原人类提交者或负责委托的人类可继续维护，委托主体须同时匹配原身份类型、身份编号和委托人。旧记录责任不明时拒绝。创建只绑定已完成、自有且处于QUARANTINED的资产，不清除资源范围或扩大已发布内容权限。受管幂等请求同时绑定身份类型、委托人、用途和资源指纹，重试重新检查当前归属。
+
+待审归属与独立审核只比较经过校验的UUID身份，不以字母大小写区分同一人。API将新上传责任和可信事务范围内的主体、委托人UUID写为规范形式，避免原提交者仅换大小写就被视为独立审核人，或同一归属人被误拒。既有幂等键与游标仍沿用原范围绑定。
 
 `data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约继续归档，REST、GraphQL、MCP和Skill采用同一注册契约。只使用返回的引用衔接现有三项候选读取。
 

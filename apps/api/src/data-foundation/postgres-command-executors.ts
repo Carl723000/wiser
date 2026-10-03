@@ -8,9 +8,11 @@ import {
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  canonicalIngestionUuid,
   isIndependentIngestionReviewer,
   matchesFrozenIngestionReviewPolicy,
   resolveIngestionReviewGovernance,
+  sameIngestionUuid,
 } from '@wiser/data-core';
 
 import {
@@ -780,6 +782,12 @@ function commandError(code: PostgresDataCommandErrorCode) {
   return new PostgresDataCommandError(code);
 }
 
+function trustedCommandUuid(value: unknown): string {
+  const canonical = canonicalIngestionUuid(value);
+  if (canonical === null) throw commandError('INVALID_CONFIGURATION');
+  return canonical;
+}
+
 function assertIndependentReview(
   row: Readonly<Record<string, unknown>>,
   context: DataCapabilityExecutionContext,
@@ -1020,7 +1028,7 @@ function assertStoredUploadOwner(
   });
   if (
     !responsibility ||
-    responsibility.actorId !== operationActor ||
+    !sameIngestionUuid(responsibility.actorId, operationActor) ||
     typeof raw['purpose'] !== 'string' ||
     !/^[a-z][a-z0-9-]{0,95}$/.test(raw['purpose']) ||
     !ownsPendingSubmission(context, responsibility)
@@ -1044,7 +1052,10 @@ function assertIngestionOwner(
 ) {
   if (context.authorization.resourceAccess === undefined) return;
   if (
-    row['owner_project_id'] !== context.authorization.projectId ||
+    !sameIngestionUuid(
+      row['owner_project_id'],
+      context.authorization.projectId,
+    ) ||
     !ownsPendingSubmission(context, rowSubmissionResponsibility(row))
   )
     throw commandError('INTAKE_FORBIDDEN');
@@ -1054,7 +1065,7 @@ function assertOwner(
   ownerProjectId: string,
   context: DataCapabilityExecutionContext,
 ): void {
-  if (ownerProjectId !== context.authorization.projectId) {
+  if (!sameIngestionUuid(ownerProjectId, context.authorization.projectId)) {
     throw commandError('OWNER_PROJECT_MISMATCH');
   }
 }
@@ -1238,6 +1249,11 @@ export class CommandTransactions {
     const hash = requestHash(capabilityId, input, context);
     const timestamp = now(this.clock);
     assertActive(context);
+    const actorId = trustedCommandUuid(context.principal.actorId);
+    const delegatedBy =
+      context.principal.delegatedBy === undefined
+        ? ''
+        : trustedCommandUuid(context.principal.delegatedBy);
     const client = await this.pool.connect();
     let began = false;
     let commitAttempted = false;
@@ -1252,9 +1268,9 @@ export class CommandTransactions {
           context.effectiveMaxSecurityLevel,
           String(context.authorization.authzVersion),
           statementTimeout(context),
-          context.principal.actorId,
+          actorId,
           context.principal.actorType,
-          context.principal.delegatedBy ?? '',
+          delegatedBy,
         ]),
       );
       await applyResourceReadScope(
@@ -2129,11 +2145,15 @@ export function createPostgresDataCommandRuntime(
                   ? {}
                   : {
                       intakeResponsibility: {
-                        actorId: context.principal.actorId,
+                        actorId: trustedCommandUuid(context.principal.actorId),
                         actorType: context.principal.actorType,
                         ...(context.principal.delegatedBy === undefined
                           ? {}
-                          : { delegatedBy: context.principal.delegatedBy }),
+                          : {
+                              delegatedBy: trustedCommandUuid(
+                                context.principal.delegatedBy,
+                              ),
+                            }),
                         purpose: context.authorization.purpose,
                       },
                     }),

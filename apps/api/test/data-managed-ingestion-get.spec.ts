@@ -147,6 +147,17 @@ describe('managed ingestion discovery', () => {
         responsibility,
       ),
     ).toBe(false);
+    const invalidActor = {
+      ...sameActor,
+      principal: { ...sameActor.principal, actorId: 'not-a-uuid' },
+    };
+    expect(ownsPendingSubmission(invalidActor, responsibility)).toBe(false);
+    expect(
+      canReadPendingSubmission(invalidActor, responsibility, {
+        maintainer: false,
+        reviewer: true,
+      }),
+    ).toBe(false);
   });
 
   it('does not expose an author to themselves as an uppercase independent reviewer', async () => {

@@ -2815,6 +2815,150 @@ const managedIngestionInput = {
 };
 
 describe('managed pending intake ownership and fresh authority', () => {
+  it('stores canonical immutable upload responsibility for the existing SQL UUID text guard', async () => {
+    const actor = {
+      ...managedIntakeContext(),
+      principal: {
+        ...context.principal,
+        actorId: ACTOR_ID.toUpperCase(),
+        authUserId: ACTOR_ID.toUpperCase(),
+      },
+    };
+    const value = runtime();
+    await executor(value.runtime, 'data.uploadSession.create').execute(
+      managedUploadInput,
+      actor,
+    );
+    expect(value.pool.client.uploadRequestPayload).toMatchObject({
+      intakeResponsibility: { actorId: ACTOR_ID, actorType: 'human' },
+    });
+    const delegated = runtime();
+    await executor(delegated.runtime, 'data.uploadSession.create').execute(
+      managedUploadInput,
+      {
+        ...actor,
+        principal: {
+          actorId: ACTOR_ID.toUpperCase(),
+          actorType: 'agent',
+          authenticationMethod: 'delegated_credential',
+          credentialId: SESSION_ID,
+          delegationId: INGESTION_ID,
+          delegatedBy: 'd2000000-0000-4000-8000-000000000090'.toUpperCase(),
+        },
+      },
+    );
+    expect(delegated.pool.client.uploadRequestPayload).toMatchObject({
+      intakeResponsibility: {
+        actorId: ACTOR_ID,
+        actorType: 'agent',
+        delegatedBy: 'd2000000-0000-4000-8000-000000000090',
+      },
+    });
+  });
+
+  it('keeps valid UUID letter case equivalent for upload completion and cached submit replay', async () => {
+    const actor = {
+      ...managedIntakeContext(),
+      principal: {
+        ...context.principal,
+        actorId: ACTOR_ID.toUpperCase(),
+        authUserId: ACTOR_ID.toUpperCase(),
+      },
+    };
+    const complete = runtime();
+    await expect(
+      executor(complete.runtime, 'data.uploadSession.complete').execute(
+        managedCompleteInput,
+        actor,
+      ),
+    ).resolves.toMatchObject({ uploadSession: { status: 'COMPLETED' } });
+    expect(
+      complete.pool.client.calls
+        .find(({ text }) => text.includes('data.intake.scope'))
+        ?.values?.slice(0, 3),
+    ).toEqual([ACTOR_ID, 'human', '']);
+
+    const submit = runtime();
+    submit.pool.client.submittedActorId = ACTOR_ID;
+    submit.pool.client.operationStatus = 'WAITING_INPUT';
+    const executorSubmit = executor(submit.runtime, 'data.ingestion.submit');
+    const input = { ingestionId: INGESTION_ID, expectedVersion: 1 };
+    await expect(executorSubmit.execute(input, actor)).resolves.toHaveProperty(
+      'operation',
+    );
+    await expect(executorSubmit.execute(input, actor)).resolves.toHaveProperty(
+      'operation',
+    );
+    submit.pool.client.submittedActorId =
+      'd2000000-0000-4000-8000-000000000091';
+    await expect(executorSubmit.execute(input, actor)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it('accepts an equivalent uppercase project owner but rejects another project', async () => {
+    const value = runtime();
+    await expect(
+      executor(value.runtime, 'data.uploadSession.create').execute(
+        { ...managedUploadInput, ownerProjectId: PROJECT_ID.toUpperCase() },
+        managedIntakeContext(),
+      ),
+    ).resolves.toHaveProperty('uploadSession');
+    await expect(
+      executor(runtime().runtime, 'data.uploadSession.create').execute(
+        {
+          ...managedUploadInput,
+          ownerProjectId: 'd2000000-0000-4000-8000-000000000092',
+        },
+        managedIntakeContext(),
+      ),
+    ).rejects.toMatchObject({ code: 'OWNER_PROJECT_MISMATCH' });
+  });
+
+  it('keeps delegated responsibility equivalent across case but not across delegators', async () => {
+    const owner = {
+      ...managedIntakeContext(),
+      principal: {
+        actorId: ACTOR_ID.toUpperCase(),
+        actorType: 'agent' as const,
+        authenticationMethod: 'delegated_credential' as const,
+        credentialId: SESSION_ID,
+        delegationId: INGESTION_ID,
+        delegatedBy: 'd2000000-0000-4000-8000-000000000090'.toUpperCase(),
+      },
+    };
+    const complete = runtime();
+    complete.pool.client.uploadResponsibility = {
+      actorId: ACTOR_ID,
+      actorType: 'agent',
+      delegatedBy: 'd2000000-0000-4000-8000-000000000090',
+      purpose: 'operate',
+    };
+    await expect(
+      executor(complete.runtime, 'data.uploadSession.complete').execute(
+        managedCompleteInput,
+        owner,
+      ),
+    ).resolves.toHaveProperty('uploadSession');
+    expect(
+      complete.pool.client.calls
+        .find(({ text }) => text.includes('data.command.scope'))
+        ?.values?.slice(5, 8),
+    ).toEqual([ACTOR_ID, 'agent', 'd2000000-0000-4000-8000-000000000090']);
+    await expect(
+      executor(runtime().runtime, 'data.uploadSession.complete').execute(
+        managedCompleteInput,
+        {
+          ...owner,
+          principal: {
+            ...owner.principal,
+            delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   it('supports each standard intake step with current owned maintenance and no published resource grant', async () => {
     const actor = managedIntakeContext();
     const upload = runtime();

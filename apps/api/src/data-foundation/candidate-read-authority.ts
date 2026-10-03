@@ -4,6 +4,7 @@ import {
   ResourceAccessContextSchema,
   type PlatformRequestContext,
 } from '@wiser/platform-contracts';
+import { canonicalIngestionUuid } from '@wiser/data-core';
 import type { ResourceScopeClient } from './resource-read-scope.js';
 
 type Context = Pick<PlatformRequestContext, 'principal' | 'authorization'>;
@@ -62,6 +63,15 @@ export async function setCandidateReadAuthority(
     throw Object.assign(new Error('Pending candidate access is unavailable.'), {
       code: 'FORBIDDEN',
     });
+  const actorId = canonicalIngestionUuid(context.principal.actorId);
+  const delegatedBy =
+    context.principal.delegatedBy === undefined
+      ? ''
+      : canonicalIngestionUuid(context.principal.delegatedBy);
+  if (actorId === null || delegatedBy === null)
+    throw Object.assign(new Error('Pending candidate access is unavailable.'), {
+      code: 'FORBIDDEN',
+    });
   await client.query(
     `/* data.ingestion.candidate.scope */
 select set_config('wiser.actor_id',$1,true), set_config('wiser.actor_type',$2,true),
@@ -71,9 +81,9 @@ select set_config('wiser.actor_id',$1,true), set_config('wiser.actor_type',$2,tr
   set_config('wiser.candidate_purpose',$6,true),
   set_config('statement_timeout','10000',true)`,
     [
-      context.principal.actorId,
+      actorId,
       context.principal.actorType,
-      context.principal.delegatedBy ?? '',
+      delegatedBy,
       maintainer,
       reviewer,
       context.authorization.purpose,

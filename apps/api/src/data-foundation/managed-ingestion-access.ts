@@ -1,5 +1,9 @@
 import { IngestionSubmissionResponsibilitySchema } from '@wiser/data-contracts';
-import { isIndependentIngestionReviewer } from '@wiser/data-core';
+import {
+  canonicalIngestionUuid,
+  isIndependentIngestionReviewer,
+  sameIngestionUuid,
+} from '@wiser/data-core';
 import {
   PlatformPrincipalSchema,
   ResourceAccessContextSchema,
@@ -79,14 +83,16 @@ export function ownsPendingSubmission(
   const actor = context.principal;
   if (actor.actorType === 'human' && actor.delegatedBy === undefined)
     return (
-      (stored.actorType === 'human' && stored.actorId === actor.actorId) ||
-      stored.delegatedBy === actor.actorId
+      (stored.actorType === 'human' &&
+        sameIngestionUuid(stored.actorId, actor.actorId)) ||
+      (stored.delegatedBy !== undefined &&
+        sameIngestionUuid(stored.delegatedBy, actor.actorId))
     );
   return (
     stored.actorType === actor.actorType &&
-    stored.actorId === actor.actorId &&
+    sameIngestionUuid(stored.actorId, actor.actorId) &&
     stored.delegatedBy !== undefined &&
-    stored.delegatedBy === actor.delegatedBy
+    sameIngestionUuid(stored.delegatedBy, actor.delegatedBy)
   );
 }
 
@@ -123,6 +129,13 @@ export async function setPendingIntakeScope(
   capabilityId: string,
   authority: PendingIntakeAuthority,
 ): Promise<void> {
+  const actorId = canonicalIngestionUuid(context.principal.actorId);
+  const delegatedBy =
+    context.principal.delegatedBy === undefined
+      ? ''
+      : canonicalIngestionUuid(context.principal.delegatedBy);
+  if (actorId === null || delegatedBy === null)
+    throw new Error('Invalid pending intake identity.');
   await client.query(
     `/* data.intake.scope */ select
     set_config('wiser.actor_id',$1,true),set_config('wiser.actor_type',$2,true),
@@ -130,9 +143,9 @@ export async function setPendingIntakeScope(
     set_config('wiser.candidate_reviewer',$5::text,true),set_config('wiser.candidate_purpose',$6,true),
     set_config('wiser.intake_capability',$7,true)`,
     [
-      context.principal.actorId,
+      actorId,
       context.principal.actorType,
-      context.principal.delegatedBy ?? '',
+      delegatedBy,
       authority.maintainer,
       authority.reviewer,
       context.authorization.purpose,

@@ -8,6 +8,19 @@ import {
 
 import { DataFoundationDomainError } from '../domain-error.js';
 
+/** PostgreSQL uuid values have one textual form; compare only validated identities. */
+export function canonicalIngestionUuid(value: unknown): string | null {
+  const parsed =
+    IngestionSubmissionResponsibilitySchema.shape.actorId.safeParse(value);
+  return parsed.success ? parsed.data.toLowerCase() : null;
+}
+
+export function sameIngestionUuid(left: unknown, right: unknown): boolean {
+  const leftId = canonicalIngestionUuid(left);
+  const rightId = canonicalIngestionUuid(right);
+  return leftId !== null && rightId !== null && leftId === rightId;
+}
+
 export function isIndependentIngestionReviewer(
   reviewer: { readonly actorId: string; readonly actorType: string },
   responsibility: unknown,
@@ -17,11 +30,14 @@ export function isIndependentIngestionReviewer(
     IngestionSubmissionResponsibilitySchema.safeParse(responsibility);
   if (!parsed.success) return false;
   const submitter = parsed.data;
+  const reviewerId = canonicalIngestionUuid(reviewer.actorId);
+  if (reviewerId === null) return false;
   if (submitter.actorType !== 'human' && submitter.delegatedBy === undefined)
     return false;
   return (
-    submitter.actorId !== reviewer.actorId &&
-    submitter.delegatedBy !== reviewer.actorId
+    canonicalIngestionUuid(submitter.actorId) !== reviewerId &&
+    (submitter.delegatedBy === undefined ||
+      canonicalIngestionUuid(submitter.delegatedBy) !== reviewerId)
   );
 }
 
