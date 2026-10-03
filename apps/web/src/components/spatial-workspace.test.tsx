@@ -13,11 +13,13 @@ import type {
   WorkspaceRecord,
 } from '@/lib/spatial-workspace-contract';
 import { getDictionary } from '@/lib/i18n';
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { SpatialWorkspace } from './spatial-workspace';
 
 const mapProbe = vi.hoisted(() => ({
   camera: null as ((value: unknown) => void) | null,
+  mounts: 0,
+  unmounts: 0,
 }));
 
 vi.mock('./spatial-workspace-map', () => ({
@@ -26,15 +28,23 @@ vi.mock('./spatial-workspace-map', () => ({
       features: { properties: { recordId: string; positionId: string } }[];
     };
     camera: { pitch: number; bearing: number };
+    selection: { recordId: string; positionId: string | null } | null;
     onCamera: (value: unknown) => void;
     onSelect: (value: unknown) => void;
   }) => {
+    useEffect(() => {
+      mapProbe.mounts++;
+      return () => {
+        mapProbe.unmounts++;
+      };
+    }, []);
     if (!mapProbe.camera) mapProbe.camera = props.onCamera;
     return (
       <div
         data-testid="workspace-map"
         data-pitch={props.camera.pitch}
         data-bearing={props.camera.bearing}
+        data-selection={JSON.stringify(props.selection)}
       >
         <button
           onClick={() =>
@@ -236,6 +246,8 @@ const pack: WorkspacePack = {
 beforeEach(() => {
   localStorage.clear();
   mapProbe.camera = null;
+  mapProbe.mounts = 0;
+  mapProbe.unmounts = 0;
 });
 afterEach(cleanup);
 
@@ -673,5 +685,197 @@ describe('spatial workspace actual interactions', () => {
       '1',
     );
     expect(screen.getByText('缺少连续观测')).toBeTruthy();
+  });
+});
+
+describe('narrow spatial reading panes', () => {
+  let narrow = true;
+  let viewportChanged: (() => void) | undefined;
+  beforeEach(() => {
+    narrow = true;
+    viewportChanged = undefined;
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        get matches() {
+          return query === '(max-width: 800px)' && narrow;
+        },
+        media: query,
+        addEventListener: vi.fn((_type: string, listener: () => void) => {
+          viewportChanged = listener;
+        }),
+        removeEventListener: vi.fn(),
+      })),
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ['zh-CN', zh, ['地图', '结果', '证据']],
+    ['en', en, ['Map', 'Results', 'Evidence']],
+  ] as const)(
+    'shows one reading pane with named keyboard navigation in %s',
+    (locale, copy, names) => {
+      render(<SpatialWorkspace pack={pack} locale={locale} copy={copy} />);
+      const tabs = names.map((name) => screen.getByRole('tab', { name }));
+      expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+      expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+      expect(
+        screen.queryByRole('region', { name: copy.recordsTitle }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('region', { name: copy.dossierTitle }),
+      ).toBeNull();
+      tabs[0].focus();
+      fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(tabs[1]);
+      expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+      expect(
+        screen.getByRole('region', { name: copy.unlocatedTitle }),
+      ).toBeTruthy();
+      fireEvent.keyDown(tabs[1], { key: 'End' });
+      expect(document.activeElement).toBe(tabs[2]);
+      expect(screen.getByRole('tabpanel').id).toBe(
+        tabs[2].getAttribute('aria-controls'),
+      );
+      expect(
+        screen.getByRole('region', { name: copy.dossierTitle }).textContent,
+      ).toContain(copy.selectRecord);
+      fireEvent.keyDown(tabs[2], { key: 'Home' });
+      expect(document.activeElement).toBe(tabs[0]);
+      expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    },
+  );
+
+  it('keeps the exact location, camera and mounted map through result, evidence and map switches', () => {
+    render(<SpatialWorkspace pack={pack} locale="zh-CN" copy={zh} />);
+    const map = screen.getByTestId('workspace-map');
+    fireEvent.click(within(map).getByRole('button', { name: 'Move map' }));
+    fireEvent.click(screen.getByRole('tab', { name: '结果' }));
+    fireEvent.click(screen.getByRole('button', { name: /潮白河原文对象/ }));
+    expect(
+      screen.getByRole('tab', { name: '证据' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    const evidence = screen.getByRole('tabpanel');
+    expect(document.activeElement).toBe(evidence);
+    expect(
+      within(evidence).getByTestId('spatial-original-evidence').textContent,
+    ).toContain('潮白河 7.8 mg/L');
+    fireEvent.click(
+      within(evidence).getByRole('button', { name: zh.locatePosition }),
+    );
+    expect(
+      screen.getByRole('tab', { name: '地图' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.getByTestId('workspace-map')).toBe(map);
+    expect(map.getAttribute('data-bearing')).toBe('35');
+    expect(JSON.parse(map.getAttribute('data-selection')!)).toEqual({
+      recordId: 'record-1',
+      positionId: 'pos-line',
+    });
+    for (const name of ['证据', '结果', '地图'])
+      fireEvent.click(screen.getByRole('tab', { name }));
+    expect(screen.getByTestId('workspace-map')).toBe(map);
+    expect(mapProbe.mounts).toBe(1);
+    expect(mapProbe.unmounts).toBe(0);
+  });
+
+  it('retains unknown-position results and a selected record when moving between narrow and desktop layouts', () => {
+    render(<SpatialWorkspace pack={pack} locale="zh-CN" copy={zh} />);
+    fireEvent.click(screen.getByRole('tab', { name: '结果' }));
+    fireEvent.click(screen.getByRole('button', { name: /未定位对象/ }));
+    expect(
+      screen.getByRole('region', { name: zh.dossierTitle }).textContent,
+    ).toContain('未定位对象');
+    const map = screen.getByTestId('workspace-map');
+    act(() => {
+      narrow = false;
+      viewportChanged?.();
+    });
+    expect(screen.queryByRole('tab', { name: '地图' })).toBeNull();
+    expect(screen.getByRole('region', { name: zh.recordsTitle })).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: zh.unlocatedTitle }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: zh.dossierTitle }).textContent,
+    ).toContain('未定位对象');
+    act(() => {
+      narrow = true;
+      viewportChanged?.();
+    });
+    expect(
+      screen.getByRole('tab', { name: '证据' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getByTestId('workspace-map')).toBe(map);
+    expect(mapProbe.mounts).toBe(1);
+  });
+
+  it('does not let a hidden map callback reset the active pane, filters or selected evidence', () => {
+    render(<SpatialWorkspace pack={pack} locale="zh-CN" copy={zh} />);
+    const delayedCamera = mapProbe.camera!;
+    fireEvent.click(screen.getByRole('tab', { name: '结果' }));
+    fireEvent.click(screen.getByRole('button', { name: /潮白河原文对象/ }));
+    fireEvent.change(screen.getByLabelText(zh.recordSearch), {
+      target: { value: '潮白河' },
+    });
+    act(() =>
+      delayedCamera({
+        longitude: 117,
+        latitude: 40,
+        zoom: 7,
+        pitch: 50,
+        bearing: 35,
+      }),
+    );
+    expect(
+      screen.getByRole('tab', { name: '证据' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(
+      screen.getByTestId('spatial-original-evidence').textContent,
+    ).toContain('潮白河 7.8 mg/L');
+    expect(screen.getByLabelText<HTMLInputElement>(zh.recordSearch).value).toBe(
+      '潮白河',
+    );
+    expect(
+      screen.getByTestId('workspace-map').getAttribute('data-bearing'),
+    ).toBe('35');
+  });
+
+  it('removes withdrawn evidence from every mounted pane before it can be reopened', () => {
+    const onSelectRecord = vi.fn();
+    const { rerender } = render(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId="record-1"
+        onSelectRecord={onSelectRecord}
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: '地图' }));
+    rerender(
+      <SpatialWorkspace
+        pack={pack}
+        locale="zh-CN"
+        copy={zh}
+        selectedRecordId="record-1"
+        onSelectRecord={onSelectRecord}
+        invalidations={[{ sourceId: 'report', state: 'revoked' }]}
+      />,
+    );
+    expect(screen.queryByText('潮白河 7.8 mg/L')).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: zh.openOriginal, hidden: true }),
+    ).toBeNull();
+    for (const name of ['结果', '证据', '地图']) {
+      fireEvent.click(screen.getByRole('tab', { name }));
+      expect(screen.queryByText('潮白河 7.8 mg/L')).toBeNull();
+    }
+    expect(onSelectRecord).toHaveBeenLastCalledWith(null);
+    expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+      '0',
+    );
   });
 });
