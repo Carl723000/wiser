@@ -50,11 +50,12 @@ export function versionImpact(
         (change.reason !== 'rule-changed' ||
           change.previousProcessingVersion === undefined ||
           record.processingVersion === change.previousProcessingVersion);
+      // A record's processing version does not identify the referenced geometry
+      // rule. Notify every fixed source/version reference when that rule changes.
       const geometry = record.positions.filter(
         (position) =>
           position.geometrySourceId === change.sourceId &&
-          position.geometryVersionId === change.previousVersionId &&
-          change.reason !== 'rule-changed',
+          position.geometryVersionId === change.previousVersionId,
       );
       if (!own && !geometry.length) continue;
       affected.add(record.id);

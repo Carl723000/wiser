@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: f6f2300114f204cf5a810e3578422b28f7ff42f5
+lastReviewedCommit: 7e789ca50219a099b9586d154efd31a4a6848cd5
 ---
 
 ## What this guide governs
@@ -162,3 +162,5 @@ The local spatial workbench starts with region/time, then shows real sources, or
 Numeric comparison checks both the original values and the computed result. Non-numeric inputs or an out-of-range difference retain side-by-side evidence and original values, with a null difference and a blocking reason. Valid zero values and zero differences are not missing data.
 
 Comparison also rejects unknown units surrounded by whitespace and original dates that lack their declared day/month/year precision. Unit strings stay unchanged and are not automatically converted or made equivalent. Ordinary date filters may still expand calendar boundaries; that expansion supplies no missing precision for comparison. These checks do not establish positional compatibility or professional approval.
+
+The local version-impact calculation includes records that reference a geometry source and its fixed version when the geometry processing rule changes. The dependent record's own parser version does not identify that geometry rule. All matching references require rechecking; unrelated source/version references remain excluded. This calculation does not update records, recompute results, or constitute durable dependency or browser acceptance.
