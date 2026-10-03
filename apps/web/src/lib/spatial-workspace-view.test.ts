@@ -1257,3 +1257,27 @@ describe('geographic rendering invariants', () => {
     expect(projectWorkspaceCoordinate([], [0, 0, 0], 800, 600)).toBeNull();
   });
 });
+
+it('carries readable source and position context only from display-permitted fixed geometry', () => {
+  const scoped = { ...pack, records: [record] };
+  const view = createSpatialWorkspaceView(scoped);
+  const filtered = filterSpatialWorkspace(scoped, view);
+  expect(filtered.features.features[0].properties).toMatchObject({
+    sourceTitle: source.title,
+    positionExpression: position.expression,
+    scaleNote: position.scaleNote,
+    recordId: record.id,
+    positionId: position.id,
+    role: 'reference',
+  });
+  expect(filtered.features.features[0].geometry).toBe(position.geometry);
+  const withdrawn = {
+    ...scoped,
+    materials: scoped.materials.map((material) =>
+      material.id === geometrySource.id
+        ? { ...material, rights: { ...material.rights, displayAllowed: false } }
+        : material,
+    ),
+  };
+  expect(filterSpatialWorkspace(withdrawn, view).features.features).toEqual([]);
+});

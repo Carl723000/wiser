@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
@@ -260,6 +261,76 @@ it('exposes both exact source-position hits rather than guessing one from its na
   );
   expect(props.onSelect).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: /原线/ }));
+  expect(props.onSelect).toHaveBeenLastCalledWith({
+    recordId: 'r2',
+    positionId: 'p2',
+  });
+});
+
+it('explains only displayed location roles and removes withdrawn roles from the legend', () => {
+  const { rerender } = render(<SpatialWorkspaceMap {...props} />);
+  const legend = screen.getByRole('group', { name: '地图图例' });
+  expect(within(legend).getByText(copy.positionRoles.reference)).toBeTruthy();
+  expect(
+    within(legend).getByText(copy.positionRoles['applicable-area']),
+  ).toBeTruthy();
+  expect(within(legend).queryByText(copy.positionRoles.sampling)).toBeNull();
+  rerender(
+    <SpatialWorkspaceMap
+      {...props}
+      features={{ ...features, features: [features.features[0]] }}
+    />,
+  );
+  expect(within(legend).queryByText(copy.positionRoles.reference)).toBeNull();
+});
+
+it('keeps reference meaning visible in selected planar geometry instead of presenting it as a sampling position', () => {
+  const { container } = render(
+    <SpatialWorkspaceMap
+      {...props}
+      webGLAvailable={false}
+      selection={{ recordId: 'r2', positionId: 'p2' }}
+    />,
+  );
+  const selected = screen.getByRole('region', { name: '当前地图位置' });
+  expect(within(selected).getByText(copy.positionRoles.reference)).toBeTruthy();
+  expect(within(selected).getByText(copy.referenceLocation)).toBeTruthy();
+  expect(
+    container
+      .querySelector('[data-planar-geometry="original-line"] path')
+      ?.getAttribute('stroke-dasharray'),
+  ).toBe('6 4');
+});
+
+it('offers readable overlapping sources and positions while retaining exact references on demand', () => {
+  const enriched: WorkspaceMapFeatures = {
+    ...features,
+    features: features.features.map((feature, index) => ({
+      ...feature,
+      properties: {
+        ...feature.properties,
+        sourceTitle: `月报来源${index + 1}`,
+        positionExpression: `原文位置${index + 1}`,
+        scaleNote: '仅作范围参考',
+      },
+    })),
+  };
+  render(<SpatialWorkspaceMap {...props} features={enriched} />);
+  act(() =>
+    (probe.props.onClick as (event: unknown) => void)({
+      point: { x: 100, y: 100 },
+      features: enriched.features,
+    }),
+  );
+  const picker = screen.getByRole('group', { name: copy.overlapPick });
+  const choice = within(picker).getByRole('button', {
+    name: /原线.*月报来源2.*原文位置2/,
+  });
+  const references = picker.querySelectorAll('details');
+  expect(references).toHaveLength(2);
+  expect(Array.from(references).every((element) => !element.open)).toBe(true);
+  expect(choice.textContent).not.toContain('v1');
+  fireEvent.click(choice);
   expect(props.onSelect).toHaveBeenLastCalledWith({
     recordId: 'r2',
     positionId: 'p2',

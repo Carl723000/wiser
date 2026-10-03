@@ -6,6 +6,65 @@ const output = process.env.WISER_SPATIAL_ACCEPTANCE_DIRECTORY;
 const browserErrors = new WeakMap<BrowserContext, string[]>();
 const browserWarnings = new WeakMap<BrowserContext, string[]>();
 
+test('map role legend and selected reference remain readable across locales, mobile panes and fullscreen', async ({
+  page,
+}) => {
+  for (const [locale, labels] of [
+    [
+      'zh-CN',
+      {
+        legend: '地图图例',
+        location: '当前地图位置',
+        reference: '参考位置或范围',
+        limit: '参考范围，不能代替精确位置',
+        map: '地图',
+        fullscreen: '全屏工作区',
+      },
+    ],
+    [
+      'en',
+      {
+        legend: 'Map legend',
+        location: 'Current map location',
+        reference: 'Reference location or extent',
+        limit: 'Reference extent; not an exact location',
+        map: 'Map',
+        fullscreen: 'Fullscreen workspace',
+      },
+    ],
+  ] as const) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await page.goto(
+        `/${locale}/data-foundation/spatial-workspace?record=monthly-2023-04%3At1%3Ar14`,
+      );
+      if (width === 390)
+        await page.getByRole('tab', { name: labels.map, exact: true }).click();
+      await expect(
+        page.getByRole('group', { name: labels.legend }),
+      ).toContainText(labels.reference);
+      const location = page.getByRole('region', { name: labels.location });
+      await expect(location).toContainText('潮白河');
+      await expect(location).toContainText(labels.reference);
+      await expect(location).toContainText(labels.limit);
+      await page
+        .getByRole('button', { name: labels.fullscreen, exact: true })
+        .click();
+      await expect(location).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+      if (output)
+        await page.screenshot({
+          path: join(output, `${locale}-map-roles-${width}.png`),
+        });
+      await page.keyboard.press('Escape');
+    }
+  }
+});
+
 test('business evidence stays readable while exact technical references remain available by keyboard in both locales and viewport sizes', async ({
   page,
 }) => {
