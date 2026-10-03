@@ -775,6 +775,32 @@ describe('comparison and permitted topic exports', () => {
   });
 
   it.each([
+    ['-1e308', '1e308'],
+    ['1e308', '-1e308'],
+  ])(
+    'withholds an overflowing difference between finite inputs %s and %s',
+    (a, b) => {
+      const left = { ...numeric, value: a };
+      const right = { ...numeric, id: 'finite-overflow-next', value: b };
+      const originals = JSON.stringify([left, right]);
+      expect(Number.isFinite(Number(a))).toBe(true);
+      expect(Number.isFinite(Number(b))).toBe(true);
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('numeric');
+      expect(result.difference).toBeNull();
+      expect(JSON.stringify([left, right])).toBe(originals);
+    },
+  );
+
+  it('retains a valid zero difference without treating zero as missing', () => {
+    const zero = { ...numeric, value: '0' };
+    const result = compareWorkspaceRecords(zero, zero, pack);
+    expect(result.state).toBe('comparable');
+    expect(result.difference).toBe(0);
+  });
+
+  it.each([
     [{ objectId: 'same-name-different-id' }, 'object'],
     [{ sourceId: 'another-work' }, 'object'],
     [{ metric: 'ammonia' }, 'metric'],
