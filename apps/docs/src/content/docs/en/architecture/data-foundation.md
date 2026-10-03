@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: def7525c
+lastReviewedCommit: a7d8ff4a
 ---
 
 ## What runs today
@@ -488,3 +488,5 @@ The local Web workbench consumes the pure rule through the explicit `@wiser/data
 ## Frozen candidate contracts
 
 Ingestion candidates use the strict `ingestion-candidate` reference: ingestion ID, frozen review SHA-256 and processing-batch ID. It is rejected by the published-version reference schema. Completed parser batches preserve original asset hashes and explicit READY, PARTIAL or UNAVAILABLE outcomes; unknown record/feature counts remain null. Record pages preserve original values, source locators, source order and unique row identities, with one fixed asset, declared columns, at most 200 rows, a 256 KiB record-value limit and a 3 MiB page budget. The pure integrity guard rejects changed input, duplicate originals, a changed/withdrawn review policy or a session that is no longer REVIEW_REQUIRED. These schemas and guard do not authorize reads or register a REST, GraphQL or MCP operation. Live Auth/ownership, durable candidate storage, parser execution and transport readback must be integrated and verified separately; current published queries and the managed Capability admission policy remain unchanged.
+
+Candidate parser admission must keep the frozen ingestion/review/batch reference separate from published catalog identity. Standard CSV/GeoJSON and isolated document parsing must preserve raw values, locators, geometry and existing limits while deriving stable Worker-controlled record IDs. This parser binding alone does not persist candidates, grant access, register capabilities or publish a source.

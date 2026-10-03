@@ -16,7 +16,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: a0952585
+lastReviewedCommit: a7d8ff4a
 ---
 
 # WISER Data Worker / 数据基座 Worker
@@ -128,3 +128,5 @@ The Worker also runs a bounded authority reconciliation for reviewed business re
 To rebuild a configured business projection after it is removed, use the existing Worker environment and pinned Compose files, including `compose.override.yaml`, with `pnpm --filter @wiser/data-worker exec tsx src/business-rebuild-cli.ts`. It completes the retained sweep and one full sweep with a per-project/target lock, preserving assertion IDs, originals and reviews. Keep one change owner for the target; inspect and verify an isolated target before any shared cutover. / 重建使用已有 Worker 环境，保留本地 Compose override，并执行上述命令。它完成保留进度及一次完整扫描，以项目/目标锁避免相互覆盖，原断言、原件与审核记录保留；共享切换前先验证隔离目标。
 
 XML元数据通过现有隔离解析器按节点保留命名空间、路径与原文；不推断数值、坐标或科学含义。 / XML metadata uses the existing isolated parser, preserving namespaces, source paths and lexical content without inferring numbers, geometry or scientific meaning.
+
+候选解析使用冻结入库／审核／处理批次及原件身份，不能借用已发布版本ID。隔离解析器只接收原件及其哈希，Worker绑定记录ID并保留原文定位、部分解析状态和既有失败规则。候选job、持久存储及受管API须另行接通。 / Candidate parsing uses frozen ingestion/review/batch and original identity, never a borrowed published-version ID. The isolated parser receives original bytes and hashes only; Worker binds record IDs while retaining locators, partial outcomes and existing failures. Durable candidate jobs, storage and managed API admission require their own integration.
