@@ -69,7 +69,10 @@ function options(
     fetch,
   };
 }
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 it('uses the frozen candidate path and verified server scope without exposing storage or active content', async () => {
   const fetch = vi.fn<typeof globalThis.fetch>(() =>
     Promise.resolve(
@@ -115,6 +118,239 @@ it.each([
     expect(input.fetch).not.toHaveBeenCalled();
   },
 );
+
+const savedViewId = 'a1000000-0000-4000-8000-000000000006';
+const fixedReference = {
+  kind: 'ingestion-candidate' as const,
+  ingestionId,
+  processingBatchId,
+  reviewHash: 'a'.repeat(64),
+};
+function savedManifest() {
+  return {
+    kind: 'ingestion-candidate-view',
+    savedView: {
+      kind: 'ingestion-candidate-view',
+      viewId: savedViewId,
+      title: 'Fixed pending materials',
+      visibility: 'private',
+      createdAt: '2026-10-04T00:00:00Z',
+      revokedAt: null,
+    },
+    references: [
+      fixedReference,
+      {
+        ...fixedReference,
+        ingestionId: 'a1000000-0000-4000-8000-000000000007',
+        processingBatchId: 'a1000000-0000-4000-8000-000000000008',
+      },
+    ],
+    viewSpec: { page: { kind: 'assets', reference: fixedReference, first: 50 } },
+    request: {
+      capabilityId: 'data.ingestion.candidate.get',
+      input: { ...fixedReference, first: 50 },
+    },
+  };
+}
+const savedQuery = (id = savedViewId) =>
+  'reviewHash=' + fixedReference.reviewHash + '&savedViewId=' + id;
+function savedFixture(
+  open: (index: number) => Response | Promise<Response> = () =>
+    Response.json(savedManifest()),
+  content: () => Response | Promise<Response> = () => original(),
+  init: RequestInit = {},
+) {
+  let opens = 0;
+  const download = vi.fn(content);
+  const fetch = vi.fn<typeof globalThis.fetch>((url) =>
+    Promise.resolve(
+      url.toString().includes('/ingestion-candidate-views/')
+        ? open(++opens)
+        : download(),
+    ),
+  );
+  return { input: options(fetch, savedQuery(), init), fetch, download };
+}
+it('admits a saved original through the current complete manifest and retains fixed server scope', async () => {
+  const fixture = savedFixture();
+  const response = await proxyCandidateOriginal(fixture.input);
+  expect(await response.text()).toBe('world');
+  const opens = fixture.fetch.mock.calls.filter(([url]) =>
+    url.toString().includes('/ingestion-candidate-views/'),
+  );
+  expect(opens.length).toBeGreaterThanOrEqual(3);
+  for (const [url, init] of opens) {
+    expect(url.toString()).toContain('/' + savedViewId + '/open');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({});
+    const sent = new Headers(init?.headers);
+    expect(sent.get('authorization')).toBe('Bearer ' + token);
+    expect(sent.get('x-wiser-tenant-id')).toBe(fixture.input.config.tenantId);
+    expect(sent.get('x-wiser-project-id')).toBe(fixture.input.config.projectId);
+    expect(sent.get('x-wiser-purpose')).toBe(fixture.input.config.purpose);
+    expect(init?.cache).toBe('no-store');
+    expect(init?.redirect).toBe('error');
+    expect(init?.signal).toBeDefined();
+  }
+  expect(fixture.download).toHaveBeenCalledOnce();
+  const [url] = fixture.fetch.mock.calls.find(([url]) =>
+    url.toString().includes('/assets/'),
+  )!;
+  expect(url.toString()).not.toContain('savedViewId');
+  expect(response.headers.get('cache-control')).toContain('private');
+});
+it.each([403, 404])(
+  'refuses the complete saved view before fetching an otherwise readable original: %s',
+  async (status) => {
+    const fixture = savedFixture(() =>
+      new Response('private member path http://store/internal', { status }),
+    );
+    const pending = proxyCandidateOriginal(fixture.input);
+    await expect(pending).rejects.toMatchObject({ status });
+    await expect(pending).rejects.not.toThrow('private member');
+    expect(fixture.download).not.toHaveBeenCalled();
+  },
+);
+it.each(['ingestionId', 'processingBatchId', 'reviewHash'] as const)(
+  'requires the exact saved reference member, including %s',
+  async (field) => {
+    const manifest = savedManifest();
+    const changed = {
+      ...fixedReference,
+      [field]: field === 'reviewHash' ? 'b'.repeat(64) : assetId,
+    };
+    manifest.references[0] = changed;
+    manifest.viewSpec.page.reference = changed;
+    manifest.request.input = { ...changed, first: 50 };
+    const fixture = savedFixture(() => Response.json(manifest));
+    await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(fixture.download).not.toHaveBeenCalled();
+  },
+);
+it.each(['extra', 'wrong-id', 'revoked', 'invalid-kind'])(
+  'rejects an invalid standard saved-open response before original delivery: %s',
+  async (kind) => {
+    const manifest = savedManifest();
+    const data: Record<string, unknown> = manifest;
+    if (kind === 'extra') data['storageUrl'] = 'http://private-store';
+    if (kind === 'wrong-id') manifest.savedView.viewId = assetId;
+    if (kind === 'revoked') data['savedView'] = {
+      ...manifest.savedView,
+      revokedAt: '2026-10-04T00:00:01Z',
+    };
+    if (kind === 'invalid-kind') data['kind'] = 'published-view';
+    const fixture = savedFixture(() => Response.json(data));
+    await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+      status: 502,
+    });
+    expect(fixture.download).not.toHaveBeenCalled();
+  },
+);
+it('rechecks every saved member after upstream headers and withholds all original bytes after withdrawal', async () => {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() { cancelled = true; },
+  });
+  const fixture = savedFixture(
+    (index) => index === 1
+      ? Response.json(savedManifest())
+      : new Response('hidden second member', { status: 404 }),
+    () => original(body),
+  );
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: 404,
+  });
+  expect(fixture.download).toHaveBeenCalledOnce();
+  expect(cancelled).toBe(true);
+  expect(body.locked).toBe(false);
+});
+it('rechecks inactive saved members before each output chunk and stops the stream after withdrawal', async () => {
+  let chunks = 0, cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      c.enqueue(new TextEncoder().encode(chunks++ === 0 ? 'wo' : 'rld'));
+    },
+    cancel() { cancelled = true; },
+  }, { highWaterMark: 0 });
+  const fixture = savedFixture(
+    (index) => index < 4
+      ? Response.json(savedManifest())
+      : new Response('hidden inactive member', { status: 404 }),
+    () => original(body),
+  );
+  const response = await proxyCandidateOriginal(fixture.input);
+  const reader = response.body!.getReader();
+  expect(new TextDecoder().decode((await reader.read()).value)).toBe('wo');
+  await expect(reader.read()).rejects.toMatchObject({ status: 404 });
+  expect(cancelled).toBe(true);
+  expect(body.locked).toBe(false);
+});
+it.each([
+  '', 'bad', savedViewId + '&savedViewId=' + savedViewId,
+])('rejects invalid saved IDs before Auth or fetch: %s', async (id) => {
+  const input = options(undefined, savedQuery(id));
+  const createAuthClient = vi.fn(input.createAuthClient);
+  await expect(proxyCandidateOriginal({ ...input, createAuthClient }))
+    .rejects.toMatchObject({ status: 422 });
+  expect(createAuthClient).not.toHaveBeenCalled();
+  expect(input.fetch).not.toHaveBeenCalled();
+});
+it('canonicalizes a valid uppercase saved ID without changing the fixed reference', async () => {
+  const fixture = savedFixture();
+  fixture.input = { ...fixture.input, request: new Request(
+    fixture.input.request.url.replace(savedViewId, savedViewId.toUpperCase()),
+  ) };
+  const response = await proxyCandidateOriginal(fixture.input);
+  expect(await response.text()).toBe('world');
+});
+it('does not turn saved-open permission into original-read permission', async () => {
+  const fixture = savedFixture(undefined, () =>
+    new Response('private original diagnostics', { status: 403 }),
+  );
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: 403,
+  });
+});
+it.each([
+  { method: 'HEAD' },
+  { headers: { range: 'bytes=9-' } },
+])('rechecks saved access before empty output and never leaks original length on withdrawal: %j', async (init) => {
+  const fixture = savedFixture(
+    (index) => index === 1 ? Response.json(savedManifest())
+      : new Response(null, { status: 404 }),
+    () => init.method ? original(null)
+      : original(null, 416, { 'content-range': 'bytes */5' }),
+    init,
+  );
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: 404,
+  });
+});
+it('cancels a stalled saved admission before fetching any original', async () => {
+  const abort = new AbortController();
+  const fixture = savedFixture(
+    () => new Promise(() => undefined), undefined, { signal: abort.signal },
+  );
+  const reading = proxyCandidateOriginal(fixture.input);
+  void reading.catch(() => undefined);
+  for (let index = 0; index < 100 && fixture.fetch.mock.calls.length === 0; index++)
+    await Promise.resolve();
+  abort.abort();
+  await expect(reading).rejects.toMatchObject({ status: 499 });
+  expect(fixture.download).not.toHaveBeenCalled();
+});
+it('uses the smaller configured response budget for saved admission', async () => {
+  const fixture = savedFixture();
+  fixture.input = { ...fixture.input, config: {
+    ...fixture.input.config, responseLimitBytes: 128,
+  } };
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: 502,
+  });
+  expect(fixture.download).not.toHaveBeenCalled();
+});
 it('checks identity again after fetching and cancels a body on revoked session', async () => {
   let cancelled = false;
   const body = new ReadableStream<Uint8Array>({
