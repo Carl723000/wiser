@@ -453,6 +453,10 @@ The source management catalog runs under `wiser_data_metadata`, a non-login, non
 
 ## Local candidates and managed materials
 
+### Project readiness rule boundary
+
+`packages/data-core/src/project-readiness.ts` defines an internal, pure calculation boundary for a declared need/version/region/purpose and an explicit real or synthetic track. Its Red tests specify separate work/version/asset/source-object/record grains, evidenced publication-series naming, per-object month gaps, pending versus approved correspondence, categorical value preservation, and fact-specific drilldowns. The initial rule scaffold is not executable readiness; the tests must pass before it is usable. These internal types do not add a public HTTP DTO, persistence authority, permission grant, professional decision, or candidate read path. Service and Web integration require their own governed acceptance.
+
 The spatial workbench `WorkspacePack` is a narrow frontend/local-processor interchange, not a new public query protocol or authority identity store. It preserves originals, extracted rows, textual places, reference geometries, method evidence and pending professional review separately. Same-name source-local objects are not merged. Original paths never reach the browser, and derived graphics cannot expose sources lacking display rights.
 
 An independent synthetic candidate supports accept, exclude and pending exercises followed by source/rule impact calculation. Real candidates remain pending. Exercises are not professional review, authorization, managed correction or publication. Standard intake, ordinary-account authorization and live provider access require their own end-to-end acceptance.
