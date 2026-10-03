@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 82d4e9ea0fef8d01de203705e7c737565f1f8881
+lastReviewedCommit: 67542c3839ffd8254b7abd14295c1381afee3388
 ---
 
 ## 设计方向
