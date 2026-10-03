@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-09-28
-lastReviewedCommit: 1578c35cab665f78bd2810072de1a98224b21858
+lastReviewedAt: 2026-10-03
+lastReviewedCommit: b5633710788fa932710c251fd7655899615d2bf6
 ---
 
 Use this page when running WISER in your own development environment for the first time. For public data access or external-client connection, see the [public use guide](/en/development/wiser-data-guide/). For standalone applications, ports, configuration, and troubleshooting, see the [local development environment](/en/development/local-environment/).

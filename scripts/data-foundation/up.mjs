@@ -74,11 +74,15 @@ async function localRuntimeSecrets() {
   return persisted;
 }
 
-async function provisionExconRuntime(password, environment) {
+async function provisionExconRuntime(
+  password,
+  environment,
+  execute = runCommand,
+) {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(password)) {
     throw new Error('Local EXCON runtime password is invalid.');
   }
-  await runCommand(
+  await execute(
     'docker',
     [
       'exec',
@@ -100,16 +104,27 @@ async function provisionExconRuntime(password, environment) {
   );
 }
 
-export async function startDataFoundation(environment = process.env) {
-  const statusOutput = await runCommand(
+export async function startDataFoundation(
+  environment = process.env,
+  dependencies = {},
+) {
+  const execute = dependencies.runCommand ?? runCommand;
+  const compose = dependencies.runCompose ?? runCompose;
+  const readSecrets = dependencies.readSecrets ?? localRuntimeSecrets;
+  const signIn = dependencies.signIn ?? signInLocalOperator;
+  const statusOutput = await execute(
     'pnpm',
     ['exec', 'supabase', 'status', '-o', 'env'],
     { environment },
   );
   const status = parseSupabaseStatusEnvironment(statusOutput);
-  const localSecrets = await localRuntimeSecrets();
-  await provisionExconRuntime(localSecrets.exconJournalPassword, environment);
-  const accessToken = await signInLocalOperator(status, {
+  const localSecrets = await readSecrets();
+  await provisionExconRuntime(
+    localSecrets.exconJournalPassword,
+    environment,
+    execute,
+  );
+  const accessToken = await signIn(status, {
     email: environment['WISER_LOCAL_OPERATOR_EMAIL'] ?? LOCAL_OPERATOR_EMAIL,
     password:
       environment['WISER_LOCAL_OPERATOR_PASSWORD'] ?? LOCAL_OPERATOR_PASSWORD,
@@ -124,7 +139,7 @@ export async function startDataFoundation(environment = process.env) {
     environment['DATA_TENANT_ID'] ?? 'b1000000-0000-4000-8000-000000000001';
   const projectId =
     environment['DATA_PROJECT_ID'] ?? 'b2000000-0000-4000-8000-000000000001';
-  await runCompose(['up', '-d', '--build', '--wait'], {
+  await compose(['up', '-d', '--build', '--wait'], {
     capture: false,
     environment: {
       ...environment,
