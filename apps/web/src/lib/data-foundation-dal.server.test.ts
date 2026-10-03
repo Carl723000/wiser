@@ -960,3 +960,377 @@ it('does not turn capability authorization failure into a legacy retry', async (
   );
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+const candidateReference = {
+  kind: 'ingestion-candidate' as const,
+  ingestionId: PROJECT_ID,
+  processingBatchId: GEO_VERSION_ID,
+  reviewHash: 'a'.repeat(64),
+};
+const candidateAsset = {
+  assetId: USER_ID,
+  sourceHash: 'b'.repeat(64),
+  status: 'READY',
+  recordCount: 1,
+  featureCount: 1,
+  reason: null,
+};
+function candidatePage(action: 'get' | 'records' | 'geometry') {
+  const common = { reference: candidateReference, nextCursor: null };
+  if (action === 'get')
+    return {
+      ...common,
+      parserVersion: 'test-v1',
+      status: 'READY',
+      createdAt: '2026-10-03T00:00:00Z',
+      totalAssetCount: 1,
+      knownRecordCount: 1,
+      knownFeatureCount: 1,
+      unknownAssetCount: 0,
+      assets: [candidateAsset],
+    };
+  const record = {
+    recordId: SESSION_ID,
+    assetId: USER_ID,
+    index: 1,
+    sourceId: 'original-1',
+  };
+  if (action === 'records')
+    return {
+      ...common,
+      assetId: USER_ID,
+      columns: [{ key: 'value', label: 'Original value' }],
+      records: [{ ...record, values: { value: 0 }, hasGeometry: true }],
+    };
+  return {
+    ...common,
+    assetId: USER_ID,
+    crs: 'EPSG:4326',
+    features: [
+      {
+        ...record,
+        sourceCrs: 'EPSG:4326',
+        geometry: { type: 'Point', coordinates: [116.2, 39.8] },
+      },
+    ],
+  };
+}
+function candidateDal(
+  fetch: typeof globalThis.fetch,
+  config: { requestTimeoutMs?: number; responseLimitBytes?: number } = {},
+  createAuthClient = () => Promise.resolve(authClient([])),
+) {
+  return createDataFoundationDal({
+    config: {
+      apiOrigin: 'http://api:3001',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'review',
+      requestTimeoutMs: 5000,
+      responseLimitBytes: 4 * 1024 * 1024,
+      ...config,
+    },
+    createAuthClient,
+    fetch,
+  });
+}
+function ingestionDetail() {
+  return {
+    ingestion: {
+      ingestionId: PROJECT_ID,
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      assetIds: [USER_ID],
+      intendedUses: ['review'],
+      requestedSecurityLevel: 'L0_PUBLIC',
+      state: 'REVIEW_REQUIRED',
+      version: 1,
+      createdAt: '2026-10-03T00:00:00Z',
+      updatedAt: '2026-10-03T00:00:00Z',
+    },
+    candidateReference,
+  };
+}
+
+describe('fixed candidate transport', () => {
+  it('preserves the strict 1.2 ingestion detail and leaves the old ingestion method available', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(ingestionDetail())),
+    );
+    const dal = candidateDal(fetch);
+    await expect(dal.ingestionDetail(PROJECT_ID)).resolves.toEqual(
+      ingestionDetail(),
+    );
+    await expect(dal.ingestion(PROJECT_ID)).resolves.toMatchObject({
+      ingestionId: PROJECT_ID,
+    });
+  });
+  it.each([
+    { ingestion: { ...ingestionDetail().ingestion, ingestionId: USER_ID } },
+    { candidateReference: { ...candidateReference, ingestionId: USER_ID } },
+    { candidateReference: undefined },
+    { internalStorageKey: 'private/path' },
+  ])(
+    'rejects a mismatched or non-strict ingestion detail %j',
+    async (change) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json({ ...ingestionDetail(), ...change })),
+      );
+      await expect(
+        candidateDal(fetch).ingestionDetail(PROJECT_ID),
+      ).rejects.toMatchObject({
+        kind: 'contract',
+        status: 502,
+      });
+    },
+  );
+  it.each(['get', 'records', 'geometry'] as const)(
+    'uses the registered %s path and retains the fixed reference, pagination and server scope',
+    async (action) => {
+      const order: string[] = [];
+      const fetch = vi.fn<typeof globalThis.fetch>(() => {
+        order.push('fetch');
+        return Promise.resolve(Response.json(candidatePage(action)));
+      });
+      const input = {
+        ...candidateReference,
+        ...(action === 'get' ? {} : { assetId: USER_ID }),
+        first: 10,
+        after: 'cursor:original/+ =',
+      };
+      await expect(
+        candidateDal(fetch, {}, () =>
+          Promise.resolve(authClient(order)),
+        ).candidate(action, input),
+      ).resolves.toEqual(candidatePage(action));
+      expect(order).toEqual(['claims', 'session', 'fetch']);
+      const url = new URL(fetch.mock.calls[0]![0] as string);
+      expect(url.pathname).toBe(
+        `/api/data/v1/ingestions/${PROJECT_ID}/candidates/${GEO_VERSION_ID}` +
+          (action === 'get' ? '' : `/${USER_ID}/${action}`),
+      );
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        kind: 'ingestion-candidate',
+        reviewHash: candidateReference.reviewHash,
+        first: '10',
+        after: input.after,
+      });
+      const init = fetch.mock.calls[0]![1]!;
+      const headers = new Headers(init.headers);
+      expect(headers.get('authorization')).toBe(`Bearer ${accessToken()}`);
+      expect(headers.get('x-wiser-tenant-id')).toBe(TENANT_ID);
+      expect(headers.get('x-wiser-project-id')).toBe(PROJECT_ID);
+      expect(headers.get('x-wiser-purpose')).toBe('review');
+      expect(init).toMatchObject({
+        method: 'GET',
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      expect(init.body).toBeUndefined();
+    },
+  );
+  it.each([
+    { ...candidateReference, versionId: USER_ID },
+    { ...candidateReference, ingestionId: '../private' },
+    { ...candidateReference, first: 201 },
+    { ...candidateReference, after: '' },
+    { ...candidateReference, reviewHash: 'A'.repeat(64) },
+  ])(
+    'rejects invalid input before session access or HTTP %j',
+    async (input) => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth).candidate('get', input),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['get', 'records', 'geometry'] as const)(
+    'rejects a different %s review hash without fallback',
+    async (action) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            ...candidatePage(action),
+            reference: { ...candidateReference, reviewHash: 'c'.repeat(64) },
+          }),
+        ),
+      );
+      await expect(
+        candidateDal(fetch).candidate(action, {
+          ...candidateReference,
+          ...(action === 'get' ? {} : { assetId: USER_ID }),
+        }),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each(['records', 'geometry'] as const)(
+    'rejects a different %s original asset even when the page is empty',
+    async (action) => {
+      const page = {
+        ...candidatePage(action),
+        assetId: SESSION_ID,
+        ...(action === 'records' ? { records: [] } : { features: [] }),
+      };
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(page)),
+      );
+      await expect(
+        candidateDal(fetch).candidate(action, {
+          ...candidateReference,
+          assetId: USER_ID,
+        }),
+      ).rejects.toMatchObject({ status: 502 });
+    },
+  );
+  it.each(['get', 'records', 'geometry'] as const)(
+    'rejects an empty %s page with a continuation cursor',
+    async (action) => {
+      const key =
+        action === 'get'
+          ? 'assets'
+          : action === 'records'
+            ? 'records'
+            : 'features';
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          Response.json({
+            ...candidatePage(action),
+            [key]: [],
+            nextCursor: 'next',
+          }),
+        ),
+      );
+      await expect(
+        candidateDal(fetch).candidate(action, {
+          ...candidateReference,
+          ...(action === 'get' ? {} : { assetId: USER_ID }),
+        }),
+      ).rejects.toMatchObject({ status: 502 });
+    },
+  );
+  it('rejects pages larger than first, despite being valid under the shared output schema', async () => {
+    const page = candidatePage('get');
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        Response.json({
+          ...page,
+          totalAssetCount: 2,
+          assets: [candidateAsset, { ...candidateAsset, assetId: SESSION_ID }],
+        }),
+      ),
+    );
+    await expect(
+      candidateDal(fetch).candidate('get', { ...candidateReference, first: 1 }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+  it.each([128, 3 * 1024 * 1024])(
+    'bounds streamed response bytes at the smaller candidate/config limit %i',
+    async (limit) => {
+      const cancel = vi.fn();
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(limit + 1));
+              },
+              cancel,
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      );
+      await expect(
+        candidateDal(fetch, {
+          responseLimitBytes: limit === 128 ? limit : 4 * 1024 * 1024,
+        }).candidate('get', candidateReference),
+      ).rejects.toMatchObject({ status: 502 });
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+  it('keeps the deadline active after headers and cancels a stalled body', async () => {
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch, { requestTimeoutMs: 20 }).candidate(
+        'get',
+        candidateReference,
+      ),
+    ).rejects.toMatchObject({ kind: 'unavailable', status: 504 });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('cancels a streaming candidate response and never exposes its partial body', async () => {
+    const cancel = vi.fn();
+    const caller = new AbortController();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('private upstream body'),
+              );
+              queueMicrotask(() => caller.abort());
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch).candidate('get', candidateReference, caller.signal),
+    ).rejects.toMatchObject({ kind: 'unavailable', status: 499 });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+  });
+  it('rejects a previously cancelled call before accessing the session', async () => {
+    const auth = vi.fn(() => Promise.resolve(authClient([])));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    await expect(
+      candidateDal(fetch, {}, auth).candidate(
+        'get',
+        candidateReference,
+        AbortSignal.abort(),
+      ),
+    ).rejects.toMatchObject({ status: 499 });
+    expect(auth).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('requires a verified session and preserves authorization failure without reading raw diagnostics', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(new Response('private upstream URL', { status: 403 })),
+    );
+    await expect(
+      candidateDal(
+        fetch,
+        {},
+        () => Promise.resolve(null) as Promise<DataFoundationAuthClient>,
+      ).candidate('get', candidateReference),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(
+      candidateDal(fetch).candidate('get', candidateReference),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: 'Data Foundation request failed: authorization.',
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
