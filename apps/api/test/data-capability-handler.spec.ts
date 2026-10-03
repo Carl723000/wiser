@@ -248,12 +248,18 @@ describe('DataCapabilityHandler security boundary', () => {
 describe('managed maintenance boundary', () => {
   it.each([
     [
-      'data.operation.get',
-      { operationId: 'a1000000-0000-4000-8000-000000000005' },
+      'data.operation.cancel',
+      {
+        operationId: 'a1000000-0000-4000-8000-000000000005',
+        expectedVersion: 1,
+      },
     ],
     [
-      'data.operation.events',
-      { operationId: 'a1000000-0000-4000-8000-000000000005', first: 10 },
+      'data.ingestion.resume',
+      {
+        ingestionId: 'a1000000-0000-4000-8000-000000000005',
+        expectedVersion: 1,
+      },
     ],
   ] as const)(
     'denies %s before unscoped maintenance data can be returned',

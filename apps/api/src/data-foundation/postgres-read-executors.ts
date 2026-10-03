@@ -8,6 +8,8 @@ import {
   canReadPendingSubmission,
   rowSubmissionResponsibility,
   setPendingIntakeScope,
+  submissionResponsibility,
+  type PendingIntakeAuthority,
 } from './managed-ingestion-access.js';
 import { createHash } from 'node:crypto';
 
@@ -17,6 +19,7 @@ import {
   IngestionCandidateRecordPageSchema,
   IngestionCandidateGeometryPageSchema,
   IngestionCandidateReferenceSchema,
+  OperationErrorSchema,
   SourceRegistrationSchema,
   type AgentRunSummaryDto,
   type DataCapabilityId,
@@ -350,6 +353,23 @@ where operation_id = $1::uuid
 const OPERATION_EXISTS_SQL = `
 /* data.operation.exists */
 select true as exists from service.operation where operation_id = $1::uuid
+`;
+
+// Do not put a session lookup in Operation RLS: upload asset policies already
+// read Operation, and create inserts its Operation before inserting the session.
+// This exact read guard uses session RLS without changing INSERT/RETURNING.
+const OPERATION_INTAKE_ACCESS_SQL = `
+/* data.operation.intake-access */
+select origin.operation_id,origin.tenant_id,origin.project_id,origin.capability_id,origin.actor_id,
+  origin.request_payload->'intakeResponsibility' as intake_responsibility,
+  session.ingestion_id,session.owner_project_id,session.submitted_by_actor_id,
+  session.submitted_actor_type,session.submitted_delegator_actor_id
+from service.operation origin
+left join ingestion.session session on session.tenant_id=origin.tenant_id
+  and session.project_id=origin.project_id and session.operation_id=origin.operation_id
+  and origin.capability_id='data.ingestion.create'
+where origin.operation_id=$1::uuid and origin.tenant_id=$2::uuid and origin.project_id=$3::uuid
+  and origin.capability_id in ('data.uploadSession.create','data.ingestion.create')
 `;
 
 const OPERATION_EVENTS_SQL = `
@@ -821,7 +841,10 @@ function projectionStatus(
   };
 }
 
-function operation(row: Record<string, unknown>): OperationDto {
+function operation(
+  row: Record<string, unknown>,
+  managed = false,
+): OperationDto {
   const operationId = text(row, 'operation_id');
   return {
     operationId,
@@ -844,8 +867,15 @@ function operation(row: Record<string, unknown>): OperationDto {
       ? {}
       : {
           error: {
-            code: optionalText(row, 'error_code')!,
-            message: optionalText(row, 'error_message') ?? 'Operation failed.',
+            code:
+              managed &&
+              !OperationErrorSchema.shape.code.safeParse(row['error_code'])
+                .success
+                ? 'HANDLER_UNEXPECTED'
+                : optionalText(row, 'error_code')!,
+            message: managed
+              ? 'Operation failed.'
+              : (optionalText(row, 'error_message') ?? 'Operation failed.'),
             retryable: row.error_retryable === true,
           },
         }),
@@ -871,7 +901,10 @@ function publicOperationEventType(
     : 'PROGRESS_REPORTED';
 }
 
-function operationEvent(row: Record<string, unknown>): OperationEventDto {
+function operationEvent(
+  row: Record<string, unknown>,
+  managed = false,
+): OperationEventDto {
   return {
     eventId: text(row, 'event_id'),
     operationId: text(row, 'operation_id'),
@@ -881,7 +914,7 @@ function operationEvent(row: Record<string, unknown>): OperationEventDto {
     progressPercent: integer(row, 'progress_percent'),
     operationVersion: integer(row, 'operation_version'),
     occurredAt: text(row, 'created_at'),
-    ...(optionalText(row, 'message') === undefined
+    ...(managed || optionalText(row, 'message') === undefined
       ? {}
       : { message: optionalText(row, 'message')! }),
   };
@@ -972,6 +1005,75 @@ function requireRow(
   const row = rows[0];
   if (row === undefined) throw new PostgresDataReadNotFoundError();
   return row;
+}
+
+function managedOperationAuthority(context: DataCapabilityExecutionContext) {
+  if (context.authorization.resourceAccess === undefined) return null;
+  const authority = pendingIntakeAuthority(context);
+  if (!authority || (!authority.maintainer && !authority.reviewer))
+    throw new PostgresDataReadError(
+      'INTAKE_READ_FORBIDDEN',
+      403,
+      'The current identity cannot read this operation.',
+    );
+  return authority;
+}
+
+async function requireManagedIntakeOperation(
+  client: PostgresDataReadClient,
+  context: DataCapabilityExecutionContext,
+  capabilityId: string,
+  operationId: unknown,
+  authority: PendingIntakeAuthority,
+): Promise<void> {
+  await setPendingIntakeScope(client, context, capabilityId, authority);
+  const row = requireRow(
+    (
+      await client.query(OPERATION_INTAKE_ACCESS_SQL, [
+        operationId,
+        context.authorization.tenantId,
+        context.authorization.projectId,
+      ])
+    ).rows,
+  );
+  if (
+    row['operation_id'] !== operationId ||
+    row['tenant_id'] !== context.authorization.tenantId ||
+    row['project_id'] !== context.authorization.projectId
+  )
+    throw new PostgresDataReadNotFoundError();
+  let responsibility: unknown;
+  if (row['capability_id'] === 'data.uploadSession.create') {
+    const raw = row['intake_responsibility'];
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw))
+      throw new PostgresDataReadNotFoundError();
+    const stored = raw as Record<string, unknown>;
+    if (
+      typeof stored['purpose'] !== 'string' ||
+      !/^[a-z][a-z0-9-]{0,95}$/.test(stored['purpose'])
+    )
+      throw new PostgresDataReadNotFoundError();
+    responsibility = {
+      actorId: stored['actorId'],
+      actorType: stored['actorType'],
+      ...(stored['delegatedBy'] === undefined
+        ? {}
+        : { delegatedBy: stored['delegatedBy'] }),
+    };
+  } else if (
+    row['capability_id'] === 'data.ingestion.create' &&
+    typeof row['ingestion_id'] === 'string' &&
+    row['owner_project_id'] === context.authorization.projectId
+  ) {
+    responsibility = rowSubmissionResponsibility(row);
+  } else throw new PostgresDataReadNotFoundError();
+  const stored = submissionResponsibility(responsibility);
+  if (
+    !stored ||
+    stored.actorId !== row['actor_id'] ||
+    !canReadPendingSubmission(context, stored, authority)
+  )
+    throw new PostgresDataReadNotFoundError();
 }
 
 class PostgresAppendOnlyAuditPort implements DataCapabilityAuditPort {
@@ -1500,41 +1602,82 @@ export function createPostgresDataReadRuntime(
     }),
     define('data.operation.get', async (raw, context) => {
       const input = parsedInput('data.operation.get', raw);
-      return transactions.run(context, async (client) =>
-        operation(
-          requireRow(
-            (await client.query(OPERATION_SQL, [input.operationId])).rows,
-          ),
-        ),
+      const authority = managedOperationAuthority(context);
+      return transactions.run(
+        context,
+        async (client) => {
+          if (authority)
+            await requireManagedIntakeOperation(
+              client,
+              context,
+              'data.operation.get',
+              input.operationId,
+              authority,
+            );
+          return operation(
+            requireRow(
+              (await client.query(OPERATION_SQL, [input.operationId])).rows,
+            ),
+            authority !== null,
+          );
+        },
+        authority !== null,
       );
     }),
     define('data.operation.events', async (raw, context) => {
       const input = parsedInput('data.operation.events', raw);
-      const scope = cursorScope('data.operation.events', context, input);
+      const authority = managedOperationAuthority(context);
+      const scope = cursorScope(
+        'data.operation.events',
+        context,
+        authority
+          ? {
+              ...input,
+              operationActor: context.principal.actorId,
+              operationActorType: context.principal.actorType,
+              operationDelegator: context.principal.delegatedBy ?? null,
+              operationPurpose: context.authorization.purpose,
+            }
+          : input,
+      );
       const cursor = decodeCursor(input.after, scope);
       const first = input.first as number;
-      return transactions.run(context, async (client) => {
-        requireRow(
-          (await client.query(OPERATION_EXISTS_SQL, [input.operationId])).rows,
-        );
-        const result = await client.query(OPERATION_EVENTS_SQL, [
-          input.operationId,
-          cursor?.[0] ?? null,
-          first + 1,
-        ]);
-        const rows = result.rows.slice(0, first);
-        const last = rows.at(-1);
-        return {
-          items: rows.map(operationEvent),
-          ...(result.rows.length > first && last !== undefined
-            ? {
-                nextCursor: encodeCursor(scope, [
-                  integer(last, 'sequence_number'),
-                ]),
-              }
-            : {}),
-        };
-      });
+      return transactions.run(
+        context,
+        async (client) => {
+          if (authority)
+            await requireManagedIntakeOperation(
+              client,
+              context,
+              'data.operation.events',
+              input.operationId,
+              authority,
+            );
+          else
+            requireRow(
+              (await client.query(OPERATION_EXISTS_SQL, [input.operationId]))
+                .rows,
+            );
+          const result = await client.query(OPERATION_EVENTS_SQL, [
+            input.operationId,
+            cursor?.[0] ?? null,
+            first + 1,
+          ]);
+          const rows = result.rows.slice(0, first);
+          const last = rows.at(-1);
+          return {
+            items: rows.map((row) => operationEvent(row, authority !== null)),
+            ...(result.rows.length > first && last !== undefined
+              ? {
+                  nextCursor: encodeCursor(scope, [
+                    integer(last, 'sequence_number'),
+                  ]),
+                }
+              : {}),
+          };
+        },
+        authority !== null,
+      );
     }),
   ] satisfies readonly DataCapabilityExecutor[]);
 

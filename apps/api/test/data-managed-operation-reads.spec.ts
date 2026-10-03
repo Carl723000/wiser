@@ -66,8 +66,12 @@ const operationRow = {
   error_message: null,
   error_retryable: null,
 };
+const managedScope = context.authorization.resourceAccess!.scope;
+if (managedScope.mode !== 'managed') throw Error('Expected managed fixture');
 class Client implements PostgresDataReadClient {
   queries: string[] = [];
+  operation: Record<string, unknown> = operationRow;
+  eventMessage = 'Review required.';
   access: Record<string, unknown> = {
     operation_id: id(4),
     tenant_id: id(10),
@@ -85,7 +89,7 @@ class Client implements PostgresDataReadClient {
     if (sql.includes('data.operation.intake-access'))
       return Promise.resolve({ rows: [this.access] });
     if (sql.includes('data.operation.get'))
-      return Promise.resolve({ rows: [operationRow] });
+      return Promise.resolve({ rows: [this.operation] });
     if (sql.includes('data.operation.exists'))
       return Promise.resolve({ rows: [{ exists: true }] });
     if (sql.includes('data.operation.events'))
@@ -99,7 +103,7 @@ class Client implements PostgresDataReadClient {
           progress_percent: 50,
           operation_version: sequence,
           created_at: '2026-10-03T10:01:00Z',
-          message: 'Review required.',
+          message: this.eventMessage,
         })),
       });
     return Promise.resolve({ rows: [] });
@@ -142,6 +146,61 @@ function reviewer(actorId = id(90)) {
   };
 }
 describe('managed standard intake Operation reads', () => {
+  it('keeps completed and published standard-ingestion Operation DTO behavior', async () => {
+    const client = new Client();
+    client.operation = {
+      ...operationRow,
+      status: 'SUCCEEDED',
+      progress_percent: 100,
+      completed_at: '2026-10-03T10:02:00Z',
+    };
+    const output = await read(client, 'data.operation.get');
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.operation.get'].outputSchema.safeParse(
+        output,
+      ).success,
+    ).toBe(true);
+    expect(output).toMatchObject({
+      status: 'SUCCEEDED',
+      completedAt: '2026-10-03T10:02:00Z',
+    });
+  });
+  it('preserves public status/error fields while suppressing upstream diagnostic messages in managed responses', async () => {
+    const client = new Client();
+    const diagnostic =
+      'Read /private/internal/file.csv from http://storage.internal/quarantine/key failed';
+    client.operation = {
+      ...operationRow,
+      status: 'FAILED',
+      completed_at: '2026-10-03T10:02:00Z',
+      error_code: 'PROCESSING_FAILED',
+      error_message: diagnostic,
+      error_retryable: true,
+    };
+    client.eventMessage = diagnostic;
+    expect(await read(client, 'data.operation.get')).toMatchObject({
+      status: 'FAILED',
+      error: {
+        code: 'PROCESSING_FAILED',
+        message: 'Operation failed.',
+        retryable: true,
+      },
+    });
+    expect(
+      JSON.stringify(await read(client, 'data.operation.events')),
+    ).not.toContain(diagnostic);
+    client.operation = {
+      ...client.operation,
+      error_code: 'http://upstream.internal/private/path',
+    };
+    expect(await read(client, 'data.operation.get')).toMatchObject({
+      error: { code: 'HANDLER_UNEXPECTED' },
+    });
+    const { resourceAccess: _, ...authorization } = context.authorization;
+    expect(
+      await read(client, 'data.operation.get', { ...context, authorization }),
+    ).toMatchObject({ error: { message: diagnostic } });
+  });
   it.each(capabilities)(
     'admits %s through the handler after immutable responsibility guards',
     async (capability) => {
@@ -198,7 +257,9 @@ describe('managed standard intake Operation reads', () => {
         },
       };
       await expect(read(client, capability)).resolves.toBeDefined();
-      await expect(read(client, capability, reviewer())).resolves.toBeDefined();
+      await expect(
+        read(client, capability, reviewer(id(80))),
+      ).resolves.toBeDefined();
       await expect(
         read(client, capability, reviewer(id(1))),
       ).rejects.toMatchObject({ statusCode: 404 });
@@ -275,7 +336,9 @@ describe('managed standard intake Operation reads', () => {
       await expect(
         read(client, capability, reviewer(id(1))),
       ).rejects.toMatchObject({ statusCode: 404 });
-      await expect(read(client, capability, reviewer())).resolves.toBeDefined();
+      await expect(
+        read(client, capability, reviewer(id(80))),
+      ).resolves.toBeDefined();
       await expect(
         read(client, capability, {
           ...agent,
@@ -314,7 +377,7 @@ describe('managed standard intake Operation reads', () => {
             resourceAccess: {
               ...context.authorization.resourceAccess!,
               scope: {
-                ...context.authorization.resourceAccess!.scope,
+                ...managedScope,
                 mode: 'managed' as const,
                 validUntil: '2000-01-01T00:00:00Z',
               },

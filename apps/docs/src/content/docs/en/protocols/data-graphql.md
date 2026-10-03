@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
+lastReviewedCommit: f308717bb9dc53ea5bb214bb3e96e08c967e2419
 ---
 
 ## Endpoint and authority contract
@@ -287,7 +287,7 @@ Managed graph expansion/path queries constrain every node and relationship to th
 
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
-Managed projects admit the explicit resource-aware capability set and the owned pending-intake create/submit/upload/get workflow described below. Operation status/events, approval/rejection, reconciliation and other maintenance commands still fail with FORBIDDEN before unscoped executors run. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+Managed projects admit the explicit resource-aware capability set and the owned pending-intake create/submit/upload/get workflow described below. Guarded standard-intake Operation status/events are described below; approval/rejection, reconciliation and other maintenance commands still fail with FORBIDDEN before unscoped executors run. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
 
 ## Frozen candidate contracts
 
@@ -305,6 +305,6 @@ The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit
 
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived, including their original GraphQL mapping. REST and MCP return the full new output; GraphQL discovery maps 1.2 to `dataIngestionDetail(id: ID!): JSON!`, which retains that output and its candidate reference. The existing `dataIngestion(id: ID!): JSON` still returns only the ingestion object. Skills use the discovered current mapping and follow the returned reference into the existing three candidate reads.
 
-These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
+`dataOperation(id: ID!)` and `dataOperationEvents(id: ID!, first: Int, after: String)` use the same [managed standard-intake Operation guard](/en/architecture/data-foundation/#managed-pending-intake-and-candidate-discovery) as REST. The latter returns the existing bounded JSON event page; it is not SSE. Denied tasks expose neither status nor events. Its cursor binds current actor/type/delegator, authorized purpose and resource scope; new currently authorized purposes require a fresh page. Managed error diagnostics and event messages are sanitized before GraphQL projection. Legacy responses, DTOs and discovery archives are unchanged. Resume/cancel, approval/rejection and other maintenance capabilities remain excluded; reading status grants no approval or publication. Real Auth, SQL/RLS, Worker and browser validation remains a separate gate.
 
 Original bytes use the authenticated [pending-original REST content route](/en/protocols/data-rest/#pending-original-content), rather than a GraphQL field or signed storage URL. The summary's fixed ingestion/review/batch reference and original asset ID identify that request. Full hash/size verification and current maintenance/review authority apply even to HEAD and ranges; JSON metadata access alone is not permission to receive bytes. Live Auth/storage/browser acceptance and saved-candidate integration remain separate.

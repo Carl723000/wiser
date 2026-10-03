@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
+lastReviewedCommit: f308717bb9dc53ea5bb214bb3e96e08c967e2419
 ---
 
 ## Protocol boundary
@@ -414,7 +414,7 @@ Managed graph expansion/path queries constrain every node and relationship to th
 
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
-Managed projects admit the explicit resource-aware capability set and the owned pending-intake create/submit/upload/get workflow described below. Operation status/events, approval/rejection, reconciliation and other maintenance commands still fail with FORBIDDEN before unscoped executors run. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+Managed projects admit the explicit resource-aware capability set and the owned pending-intake create/submit/upload/get workflow described below. Guarded standard-intake Operation status/events are described below; approval/rejection, reconciliation and other maintenance commands still fail with FORBIDDEN before unscoped executors run. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
 
 ## Frozen candidate contracts
 
@@ -432,7 +432,7 @@ The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit
 
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
 
-These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
+`GET /operations/:operationId` and `GET /operations/:operationId/events` admit managed reads for exact standard upload/ingestion tasks through the [immutable responsibility and current-authority guard](/en/architecture/data-foundation/#managed-pending-intake-and-candidate-discovery). Denied tasks expose neither status nor events. Event continuations bind current actor/type/delegator, authorized purpose and resource scope; a fresh currently authorized purpose may issue a new request, but cannot reuse an old cursor. Managed responses retain existing DTOs and safe error-code/retryable fields, suppress free-text diagnostics, and omit event messages. Legacy responses and discovery archives are unchanged. Resume/cancel, approval/rejection and other maintenance capabilities remain excluded; status reads do not approve or publish. Real Auth, SQL/RLS, Worker and browser validation remains a separate gate.
 
 ### Pending original content
 

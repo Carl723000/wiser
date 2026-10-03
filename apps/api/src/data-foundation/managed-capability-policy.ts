@@ -36,6 +36,8 @@ const RESOURCE_AWARE = new Set<DataCapabilityId>([
   'data.ingestion.create',
   'data.ingestion.submit',
   'data.ingestion.get',
+  'data.operation.get',
+  'data.operation.events',
 ]);
 export function admitsManagedCapability(
   capabilityId: DataCapabilityId,
