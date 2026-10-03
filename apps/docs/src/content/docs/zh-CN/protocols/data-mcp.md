@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
+lastReviewedCommit: 8225f4a98fce0d98099df96d0f6c13293fee0589
 ---
 
 ## 只做 HTTP 适配
@@ -306,3 +306,9 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 ## 候选固定输入契约
 
 候选契约与已发布版本输入分别定义，当前未在本协议新增操作、字段或Tool。严格身份、解析状态及有界记录页见[数据基座架构](/zh-CN/architecture/data-foundation/#候选固定输入契约)；候选当前权限核对与接口接线仍需另行验收。
+
+### 待审接收候选（1.0）
+
+`data_ingestion_candidate_get/records/geometry` 对应 `data.ingestion.candidate.get/records/geometry`。输入固定 `kind: ingestion-candidate`、`ingestionId`、`processingBatchId`、小写 SHA-256 `reviewHash`，可选 `first`（默认 50、最多 200）和 `after`；记录／几何还需 `assetId`。REST 路径身份字段不能在查询参数中重复；`versionId` 会被拒绝。摘要计数覆盖完整候选批次，`assets` 则是当前原件分页，未解析计数继续为 null。记录保留原值和定位，空间记录保留规范点／线／面几何及来源 CRS。只能沿返回的游标续读，其绑定当前权限与完整固定选择。3 MiB 上限可能缩小返回条数，但不截断字段。
+
+每次续读重查不可变提交者／委托人的当前维护权限，或独立人工审核者的审核权限，同时检查项目、密级和策略。已发布资料授权保持原范围。候选解析与读取不构成批准或发布；原件下载、保存候选流程及真实 Auth／数据库／浏览器仍单独验收。

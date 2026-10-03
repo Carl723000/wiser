@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
+lastReviewedCommit: 8225f4a98fce0d98099df96d0f6c13293fee0589
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -81,7 +81,7 @@ Agent 授权与交换集成测试通过 `WISER_AGENT_TEST_DATABASE_URL` 连接�
 
 ## Data Foundation 变更流程
 
-使用候选处理Worker前，按校验和Runner追加`0037_ingestion_candidate_storage.sql`，再重跑runtime-role provisioning。迁移建立冻结待审批次、原件解析结果和原值／几何三个私有强制RLS表。写入须匹配当前入库任务租约以及原件、检查点和审核策略；原件完成数量必须与实际记录一致，批次最终状态必须与全部原件结果一致。完成结果和记录不可改。权限重建后也只恢复批次／原件的完成字段更新权，不恢复记录修改权。读取限定提交／委托主体或当前Worker租约，目录信息专用角色和无关主体不能读取候选内容。聚焦`ingestion-candidate.spec.ts`使用已迁移的一次性数据库、真实runtime角色和最终回滚的合成数据，不建立正式版本、Auth授权、图谱投影或真实专业批准。带Auth的HTTP／受管能力准入与独立审核者读取权继续独立接线；跳过PostgreSQL检查不等于运行验收。
+使用候选处理Worker前，按校验和Runner追加`0037_ingestion_candidate_storage.sql`，再重跑runtime-role provisioning。迁移建立冻结待审批次、原件解析结果和原值／几何三个私有强制RLS表。写入须匹配当前入库任务租约以及原件、检查点和审核策略；原件完成数量必须与实际记录一致，批次最终状态必须与全部原件结果一致。完成结果和记录不可改。权限重建后也只恢复批次／原件的完成字段更新权，不恢复记录修改权。读取限定提交／委托主体或当前Worker租约，目录信息专用角色和无关主体不能读取候选内容。聚焦`ingestion-candidate.spec.ts`使用已迁移的一次性数据库、真实runtime角色和最终回滚的合成数据，不建立正式版本、Auth授权、图谱投影或真实专业批准。候选HTTP准入与独立审核者读取检查见下节；真实Auth与浏览器回验仍单独验收，跳过PostgreSQL检查不等于运行验收。
 
 先应用 `0033_ingestion_review_governance.sql`、`0034_review_policy_guard_runtime_permissions.sql`、`0035_reviewed_version_source_guard.sql` 和 `0036_reviewed_session_creation_guard.sql`，再使用对应 API/Worker。它们增加限定范围的服务器策略及不可变 Auth 主体引用，绑定检查点和版本清单，执行独立批准约束。受管版本必须对应已审核入库单，不能通过另选目录 ID 绕过。受管入库单不能直接创建为已批准、已提交或已发布状态；批准必须经过受控转换。策略仅由迁移／维护所有者变更，修订号及行版本同步递增，撤销时保留历史行；runtime role 只能读取策略。固定 search path 的触发器守卫以迁移所有者取得锁，核对范围引用，并在批准时检查原 API 调用角色。普通查询保留强制 RLS。
 
@@ -241,3 +241,7 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 来源许可流程存储（`20260923065331_resource_policy_administration.sql`）增加明确的项目办理/审批岗位配置及不可改写的申请。迁移默认不授予岗位或来源许可。申请从待审批开始，状态变化须递增版本，提交依据保留，不允许删除或在终态后重开。发布回执必须对应内容、申请人和独立审批人均一致的不可变许可版本。撤回不产生权限。两张表均强制RLS，匿名、登录用户和通用服务角色不能直接访问。岗位配置仍属受控维护操作；运行时鉴权、HTTP和页面验收与本次存储验证分开。
 
 来源申请存储之后应用 `20260923070909_resource_policy_workflow_audit.sql`，增加登记、发布、拒绝、撤回及来源撤销的明确审计动作，不改既有事件。流程集成测试只使用可回滚的合成身份；已发布事实、当前有效权限与页面验收分开记录。
+
+新增 `0038_ingestion_candidate_reads.sql` 衔接 0037，不修改已应用的校验和。invoker 候选读取守卫保留当前 Worker 租约访问；API 读取需可信的当前维护权限及不可变身份／委托人匹配，或独立人工审核权限。身份不明／变化、权限／策略撤回和旧检查点均拒绝。回滚型 PostgreSQL 用例增加维护撤回、自审读取拒绝、独立人工读取及身份类型／委托人不匹配；须在依次应用0037、0038、0039并重新配置角色的一次性数据库运行，跳过不等于 SQL／RLS 验收。
+
+0038 后追加 `0039_candidate_fingerprinted_original.sql`，候选守卫读取标准流程中已指纹绑定、扫描 CLEAN 的原件，并要求输入／资产／内容对象哈希及字节数一致。回滚用例沿用合法生命周期，QUARANTINED／FINGERPRINTED／RAW 原约束保留；不得通过重写已应用迁移更正守卫。

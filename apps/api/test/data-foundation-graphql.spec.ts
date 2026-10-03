@@ -462,3 +462,61 @@ it('withholds GraphQL data after authorization changes during query execution', 
   expect(response.body).not.toContain('not-to-release');
   expect(fixture.resolver.resolve).toHaveBeenCalledTimes(2);
 });
+
+it.each([
+  ['dataIngestionCandidate', 'get'],
+  ['dataIngestionCandidateRecords', 'records'],
+  ['dataIngestionCandidateGeometry', 'geometry'],
+] as const)(
+  'routes %s through the same fixed candidate read authority',
+  async (field, name) => {
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({
+        reference: {
+          kind: 'ingestion-candidate',
+          ingestionId: INGESTION_ID,
+          processingBatchId: OPERATION_ID,
+          reviewHash: 'a'.repeat(64),
+        },
+      }),
+    );
+    const app = buildApp({
+      logger: false,
+      modules: [
+        createDataFoundationGraphqlModule({
+          resolver: { resolve: () => Promise.resolve(requestContext) },
+          handler: { execute },
+        }),
+      ],
+    });
+    openApps.push(app);
+    const input = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: OPERATION_ID,
+      reviewHash: 'a'.repeat(64),
+      ...(name === 'get' ? {} : { assetId: DATA_ITEM_ID }),
+      first: 2,
+    };
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(),
+      payload: {
+        query: `query Read($input:JSON!) { ${field}(input:$input) }`,
+        variables: { input },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(responseErrors(response)).toBeUndefined();
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityId: `data.ingestion.candidate.${name}`,
+        input,
+      }),
+    );
+    expect(execute.mock.calls[0]?.[0].requestContext.principal).toEqual(
+      requestContext.principal,
+    );
+  },
+);

@@ -16,7 +16,7 @@ checkPaths:
   - packages/data-infra/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
+lastReviewedCommit: 8225f4a98fce0d98099df96d0f6c13293fee0589
 ---
 
 # WISER Data Worker / 数据基座 Worker
@@ -131,4 +131,6 @@ To rebuild a configured business projection after it is removed, use the existin
 
 XML元数据通过现有隔离解析器按节点保留命名空间、路径与原文；不推断数值、坐标或科学含义。 / XML metadata uses the existing isolated parser, preserving namespaces, source paths and lexical content without inferring numbers, geometry or scientific meaning.
 
-候选解析使用冻结入库／审核／处理批次及原件身份，不能借用已发布版本ID。隔离解析器只接收原件及其哈希，Worker绑定记录ID并保留原文定位、部分解析状态和既有失败规则。候选job、持久存储及受管API须另行接通。 / Candidate parsing uses frozen ingestion/review/batch and original identity, never a borrowed published-version ID. The isolated parser receives original bytes and hashes only; Worker binds record IDs while retaining locators, partial outcomes and existing failures. Durable candidate jobs, storage and managed API admission require their own integration.
+候选解析使用冻结入库／审核／处理批次及原件身份，不能借用已发布版本ID。隔离解析器只接收原件及其哈希，Worker绑定记录ID并保留原文定位、部分解析状态和既有失败规则。默认任务在冻结检查点后持久保存候选，受管读取沿用当前维护或独立审核权限；真实Auth、原件下载与完整保存流程仍单独验收。 / Candidate parsing uses frozen ingestion/review/batch and original identity, never a borrowed published-version ID. The isolated parser receives original bytes and hashes only; Worker binds record IDs while retaining locators, partial outcomes and existing failures. The default Job persists frozen candidates; managed reads enforce current maintenance or independent-review authority. Live Auth, original download and the complete saved-view workflow remain separate acceptance gates.
+
+Candidate reads require additive Data migrations 0037–0039 and runtime-role provisioning. Original parsing reads only canonical FINGERPRINTED assets with CLEAN scan and matching input/asset/blob hashes and byte sizes; completed histories remain immutable. / 候选读取须应用独立Data迁移0037—0039并配置运行角色；解析仅读取扫描CLEAN且输入／资产／内容对象哈希与字节数一致的标准FINGERPRINTED原件，完成历史不可修改。

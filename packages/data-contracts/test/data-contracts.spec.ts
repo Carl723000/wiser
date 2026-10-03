@@ -154,6 +154,27 @@ for (const serverOwnedField of [
 }
 
 const validCapabilityInputs = {
+  'data.ingestion.candidate.get': {
+    kind: 'ingestion-candidate',
+    ingestionId: INGESTION_ID,
+    processingBatchId: OPERATION_ID,
+    reviewHash: 'a'.repeat(64),
+  },
+  'data.ingestion.candidate.records': {
+    kind: 'ingestion-candidate',
+    ingestionId: INGESTION_ID,
+    processingBatchId: OPERATION_ID,
+    reviewHash: 'a'.repeat(64),
+    assetId: ASSET_ID,
+  },
+  'data.ingestion.candidate.geometry': {
+    kind: 'ingestion-candidate',
+    ingestionId: INGESTION_ID,
+    processingBatchId: OPERATION_ID,
+    reviewHash: 'a'.repeat(64),
+    assetId: ASSET_ID,
+  },
+
   'data.external.metadata.read': {
     sourceId: DATA_ITEM_ID,
     fromYear: 2021,
@@ -396,6 +417,43 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.ingestion.candidate.get': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataIngestionCandidate' },
+    mcpMapping: { toolName: 'data_ingestion_candidate_get' },
+    skillMapping: { operation: 'data.ingestion.candidate.get' },
+  },
+  'data.ingestion.candidate.records': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:assetId/records',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateRecords',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_records' },
+    skillMapping: { operation: 'data.ingestion.candidate.records' },
+  },
+  'data.ingestion.candidate.geometry': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:assetId/geometry',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateGeometry',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_geometry' },
+    skillMapping: { operation: 'data.ingestion.candidate.geometry' },
+  },
+
   'data.external.metadata.read': {
     restMapping: {
       method: 'POST',
@@ -871,6 +929,10 @@ const expectedCapabilityMappings = {
 } satisfies Record<DataCapabilityId, unknown>;
 
 const expectedCapabilityScopes = {
+  'data.ingestion.candidate.get': ['data.operation.read'],
+  'data.ingestion.candidate.records': ['data.operation.read'],
+  'data.ingestion.candidate.geometry': ['data.operation.read'],
+
   'data.external.metadata.read': ['data.catalog.read'],
   'data.knowledge.relations.import': [
     'data.catalog.read',
@@ -938,6 +1000,19 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.ingestion.candidate.get': {
+    input: '8f0a08c7f8b978ec14e047603797063113ba141f517be3cf3ca883325a0605e7',
+    output: 'ae14d5c8166ea71589b849ec47fb4b890159ac8928ca98f1ccf578104ca53954',
+  },
+  'data.ingestion.candidate.records': {
+    input: 'c4a94dd35141a09098d95555e358198356a4eb350efaa91164c11804d5cde8f5',
+    output: '4618f4a91ff2bcc8b7ba33e37fa0269ed1aa8f6ba69b3bbf293c6a759b5e7155',
+  },
+  'data.ingestion.candidate.geometry': {
+    input: 'c4a94dd35141a09098d95555e358198356a4eb350efaa91164c11804d5cde8f5',
+    output: 'f9c186d5f9124a0297411cbf36dfc8d0035feff4607d12e225c7dda266ee0865',
+  },
+
   'data.external.metadata.read': {
     input: 'd57c16966810d2874f059a0ecbb53ac3d07ac4287e6a327bd5ed336feecc48e4',
     output: 'ca2ba0bd94242c69de6ee1f5cb21d875d499f73671ca0576a1a487fe712f2af5',
@@ -1445,6 +1520,9 @@ describe('Data Foundation capability registry', () => {
       'data.uploadSession.create',
       'data.uploadSession.complete',
       'data.ingestion.get',
+      'data.ingestion.candidate.get',
+      'data.ingestion.candidate.records',
+      'data.ingestion.candidate.geometry',
       'data.ingestion.approve',
       'data.ingestion.reject',
       'data.operation.cancel',

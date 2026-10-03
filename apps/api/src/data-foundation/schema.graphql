@@ -127,6 +127,9 @@ type Query {
     after: String
   ): DataItemVersionConnection!
   dataItemVersion(id: ID!, version: ID!): DataItemVersion
+  dataIngestionCandidate(input: JSON!): JSON!
+  dataIngestionCandidateRecords(input: JSON!): JSON!
+  dataIngestionCandidateGeometry(input: JSON!): JSON!
   dataIngestion(id: ID!): JSON
   dataOperationEvents(id: ID!, first: Int, after: String): JSON!
 }

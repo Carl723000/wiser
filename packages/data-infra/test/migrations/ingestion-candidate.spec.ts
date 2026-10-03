@@ -96,13 +96,20 @@ describe('frozen ingestion candidate authority storage', () => {
           [blob, tenant, project, sourceHash],
         );
         await client.query(
-          `insert into catalog.asset(asset_id,tenant_id,project_id,storage_key,media_type,byte_size,lifecycle_state,content_blob_id,security_level)
-          values($1,$2,$3,$4,'text/csv',28,'QUARANTINED',$5,'L0_PUBLIC')`,
-          [asset, tenant, project, `synthetic/candidate/${asset}`, blob],
+          `insert into catalog.asset(asset_id,tenant_id,project_id,storage_key,media_type,byte_size,lifecycle_state,content_blob_id,content_hash,security_level)
+          values($1,$2,$3,$4,'text/csv',28,'FINGERPRINTED',$5,decode($6,'hex'),'L0_PUBLIC')`,
+          [
+            asset,
+            tenant,
+            project,
+            `synthetic/candidate/${asset}`,
+            blob,
+            sourceHash,
+          ],
         );
         await client.query(
-          `insert into ingestion.input_asset(tenant_id,project_id,ingestion_id,asset_id,ordinal,fingerprint,security_level)
-          values($1,$2,$3,$4,0,decode($5,'hex'),'L0_PUBLIC')`,
+          `insert into ingestion.input_asset(tenant_id,project_id,ingestion_id,asset_id,ordinal,fingerprint,scan_status,security_level)
+          values($1,$2,$3,$4,0,decode($5,'hex'),'CLEAN','L0_PUBLIC')`,
           [tenant, project, ingestion, asset, sourceHash],
         );
         await client.query(
@@ -123,7 +130,7 @@ describe('frozen ingestion candidate authority storage', () => {
         );
         await client.query(
           `insert into ingestion.job(job_id,tenant_id,project_id,ingestion_id,operation_id,job_type,status,idempotency_key,payload,lease_owner,lease_expires_at,attempt_count,timeout_at,security_level)
-          values($1,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::text,$5::jsonb,'candidate-sql-test',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '1 hour','L0_PUBLIC')`,
+          values($1::uuid,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::uuid::text,$5::jsonb,'candidate-sql-test',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '1 hour','L0_PUBLIC')`,
           [
             job,
             tenant,
@@ -278,6 +285,9 @@ describe('frozen ingestion candidate authority storage', () => {
         );
 
         await client.query('set local role wiser_data_api');
+        await client.query(
+          "select set_config('wiser.candidate_maintainer','true',true),set_config('wiser.candidate_reviewer','false',true),set_config('wiser.candidate_purpose','candidate-review',true)",
+        );
         expect(
           (
             await client.query<{ record_values: unknown; source_id: string }>(
@@ -287,6 +297,54 @@ describe('frozen ingestion candidate authority storage', () => {
           ).rows,
         ).toEqual([{ record_values: raw, source_id: 'table:1/row:5' }]);
         await setActor(other);
+        expect(
+          (
+            await client.query(
+              'select record_id from ingestion.candidate_record where processing_batch_id=$1',
+              [batch],
+            )
+          ).rows,
+        ).toEqual([]);
+        // Review readers are current independent humans, never the submitter itself.
+        await client.query(
+          "select set_config('wiser.candidate_maintainer','false',true),set_config('wiser.candidate_reviewer','true',true)",
+        );
+        expect(
+          (
+            await client.query(
+              'select record_id from ingestion.candidate_record where processing_batch_id=$1',
+              [batch],
+            )
+          ).rows,
+        ).toHaveLength(1);
+        await setActor(actor);
+        expect(
+          (
+            await client.query(
+              'select record_id from ingestion.candidate_record where processing_batch_id=$1',
+              [batch],
+            )
+          ).rows,
+        ).toEqual([]);
+        await client.query(
+          "select set_config('wiser.candidate_reviewer','false',true)",
+        );
+        // Immutable ownership alone is insufficient after current maintenance withdrawal.
+        expect(
+          (
+            await client.query(
+              'select record_id from ingestion.candidate_record where processing_batch_id=$1',
+              [batch],
+            )
+          ).rows,
+        ).toEqual([]);
+        await client.query(
+          "select set_config('wiser.candidate_maintainer','true',true)",
+        );
+        await client.query(
+          "select set_config('wiser.actor_type','agent',true),set_config('wiser.delegated_by',$1,true)",
+          [other],
+        );
         expect(
           (
             await client.query(

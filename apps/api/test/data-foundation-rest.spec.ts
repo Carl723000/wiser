@@ -69,6 +69,26 @@ const point = {
 };
 
 const validInputs = {
+  'data.ingestion.candidate.get': {
+    kind: 'ingestion-candidate',
+    ingestionId: INGESTION_ID,
+    processingBatchId: OPERATION_ID,
+    reviewHash: 'a'.repeat(64),
+  },
+  'data.ingestion.candidate.records': {
+    kind: 'ingestion-candidate',
+    ingestionId: INGESTION_ID,
+    processingBatchId: OPERATION_ID,
+    reviewHash: 'a'.repeat(64),
+    assetId: ASSET_ID,
+  },
+  'data.ingestion.candidate.geometry': {
+    kind: 'ingestion-candidate',
+    ingestionId: INGESTION_ID,
+    processingBatchId: OPERATION_ID,
+    reviewHash: 'a'.repeat(64),
+    assetId: ASSET_ID,
+  },
   'data.external.metadata.read': {
     sourceId: DATA_ITEM_ID,
     fromYear: 2021,

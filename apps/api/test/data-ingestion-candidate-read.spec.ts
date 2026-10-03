@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   DATA_CAPABILITY_REGISTRY,
-  type DataCapabilityId,
+  DATA_CAPABILITY_IDS,
 } from '@wiser/data-contracts';
 import {
   createPostgresDataReadRuntime,
   type PostgresDataReadClient,
 } from '../src/data-foundation/postgres-read-executors.js';
+import { DataCapabilityHandler } from '../src/data-foundation/capability-handler.js';
 import type { DataCapabilityExecutionContext } from '../src/data-foundation/capability-handler.js';
 
 const id = (n: number) =>
@@ -63,8 +64,11 @@ class Client implements PostgresDataReadClient {
   visible = true;
   released = false;
   failRows = false;
-  query(text: string, values?: readonly unknown[]) {
-    this.queries.push({ text, values });
+  query(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ readonly rows: readonly Record<string, unknown>[] }> {
+    this.queries.push(values === undefined ? { text } : { text, values });
     if (text.includes('data.ingestion.candidate.batch'))
       return Promise.resolve({
         rows: this.visible
@@ -139,6 +143,85 @@ async function read(
 }
 
 describe('pending candidate standard read executors', () => {
+  it('admits managed candidate maintenance while preserving source permissions and current authority checks', async () => {
+    const client = new Client();
+    const candidateExecutors = runtime(client).executors;
+    const managed = {
+      principal: context.principal,
+      authorization: {
+        ...context.authorization,
+        resourceAccess: {
+          revision: 1,
+          fingerprint: 'f'.repeat(64),
+          scope: {
+            mode: 'managed' as const,
+            validUntil: '2099-01-01T00:00:00Z',
+            permissions: {
+              'source.discover': [],
+              'content.read': [],
+              'original.read': [],
+              'result.export': [],
+              'external.directory': [],
+            },
+          },
+        },
+      },
+      traceId: context.traceId,
+    };
+    const audit: { decision: string }[] = [];
+    const handler = new DataCapabilityHandler({
+      executors: DATA_CAPABILITY_IDS.map(
+        (id) =>
+          candidateExecutors.find((e) => e.id === id) ?? {
+            id,
+            execute: () => Promise.resolve(undefined),
+          },
+      ),
+      audit: {
+        record: (record) => {
+          audit.push(record);
+          return Promise.resolve();
+        },
+      },
+    });
+    expect(
+      await handler.execute({
+        capabilityId: 'data.ingestion.candidate.get',
+        input: reference,
+        requestContext: managed,
+      }),
+    ).toMatchObject({ reference });
+    expect(audit).toMatchObject([{ decision: 'SUCCEEDED' }]);
+    expect(
+      client.queries.some((q) => q.text.includes('wiser.resource_scope')),
+    ).toBe(true);
+    const withdrawn = {
+      ...managed,
+      authorization: {
+        ...managed.authorization,
+        scopes: ['data.operation.read'],
+      },
+    };
+    await expect(
+      handler.execute({
+        capabilityId: 'data.ingestion.candidate.get',
+        input: reference,
+        requestContext: withdrawn,
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    client.visible = false;
+    await expect(
+      handler.execute({
+        capabilityId: 'data.ingestion.candidate.get',
+        input: reference,
+        requestContext: managed,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(
+      managed.authorization.resourceAccess.scope.permissions['content.read'],
+    ).toEqual([]);
+  });
+
   it('reads bounded whole-batch outcomes without keys, credentials or published identity', async () => {
     const client = new Client();
     const result = await read(client, 'get', reference);
@@ -218,7 +301,9 @@ describe('pending candidate standard read executors', () => {
   it('bounds large pages by complete rows and never truncates values or skips records', async () => {
     const client = new Client();
     client.query = (sql, values) => {
-      client.queries.push({ text: sql, values });
+      client.queries.push(
+        values === undefined ? { text: sql } : { text: sql, values },
+      );
       if (sql.includes('data.ingestion.candidate.records'))
         return Promise.resolve({
           rows: Array.from({ length: 21 }, (_, i) => ({
@@ -263,10 +348,10 @@ describe('pending candidate standard read executors', () => {
     expect(result.records.length).toBeGreaterThan(0);
     expect(result.records.length).toBeLessThan(20);
     expect(result.records.at(-1)?.values.raw).toBe('文'.repeat(80_000));
-    expect(
-      JSON.parse(Buffer.from(result.nextCursor, 'base64url').toString())
-        .position,
-    ).toEqual([result.records.at(-1)?.index]);
+    const cursor: unknown = JSON.parse(
+      Buffer.from(result.nextCursor, 'base64url').toString(),
+    );
+    expect(cursor).toMatchObject({ position: [result.records.at(-1)?.index] });
   });
 
   it('keeps lines as lines with source locator and a fixed candidate reference', async () => {
@@ -336,7 +421,7 @@ describe('pending candidate standard read executors', () => {
       }).success,
     ).toBe(false);
     expect(Object.keys(registry)).toContain(
-      'data.ingestion.candidate.geometry' satisfies string as DataCapabilityId,
+      'data.ingestion.candidate.geometry',
     );
   });
 });

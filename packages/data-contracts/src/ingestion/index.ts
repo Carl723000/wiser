@@ -11,6 +11,7 @@ import { SourceRegistrationSchema } from './source-registration.ts';
 export * from './source-registration.ts';
 export * from './review-governance.ts';
 export * from './candidate.ts';
+export * from './candidate-read.ts';
 
 export const IngestionStateSchema = z.enum([
   'RECEIVED',

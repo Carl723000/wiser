@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto';
 
 import {
   DATA_CAPABILITY_REGISTRY,
+  IngestionCandidateAssetPageSchema,
+  IngestionCandidateRecordPageSchema,
+  IngestionCandidateGeometryPageSchema,
+  IngestionCandidateReferenceSchema,
   SourceRegistrationSchema,
   type AgentRunSummaryDto,
   type DataCapabilityId,
@@ -30,6 +34,70 @@ select
   set_config('wiser.max_security_level', $3, true),
   set_config('wiser.policy_version', $4, true)
 `;
+
+const SET_CANDIDATE_SCOPE_SQL = `
+/* data.ingestion.candidate.scope */
+select set_config('wiser.actor_id',$1,true), set_config('wiser.actor_type',$2,true),
+  set_config('wiser.delegated_by',$3,true),
+  set_config('wiser.candidate_maintainer',$4::text,true),
+  set_config('wiser.candidate_reviewer',$5::text,true),
+  set_config('wiser.candidate_purpose',$6,true),
+  set_config('statement_timeout','10000',true)
+`;
+const CANDIDATE_BATCH_SQL = `
+/* data.ingestion.candidate.batch */
+select batch.processing_batch_id,batch.ingestion_id,encode(batch.review_hash,'hex') as review_hash,
+  batch.parser_version,batch.status,batch.created_at,
+  count(asset.asset_id)::text as total_asset_count,
+  coalesce(sum(asset.record_count),0)::text as known_record_count,
+  coalesce(sum(asset.feature_count),0)::text as known_feature_count,
+  count(*) filter(where asset.record_count is null)::text as unknown_asset_count
+from ingestion.candidate_batch batch
+join ingestion.candidate_asset asset using(tenant_id,project_id,processing_batch_id)
+where batch.processing_batch_id=$1::uuid and batch.ingestion_id=$2::uuid
+  and batch.review_hash=decode($3,'hex') and batch.status<>'PENDING'
+group by batch.processing_batch_id
+`;
+const CANDIDATE_ASSETS_SQL = `
+/* data.ingestion.candidate.assets */
+select asset.asset_id,encode(asset.source_hash,'hex') as source_hash,
+  asset.status,asset.reason,asset.record_count,asset.feature_count,asset.columns,input.ordinal
+from ingestion.candidate_asset asset
+join ingestion.candidate_batch batch using(tenant_id,project_id,processing_batch_id)
+join ingestion.input_asset input on input.tenant_id=asset.tenant_id and input.project_id=asset.project_id
+  and input.ingestion_id=batch.ingestion_id and input.asset_id=asset.asset_id
+where asset.processing_batch_id=$1::uuid and ($2::integer is null or (input.ordinal,asset.asset_id)>($2,$3::uuid))
+order by input.ordinal,asset.asset_id limit $4::integer
+`;
+const CANDIDATE_ASSET_SQL = `
+/* data.ingestion.candidate.asset */
+select asset_id,encode(source_hash,'hex') as source_hash,status,reason,record_count,feature_count,columns
+from ingestion.candidate_asset where processing_batch_id=$1::uuid and asset_id=$2::uuid
+`;
+function candidateRowsSql(geometry: boolean): string {
+  const content = geometry
+    ? 'st_asgeojson(record.geom,15,0)::jsonb as geometry,record.source_crs'
+    : 'record.record_values,record.geom is not null as has_geometry';
+  const size = geometry
+    ? 'octet_length(st_asgeojson(record.geom,15,0))'
+    : 'octet_length(record.record_values::text)';
+  const spatial = geometry ? 'and record.geom is not null' : '';
+  return `/* data.ingestion.candidate.${geometry ? 'geometry' : 'records'} */
+with bounded as (
+ select record.record_id,record.asset_id,record.record_index,record.source_id,${content},
+   ${size}+2048 as response_bytes
+ from ingestion.candidate_record record
+ where record.processing_batch_id=$1::uuid and record.asset_id=$2::uuid
+   and record.record_index>$3::bigint ${spatial}
+ order by record.record_index limit $4::integer
+), prefix as (
+ select bounded.*,sum(response_bytes) over(order by record_index) as running_bytes from bounded
+)
+select prefix.*,prefix.running_bytes>2621440 as budget_exceeded,exists(select 1 from ingestion.candidate_record next
+ where next.processing_batch_id=$1::uuid and next.asset_id=$2::uuid and next.record_index>prefix.record_index
+ ${geometry ? 'and next.geom is not null' : ''}) as has_more
+from prefix where running_bytes<=2621440 or (record_index=(select min(record_index) from bounded) and response_bytes>2621440) order by record_index`;
+}
 
 const ITEM_COLUMNS = `
   tenant_id, data_item_id, name, business_domains, source_natures,
@@ -959,6 +1027,236 @@ export interface PostgresDataReadRuntime {
   close(): Promise<void>;
 }
 
+function candidateReadExecutors(
+  transactions: ReadTransactions,
+): readonly DataCapabilityExecutor[] {
+  const candidateScope = (
+    id: DataCapabilityId,
+    context: DataCapabilityExecutionContext,
+    input: Record<string, unknown>,
+  ): CursorScope => ({
+    ...cursorScope(id, context, input),
+    queryHash: queryHash({
+      ...input,
+      candidateActor: context.principal.actorId,
+      candidateActorType: context.principal.actorType,
+      candidateDelegator: context.principal.delegatedBy ?? null,
+      candidatePurpose: context.authorization.purpose,
+    }),
+  });
+  const requireAuthority = async (
+    client: PostgresDataReadClient,
+    context: DataCapabilityExecutionContext,
+  ) => {
+    const principal = context.principal;
+    const validPrincipal =
+      principal.actorType === 'human' ||
+      ((principal.actorType === 'agent' || principal.actorType === 'service') &&
+        principal.authenticationMethod === 'delegated_credential' &&
+        Boolean(principal.delegatedBy));
+    const scopes = context.authorization.scopes;
+    const maintainer =
+      validPrincipal &&
+      scopes.includes('data.operation.read') &&
+      scopes.includes('data.ingestion.write');
+    const reviewer =
+      principal.actorType === 'human' &&
+      scopes.includes('data.operation.read') &&
+      scopes.includes('data.publish');
+    if (!maintainer && !reviewer)
+      throw new PostgresDataReadError(
+        'CANDIDATE_READ_FORBIDDEN',
+        403,
+        'The current identity cannot read pending candidates.',
+      );
+    await client.query(SET_CANDIDATE_SCOPE_SQL, [
+      principal.actorId,
+      principal.actorType,
+      principal.delegatedBy ?? '',
+      maintainer,
+      reviewer,
+      context.authorization.purpose,
+    ]);
+  };
+  const loadBatch = async (
+    client: PostgresDataReadClient,
+    input: Record<string, unknown>,
+  ) =>
+    requireRow(
+      (
+        await client.query(CANDIDATE_BATCH_SQL, [
+          input.processingBatchId,
+          input.ingestionId,
+          input.reviewHash,
+        ])
+      ).rows,
+    );
+  const original = (row: Record<string, unknown>) => ({
+    assetId: text(row, 'asset_id'),
+    sourceHash: text(row, 'source_hash'),
+    status: text(row, 'status'),
+    reason: optionalText(row, 'reason') ?? null,
+    recordCount:
+      row['record_count'] === null ? null : integer(row, 'record_count'),
+    featureCount:
+      row['feature_count'] === null ? null : integer(row, 'feature_count'),
+  });
+  const fitPage = <Item extends { readonly index: number }>(
+    items: readonly Item[],
+    first: number,
+    makePage: (items: readonly Item[]) => unknown,
+  ): readonly Item[] => {
+    const result: Item[] = [];
+    for (const item of items.slice(0, first)) {
+      if (
+        Buffer.byteLength(JSON.stringify(makePage([...result, item]))) >
+        3 * 1024 * 1024
+      )
+        break;
+      result.push(item);
+    }
+    if (items.length > 0 && result.length === 0)
+      throw new PostgresDataReadError(
+        'CANDIDATE_ROW_TOO_LARGE',
+        422,
+        'A candidate record exceeds the response budget.',
+      );
+    return result;
+  };
+  return (['get', 'records', 'geometry'] as const).map((name) => {
+    const id = `data.ingestion.candidate.${name}` as DataCapabilityId;
+    return Object.freeze({
+      id,
+      async execute(raw: unknown, context: DataCapabilityExecutionContext) {
+        const input = parsedInput(id, raw);
+        const reference = IngestionCandidateReferenceSchema.parse({
+          kind: input.kind,
+          ingestionId: input.ingestionId,
+          reviewHash: input.reviewHash,
+          processingBatchId: input.processingBatchId,
+        });
+        const scope = candidateScope(id, context, input);
+        const cursor = decodeCursor(input.after, scope);
+        if (
+          cursor &&
+          (name === 'get'
+            ? cursor.length !== 2 ||
+              !Number.isSafeInteger(cursor[0]) ||
+              Number(cursor[0]) < 0 ||
+              typeof cursor[1] !== 'string' ||
+              !/^[a-f0-9-]{36}$/.test(cursor[1])
+            : cursor.length !== 1 ||
+              !Number.isSafeInteger(cursor[0]) ||
+              Number(cursor[0]) < 1 ||
+              Number(cursor[0]) > 2_000_000)
+        )
+          throw new PostgresDataReadCursorError();
+        const first = input.first as number;
+        return transactions.run(
+          context,
+          async (client) => {
+            await requireAuthority(client, context);
+            const batch = await loadBatch(client, input);
+            if (name === 'get') {
+              const result = await client.query(CANDIDATE_ASSETS_SQL, [
+                input.processingBatchId,
+                cursor?.[0] ?? null,
+                cursor?.[1] ?? null,
+                first + 1,
+              ]);
+              const rows = result.rows.slice(0, first),
+                last = rows.at(-1);
+              return IngestionCandidateAssetPageSchema.parse({
+                reference,
+                parserVersion: text(batch, 'parser_version'),
+                status: text(batch, 'status'),
+                createdAt: text(batch, 'created_at'),
+                totalAssetCount: integer(batch, 'total_asset_count'),
+                knownRecordCount: integer(batch, 'known_record_count'),
+                knownFeatureCount: integer(batch, 'known_feature_count'),
+                unknownAssetCount: integer(batch, 'unknown_asset_count'),
+                assets: rows.map(original),
+                nextCursor:
+                  result.rows.length > first && last
+                    ? encodeCursor(scope, [
+                        integer(last, 'ordinal'),
+                        text(last, 'asset_id'),
+                      ])
+                    : null,
+              });
+            }
+            const asset = requireRow(
+              (
+                await client.query(CANDIDATE_ASSET_SQL, [
+                  input.processingBatchId,
+                  input.assetId,
+                ])
+              ).rows,
+            );
+            const result = await client.query(
+              candidateRowsSql(name === 'geometry'),
+              [
+                input.processingBatchId,
+                input.assetId,
+                cursor?.[0] ?? 0,
+                first + 1,
+              ],
+            );
+            if (result.rows.some((row) => row['budget_exceeded'] === true))
+              throw new PostgresDataReadError(
+                'CANDIDATE_ROW_TOO_LARGE',
+                422,
+                'A candidate record exceeds the response budget.',
+              );
+            const items = result.rows.map((row) => ({
+              recordId: text(row, 'record_id'),
+              assetId: text(row, 'asset_id'),
+              index: integer(row, 'record_index'),
+              sourceId: optionalText(row, 'source_id') ?? null,
+              ...(name === 'geometry'
+                ? {
+                    sourceCrs: optionalText(row, 'source_crs') ?? null,
+                    geometry: row['geometry'],
+                  }
+                : {
+                    values: row['record_values'],
+                    hasGeometry: row['has_geometry'] === true,
+                  }),
+            }));
+            const makePage = (selected: readonly (typeof items)[number][]) => ({
+              reference,
+              assetId: input.assetId,
+              ...(name === 'geometry'
+                ? { crs: 'EPSG:4326', features: selected }
+                : { columns: asset['columns'], records: selected }),
+              nextCursor: selected.length
+                ? encodeCursor(scope, [selected.at(-1)!.index])
+                : null,
+            });
+            const selected = fitPage(items, first, makePage),
+              last = selected.at(-1);
+            const more =
+              last !== undefined &&
+              (items.length > selected.length ||
+                result.rows[selected.length - 1]?.['has_more'] === true);
+            const page = {
+              ...makePage(selected),
+              nextCursor:
+                more && last ? encodeCursor(scope, [last.index]) : null,
+            };
+            return (
+              name === 'geometry'
+                ? IngestionCandidateGeometryPageSchema
+                : IngestionCandidateRecordPageSchema
+            ).parse(page);
+          },
+          true,
+        );
+      },
+    });
+  });
+}
+
 export function createPostgresDataReadRuntime(
   pool: PostgresDataReadPool,
   options: { readonly auditPolicyVersion?: number } = {},
@@ -989,6 +1287,7 @@ export function createPostgresDataReadRuntime(
   ): DataCapabilityExecutor => Object.freeze({ id, execute });
 
   const executors = Object.freeze([
+    ...candidateReadExecutors(transactions),
     define('data.catalog.search', async (raw, context) => {
       const input = parsedInput('data.catalog.search', raw);
       const scope = cursorScope('data.catalog.search', context, input);

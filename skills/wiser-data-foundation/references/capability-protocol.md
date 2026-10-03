@@ -68,3 +68,7 @@ stac://collections/{collectionId}/items/{itemId}
 Resources never grant additional access; the API reauthorizes every read.
 
 Saved-view create/revoke are commands with UUID idempotency keys; they do not use an optimistic version precondition. REST open/revoke have an empty JSON body because the view ID is in the path. MCP uses a `viewId` argument. Saved links do not widen Purpose or resource permissions, and opening always reauthorizes all pinned versions and analyses. Export is a bounded read, not a bulk download job.
+
+## Pending candidate reads
+
+Discover `data.ingestion.candidate.get/records/geometry` 1.0 and call them only through HTTP/MCP. Fix `kind: ingestion-candidate`, `ingestionId`, `reviewHash`, `processingBatchId`; row/map pages also fix `assetId`. Never substitute a catalog `versionId`. Preserve raw values, source locators, hashes, null unavailable counts and point/line/area geometry. `first` is at most 200, with a 3 MiB response budget; continue only from the actual returned cursor. It binds the fixed selection, view, actor/delegator, purpose, policy and resource scope. Current maintenance permission plus immutable ownership, or independent human review permission, is required every time. Parsing or viewing is not approval/publication. Do not fetch quarantine storage directly or invent an original-download URL. Saved candidate and original-read integrations must be discovered independently.

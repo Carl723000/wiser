@@ -15,9 +15,10 @@ export type IngestionCandidateReference = z.infer<
   typeof IngestionCandidateReferenceSchema
 >;
 
-const CandidateAssetSchema = AnalysisAssetResultSchema.safeExtend({
-  sourceHash: Sha256Schema,
-});
+export const IngestionCandidateAssetSchema =
+  AnalysisAssetResultSchema.safeExtend({
+    sourceHash: Sha256Schema,
+  });
 
 /** Trusted Worker/authority input only; callers cannot issue this checkpoint. */
 export const FrozenIngestionCandidateInputSchema = z.strictObject({
@@ -39,7 +40,7 @@ export const IngestionCandidateBatchSchema = z
     reference: IngestionCandidateReferenceSchema,
     parserVersion: z.string().min(1).max(128),
     status: z.enum(['READY', 'PARTIAL', 'UNAVAILABLE']),
-    assets: z.array(CandidateAssetSchema).min(1).max(10_000),
+    assets: z.array(IngestionCandidateAssetSchema).min(1).max(10_000),
     createdAt: OffsetDateTimeSchema,
   })
   .superRefine((batch, context) => {
@@ -70,7 +71,7 @@ export type IngestionCandidateBatch = z.infer<
 
 // Bound before z.json traverses input. Cycles, deep objects, custom prototypes and
 // accessors are never passed into recursive validation or JSON serialization.
-function jsonUtf8Bytes(value: unknown): number {
+export function jsonUtf8Bytes(value: unknown): number {
   let size = 0;
   // JSON escapes lone surrogates; iteration preserves each valid surrogate pair.
   // Keep contracts portable without Node Buffer or browser DOM globals.

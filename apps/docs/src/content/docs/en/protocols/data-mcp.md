@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1eafb760920c7832e38de14d77f4999dfa537a30
+lastReviewedCommit: 8225f4a98fce0d98099df96d0f6c13293fee0589
 ---
 
 ## HTTP adapter only
@@ -306,3 +306,9 @@ Requests without this mode retain the 100-item limit and existing behavior. The 
 ## Frozen candidate contracts
 
 Candidate contract types are separate from published-version inputs. They currently add no operation, field or Tool to this protocol. Their strict identities, parser outcomes and bounded record pages are documented in [Data Foundation architecture](/en/architecture/data-foundation/#frozen-candidate-contracts); live candidate authorization and transport integration are separate acceptance work.
+
+### Pending ingestion candidates (1.0)
+
+`data_ingestion_candidate_get/records/geometry` map to `data.ingestion.candidate.get/records/geometry`. Input fixes `kind: ingestion-candidate`, `ingestionId`, `processingBatchId`, lowercase SHA-256 `reviewHash`, optional `first` (default 50; max 200) and `after`; records/geometry also require `assetId`. REST identity path fields must not be repeated in the query. `versionId` is rejected. Summary totals cover the whole candidate batch while `assets` is paged; unknown outcomes retain null counts. Rows preserve raw fields and locators; map rows preserve canonical point/line/area geometry and source CRS. Follow only the returned cursor, bound to current authority and the complete fixed selection. The 3 MiB limit may reduce the row count; it never truncates values.
+
+Current maintenance authority for the immutable submitter/delegator or independent human review authority is checked on each continuation, in addition to scope/security/policy. Published-source grants are unchanged. Candidate parsing and reading do not approve or publish a source. Original download and saved-candidate workflows require their own integration; live Auth/database/browser validation remains a separate gate.

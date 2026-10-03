@@ -115,7 +115,9 @@ join catalog.content_blob blob on blob.tenant_id=asset.tenant_id
   and blob.project_id=asset.project_id and blob.content_blob_id=asset.content_blob_id
 where input.tenant_id=$1::uuid and input.project_id=$2::uuid
   and input.ingestion_id=$3::uuid and input.fingerprint=blob.content_hash
-  and asset.lifecycle_state='QUARANTINED' and asset.version_id is null
+  and asset.content_hash=blob.content_hash and asset.byte_size=blob.byte_size
+  and input.scan_status='CLEAN'
+  and asset.lifecycle_state='FINGERPRINTED' and asset.version_id is null
 order by input.ordinal, asset.asset_id
 for share of input, asset, blob
 `;
