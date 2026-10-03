@@ -124,6 +124,32 @@ async function connect(dataHttp: RecordingDataHttpClient): Promise<Client> {
 }
 
 describe('Data Foundation MCP module', () => {
+  it('preserves the frozen candidate discovery reference from ingestion get without a published version', async () => {
+    const http = new RecordingDataHttpClient();
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'e'.repeat(64),
+    };
+    http.next = {
+      ingestion: { ingestionId: INGESTION_ID },
+      candidateReference: reference,
+    };
+    const client = await connect(http);
+    const result = await client.callTool({
+      name: 'data_ingestion_get',
+      arguments: { ingestionId: INGESTION_ID },
+    });
+    expect(result.structuredContent).toMatchObject({
+      ok: true,
+      data: { candidateReference: reference },
+    });
+    expect(http.requests).toMatchObject([
+      { method: 'GET', path: `/ingestions/${INGESTION_ID}` },
+    ]);
+    expect(JSON.stringify(result.structuredContent)).not.toContain('versionId');
+  });
   it('registers every static Capability mapping and no arbitrary execution tool', async () => {
     const client = await connect(new RecordingDataHttpClient());
     const names = (await client.listTools()).tools.map(({ name }) => name);

@@ -236,6 +236,7 @@ class FakeClient implements PostgresDataCommandClient {
             operation_id: OPERATION_ID,
             created_at: NOW.toISOString(),
             asset_ids: [ASSET_ID],
+            owner_project_id: PROJECT_ID,
             submitted_by_actor_id: this.submittedActorId,
             submitted_actor_type: this.submittedActorType,
             submitted_delegator_actor_id: this.submittedDelegatorId,
@@ -2767,6 +2768,102 @@ const managedIngestionInput = {
 };
 
 describe('managed pending intake ownership and fresh authority', () => {
+  it('supports each standard intake step with current owned maintenance and no published resource grant', async () => {
+    const actor = managedIntakeContext();
+    const upload = runtime();
+    expect(
+      await executor(upload.runtime, 'data.uploadSession.create').execute(
+        managedUploadInput,
+        actor,
+      ),
+    ).toHaveProperty('uploadSession');
+    expect(upload.pool.client.uploadRequestPayload).toMatchObject({
+      intakeResponsibility: {
+        actorId: ACTOR_ID,
+        actorType: 'human',
+        purpose: actor.authorization.purpose,
+      },
+    });
+    const complete = runtime();
+    expect(
+      await executor(complete.runtime, 'data.uploadSession.complete').execute(
+        managedCompleteInput,
+        actor,
+      ),
+    ).toMatchObject({ uploadSession: { status: 'COMPLETED' } });
+    const create = runtime();
+    expect(
+      await executor(create.runtime, 'data.ingestion.create').execute(
+        managedIngestionInput,
+        actor,
+      ),
+    ).toHaveProperty('ingestionId');
+    const submit = runtime();
+    submit.pool.client.submittedActorId = ACTOR_ID;
+    submit.pool.client.operationStatus = 'WAITING_INPUT';
+    expect(
+      await executor(submit.runtime, 'data.ingestion.submit').execute(
+        { ingestionId: INGESTION_ID, expectedVersion: 1 },
+        actor,
+      ),
+    ).toHaveProperty('operation');
+    expect(actor.authorization.resourceAccess?.scope).toMatchObject({
+      permissions: { 'content.read': [], 'original.read': [] },
+    });
+  });
+
+  it('rejects changed delegated idempotency and ownership even under the same agent actor ID', async () => {
+    const actor = {
+      ...managedIntakeContext(),
+      principal: {
+        actorId: ACTOR_ID,
+        actorType: 'agent' as const,
+        authenticationMethod: 'delegated_credential' as const,
+        credentialId: SESSION_ID,
+        delegationId: INGESTION_ID,
+        delegatedBy: 'd2000000-0000-4000-8000-000000000090',
+      },
+    };
+    const value = runtime();
+    const create = executor(value.runtime, 'data.uploadSession.create');
+    await create.execute(managedUploadInput, actor);
+    value.store.calls.length = 0;
+    await expect(
+      create.execute(managedUploadInput, {
+        ...actor,
+        principal: { ...actor.principal, delegatedBy: PROJECT_ID },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    expect(value.store.calls).toHaveLength(0);
+    const complete = runtime();
+    complete.pool.client.uploadResponsibility = {
+      actorId: ACTOR_ID,
+      actorType: 'agent',
+      delegatedBy: PROJECT_ID,
+      purpose: 'operate',
+    };
+    await expect(
+      executor(complete.runtime, 'data.uploadSession.complete').execute(
+        managedCompleteInput,
+        actor,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(complete.store.calls).toHaveLength(0);
+  });
+
+  it('rechecks immutable submitter when returning a cached submit receipt', async () => {
+    const value = runtime();
+    value.pool.client.submittedActorId = ACTOR_ID;
+    value.pool.client.operationStatus = 'WAITING_INPUT';
+    const submit = executor(value.runtime, 'data.ingestion.submit');
+    const input = { ingestionId: INGESTION_ID, expectedVersion: 1 };
+    await submit.execute(input, managedIntakeContext());
+    value.pool.client.submittedActorId = null;
+    await expect(
+      submit.execute(input, managedIntakeContext()),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   it('rejects a revoked maintenance scope before re-signing cached upload metadata', async () => {
     const value = runtime();
     const actor = managedIntakeContext();

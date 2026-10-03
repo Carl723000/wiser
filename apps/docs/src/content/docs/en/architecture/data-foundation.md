@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
+lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
 ---
 
 ## What runs today
@@ -449,7 +449,7 @@ Managed graph expansion/path queries constrain every node and relationship to th
 
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
-Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+Managed projects admit the explicit resource-aware capability set and the owned pending-intake create/submit/upload/get workflow described below. Operation status/events, approval/rejection, reconciliation and other maintenance commands still fail with FORBIDDEN before unscoped executors run. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
 
 Resource administration uses a metadata-only validation port. After checking the current source policy under control-plane project/settings locks, Platform issues a process-local, single-use permit bound to the verified actor/session, tenant, project, purpose, roles, scopes, security ceiling, authority version, exact resources and requested actions. It expires within five seconds and never outlives source permission. A serialized copy, changed request or replay is rejected before Data access. The port performs one bounded boolean check of fixed versions, publication, acceptance and source authorization text in a private read-only transaction. It installs only those exact references in the existing transaction-local version RLS transport; it never changes personal grants or passes that connection/scope to content, evidence, original or export adapters. Tenant/project/security RLS remains effective. Cancellation and expired results fail closed. Personal content access is neither required nor granted. External sources still require their separate registry port; management coverage browsing remains a separate integration gate.
 
@@ -510,6 +510,14 @@ Candidate reads require `data.operation.read` plus current project maintenance (
 Records and geometry use ordered, reference/view/asset/actor/delegator/purpose/policy/resource-scope-bound cursors, at most 200 entries and a 3 MiB response budget. SQL selects a bounded byte prefix; the cursor advances from the last complete returned row, and a single over-budget geometry fails explicitly. Null, numeric zero and empty text remain distinct. Geometry retains its canonical WGS84 point/line/area or collection plus source CRS and original locator; no centroid or guessed station is created. REST, GraphQL and MCP/Skill use this same Capability boundary. These code and unit checks do not replace live Auth/PostgreSQL/browser acceptance, original-download integration or a complete saved candidate workflow.
 
 Candidate originals use the canonical `FINGERPRINTED` state: no catalog version, a CLEAN scan, equal input/asset/content-blob hashes and byte sizes. `0039_candidate_fingerprinted_original.sql` corrects candidate guard admission without rewriting the 0037/0038 checksums or weakening existing lifecycle constraints. It does not rescan, downgrade to QUARANTINED, create RAW originals or publish versions.
+
+### Managed pending intake and candidate discovery
+
+The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit` and `data.ingestion.get` paths now admit managed projects through their own current maintenance/ownership guards. Writes require both `data.ingestion.write` and `data.operation.read`; fresh trusted identity, purpose, expiry and project scope are checked before cached results or object-store work. Upload responsibility is server-generated immutable Operation metadata. A human owner or the responsible human delegator may continue maintenance; a delegated actor must match the original actor type, actor ID and delegator. Unknown legacy responsibility fails closed. Create only binds completed owned QUARANTINED assets; it neither removes resource scope nor grants access to published content. Managed idempotency also binds actor type, delegator, purpose and resource fingerprint; retries recheck current ownership.
+
+`data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
+
+These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
 
 ### Frozen candidate originals
 

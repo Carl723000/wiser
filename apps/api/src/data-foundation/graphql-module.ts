@@ -164,6 +164,7 @@ type Query {
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
   dataIngestion(id: ID!): JSON
+  dataIngestionDetail(id: ID!): JSON!
   dataOperationEvents(id: ID!, first: Int, after: String): JSON!
 }
 
@@ -222,6 +223,7 @@ export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   dataItemVersions: 'data.catalog.versions.list',
   dataItemVersion: 'data.catalog.versions.get',
   dataIngestion: 'data.ingestion.get',
+  dataIngestionDetail: 'data.ingestion.get',
   dataIngestionCandidate: 'data.ingestion.candidate.get',
   dataIngestionCandidateRecords: 'data.ingestion.candidate.records',
   dataIngestionCandidateGeometry: 'data.ingestion.candidate.geometry',
@@ -734,6 +736,11 @@ const resolvers = {
           ingestionId: args.id,
         }),
       )['ingestion'] ?? null,
+    dataIngestionDetail: (
+      _: unknown,
+      args: { id: string },
+      context: GraphqlContext,
+    ) => executeQuery(context, 'data.ingestion.get', { ingestionId: args.id }),
     dataIngestionCandidate: (
       _: unknown,
       args: { input: unknown },

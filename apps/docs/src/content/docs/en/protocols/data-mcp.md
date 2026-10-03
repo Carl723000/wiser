@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
+lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
 ---
 
 ## HTTP adapter only
@@ -312,3 +312,11 @@ Candidate contract types are separate from published-version inputs. They curren
 `data_ingestion_candidate_get/records/geometry` map to `data.ingestion.candidate.get/records/geometry`. Input fixes `kind: ingestion-candidate`, `ingestionId`, `processingBatchId`, lowercase SHA-256 `reviewHash`, optional `first` (default 50; max 200) and `after`; records/geometry also require `assetId`. REST identity path fields must not be repeated in the query. `versionId` is rejected. Summary totals cover the whole candidate batch while `assets` is paged; unknown outcomes retain null counts. Rows preserve raw fields and locators; map rows preserve canonical point/line/area geometry and source CRS. Follow only the returned cursor, bound to current authority and the complete fixed selection. The 3 MiB limit may reduce the row count; it never truncates values.
 
 Current maintenance authority for the immutable submitter/delegator or independent human review authority is checked on each continuation, in addition to scope/security/policy. Published-source grants are unchanged. Candidate parsing and reading do not approve or publish a source. Original download and saved-candidate workflows require their own integration; live Auth/database/browser validation remains a separate gate.
+
+### Managed pending intake and candidate discovery
+
+The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit` and `data.ingestion.get` paths now admit managed projects through their own current maintenance/ownership guards. Writes require both `data.ingestion.write` and `data.operation.read`; fresh trusted identity, purpose, expiry and project scope are checked before cached results or object-store work. Upload responsibility is server-generated immutable Operation metadata. A human owner or the responsible human delegator may continue maintenance; a delegated actor must match the original actor type, actor ID and delegator. Unknown legacy responsibility fails closed. Create only binds completed owned QUARANTINED assets; it neither removes resource scope nor grants access to published content. Managed idempotency also binds actor type, delegator, purpose and resource fingerprint; retries recheck current ownership.
+
+`data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
+
+These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.

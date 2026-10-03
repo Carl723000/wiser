@@ -1,3 +1,10 @@
+import {
+  pendingIntakeAuthority,
+  ownsPendingSubmission,
+  rowSubmissionResponsibility,
+  setPendingIntakeScope,
+  submissionResponsibility,
+} from './managed-ingestion-access.js';
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -199,7 +206,7 @@ insert into catalog.temporal_extent (
 
 const UPLOAD_LOCK_SQL = `
 /* data.upload.session.lock */
-select operation_id, status, row_version, request_payload, result_payload,
+select operation_id, actor_id, status, row_version, request_payload, result_payload,
   security_level, policy_version, created_at, updated_at
 from service.operation
 where operation_id = $1::uuid
@@ -247,12 +254,17 @@ const ASSETS_LOCK_SQL = `
 /* data.ingestion.assets.lock */
 select asset.asset_id, asset.security_level, asset.policy_version,
   asset.row_version, asset.lifecycle_state, asset.version_id,
-  input.ingestion_id as bound_ingestion_id
+  input.ingestion_id as bound_ingestion_id,
+  origin.actor_id as upload_actor_id, origin.request_payload -> 'intakeResponsibility' as upload_intake_responsibility
 from catalog.asset as asset
 left join ingestion.input_asset as input
   on input.tenant_id = asset.tenant_id
  and input.project_id = asset.project_id
  and input.asset_id = asset.asset_id
+left join service.operation origin
+  on origin.tenant_id=asset.tenant_id and origin.project_id=asset.project_id
+  and origin.capability_id='data.uploadSession.create' and origin.status='SUCCEEDED'
+  and origin.request_payload->'assets' @> jsonb_build_array(jsonb_build_object('assetId',asset.asset_id::text))
 where asset.asset_id = any($1::uuid[])
   and asset.tenant_id = $2::uuid and asset.project_id = $3::uuid
   and security.security_rank(asset.security_level) <= security.security_rank($4)
@@ -311,7 +323,7 @@ const INGESTION_LOCK_SQL = `
 /* data.ingestion.session.lock */
 select ingestion_id, state, row_version, intended_uses,
   requested_security_level, security_level, policy_version, operation_id,
-  created_at, updated_at, submitted_by_actor_id, submitted_actor_type,
+  created_at, updated_at, owner_project_id, submitted_by_actor_id, submitted_actor_type,
   submitted_delegator_actor_id, review_policy_snapshot,
   (select jsonb_build_object('mode', mode, 'revision', revision)
      from ingestion.project_review_policy where tenant_id = session.tenant_id
@@ -680,6 +692,7 @@ export type DataCommandObjectStore = Pick<
 export type PostgresDataCommandErrorCode =
   | 'INVALID_CONFIGURATION'
   | 'INVALID_INPUT'
+  | 'INTAKE_FORBIDDEN'
   | 'OWNER_PROJECT_MISMATCH'
   | 'INDEPENDENT_REVIEW_REQUIRED'
   | 'SECURITY_LEVEL_EXCEEDED'
@@ -696,6 +709,7 @@ export type PostgresDataCommandErrorCode =
 const ERROR_STATUS: Readonly<Record<PostgresDataCommandErrorCode, number>> = {
   INVALID_CONFIGURATION: 500,
   INVALID_INPUT: 422,
+  INTAKE_FORBIDDEN: 403,
   OWNER_PROJECT_MISMATCH: 403,
   INDEPENDENT_REVIEW_REQUIRED: 403,
   SECURITY_LEVEL_EXCEEDED: 403,
@@ -810,6 +824,13 @@ function canonical(value: unknown): string {
     .join(',')}}`;
 }
 
+const MANAGED_INTAKE_COMMANDS = new Set<DataCapabilityId>([
+  'data.uploadSession.create',
+  'data.uploadSession.complete',
+  'data.ingestion.create',
+  'data.ingestion.submit',
+]);
+
 function requestHash(
   capabilityId: DataCapabilityId,
   input: unknown,
@@ -827,6 +848,13 @@ function requestHash(
           ? {
               resourceFingerprint:
                 context.authorization.resourceAccess.fingerprint,
+              ...(MANAGED_INTAKE_COMMANDS.has(capabilityId)
+                ? {
+                    actorType: context.principal.actorType,
+                    delegatedBy: context.principal.delegatedBy ?? null,
+                    purpose: context.authorization.purpose,
+                  }
+                : {}),
             }
           : {}),
       }),
@@ -962,6 +990,54 @@ function commandKey(context: DataCapabilityExecutionContext): string {
     throw commandError('IDEMPOTENCY_KEY_REQUIRED');
   }
   return context.idempotencyKey;
+}
+
+function assertStoredUploadOwner(
+  operationActor: unknown,
+  value: unknown,
+  context: DataCapabilityExecutionContext,
+) {
+  const raw =
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const responsibility = submissionResponsibility({
+    actorId: raw['actorId'],
+    actorType: raw['actorType'],
+    ...(raw['delegatedBy'] === undefined
+      ? {}
+      : { delegatedBy: raw['delegatedBy'] }),
+  });
+  if (
+    !responsibility ||
+    responsibility.actorId !== operationActor ||
+    typeof raw['purpose'] !== 'string' ||
+    !/^[a-z][a-z0-9-]{0,95}$/.test(raw['purpose']) ||
+    !ownsPendingSubmission(context, responsibility)
+  )
+    throw commandError('INTAKE_FORBIDDEN');
+}
+function assertUploadResponsibility(
+  row: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+) {
+  if (context.authorization.resourceAccess === undefined) return;
+  assertStoredUploadOwner(
+    row['actor_id'],
+    parseStoredPayload(row['request_payload'])['intakeResponsibility'],
+    context,
+  );
+}
+function assertIngestionOwner(
+  row: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+) {
+  if (context.authorization.resourceAccess === undefined) return;
+  if (
+    row['owner_project_id'] !== context.authorization.projectId ||
+    !ownsPendingSubmission(context, rowSubmissionResponsibility(row))
+  )
+    throw commandError('INTAKE_FORBIDDEN');
 }
 
 function assertOwner(
@@ -1140,6 +1216,14 @@ export class CommandTransactions {
       ledger: StoredCommandLedger,
     ) => Promise<unknown>,
   ): Promise<unknown> {
+    const managedIntake =
+      context.authorization.resourceAccess !== undefined &&
+      MANAGED_INTAKE_COMMANDS.has(capabilityId);
+    const intakeAuthority = managedIntake
+      ? pendingIntakeAuthority(context)
+      : null;
+    if (managedIntake && !intakeAuthority?.maintainer)
+      throw commandError('INTAKE_FORBIDDEN');
     const idempotencyKey = commandKey(context);
     const hash = requestHash(capabilityId, input, context);
     const timestamp = now(this.clock);
@@ -1168,6 +1252,13 @@ export class CommandTransactions {
         context.authorization,
         context.resourceReadAction,
       );
+      if (intakeAuthority)
+        await setPendingIntakeScope(
+          client,
+          context,
+          capabilityId,
+          intakeAuthority,
+        );
       exactlyOne(
         await this.query(client, context, IDEMPOTENCY_LOCK_SQL, [
           idempotencyKey,
@@ -1194,6 +1285,32 @@ export class CommandTransactions {
           requestHash: hash,
           result: payload['result'],
         };
+        if (managedIntake && replay === undefined) {
+          const result = parseStoredPayload(ledger.result);
+          if (capabilityId === 'data.uploadSession.complete') {
+            const stored = singleRow(
+              await this.query(client, context, UPLOAD_LOCK_SQL, [
+                parseStoredPayload(input)['uploadSessionId'],
+                ...scopeValues(context),
+              ]),
+            );
+            if (!stored) throw commandError('NOT_FOUND');
+            assertUploadResponsibility(stored, context);
+          } else {
+            const ingestionId =
+              capabilityId === 'data.ingestion.create'
+                ? result['ingestionId']
+                : parseStoredPayload(input)['ingestionId'];
+            const stored = singleRow(
+              await this.query(client, context, INGESTION_LOCK_SQL, [
+                ingestionId,
+                ...scopeValues(context),
+              ]),
+            );
+            if (!stored) throw commandError('NOT_FOUND');
+            assertIngestionOwner(stored, context);
+          }
+        }
         let value: unknown;
         if (replay === undefined) {
           const parsed = DATA_CAPABILITY_REGISTRY[
@@ -1998,6 +2115,18 @@ export function createPostgresDataCommandRuntime(
                 expiresAt,
                 createdAt: timestamp,
                 securityLevel: defaultUploadSecurityLevel,
+                ...(context.authorization.resourceAccess === undefined
+                  ? {}
+                  : {
+                      intakeResponsibility: {
+                        actorId: context.principal.actorId,
+                        actorType: context.principal.actorType,
+                        ...(context.principal.delegatedBy === undefined
+                          ? {}
+                          : { delegatedBy: context.principal.delegatedBy }),
+                        purpose: context.authorization.purpose,
+                      },
+                    }),
               },
               { uploadSession },
               defaultUploadSecurityLevel,
@@ -2068,6 +2197,7 @@ export function createPostgresDataCommandRuntime(
           );
           const row = singleRow(locked);
           if (row === undefined) throw commandError('NOT_FOUND');
+          assertUploadResponsibility(row, context);
           assertSessionOpen(row, timestamp);
           const assets = storedAssets(row['request_payload']);
           const uploadSession = uploadSessionFromStored(
@@ -2113,6 +2243,7 @@ export function createPostgresDataCommandRuntime(
           if (integer(row, 'row_version') !== input.expectedVersion) {
             throw commandError('VERSION_CONFLICT');
           }
+          assertUploadResponsibility(row, context);
           assertSessionOpen(row, timestamp);
           const assets = storedAssets(row['request_payload']);
           const requestedIds = new Set(
@@ -2304,6 +2435,7 @@ export function createPostgresDataCommandRuntime(
             assetRows.rows.map((asset) => text(asset, 'asset_id')),
           );
           if (
+            assetRows.rows.length !== input.assetIds.length ||
             available.size !== new Set(input.assetIds).size ||
             input.assetIds.some((assetId) => !available.has(assetId))
           ) {
@@ -2319,6 +2451,14 @@ export function createPostgresDataCommandRuntime(
             )
           ) {
             throw commandError('STATE_CONFLICT');
+          }
+          if (context.authorization.resourceAccess !== undefined) {
+            for (const asset of assetRows.rows)
+              assertStoredUploadOwner(
+                asset['upload_actor_id'],
+                asset['upload_intake_responsibility'],
+                context,
+              );
           }
           const inheritedSecurity = maximumSecurity(
             input.requestedSecurityLevel,
@@ -2438,6 +2578,7 @@ export function createPostgresDataCommandRuntime(
             'RECEIVED',
             context,
           );
+          assertIngestionOwner(ingestion.row, context);
           const operationId = text(ingestion.row, 'operation_id');
           const lockedOperation = await lockOperation(
             transactions,

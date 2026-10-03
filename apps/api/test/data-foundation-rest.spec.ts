@@ -461,6 +461,28 @@ function appWith(
 }
 
 describe('Data Foundation REST module', () => {
+  it('preserves get 1.2 frozen candidate reference in the standard ingestion response', async () => {
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'e'.repeat(64),
+    };
+    const payload = {
+      ingestion: { ingestionId: INGESTION_ID },
+      candidateReference: reference,
+    };
+    const { app } = appWith(context, {
+      execute: () => Promise.resolve(payload),
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/ingestions/${INGESTION_ID}`,
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(payload);
+  });
   it('accepts a short persisted relation scope over the existing GET endpoint', async () => {
     const { app } = appWith();
     const response = await app.inject({

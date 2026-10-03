@@ -8,6 +8,7 @@ import {
 } from '../common.ts';
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
 import { SourceRegistrationSchema } from './source-registration.ts';
+import { IngestionCandidateReferenceSchema } from './candidate.ts';
 export * from './source-registration.ts';
 export * from './review-governance.ts';
 export * from './candidate.ts';
@@ -101,6 +102,9 @@ export const IngestionOutputSchema = z.strictObject({
 });
 export const IngestionOutputV1Schema = IngestionOutputSchema.extend({
   ingestion: IngestionV1Schema,
+});
+export const GetIngestionOutputSchema = IngestionOutputSchema.extend({
+  candidateReference: IngestionCandidateReferenceSchema.nullable(),
 });
 
 export const GetIngestionInputSchema = z.strictObject({

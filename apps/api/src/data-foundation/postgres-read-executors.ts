@@ -3,6 +3,12 @@ import {
   setCandidateReadAuthority,
 } from './candidate-read-authority.js';
 import { applyResourceReadScope } from './resource-read-scope.js';
+import {
+  pendingIntakeAuthority,
+  canReadPendingSubmission,
+  rowSubmissionResponsibility,
+  setPendingIntakeScope,
+} from './managed-ingestion-access.js';
 import { createHash } from 'node:crypto';
 
 import {
@@ -255,7 +261,9 @@ select session.ingestion_id, session.tenant_id, session.project_id,
     filter (where input.asset_id is not null), '{}') as asset_ids,
   session.intended_uses, session.requested_security_level, session.state,
   session.operation_id, session.row_version, session.created_at,
-  session.updated_at, session.source_registration
+  session.updated_at, session.source_registration, session.owner_project_id,
+  session.submitted_by_actor_id, session.submitted_actor_type,
+  session.submitted_delegator_actor_id
 from ingestion.session as session
 left join ingestion.input_asset as input
   on input.tenant_id = session.tenant_id
@@ -263,6 +271,14 @@ left join ingestion.input_asset as input
  and input.ingestion_id = session.ingestion_id
 where session.ingestion_id = $1::uuid
 group by session.ingestion_id
+`;
+
+const INGESTION_CANDIDATE_REFERENCE_SQL = `
+/* data.ingestion.candidate.reference */
+select batch.ingestion_id,batch.processing_batch_id,encode(batch.review_hash,'hex') review_hash
+from ingestion.candidate_batch batch
+where batch.ingestion_id=$1::uuid and batch.status<>'PENDING'
+order by batch.created_at desc,batch.processing_batch_id desc limit 1
 `;
 
 const INGESTION_QUALITY_ISSUES_SQL = `
@@ -1392,44 +1408,95 @@ export function createPostgresDataReadRuntime(
     }),
     define('data.ingestion.get', async (raw, context) => {
       const input = parsedInput('data.ingestion.get', raw);
-      return transactions.run(context, async (client) => {
-        const ingestionId = input.ingestionId;
-        const ingestionResult = await client.query(INGESTION_SQL, [
-          ingestionId,
-        ]);
-        const ingestionDetail = ingestion(requireRow(ingestionResult.rows));
-        const qualityIssuesResult = await client.query(
-          INGESTION_QUALITY_ISSUES_SQL,
-          [ingestionId],
+      const authority = pendingIntakeAuthority(context);
+      const managed = context.authorization.resourceAccess !== undefined;
+      if (
+        managed &&
+        (!authority || (!authority.maintainer && !authority.reviewer))
+      )
+        throw new PostgresDataReadError(
+          'INTAKE_READ_FORBIDDEN',
+          403,
+          'The current identity cannot read this ingestion.',
         );
-        const agentRunsResult = await client.query(INGESTION_AGENT_RUNS_SQL, [
-          ingestionId,
-        ]);
-        const linkedItemsResult = await client.query(
-          INGESTION_LINKED_ITEMS_SQL,
-          [ingestionId],
-        );
-        const dataItemIds = linkedItemsResult.rows.map((row) =>
-          text(row, 'data_item_id'),
-        );
-        const versionIds = linkedItemsResult.rows.map((row) =>
-          text(row, 'version_id'),
-        );
-        const projectionStatusesResult =
-          dataItemIds.length === 0
-            ? { rows: [] as readonly Record<string, unknown>[] }
-            : await client.query(INGESTION_PROJECTION_STATUSES_SQL, [
-                dataItemIds,
-                versionIds,
-              ]);
-        return {
-          ingestion: ingestionDetail,
-          qualityIssues: qualityIssuesResult.rows.map(qualityIssue),
-          agentRuns: agentRunsResult.rows.map(agentRun),
-          projectionStatuses:
-            projectionStatusesResult.rows.map(projectionStatus),
-        };
-      });
+      return transactions.run(
+        context,
+        async (client) => {
+          if (authority)
+            await setPendingIntakeScope(
+              client,
+              context,
+              'data.ingestion.get',
+              authority,
+            );
+          const ingestionId = input.ingestionId;
+          const ingestionResult = await client.query(INGESTION_SQL, [
+            ingestionId,
+          ]);
+          const row = requireRow(ingestionResult.rows);
+          const authorized =
+            authority !== null &&
+            canReadPendingSubmission(
+              context,
+              rowSubmissionResponsibility(row),
+              authority,
+            ) &&
+            row['owner_project_id'] === context.authorization.projectId &&
+            row['tenant_id'] === context.authorization.tenantId &&
+            row['project_id'] === context.authorization.projectId;
+          if (managed && !authorized) throw new PostgresDataReadNotFoundError();
+          const ingestionDetail = ingestion(row);
+          const candidateRow = authorized
+            ? (
+                await client.query(INGESTION_CANDIDATE_REFERENCE_SQL, [
+                  ingestionId,
+                ])
+              ).rows[0]
+            : undefined;
+          const candidateReference =
+            candidateRow === undefined
+              ? null
+              : IngestionCandidateReferenceSchema.parse({
+                  kind: 'ingestion-candidate',
+                  ingestionId: text(candidateRow, 'ingestion_id'),
+                  processingBatchId: text(candidateRow, 'processing_batch_id'),
+                  reviewHash: text(candidateRow, 'review_hash'),
+                });
+          const qualityIssuesResult = await client.query(
+            INGESTION_QUALITY_ISSUES_SQL,
+            [ingestionId],
+          );
+          const agentRunsResult = await client.query(INGESTION_AGENT_RUNS_SQL, [
+            ingestionId,
+          ]);
+          const linkedItemsResult = await client.query(
+            INGESTION_LINKED_ITEMS_SQL,
+            [ingestionId],
+          );
+          const dataItemIds = linkedItemsResult.rows.map((row) =>
+            text(row, 'data_item_id'),
+          );
+          const versionIds = linkedItemsResult.rows.map((row) =>
+            text(row, 'version_id'),
+          );
+          const projectionStatusesResult =
+            dataItemIds.length === 0
+              ? { rows: [] as readonly Record<string, unknown>[] }
+              : await client.query(INGESTION_PROJECTION_STATUSES_SQL, [
+                  dataItemIds,
+                  versionIds,
+                ]);
+          return {
+            ingestion: ingestionDetail,
+            candidateReference,
+            qualityIssues: qualityIssuesResult.rows.map(qualityIssue),
+            agentRuns: agentRunsResult.rows.map(agentRun),
+            projectionStatuses:
+              projectionStatusesResult.rows.map(projectionStatus),
+          };
+        },
+        true,
+      );
     }),
     define('data.operation.get', async (raw, context) => {
       const input = parsedInput('data.operation.get', raw);

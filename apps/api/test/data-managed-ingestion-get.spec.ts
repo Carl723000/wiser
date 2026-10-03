@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DATA_CAPABILITY_REGISTRY,
   DATA_CAPABILITY_ARCHIVE,
+  DATA_CAPABILITY_IDS,
 } from '@wiser/data-contracts';
+import { DataCapabilityHandler } from '../src/data-foundation/capability-handler.js';
 import type { DataCapabilityExecutionContext } from '../src/data-foundation/capability-handler.js';
 import {
   createPostgresDataReadRuntime,
@@ -57,6 +59,7 @@ const context: DataCapabilityExecutionContext = {
 };
 class Client implements PostgresDataReadClient {
   queries: string[] = [];
+  hasCandidate = true;
   responsibility: Record<string, unknown> = {
     submitted_by_actor_id: id(1),
     submitted_actor_type: 'human',
@@ -86,13 +89,15 @@ class Client implements PostgresDataReadClient {
       });
     if (text.includes('data.ingestion.candidate.reference'))
       return Promise.resolve({
-        rows: [
-          {
-            ingestion_id: id(4),
-            processing_batch_id: id(5),
-            review_hash: reference.reviewHash,
-          },
-        ],
+        rows: this.hasCandidate
+          ? [
+              {
+                ingestion_id: id(4),
+                processing_batch_id: id(5),
+                review_hash: reference.reviewHash,
+              },
+            ]
+          : [],
       });
     return Promise.resolve({ rows: [] });
   }
@@ -117,7 +122,7 @@ describe('managed ingestion discovery', () => {
     expect(
       [
         DATA_CAPABILITY_REGISTRY['data.ingestion.get'],
-        ...DATA_CAPABILITY_ARCHIVE['data.ingestion.get'],
+        ...DATA_CAPABILITY_ARCHIVE['data.ingestion.get']!,
       ].map((item) => item.version),
     ).toEqual(expect.arrayContaining(['1.0.0', '1.1.0', '1.2.0']));
   });
@@ -152,4 +157,182 @@ describe('managed ingestion discovery', () => {
       ).toBe(false);
     },
   );
+
+  it('allows an independent current human reviewer while blocking its delegated representative', async () => {
+    const reviewer = {
+      ...context,
+      principal: { ...context.principal, actorId: id(90), authUserId: id(90) },
+      authorization: {
+        ...context.authorization,
+        scopes: ['data.operation.read', 'data.publish'],
+      },
+    };
+    expect(await get(new Client(), reviewer)).toMatchObject({
+      candidateReference: reference,
+    });
+    const agent = {
+      ...reviewer,
+      principal: {
+        actorId: id(91),
+        actorType: 'agent' as const,
+        authenticationMethod: 'delegated_credential' as const,
+        credentialId: id(92),
+        delegationId: id(93),
+        delegatedBy: id(90),
+      },
+    };
+    await expect(get(new Client(), agent)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it('retains delegated responsibility and permits its currently authorized human delegator to continue maintenance', async () => {
+    const client = new Client();
+    client.responsibility = {
+      submitted_by_actor_id: id(90),
+      submitted_actor_type: 'agent',
+      submitted_delegator_actor_id: id(1),
+    };
+    expect(await get(client)).toMatchObject({ candidateReference: reference });
+    const agent = {
+      ...context,
+      principal: {
+        actorId: id(90),
+        actorType: 'agent' as const,
+        authenticationMethod: 'delegated_credential' as const,
+        credentialId: id(91),
+        delegationId: id(92),
+        delegatedBy: id(1),
+      },
+    };
+    expect(await get(client, agent)).toMatchObject({
+      candidateReference: reference,
+    });
+    await expect(
+      get(client, {
+        ...agent,
+        principal: { ...agent.principal, delegatedBy: id(93) },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      get(client, {
+        ...context,
+        authorization: {
+          ...context.authorization,
+          scopes: ['data.operation.read', 'data.publish'],
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it.each(['revoked', 'expired-scope', 'expired-principal', 'invalid-purpose'])(
+    'rejects %s authority before reading any ingestion',
+    async (kind) => {
+      const withSignal = {
+        ...context,
+        authorization: { ...context.authorization },
+        principal: { ...context.principal },
+      };
+      if (kind === 'revoked')
+        withSignal.authorization = {
+          ...withSignal.authorization,
+          scopes: ['data.operation.read'],
+        };
+      if (kind === 'expired-scope') {
+        const current = context.authorization.resourceAccess!;
+        if (current.scope.mode !== 'managed')
+          throw Error('fixture must be managed');
+        withSignal.authorization.resourceAccess = {
+          ...current,
+          scope: { ...current.scope, validUntil: '2000-01-01T00:00:00Z' },
+        };
+      }
+      if (kind === 'expired-principal')
+        withSignal.principal = {
+          ...withSignal.principal,
+          expiresAt: '2000-01-01T00:00:00Z',
+        };
+      if (kind === 'invalid-purpose')
+        withSignal.authorization = { ...withSignal.authorization, purpose: '' };
+      const client = new Client();
+      await expect(get(client, withSignal)).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(client.queries).toHaveLength(0);
+    },
+  );
+
+  it('returns null before a frozen parser batch exists and does not mint a published version', async () => {
+    const client = new Client();
+    client.hasCandidate = false;
+    const output = await get(client);
+    expect(output).toMatchObject({ candidateReference: null });
+    expect(JSON.stringify(output)).not.toContain('versionId');
+  });
+
+  it('preserves get 1.0/1.1 strict output schemas and all transport mappings', async () => {
+    const output = (await get(new Client())) as Record<string, unknown>;
+    const { candidateReference: _, ...oldOutput } = output;
+    for (const old of DATA_CAPABILITY_ARCHIVE['data.ingestion.get']!) {
+      expect(old.outputSchema.safeParse(oldOutput).success).toBe(true);
+      expect(old.outputSchema.safeParse(output).success).toBe(false);
+      expect(old.restMapping).toEqual(
+        DATA_CAPABILITY_REGISTRY['data.ingestion.get'].restMapping,
+      );
+      expect(old.graphqlMapping).toEqual({
+        operationType: 'query',
+        field: 'dataIngestion',
+      });
+      expect(old.mcpMapping).toEqual(
+        DATA_CAPABILITY_REGISTRY['data.ingestion.get'].mcpMapping,
+      );
+      expect(old.skillMapping).toEqual(
+        DATA_CAPABILITY_REGISTRY['data.ingestion.get'].skillMapping,
+      );
+    }
+  });
+
+  it('admits the scoped get executor through the common handler and still rejects a withdrawn maintainer', async () => {
+    const client = new Client();
+    const runtime = createPostgresDataReadRuntime({
+      connect: () => Promise.resolve(client),
+      end: () => Promise.resolve(),
+    });
+    const selected = runtime.executors.find(
+      (e) => e.id === 'data.ingestion.get',
+    )!;
+    const handler = new DataCapabilityHandler({
+      executors: DATA_CAPABILITY_IDS.map((id) =>
+        id === selected.id
+          ? selected
+          : { id, execute: () => Promise.reject(Error('not used')) },
+      ),
+      audit: { record: () => Promise.resolve() },
+    });
+    expect(
+      await handler.execute({
+        capabilityId: selected.id,
+        input: { ingestionId: id(4) },
+        requestContext: {
+          principal: context.principal,
+          authorization: context.authorization,
+          traceId: context.traceId,
+        },
+      }),
+    ).toMatchObject({ candidateReference: reference });
+    await expect(
+      handler.execute({
+        capabilityId: selected.id,
+        input: { ingestionId: id(4) },
+        requestContext: {
+          principal: context.principal,
+          authorization: {
+            ...context.authorization,
+            scopes: ['data.operation.read'],
+          },
+          traceId: context.traceId,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
 });

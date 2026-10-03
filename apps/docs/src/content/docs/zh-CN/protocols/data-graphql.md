@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
+lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
 ---
 
 ## 入口与权威契约
@@ -74,7 +74,8 @@ Idempotency-Key: <uuid>
 | `dataOperation`          | `data.operation.get`          | 一个 Operation                                           |
 | `dataItemVersions`       | `data.catalog.versions.list`  | 版本 connection                                          |
 | `dataItemVersion`        | `data.catalog.versions.get`   | 精确不可变版本                                           |
-| `dataIngestion`          | `data.ingestion.get`          | 入库会话、质量/Agent/投影摘要                            |
+| `dataIngestion`          | `data.ingestion.get`          | 既有入库会话对象                                         |
+| `dataIngestionDetail`    | `data.ingestion.get`          | 完整详情、质量/Agent/投影摘要与候选引用                  |
 | `dataOperationEvents`    | `data.operation.events`       | 有界 Operation event page；GraphQL 返回 JSON，不使用 SSE |
 
 Connection 返回 `nodes` 与 `pageInfo { endCursor hasNextPage }`。其余分页结果保留 `nextCursor`。Cursor 是不透明、scope-bound 的；不能从 REST、另一个 Tenant/Project 或旧授权版本复制。
@@ -286,7 +287,7 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 
 REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解析权限；原件内容在取得上游响应后、发送字节前再核验。主体、项目、用途、动作、成员修订或资源范围变化时停止返回，包括请求期间启用受管策略的情况。已提交的命令不会因响应拒绝而自动回滚，须沿用幂等与审计记录对账。受管项目的原件路由统一代理传输，不返回存储签名链接。每个内容块在上游读取后重新核验权限；权限变化或不可用时取消后续传输。已经交付的字节无法收回。未启用资源策略的旧重定向链接仍保留既有短有效期，本机制不能单独撤销这些链接。
 
-受管项目仅放行明确列出的资源感知能力。入库、操作状态/事件、对账及维护命令在进入未受资源限制的执行器前返回FORBIDDEN；其资源感知流程仍待完成。外部目录调用须有对应来源、未过期的external.directory授权，并同时满足供方许可。未启用项目保留既有能力门禁。
+受管项目仅放行明确列出的资源感知能力及下述自有待审资料上传、创建、提交和详情读取。操作状态／事件、批准／拒绝、对账及其他维护命令仍在进入未受资源限制的执行器前返回FORBIDDEN。外部目录调用须有对应来源、未过期的external.directory授权，并同时满足供方许可。未启用项目保留既有能力门禁。
 
 ## 候选固定输入契约
 
@@ -297,5 +298,13 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 `dataIngestionCandidate(input: JSON!)`, `dataIngestionCandidateRecords(input: JSON!)` and `dataIngestionCandidateGeometry(input: JSON!)` 对应 `data.ingestion.candidate.get/records/geometry`。输入固定 `kind: ingestion-candidate`、`ingestionId`、`processingBatchId`、小写 SHA-256 `reviewHash`，可选 `first`（默认 50、最多 200）和 `after`；记录／几何还需 `assetId`。REST 路径身份字段不能在查询参数中重复；`versionId` 会被拒绝。摘要计数覆盖完整候选批次，`assets` 则是当前原件分页，未解析计数继续为 null。记录保留原值和定位，空间记录保留规范点／线／面几何及来源 CRS。只能沿返回的游标续读，其绑定当前权限与完整固定选择。3 MiB 上限可能缩小返回条数，但不截断字段。
 
 每次续读重查不可变提交者／委托人的当前维护权限，或独立人工审核者的审核权限，同时检查项目、密级和策略。已发布资料授权保持原范围。候选解析与读取不构成批准或发布；原件下载、保存候选流程及真实 Auth／数据库／浏览器仍单独验收。
+
+### 受管待审接收与候选发现
+
+标准`data.uploadSession.create/complete`、`data.ingestion.create/submit`及`data.ingestion.get`通过当前维护权限和归属守卫接入受管项目。写入同时要求`data.ingestion.write`和`data.operation.read`，在返回旧回执或处理对象存储前检查可信身份、用途、期限及当前项目。上传责任由服务器保存于不可变Operation请求信息；原人类提交者或负责委托的人类可继续维护，委托主体须同时匹配原身份类型、身份编号和委托人。旧记录责任不明时拒绝。创建只绑定已完成、自有且处于QUARANTINED的资产，不清除资源范围或扩大已发布内容权限。受管幂等请求同时绑定身份类型、委托人、用途和资源指纹，重试重新检查当前归属。
+
+`data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约与原GraphQL映射继续归档。REST和MCP返回完整新详情；GraphQL发现中的1.2映射为`dataIngestionDetail(id: ID!): JSON!`，保留完整详情和候选引用。既有`dataIngestion(id: ID!): JSON`仍只返回入库会话对象。Skill按当前发现映射调用，只使用返回的引用衔接现有三项候选读取。
+
+本切片未放行受管Operation状态／事件、恢复／取消、批准／拒绝及其他维护能力。候选发现不授予专业批准或发布权；真实Auth、SQL／RLS和浏览器链须单独完成验收，不能由合成测试替代。
 
 原件字节使用受鉴权的[待审原件 REST 内容入口](/zh-CN/protocols/data-rest/#待审原件内容)，不增加 GraphQL 字节字段，不返回存储签名地址。请求依据摘要中的固定接收／审核／批次引用及原件编号；即使请求 HEAD 或范围，也须核完整哈希、准确长度及当前维护／审核权限。能读取 JSON 元数据不等于能读取原件字节；真实 Auth／存储／浏览器验收与候选保存另行核对。

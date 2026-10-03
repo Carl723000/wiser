@@ -168,16 +168,46 @@ function appWith(
 }
 
 describe('Data Foundation schema-first GraphQL transport', () => {
-  it('returns get 1.2 candidate discovery through the full-detail field and preserves the legacy bare ingestion field',async()=>{
-    const reference={kind:'ingestion-candidate',ingestionId:INGESTION_ID,processingBatchId:VERSION_ID,reviewHash:'e'.repeat(64)};
-    const payload={ingestion:{ingestionId:INGESTION_ID,version:6},candidateReference:reference,qualityIssues:[]};
-    const handler={execute:vi.fn(()=>Promise.resolve(payload))};
-    const {app}=appWith({handler});
-    const response=await app.inject({method:'POST',url:'/graphql',headers:headers(),payload:{query:`query { detail: dataIngestionDetail(id:"${INGESTION_ID}") legacy: dataIngestion(id:"${INGESTION_ID}") }`}});
+  it('returns get 1.2 candidate discovery through the full-detail field and preserves the legacy bare ingestion field', async () => {
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'e'.repeat(64),
+    };
+    const payload = {
+      ingestion: { ingestionId: INGESTION_ID, version: 6 },
+      candidateReference: reference,
+      qualityIssues: [],
+    };
+    const handler = {
+      execute: vi.fn((_request: ExecuteDataCapabilityInput) =>
+        Promise.resolve(payload),
+      ),
+    };
+    const { app } = appWith({ handler });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(),
+      payload: {
+        query: `query { detail: dataIngestionDetail(id:"${INGESTION_ID}") legacy: dataIngestion(id:"${INGESTION_ID}") }`,
+      },
+    });
     expect(responseErrors(response)).toBeUndefined();
-    expect(response.json<{data:unknown}>().data).toEqual({detail:payload,legacy:payload.ingestion});
-    expect(DATA_CAPABILITY_REGISTRY['data.ingestion.get'].graphqlMapping.field).toBe('dataIngestionDetail');
-    for(const call of handler.execute.mock.calls) expect(call[0]).toMatchObject({capabilityId:'data.ingestion.get',input:{ingestionId:INGESTION_ID},requestContext});
+    expect(response.json<{ data: unknown }>().data).toEqual({
+      detail: payload,
+      legacy: payload.ingestion,
+    });
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.get'].graphqlMapping.field,
+    ).toBe('dataIngestionDetail');
+    for (const call of handler.execute.mock.calls)
+      expect(call[0]).toMatchObject({
+        capabilityId: 'data.ingestion.get',
+        input: { ingestionId: INGESTION_ID },
+        requestContext,
+      });
   });
   it('declares every required field and maps it to one Registry capability', () => {
     const schema = buildSchema(DATA_FOUNDATION_GRAPHQL_SCHEMA);
@@ -194,7 +224,10 @@ describe('Data Foundation schema-first GraphQL transport', () => {
       );
     }
     expect(Object.keys(GRAPHQL_CAPABILITY_BY_FIELD)).toHaveLength(
-      DATA_CAPABILITY_IDS.length,
+      DATA_CAPABILITY_IDS.length + 1,
+    );
+    expect(GRAPHQL_CAPABILITY_BY_FIELD['dataIngestion']).toBe(
+      'data.ingestion.get',
     );
     expect(DATA_FOUNDATION_GRAPHQL_SCHEMA).not.toMatch(/SQL|Cypher|DSL/);
     expect(DATA_FOUNDATION_GRAPHQL_SCHEMA).toContain('versionId: ID');

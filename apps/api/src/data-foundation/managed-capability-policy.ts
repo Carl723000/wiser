@@ -1,6 +1,6 @@
 import type { DataCapabilityId } from '@wiser/data-contracts';
 
-// Only resource-aware read paths are admitted during managed-project rollout.
+// Only paths with explicit resource or pending-intake ownership guards are admitted.
 // Candidate reads require current project maintenance/review permission, immutable
 // submitter/delegator or independent human review authority, and forced scoped RLS.
 // Other maintenance workflows remain excluded until their own ownership checks.
@@ -31,6 +31,11 @@ const RESOURCE_AWARE = new Set<DataCapabilityId>([
   'data.ingestion.candidate.get',
   'data.ingestion.candidate.records',
   'data.ingestion.candidate.geometry',
+  'data.uploadSession.create',
+  'data.uploadSession.complete',
+  'data.ingestion.create',
+  'data.ingestion.submit',
+  'data.ingestion.get',
 ]);
 export function admitsManagedCapability(
   capabilityId: DataCapabilityId,

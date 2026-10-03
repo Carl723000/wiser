@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
+lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
 ---
 
 ## Endpoint and authority contract
@@ -59,23 +59,24 @@ One request may select only one mutation field, so one key maps to one command. 
 
 `dataCatalog(filter: { includeTotal: true })` exposes nullable `totalCount` alongside `nodes` and `pageInfo`. This exact nonnegative integer uses GraphQL Float to avoid the 32-bit Int limit and remains bounded by JavaScript safe integer precision. It counts the full authorized filtered catalog, not the current page; omission of the flag leaves the count null.
 
-| Field                    | Capability                    | Purpose                                           |
-| ------------------------ | ----------------------------- | ------------------------------------------------- |
-| `externalSourceMetadata` | `data.external.metadata.read` | Bounded authorized external metadata              |
-| `dataCatalog`            | `data.catalog.search`         | Cursor catalog connection                         |
-| `dataItem`               | `data.catalog.get`            | One DataItem and optional version                 |
-| `dataQuery`              | `data.query`                  | Structured field/filter query                     |
-| `dataSearch`             | `data.search.federated`       | Multi-backend RRF search                          |
-| `knowledgeSearch`        | `data.knowledge.search`       | Evidence/knowledge search                         |
-| `graphExpand`            | `data.graph.expand`           | Bounded entity neighborhood                       |
-| `graphFindPath`          | `data.graph.findPath`         | Bounded relation path                             |
-| `geoQuery`               | `data.geo.query`              | Governed spatial predicate                        |
-| `geoIntersect`           | `data.geo.intersect`          | Intersection of two governed geo targets          |
-| `dataOperation`          | `data.operation.get`          | One Operation                                     |
-| `dataItemVersions`       | `data.catalog.versions.list`  | Version connection                                |
-| `dataItemVersion`        | `data.catalog.versions.get`   | Exact immutable version                           |
-| `dataIngestion`          | `data.ingestion.get`          | Ingestion plus quality/Agent/projection summaries |
-| `dataOperationEvents`    | `data.operation.events`       | Bounded Operation event page as JSON, not SSE     |
+| Field                    | Capability                    | Purpose                                            |
+| ------------------------ | ----------------------------- | -------------------------------------------------- |
+| `externalSourceMetadata` | `data.external.metadata.read` | Bounded authorized external metadata               |
+| `dataCatalog`            | `data.catalog.search`         | Cursor catalog connection                          |
+| `dataItem`               | `data.catalog.get`            | One DataItem and optional version                  |
+| `dataQuery`              | `data.query`                  | Structured field/filter query                      |
+| `dataSearch`             | `data.search.federated`       | Multi-backend RRF search                           |
+| `knowledgeSearch`        | `data.knowledge.search`       | Evidence/knowledge search                          |
+| `graphExpand`            | `data.graph.expand`           | Bounded entity neighborhood                        |
+| `graphFindPath`          | `data.graph.findPath`         | Bounded relation path                              |
+| `geoQuery`               | `data.geo.query`              | Governed spatial predicate                         |
+| `geoIntersect`           | `data.geo.intersect`          | Intersection of two governed geo targets           |
+| `dataOperation`          | `data.operation.get`          | One Operation                                      |
+| `dataItemVersions`       | `data.catalog.versions.list`  | Version connection                                 |
+| `dataItemVersion`        | `data.catalog.versions.get`   | Exact immutable version                            |
+| `dataIngestion`          | `data.ingestion.get`          | Existing bare ingestion response                   |
+| `dataIngestionDetail`    | `data.ingestion.get`          | Full get output, summaries and candidate reference |
+| `dataOperationEvents`    | `data.operation.events`       | Bounded Operation event page as JSON, not SSE      |
 
 Connections expose `nodes` and `pageInfo { endCursor hasNextPage }`; other pages retain `nextCursor`. Cursors are opaque and scope-bound. Never copy one from REST, another Tenant/Project, or an old authorization version.
 
@@ -286,7 +287,7 @@ Managed graph expansion/path queries constrain every node and relationship to th
 
 REST, GraphQL, evidence, STAC and map response delivery resolves authority again after work completes; asset content also rechecks after fetching and before sending bytes. Changes to principal, project, purpose, actions, membership revision or resource scope suppress the response, including a legacy-to-managed transition. A command already committed is not rolled back by response denial; use its existing idempotency/audit workflow for reconciliation. Managed asset routes always proxy bytes and never return a signed storage URL. Each proxied chunk rechecks current authority after its upstream read; changed or unavailable authority cancels the remaining stream. Already delivered bytes cannot be recalled. Legacy redirect URLs retain their existing short TTL; they cannot be revoked individually by these checks.
 
-Managed projects admit the explicit resource-aware capability set. Ingestion, operation status/events, reconciliation and maintenance commands fail with FORBIDDEN before unscoped executors run; their resource-aware workflow remains unfinished. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
+Managed projects admit the explicit resource-aware capability set and the owned pending-intake create/submit/upload/get workflow described below. Operation status/events, approval/rejection, reconciliation and other maintenance commands still fail with FORBIDDEN before unscoped executors run. External directory calls require an exact, unexpired external.directory source reference in addition to provider authorization. Legacy projects retain their existing capability gates.
 
 ## Frozen candidate contracts
 
@@ -297,5 +298,13 @@ Candidate contract types are separate from published-version inputs. The fields 
 `dataIngestionCandidate(input: JSON!)`, `dataIngestionCandidateRecords(input: JSON!)` and `dataIngestionCandidateGeometry(input: JSON!)` map to `data.ingestion.candidate.get/records/geometry`. Input fixes `kind: ingestion-candidate`, `ingestionId`, `processingBatchId`, lowercase SHA-256 `reviewHash`, optional `first` (default 50; max 200) and `after`; records/geometry also require `assetId`. REST identity path fields must not be repeated in the query. `versionId` is rejected. Summary totals cover the whole candidate batch while `assets` is paged; unknown outcomes retain null counts. Rows preserve raw fields and locators; map rows preserve canonical point/line/area geometry and source CRS. Follow only the returned cursor, bound to current authority and the complete fixed selection. The 3 MiB limit may reduce the row count; it never truncates values.
 
 Current maintenance authority for the immutable submitter/delegator or independent human review authority is checked on each continuation, in addition to scope/security/policy. Published-source grants are unchanged. Candidate parsing and reading do not approve or publish a source. Original download and saved-candidate workflows require their own integration; live Auth/database/browser validation remains a separate gate.
+
+### Managed pending intake and candidate discovery
+
+The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit` and `data.ingestion.get` paths now admit managed projects through their own current maintenance/ownership guards. Writes require both `data.ingestion.write` and `data.operation.read`; fresh trusted identity, purpose, expiry and project scope are checked before cached results or object-store work. Upload responsibility is server-generated immutable Operation metadata. A human owner or the responsible human delegator may continue maintenance; a delegated actor must match the original actor type, actor ID and delegator. Unknown legacy responsibility fails closed. Create only binds completed owned QUARANTINED assets; it neither removes resource scope nor grants access to published content. Managed idempotency also binds actor type, delegator, purpose and resource fingerprint; retries recheck current ownership.
+
+`data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived, including their original GraphQL mapping. REST and MCP return the full new output; GraphQL discovery maps 1.2 to `dataIngestionDetail(id: ID!): JSON!`, which retains that output and its candidate reference. The existing `dataIngestion(id: ID!): JSON` still returns only the ingestion object. Skills use the discovered current mapping and follow the returned reference into the existing three candidate reads.
+
+These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
 
 Original bytes use the authenticated [pending-original REST content route](/en/protocols/data-rest/#pending-original-content), rather than a GraphQL field or signed storage URL. The summary's fixed ingestion/review/batch reference and original asset ID identify that request. Full hash/size verification and current maintenance/review authority apply even to HEAD and ranges; JSON metadata access alone is not permission to receive bytes. Live Auth/storage/browser acceptance and saved-candidate integration remain separate.

@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 4cc35137ce042d4c2c5636bb6edd8418eb4d3140
+lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -245,5 +245,7 @@ Apply `20260923070909_resource_policy_workflow_audit.sql` after source proposal 
 Additive `0038_ingestion_candidate_reads.sql` follows 0037 without changing its checksum. The invoker candidate-read guard retains current Worker lease access and requires verified current maintenance plus immutable subject/delegator matching, or an independent human reviewer, for API access. Unknown or altered subject facts, withdrawn permissions/policy, and stale checkpoints fail closed. The focused rollback-only PostgreSQL fixture now includes maintenance withdrawal, self-review denial, independent human reads and actor-type/delegation mismatch. It must run against a disposable database with 0037, 0038 and 0039 applied and runtime roles reprovisioned; skipped tests are not SQL/RLS acceptance.
 
 Apply additive `0039_candidate_fingerprinted_original.sql` after 0038. The frozen candidate guard must read canonical fingerprinted, CLEAN originals, with equal input/asset/blob hashes and sizes. The rollback fixture uses this legal lifecycle and preserves the existing QUARANTINED/FINGERPRINTED/RAW constraints. Do not rewrite an applied migration to correct the guard.
+
+Apply additive `0040_managed_intake_access.sql` after 0039, then reprovision runtime roles. Its invoker responsibility function permits current API maintenance of owned QUARANTINED assets only during upload completion or ingestion creation. Session/input SELECT requires immutable owner/delegator maintenance or independent human review. The existing published-version action-grant fast path and legacy Worker visibility remain; FINGERPRINTED originals/content blobs, approval and publication are outside this migration. Rollback-only `managed-intake-access.spec.ts` checks owned/foreign/unknown/delegated subjects, maintenance withdrawal, purpose/expiry/project changes and no published version grant. Run it with `WISER_DATA_PG_INTEGRATION=1` on a disposable fully migrated database; a skip is not an SQL/RLS result. Do not reset existing preview data or rewrite previous checksums.
 
 `0041_candidate_original_reads.sql` adds an invoker-only fixed-reference original guard after the managed-intake migration 0040. It retains the existing restrictive `catalog.asset.resource_read_scope` expression verbatim and adds only API-authorized, versionless FINGERPRINTED candidate originals. It does not broaden published grants, change stored rows or approve materials. The existing blob policy follows the RLS-visible asset. The adapter requires matching candidate/input/asset/blob hashes and sizes, CLEAN input and a canonical quarantine key, writes a scoped authorization audit, and uses internal signing only. Reprovision runtime roles after the ordered migrations. HTTP/adapter unit checks are not SQL/RLS acceptance; run the rollback-only migration fixtures against an isolated migrated database and keep skipped checks explicitly unverified.

@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
+lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
 ---
 
 ## 只做 HTTP 适配
@@ -312,3 +312,11 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 `data_ingestion_candidate_get/records/geometry` 对应 `data.ingestion.candidate.get/records/geometry`。输入固定 `kind: ingestion-candidate`、`ingestionId`、`processingBatchId`、小写 SHA-256 `reviewHash`，可选 `first`（默认 50、最多 200）和 `after`；记录／几何还需 `assetId`。REST 路径身份字段不能在查询参数中重复；`versionId` 会被拒绝。摘要计数覆盖完整候选批次，`assets` 则是当前原件分页，未解析计数继续为 null。记录保留原值和定位，空间记录保留规范点／线／面几何及来源 CRS。只能沿返回的游标续读，其绑定当前权限与完整固定选择。3 MiB 上限可能缩小返回条数，但不截断字段。
 
 每次续读重查不可变提交者／委托人的当前维护权限，或独立人工审核者的审核权限，同时检查项目、密级和策略。已发布资料授权保持原范围。候选解析与读取不构成批准或发布；原件下载、保存候选流程及真实 Auth／数据库／浏览器仍单独验收。
+
+### 受管待审接收与候选发现
+
+标准`data.uploadSession.create/complete`、`data.ingestion.create/submit`及`data.ingestion.get`通过当前维护权限和归属守卫接入受管项目。写入同时要求`data.ingestion.write`和`data.operation.read`，在返回旧回执或处理对象存储前检查可信身份、用途、期限及当前项目。上传责任由服务器保存于不可变Operation请求信息；原人类提交者或负责委托的人类可继续维护，委托主体须同时匹配原身份类型、身份编号和委托人。旧记录责任不明时拒绝。创建只绑定已完成、自有且处于QUARANTINED的资产，不清除资源范围或扩大已发布内容权限。受管幂等请求同时绑定身份类型、委托人、用途和资源指纹，重试重新检查当前归属。
+
+`data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约继续归档，REST、GraphQL、MCP和Skill采用同一注册契约。只使用返回的引用衔接现有三项候选读取。
+
+本切片未放行受管Operation状态／事件、恢复／取消、批准／拒绝及其他维护能力。候选发现不授予专业批准或发布权；真实Auth、SQL／RLS和浏览器链须单独完成验收，不能由合成测试替代。

@@ -578,6 +578,7 @@ describe('data-postgres RLS read executors', () => {
       ).success,
     ).toBe(true);
     expect(ingestion).toEqual({
+      candidateReference: null,
       ingestion: {
         ingestionId,
         tenantId: context.authorization.tenantId,
@@ -667,11 +668,14 @@ describe('data-postgres RLS read executors', () => {
     const projectionQuery = pool.client.queries.find(({ text }) =>
       /data\.ingestion\.projection-statuses/.test(text),
     );
-    expect(pool.client.queries.at(0)?.text.trim()).toBe('BEGIN READ ONLY');
+    expect(pool.client.queries.at(0)?.text.trim()).toBe(
+      'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
+    );
     expect(pool.client.queries.at(-1)?.text.trim()).toBe('COMMIT');
     expect(
       pool.client.queries.filter(
-        ({ text }) => text.trim() === 'BEGIN READ ONLY',
+        ({ text }) =>
+          text.trim() === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
       ),
     ).toHaveLength(1);
     expect(projectionQuery?.values).toEqual([

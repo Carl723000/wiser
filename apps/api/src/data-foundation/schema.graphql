@@ -131,6 +131,7 @@ type Query {
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
   dataIngestion(id: ID!): JSON
+  dataIngestionDetail(id: ID!): JSON!
   dataOperationEvents(id: ID!, first: Int, after: String): JSON!
 }
 

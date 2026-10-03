@@ -252,10 +252,6 @@ describe('managed maintenance boundary', () => {
       { operationId: 'a1000000-0000-4000-8000-000000000005' },
     ],
     [
-      'data.ingestion.get',
-      { ingestionId: 'a1000000-0000-4000-8000-000000000005' },
-    ],
-    [
       'data.operation.events',
       { operationId: 'a1000000-0000-4000-8000-000000000005', first: 10 },
     ],

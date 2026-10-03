@@ -872,7 +872,7 @@ const expectedCapabilityMappings = {
       path: '/api/data/v1/ingestions/:ingestionId',
       successStatus: 200,
     },
-    graphqlMapping: { operationType: 'query', field: 'dataIngestion' },
+    graphqlMapping: { operationType: 'query', field: 'dataIngestionDetail' },
     mcpMapping: { toolName: 'data_ingestion_get' },
     skillMapping: { operation: 'data.ingestion.get' },
   },
@@ -1170,7 +1170,7 @@ const expectedJsonSchemaHashes = {
   },
   'data.ingestion.get': {
     input: 'bf57edf9d7399573105b1a2ddcc13160b29c2a8de852e6b70e3aaba4dede9878',
-    output: 'b0964ad7b7d3a0303338f7a56e6be1ef1d80fe7cf51f06e45ea0856a304c3019',
+    output: '9c9248b3a312e869953aae357ad79ff1f1e24bba2f1478dd84e3007010a9d55e',
   },
   'data.ingestion.approve': {
     input: '284419a11ea425388676752a72d139705ca907bea613595468383bce808be9b4',
