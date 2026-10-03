@@ -178,6 +178,7 @@ export function candidateOriginalUrl(
   reference: IngestionCandidateReference,
   assetId: string,
   locale: string,
+  _savedViewId?: string,
 ): string {
   const ref = IngestionCandidateReferenceSchema.parse(reference);
   const asset = PlatformUuidSchema.parse(assetId);

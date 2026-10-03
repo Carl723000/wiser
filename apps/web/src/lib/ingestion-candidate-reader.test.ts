@@ -235,6 +235,20 @@ it('builds an original download URL from candidate identity without inventing a 
   );
   expect(url).not.toContain('versions/');
 });
+it('binds a saved-context original to the canonical persisted view as well as the fixed candidate and asset', () => {
+  const savedViewId = 'ABCDEF12-3456-4000-8000-000000000009';
+  expect(candidateOriginalUrl(ref, assetId, 'en', savedViewId)).toBe(
+    `/api/data-foundation/candidate-assets/${ref.ingestionId}/${ref.processingBatchId}/${assetId}?reviewHash=${ref.reviewHash}&locale=en&savedViewId=${savedViewId.toLowerCase()}`,
+  );
+});
+it.each(['', 'not-a-view-id'])(
+  'rejects invalid saved-context view %s instead of silently making a single-candidate original link',
+  (savedViewId) => {
+    expect(() =>
+      candidateOriginalUrl(ref, assetId, 'en', savedViewId),
+    ).toThrow();
+  },
+);
 it('flattens only the render geometry while preserving one record identity, original collection and three dimensional coordinates', () => {
   const geometry = {
     type: 'GeometryCollection' as const,

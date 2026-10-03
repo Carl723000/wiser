@@ -309,6 +309,46 @@ const opened = {
     input: { ...ref, assetId, first: 50 },
   },
 };
+it.each(['Records', 'Originals'] as const)(
+  'retains the saved manifest identity on original links from the %s pane',
+  async (pane) => {
+    fetch.mockImplementation((url) =>
+      respondJson(
+        requestUrl(url).endsWith('/open')
+          ? opened
+          : requestUrl(url).endsWith('/records')
+            ? records
+            : assets,
+      ),
+    );
+    render(
+      <IngestionCandidateReader
+        reference={null}
+        ingestionId={ref.ingestionId}
+        savedViewId={viewId}
+        locale="en"
+      />,
+    );
+    await screen.findByText('Synthetic river');
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'Refresh candidate' })
+          .hasAttribute('disabled'),
+      ).toBe(false),
+    );
+    if (pane === 'Originals')
+      fireEvent.click(screen.getByRole('tab', { name: pane }));
+    const originals = await screen.findAllByRole('link', {
+      name: 'Download original',
+    });
+    for (const original of originals) {
+      expect(original.getAttribute('href')).toContain(`savedViewId=${viewId}`);
+      expect(original.getAttribute('href')).toContain(ref.processingBatchId);
+      expect(original.getAttribute('href')).toContain(ref.reviewHash);
+    }
+  },
+);
 it('creates a real saved view and restores its server request and selected record on reopen', async () => {
   fetch.mockImplementation((url) =>
     respondJson(
