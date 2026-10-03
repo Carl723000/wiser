@@ -7,6 +7,7 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   type StyleSpecification,
+  type FilterSpecification,
 } from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 
@@ -28,6 +29,7 @@ import {
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { registerAmapRaster } from '@/lib/amap-raster-protocol';
 import { mapDisplayBounds } from '@/lib/data-foundation-map-bounds';
+import type { CandidateDisplayFeatures } from '@/lib/ingestion-candidate-reader';
 
 setWorkerUrl('/vendor/maplibre/6.11.2/maplibre-gl-worker.mjs');
 
@@ -68,7 +70,7 @@ function polygons(value: unknown): Position[][][] {
 }
 
 function geoJsonData(
-  features: MapFeatureCollectionDto,
+  features: MapFeatureCollectionDto | CandidateDisplayFeatures,
   crs: MapCoordinateSystem,
 ) {
   return {
@@ -175,11 +177,13 @@ export function DataFoundationMap({
   selectedName,
   stacExtents,
   vectorTileUrl,
+  onSelectRecord,
+  selectedRecordId,
 }: {
   readonly locale: Locale;
   readonly ariaLabel: string;
   readonly displayCrs: 'EPSG:4326' | 'EPSG:4490';
-  readonly features: MapFeatureCollectionDto;
+  readonly features: MapFeatureCollectionDto | CandidateDisplayFeatures;
   readonly labels: MapLayerLabels;
   readonly rasterTileUrl?: string;
   readonly requestedBounds?: readonly [number, number, number, number];
@@ -187,6 +191,10 @@ export function DataFoundationMap({
   readonly selectedName?: string;
   readonly stacExtents: readonly StacExtentDto[];
   readonly vectorTileUrl?: string;
+  /** Reading-only callback; no identity or permission is inferred from a map hit. */
+  readonly onSelectRecord?: (recordId: string) => void;
+  /** Optional drawing focus, restricted to a record in the current collection. */
+  readonly selectedRecordId?: string | null;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -203,6 +211,9 @@ export function DataFoundationMap({
   const rasterFailed = useRef(false);
   const [integerZoom, setIntegerZoom] = useState(false);
   const integerZoomRef = useRef(false);
+  const selectRecordRef = useRef(onSelectRecord);
+  selectRecordRef.current = onSelectRecord;
+  const drawingFocusUsed = useRef(false);
   function applyDisplay(display: RasterDisplay | null) {
     displayRef.current = display;
     const map = mapRef.current;
@@ -408,6 +419,41 @@ export function DataFoundationMap({
           'circle-stroke-width': 1.5,
         },
       },
+      {
+        id: 'reader-selected-area',
+        type: 'fill',
+        source: 'authority',
+        filter: ['literal', false],
+        layout: { visibility: visibility('authority') },
+        paint: {
+          'fill-color': color('--warning-bright', '#dfa33e'),
+          'fill-opacity': 0.4,
+        },
+      },
+      {
+        id: 'reader-selected-line',
+        type: 'line',
+        source: 'authority',
+        filter: ['literal', false],
+        layout: { visibility: visibility('authority') },
+        paint: {
+          'line-color': color('--warning-bright', '#dfa33e'),
+          'line-width': 4.2,
+        },
+      },
+      {
+        id: 'reader-selected-point',
+        type: 'circle',
+        source: 'authority',
+        filter: ['literal', false],
+        layout: { visibility: visibility('authority') },
+        paint: {
+          'circle-color': color('--warning-bright', '#dfa33e'),
+          'circle-radius': 8,
+          'circle-stroke-color': color('--text-on-strong', '#eff9fa'),
+          'circle-stroke-width': 2,
+        },
+      },
     );
     const style: StyleSpecification = { version: 8, sources, layers };
     const map = new MapLibreMap({
@@ -436,6 +482,28 @@ export function DataFoundationMap({
       },
     });
     mapRef.current = map;
+    const members = new Set(
+      features.features.flatMap((feature) =>
+        'recordId' in feature.properties &&
+        typeof feature.properties.recordId === 'string'
+          ? [feature.properties.recordId.toLowerCase()]
+          : [],
+      ),
+    );
+    map.on('click', (event) => {
+      if (!selectRecordRef.current || members.size === 0) return;
+      const hit = map
+        .queryRenderedFeatures(event.point, {
+          layers: ['authority-polygons', 'authority-lines', 'authority-points'],
+        })
+        .find(
+          (feature) =>
+            typeof feature.properties['recordId'] === 'string' &&
+            members.has(String(feature.properties['recordId']).toLowerCase()),
+        );
+      const id: unknown = hit?.properties['recordId'];
+      if (typeof id === 'string') selectRecordRef.current?.(id);
+    });
     if (integerZoomRef.current) requireIntegerMapZoom(map);
     map.on('error', (event) => {
       if ('sourceId' in event && event.sourceId === 'governed-raster') {
@@ -525,6 +593,26 @@ export function DataFoundationMap({
         'line-color',
         color('--warning-bright', '#dfa33e'),
       );
+      update(
+        'reader-selected-area',
+        'fill-color',
+        color('--warning-bright', '#dfa33e'),
+      );
+      update(
+        'reader-selected-line',
+        'line-color',
+        color('--warning-bright', '#dfa33e'),
+      );
+      update(
+        'reader-selected-point',
+        'circle-color',
+        color('--warning-bright', '#dfa33e'),
+      );
+      update(
+        'reader-selected-point',
+        'circle-stroke-color',
+        color('--text-on-strong', '#eff9fa'),
+      );
     };
     map.on('load', updateTheme);
     const themeObserver = new MutationObserver(updateTheme);
@@ -551,12 +639,60 @@ export function DataFoundationMap({
   useEffect(() => {
     const instance = mapRef.current;
     if (!instance) return;
+    if (selectedRecordId === undefined && !drawingFocusUsed.current) return;
+    drawingFocusUsed.current = true;
+    const selected = selectedRecordId?.toLowerCase();
+    const member =
+      selected &&
+      features.features.some(
+        (feature) =>
+          typeof feature.properties['recordId'] === 'string' &&
+          feature.properties['recordId'].toLowerCase() === selected,
+      );
+    const update = () => {
+      for (const [id, kind] of [
+        ['reader-selected-area', 'Polygon'],
+        ['reader-selected-line', 'LineString'],
+        ['reader-selected-point', 'Point'],
+      ] as const) {
+        const filter: FilterSpecification = member
+          ? [
+              'all',
+              kind === 'LineString'
+                ? [
+                    'in',
+                    ['geometry-type'],
+                    ['literal', ['LineString', 'Polygon']],
+                  ]
+                : ['==', ['geometry-type'], kind],
+              [
+                '==',
+                ['downcase', ['to-string', ['get', 'recordId']]],
+                selected,
+              ],
+            ]
+          : ['literal', false];
+        if (instance.getLayer(id)) instance.setFilter(id, filter);
+      }
+    };
+    update();
+    instance.on('load', update);
+    return () => {
+      instance.off('load', update);
+    };
+  }, [features, selectedRecordId]);
+  useEffect(() => {
+    const instance = mapRef.current;
+    if (!instance) return;
     const update = () => {
       for (const [group, ids] of Object.entries({
         authority: [
           'authority-polygons',
           'authority-lines',
           'authority-points',
+          'reader-selected-area',
+          'reader-selected-line',
+          'reader-selected-point',
         ],
         stac: ['stac-extents-fill', 'stac-extents-line'],
         vector: [

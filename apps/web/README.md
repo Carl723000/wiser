@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: d99902262503bd5f5f7002480c393e2efecea798
+lastReviewedCommit: 1ab0c12db8d884a69b82c183386e71f5efa7e46d
 ---
 
 # WISER Web / 产品界面
@@ -84,3 +84,11 @@ pnpm --filter @wiser/web test:e2e
 就绪九问按实际事实类型展开，再选择记录或固定来源；可选的固定哈希补充依据沿用本机回环准入，发布月份与采样时点分开，待审对应只用于假设。真实账号、持久候选和标准入库另行验收。 / Readiness opens actual typed facts before a reader chooses a record or fixed source. Optional hash-pinned supplements retain the local gate; publication months stay separate from sampling dates and pending correspondences stay hypothetical. Authenticated and persistent workflows require separate acceptance.
 
 结果按已定位、位置未确定和范围外分别分页，每页40条；表格保留原时间、原值、来源及位置角色，选择记录进入固定证据。页面切换和全屏往返保留当前阅读页，筛选改变后回到首组；这不等于持久保存或真实账号验收。 / Results page located, unresolved and outside-extent records independently in 40-row tables. Original time, values, sources and location roles remain distinct, and selecting a record opens fixed evidence. Pane/fullscreen transitions retain the current page; changed filters reset it. Durable storage and authenticated acceptance remain separate.
+
+## 候选资料查阅 / Candidate material reading
+
+已完成待审候选的接收详情以原件、记录和地图标签查阅实际固定批次，保留原值、原文定位、解析缺项及待审核状态。通过正式保存视图入口创建、读取、重开及撤回固定配置，重开和恢复重新核全部成员当前权限；拒绝清除内容。 / Intake detail reads a real fixed pending batch through Originals, Records and Map, retaining raw values, locators, incomplete parsing and review state. Service-backed fixed views support create/list/open/revoke and reauthorize all members on reopening/recovery; denied access clears content.
+
+候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态；未应用的既有地图／时段配置明确提示。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state; retained map/period settings not applied here are explicitly identified.
+
+真实账号、候选持久保存、原件读取和浏览器验证需在获准运行环境另行完成，不以合成回归代替。 / Real accounts, persisted candidates, originals and browser behavior require their authorized runtime checks, not synthetic substitutes.

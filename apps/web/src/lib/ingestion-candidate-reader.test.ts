@@ -3,6 +3,7 @@ import {
   candidateMapFeatures,
   candidateOriginalUrl,
   readCandidatePage,
+  readCandidateSavedView,
 } from './ingestion-candidate-reader';
 
 const ref = {
@@ -13,6 +14,7 @@ const ref = {
 };
 const assetId = '10000000-0000-4000-8000-000000000003';
 const recordId = '10000000-0000-4000-8000-000000000004';
+const viewId = '10000000-0000-4000-8000-000000000005';
 const page = {
   reference: ref,
   parserVersion: 'synthetic-fixture-v1',
@@ -34,6 +36,11 @@ const page = {
   ],
   nextCursor: 'server-cursor',
 };
+function requestBody(init?: RequestInit): unknown {
+  if (typeof init?.body !== 'string')
+    throw new Error('Expected a JSON string request');
+  return JSON.parse(init.body) as unknown;
+}
 const reply = (value: unknown) => Response.json(value);
 afterEach(() => vi.restoreAllMocks());
 it('reads the fixed current page through the same-origin BFF without a token or scope supplied by the browser', async () => {
@@ -51,7 +58,7 @@ it('reads the fixed current page through the same-origin BFF without a token or 
     expect.objectContaining({ method: 'POST', cache: 'no-store', signal }),
   );
   const init = fetch.mock.calls[0]?.[1];
-  expect(JSON.parse(String(init?.body))).toEqual({ ...ref, first: 1 });
+  expect(requestBody(init)).toEqual({ ...ref, first: 1 });
   expect(init?.headers).toEqual({ 'content-type': 'application/json' });
 });
 it.each([
@@ -111,17 +118,15 @@ it('preserves null, zero, empty text, nested values and original locators withou
   ).toEqual(records);
 });
 it('rejects a record page belonging to another asset', async () => {
-  const fetch = vi
-    .fn<typeof globalThis.fetch>()
-    .mockResolvedValue(
-      reply({
-        reference: ref,
-        assetId: recordId,
-        columns: [],
-        records: [],
-        nextCursor: null,
-      }),
-    );
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    reply({
+      reference: ref,
+      assetId: recordId,
+      columns: [],
+      records: [],
+      nextCursor: null,
+    }),
+  );
   await expect(
     readCandidatePage(
       'records',
@@ -167,12 +172,10 @@ it('rejects invalid browser input before fetching', async () => {
 });
 it('discards a response that arrives after cancellation', async () => {
   const abort = new AbortController();
-  const fetch = vi
-    .fn<typeof globalThis.fetch>()
-    .mockImplementation(async () => {
-      abort.abort();
-      return reply(page);
-    });
+  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() => {
+    abort.abort();
+    return Promise.resolve(reply(page));
+  });
   await expect(
     readCandidatePage('get', ref, abort.signal, fetch),
   ).rejects.toMatchObject({ kind: 'cancelled' });
@@ -192,6 +195,7 @@ it('cancels a stalled response promptly and releases the read lock', async () =>
       new Response(body, { headers: { 'content-type': 'application/json' } }),
     );
   const request = readCandidatePage('get', ref, abort.signal, fetch);
+  await vi.waitFor(() => expect(body.locked).toBe(true));
   abort.abort();
   await expect(
     Promise.race([
@@ -199,6 +203,7 @@ it('cancels a stalled response promptly and releases the read lock', async () =>
       new Promise<null>((r) => setTimeout(() => r(null), 50)),
     ]),
   ).rejects.toMatchObject({ kind: 'cancelled' });
+  expect(cancel).toHaveBeenCalled();
   expect(body.locked).toBe(false);
 });
 it('rejects oversized streamed JSON without waiting for stream cancellation', async () => {
@@ -232,7 +237,7 @@ it('builds an original download URL from candidate identity without inventing a 
 });
 it('flattens only the render geometry while preserving one record identity, original collection and three dimensional coordinates', () => {
   const geometry = {
-    type: 'GeometryCollection',
+    type: 'GeometryCollection' as const,
     geometries: [
       { type: 'Point', coordinates: [116, 40, 9] },
       {
@@ -271,4 +276,126 @@ it('flattens only the render geometry while preserving one record identity, orig
     /versionId|dataItemId|sampling|reference/,
   );
   expect(source).toEqual(snapshot);
+});
+
+it('saves only a typed fixed reference and page anchor, forwarding a mutation key to the existing BFF', async () => {
+  const savedView = {
+    kind: 'ingestion-candidate-view',
+    viewId,
+    title: 'Synthetic candidate view',
+    visibility: 'private',
+    createdAt: '2026-10-03T00:00:00Z',
+    revokedAt: null,
+  };
+  const input = {
+    title: savedView.title,
+    references: [ref],
+    visibility: 'private',
+    viewSpec: {
+      page: {
+        kind: 'records',
+        reference: ref,
+        assetId,
+        first: 50,
+        afterRecordId: recordId,
+      },
+    },
+  };
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(Response.json({ savedView }));
+  expect(
+    await readCandidateSavedView(
+      'create',
+      input,
+      new AbortController().signal,
+      viewId,
+      fetch,
+    ),
+  ).toEqual({ savedView });
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/data-foundation/candidate-saved-views/create',
+    expect.objectContaining({
+      headers: {
+        'content-type': 'application/json',
+        'Idempotency-Key': viewId,
+      },
+      cache: 'no-store',
+    }),
+  );
+  expect(requestBody(fetch.mock.calls[0]?.[1])).toEqual(input);
+});
+it('rejects a revoked or wrong saved view on reopen', async () => {
+  const savedView = {
+    kind: 'ingestion-candidate-view',
+    viewId: assetId,
+    title: 'Synthetic view',
+    visibility: 'private',
+    createdAt: '2026-10-03T00:00:00Z',
+    revokedAt: null,
+  };
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      kind: 'ingestion-candidate-view',
+      savedView,
+      references: [ref],
+      viewSpec: { page: { kind: 'assets', reference: ref, first: 50 } },
+      request: {
+        capabilityId: 'data.ingestion.candidate.get',
+        input: { ...ref, first: 50 },
+      },
+    }),
+  );
+  await expect(
+    readCandidateSavedView(
+      'open',
+      { viewId },
+      new AbortController().signal,
+      undefined,
+      fetch,
+    ),
+  ).rejects.toMatchObject({ kind: 'invalid' });
+});
+
+it('rejects a correctly identified saved view whose server response already marks it revoked', async () => {
+  const savedView = {
+    kind: 'ingestion-candidate-view',
+    viewId,
+    title: 'Synthetic view',
+    visibility: 'private',
+    createdAt: '2026-10-03T00:00:00Z',
+    revokedAt: '2026-10-04T00:00:00Z',
+  };
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      kind: 'ingestion-candidate-view',
+      savedView,
+      references: [ref],
+      viewSpec: { page: { kind: 'assets', reference: ref, first: 50 } },
+      request: {
+        capabilityId: 'data.ingestion.candidate.get',
+        input: { ...ref, first: 50 },
+      },
+    }),
+  );
+  await expect(
+    readCandidateSavedView(
+      'open',
+      { viewId },
+      new AbortController().signal,
+      undefined,
+      fetch,
+    ),
+  ).rejects.toMatchObject({ kind: 'invalid' });
+});
+
+it('rejects an empty material page claiming a continuation', async () => {
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(
+      reply({ ...page, assets: [], nextCursor: 'phantom-next' }),
+    );
+  await expect(
+    readCandidatePage('get', ref, new AbortController().signal, fetch),
+  ).rejects.toMatchObject({ kind: 'invalid' });
 });

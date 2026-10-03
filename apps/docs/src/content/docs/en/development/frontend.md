@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: d99902262503bd5f5f7002480c393e2efecea798
+lastReviewedCommit: 1ab0c12db8d884a69b82c183386e71f5efa7e46d
 ---
 
 ## Two frontend applications
@@ -309,3 +309,11 @@ Unrelated object selection reuses the current readiness calculation. An absent s
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
 
 The candidate-original Web route `/api/data-foundation/candidate-assets/:ingestionId/:processingBatchId/:assetId` accepts only a fixed `reviewHash` and optional locale; the browser cannot inject tenant, project, purpose or storage location. It verifies the existing session before dispatch and after the response, then streams the candidate API result without a second full-original buffer. Strict 1-byte through 32-MiB lengths and single ranges, backpressure, cancellation and a 120-second deadline cover delivery; truncated or excess content terminates rather than becoming a successful original. Delivery is attachment-only and sandboxed, with empty HEAD/416 bodies. Published-original behavior is unchanged. This Web wiring is not live Auth, storage or full material-chain acceptance.
+
+### Intake candidate reader
+
+`ingestions/[ingestionId]` uses strict `ingestionDetail` 1.2; it forwards the nullable complete candidate reference, never a fabricated published version. The optional `candidateView` query accepts one UUID and remains in the validated login destination. The client reader calls only same-origin candidate get/records/geometry and saved-view create/list/open/revoke BFFs. Strict shared schemas, full-reference/asset/page checks, streamed fatal-UTF-8 JSON budgets (3 MiB material, 128 KiB save), cancellation and safe errors guard replies. Changes of reference remount/cancel the previous owner; current denial clears content and titles.
+
+Pagination defaults to 50 and preserves a persisted page size; only issued cursors are used for current reads, with at most 32 in-memory backward positions. Durable views save typed asset/record anchors, not opaque cursors. Explicit record/map lookup reads at most ten bounded pages and reports absence rather than inventing random access. The private map adapter expands only GeometryCollection drawing parts, preserves original geometry/Z/source CRS/record identity, and passes neither `dataItemId` nor `versionId`. The existing map's optional record callback and selected-record drawing focus leave the published DTO unchanged; stable empty STAC input avoids recreating the map on selection.
+
+Reopen uses the service's fresh request, verifies the whole saved manifest again before committing visible content, and rechecks it before/after subsequent material reads. Retry/refresh reopens that view even after content clearing. Saving creates an immutable view; revoke clears an active view. Saved map/period configuration is retained, with an explicit unapplied state in the raw reader. No local storage, fixed package fallback, professional decision or publication is added. Real session/SQL/original/browser acceptance is still required after these isolated tests.

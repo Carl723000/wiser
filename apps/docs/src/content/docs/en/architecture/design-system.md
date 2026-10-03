@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: cc484173636f437c816531d9674146817b8f8cfa
+lastReviewedCommit: d939c7a27c2eedeb4091681a247d286e63c676c8
 ---
 
 ## Design direction
@@ -131,3 +131,9 @@ Readiness cards use text-backed fact-availability badges and shared semantic tok
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
 
 Fixed-input dependency checks accept explicit record sets or an exact record/position set for source and rule corrections. They evaluate the complete permitted input and keep unrelated records and positions unchanged; an empty scope never falls back to the entire source. Permission withdrawal or a missing fixed source remains source-wide. The synthetic exercise uses the same complete-input check, without editing or persisting real source content. This local dependency result does not establish an authenticated correction workflow.
+
+## Candidate material reader
+
+Intake detail presents pending-review candidate materials through named Originals, Records and Map tabs. Whole-batch known totals, unparsed originals, loaded geometry records and drawing parts have distinct labels; independent observations remain unestablished. Null, zero, empty text and absent fields have different visible representations. Shared semantic tokens, wrapping controls, internal table scrolling, 44px action targets and contextual help support both locales and narrow layouts. Pending review, unknown position role/scale and current failures stay visible.
+
+The existing map accepts a private display collection without published-version identities. Candidate selection highlights only a member record in the current geometry page; collection parts retain the same record, and clearing restores ordinary drawing. This is reading focus, not positional verification. Full-workspace expansion keeps the reader mounted, confines keyboard focus and restores focus/scroll on exit. Saved-view controls create, list, reopen and revoke through the service, with no browser content archive. These implementation and synthetic behavior checks require separate real browser/theme/390px acceptance.

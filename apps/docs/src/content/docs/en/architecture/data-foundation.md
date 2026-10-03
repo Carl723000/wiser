@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: cc484173636f437c816531d9674146817b8f8cfa
+lastReviewedCommit: d939c7a27c2eedeb4091681a247d286e63c676c8
 ---
 
 ## What runs today
@@ -552,3 +552,9 @@ The Web DAL `candidateSavedView` and same-origin POST bridge `/api/data-foundati
 The saved-view bridge also bounds request-body reading by 30 seconds before acquiring the DAL. A stalled input returns a safe timeout and cancels the reader without awaiting a stalled cancellation promise. This input timer ends when the body completes; the existing DAL deadline then covers Session lookup and upstream delivery, with caller cancellation preserved throughout.
 
 The candidate-original Web route `/api/data-foundation/candidate-assets/:ingestionId/:processingBatchId/:assetId` accepts only a fixed `reviewHash` and optional locale; the browser cannot inject tenant, project, purpose or storage location. It verifies the existing session before dispatch and after the response, then streams the candidate API result without a second full-original buffer. Strict 1-byte through 32-MiB lengths and single ranges, backpressure, cancellation and a 120-second deadline cover delivery; truncated or excess content terminates rather than becoming a successful original. Delivery is attachment-only and sandboxed, with empty HEAD/416 bodies. Published-original behavior is unchanged. This Web wiring is not live Auth, storage or full material-chain acceptance. Partial responses must match the requested byte interval exactly, including suffixes and clamped ends; an unsatisfiable response is accepted only when that same request is outside the declared original. Cancellation releases the upstream reader without awaiting a stalled cancellation promise.
+
+### Candidate reading product surface
+
+The intake detail now consumes the authoritative nullable 1.2 candidate reference and the existing three reads through the Web BFF. Raw values, source order, locators, unknown counts and native geometries remain distinct from approved versions. A private display-only map collection carries actual candidate record/asset/source identifiers; collection drawing parts add no spatial roles or observations.
+
+The reader connects the existing saved-view four actions to typed fixed references and page anchors. An open commits visible content only after the full manifest is checked again; later reads and recovery retain that check. Cross-task links use the authorized resumed reference, and failure clears candidate content and saved metadata. Original links continue through the fixed candidate-original route with its own current authorization. Stored display conditions unsupported by this raw reader remain visible and unchanged. This product wiring adds no DB/HTTP/authority contract and does not establish live Auth, PostgreSQL, original-store or browser acceptance.

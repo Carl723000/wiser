@@ -23,9 +23,12 @@ import {
   invalidDataPageRequest,
 } from '@/lib/data-foundation-page.server';
 import { getDictionary, isLocale } from '@/lib/i18n';
+import { IngestionCandidateReader } from '@/components/ingestion-candidate-reader';
+import type { IngestionCandidateReference } from '@wiser/data-contracts';
 
 interface IngestionPageProps {
   readonly params: Promise<{ locale: string; ingestionId: string }>;
+  readonly searchParams?: Promise<{ candidateView?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: IngestionPageProps) {
@@ -37,18 +40,34 @@ export async function generateMetadata({ params }: IngestionPageProps) {
   );
 }
 
-export default async function IngestionPage({ params }: IngestionPageProps) {
+export default async function IngestionPage({
+  params,
+  searchParams,
+}: IngestionPageProps) {
   const { ingestionId: rawIngestionId, locale } = await params;
   if (!isLocale(locale)) notFound();
   const copy = getDictionary(locale).dataFoundation;
   const ingestionId = parseDataRouteUuid(rawIngestionId);
-  const route = `/${locale}/data-foundation/ingestions/${rawIngestionId}`;
+  let route = `/${locale}/data-foundation/ingestions/${rawIngestionId}`;
   let ingestion: IngestionDto | undefined;
+  let candidateReference: IngestionCandidateReference | null = null;
+  let savedViewId: string | undefined;
   let failure: ReturnType<typeof handleDataPageError> | undefined;
   try {
     if (ingestionId === null) throw invalidDataPageRequest();
+    const query = await searchParams;
+    if (query?.candidateView !== undefined) {
+      if (typeof query.candidateView !== 'string')
+        throw invalidDataPageRequest();
+      const viewId = parseDataRouteUuid(query.candidateView);
+      if (viewId === null) throw invalidDataPageRequest();
+      savedViewId = viewId;
+      route += `?candidateView=${viewId}`;
+    }
     const dal = await getDataFoundationDal();
-    ingestion = await dal.ingestion(ingestionId);
+    const detail = await dal.ingestionDetail(ingestionId);
+    ingestion = detail.ingestion;
+    candidateReference = detail.candidateReference;
   } catch (error) {
     failure = handleDataPageError(error, locale, route);
   }
@@ -66,6 +85,12 @@ export default async function IngestionPage({ params }: IngestionPageProps) {
       )}
       {ingestion === undefined ? null : (
         <>
+          <IngestionCandidateReader
+            locale={locale}
+            reference={candidateReference}
+            savedViewId={savedViewId}
+            ingestionId={ingestion.ingestionId}
+          />
           <DataSection>
             <SectionHeading title={copy.ingestionPage.authorityTitle} />
             <FieldGrid

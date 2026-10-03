@@ -7,6 +7,7 @@ import { getDictionary } from '@/lib/i18n';
 const probe = vi.hoisted(() => ({
   style: null as Record<string, unknown> | null,
   query: vi.fn(),
+  filter: vi.fn(),
   events: new Map<string, (value: unknown) => void>(),
 }));
 vi.mock('maplibre-gl', () => ({
@@ -23,9 +24,11 @@ vi.mock('maplibre-gl', () => ({
     }
     once() {}
     off() {}
-    getLayer() {
-      return undefined;
+    getLayer(id: string) {
+      return id.startsWith('reader-selected-') ? { id } : undefined;
     }
+    setFilter = probe.filter;
+    setLayoutProperty() {}
     addControl() {}
     remove() {}
   },
@@ -97,4 +100,64 @@ it('selects only a rendered record belonging to the current collection and ignor
   ]);
   act(() => probe.events.get('click')?.({ point: { x: 1, y: 2 } }));
   expect(selected).toHaveBeenCalledTimes(1);
+});
+
+it('uses the current reading callback when it is added or removed without recreating the map', () => {
+  const props = {
+    locale: 'en' as const,
+    ariaLabel: 'Candidate geometry',
+    displayCrs: 'EPSG:4326' as const,
+    features: candidate,
+    stacExtents: [],
+    labels: getDictionary('en').dataFoundation.mapPage,
+  };
+  const { rerender } = render(<DataFoundationMap {...props} />);
+  const selected = vi.fn();
+  rerender(<DataFoundationMap {...props} onSelectRecord={selected} />);
+  probe.query.mockReturnValue([{ properties: { recordId } }]);
+  act(() => probe.events.get('click')?.({ point: { x: 1, y: 2 } }));
+  expect(selected).toHaveBeenCalledWith(recordId);
+  rerender(<DataFoundationMap {...props} />);
+  act(() => probe.events.get('click')?.({ point: { x: 1, y: 2 } }));
+  expect(selected).toHaveBeenCalledTimes(1);
+});
+
+it('highlights only a current record and clears that drawing selection without modifying original geometry', () => {
+  const props = {
+    locale: 'en' as const,
+    ariaLabel: 'Candidate geometry',
+    displayCrs: 'EPSG:4326' as const,
+    features: candidate,
+    stacExtents: [],
+    labels: getDictionary('en').dataFoundation.mapPage,
+  };
+  const { rerender } = render(
+    <DataFoundationMap {...props} selectedRecordId={recordId} />,
+  );
+  expect(probe.filter.mock.calls).toEqual(
+    expect.arrayContaining([
+      [
+        'reader-selected-point',
+        expect.arrayContaining([expect.arrayContaining([recordId])]),
+      ],
+    ]),
+  );
+  expect(candidate.features[0]?.geometry.coordinates).toEqual([116, 40, 9]);
+  probe.filter.mockClear();
+  rerender(
+    <DataFoundationMap
+      {...props}
+      selectedRecordId="10000000-0000-4000-8000-000000000005"
+    />,
+  );
+  expect(probe.filter).toHaveBeenCalledWith('reader-selected-point', [
+    'literal',
+    false,
+  ]);
+  probe.filter.mockClear();
+  rerender(<DataFoundationMap {...props} selectedRecordId={null} />);
+  expect(probe.filter).toHaveBeenCalledWith('reader-selected-point', [
+    'literal',
+    false,
+  ]);
 });

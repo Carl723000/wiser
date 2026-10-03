@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: cc484173636f437c816531d9674146817b8f8cfa
+lastReviewedCommit: d939c7a27c2eedeb4091681a247d286e63c676c8
 ---
 
 ## What this guide governs
@@ -186,3 +186,9 @@ Readiness question actions first open the matching typed facts, then let the rea
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
 
 Fixed-input dependency checks accept explicit record sets or an exact record/position set for source and rule corrections. They evaluate the complete permitted input and keep unrelated records and positions unchanged; an empty scope never falls back to the entire source. Permission withdrawal or a missing fixed source remains source-wide. The synthetic exercise uses the same complete-input check, without editing or persisting real source content. This local dependency result does not establish an authenticated correction workflow.
+
+## Pending material reading
+
+An intake with an authorized completed candidate offers originals, raw parsed records and native geometry before professional approval. A null candidate reference remains an explicit no-candidate state. Original links retain the fixed candidate and asset, table labels come from declared columns, and source locators remain exact. Drawing a line, area or geometry collection does not assign a sampling or study-area role. Map hits and the keyboard record list select the same real record.
+
+Fixed-view actions persist only the typed candidate list and reading state. Reopening checks every member's present access, uses a newly issued server read request and restores its page anchor and selected record. Refresh/retry cannot discard that full-list check or combine a historical batch with current original links. A denied or changed reference clears loaded materials and saved titles. Cross-intake views provide the corresponding task link; validated view links survive login. Existing saved map/period settings are retained and visibly marked when this raw reader cannot apply them. Actual account, database and browser acceptance remains distinct from synthetic component tests.
