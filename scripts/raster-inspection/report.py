@@ -25,8 +25,19 @@ LIMITATIONS = [
 
 
 def _positive_number(value):
-    return (isinstance(value, (int, float)) and not isinstance(value, bool)
-            and math.isfinite(value) and value > 0)
+    return _finite_number(value) and value > 0
+
+
+def _finite_number(value):
+    try:
+        return (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value))
+    except OverflowError:
+        return False
+
+
+def _count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def assess_products(products, scene_id):
@@ -58,17 +69,23 @@ def assess_products(products, scene_id):
         if not dimensions_valid:
             add("NO_PIXELS", band)
         channels = product.get("channels")
-        if channels != (3 if band == "TCI" else 1):
+        if not _count(channels) or channels != (3 if band == "TCI" else 1):
             add("INVALID_CHANNELS", band)
         if not product.get("nativeCrs"):
             add("MISSING_CRS", band)
+        affine = product.get("transform")
+        affine_valid = (isinstance(affine, (list, tuple)) and len(affine) == 6
+                        and all(_finite_number(value) for value in affine))
+        if (not affine_valid or not _finite_number(affine[0] * affine[4] - affine[1] * affine[3])
+                or affine[0] * affine[4] - affine[1] * affine[3] == 0):
+            add("INVALID_TRANSFORM", band)
         resolution = product.get("resolution")
         if (not isinstance(resolution, (list, tuple)) or len(resolution) != 2
                 or not all(_positive_number(value) for value in resolution)):
             add("INVALID_RESOLUTION", band)
         else:
             grid = (width, height, product.get("nativeCrs"), tuple(resolution),
-                    tuple(product.get("nativeBounds", [])), tuple(product.get("transform", [])))
+                    tuple(product.get("nativeBounds", [])), tuple(affine) if affine_valid else ())
             if reference_grid is None:
                 reference_grid = grid
             elif grid != reference_grid:
@@ -90,13 +107,23 @@ def assess_products(products, scene_id):
             if not isinstance(values, list) or len(values) != channels:
                 add("INVALID_BAND_METADATA", band)
                 break
+            if not all(_finite_number(value) or key == "noData" and value is None for value in values):
+                add("INVALID_BAND_METADATA", band)
+                break
+        # The older display contract has no nonfinite-label field. Keep it in
+        # controlled inspection evidence, but do not hand out a lossy verified UI report.
+        if any(kind is not None for kind in product.get("noDataNonFiniteKinds", [])):
+            add("INVALID_BAND_METADATA", band)
         stats = product.get("stats", {})
         valid, missing = stats.get("validPixels", 0), stats.get("noDataPixels", 0)
-        if not isinstance(valid, int) or valid <= 0:
+        if not _count(valid) or valid <= 0:
             add("NO_VALID_PIXELS", band)
-        if (not isinstance(valid, int) or not isinstance(missing, int) or missing < 0
-                or valid < 0 or dimensions_valid and valid + missing != width * height):
+        if (not _count(valid) or not _count(missing)
+                or dimensions_valid and valid + missing != width * height):
             add("INVALID_PIXEL_COUNTS", band)
+        minimum, maximum = stats.get("min"), stats.get("max")
+        if (not _finite_number(minimum) or not _finite_number(maximum) or minimum > maximum):
+            add("INVALID_PIXEL_RANGE", band)
         if band == "SCL":
             frequency = product.get("classFrequency")
             if not frequency:
@@ -104,7 +131,7 @@ def assess_products(products, scene_id):
             else:
                 if any(key not in {str(number) for number in range(12)} for key in frequency):
                     add("UNKNOWN_QUALITY_CLASS", band)
-                if (not all(isinstance(count, int) and count >= 0 for count in frequency.values())
+                if (not all(_count(count) for count in frequency.values())
                         or sum(frequency.values()) != width * height):
                     add("INVALID_QUALITY_COUNTS", band)
     return issues

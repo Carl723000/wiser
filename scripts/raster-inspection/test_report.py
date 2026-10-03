@@ -21,6 +21,7 @@ def fixture():
             "sourceScene": SCENE, "sourceBand": band, "readable": True,
             "nativeCrs": "EPSG:32650", "resolution": [20.0, 20.0],
             "nativeBounds": [400000, 4400000, 400080, 4400060],
+            "transform": [20, 0, 400000, 0, -20, 4400060],
             "noData": [None] * channels, "scales": [1.0] * channels,
             "offsets": [0.0] * channels,
             "stats": {"min": 2, "max": 9, "validPixels": 12, "noDataPixels": 0},
@@ -155,6 +156,8 @@ class RasterReportTests(unittest.TestCase):
 
     def test_missing_or_degenerate_affine_blocks_a_checked_report(self):
         products = fixture()
+        for product in products:
+            product.pop("transform")
         self.assertIn("INVALID_TRANSFORM", issue_codes(products))
         for product in products:
             product["transform"] = [20, 20, 400000, 20, 20, 4400060]
@@ -174,6 +177,18 @@ class RasterReportTests(unittest.TestCase):
         self.assertIn("INVALID_PIXEL_COUNTS", issue_codes(products))
         products[2]["classFrequency"] = {"4": True, "6": 11}
         self.assertIn("INVALID_QUALITY_COUNTS", issue_codes(products))
+
+    def test_nonfinite_or_non_numeric_metadata_cannot_be_a_verified_display_report(self):
+        for key, value in (("scales", float("nan")), ("offsets", float("inf")),
+                           ("noData", float("nan")), ("noData", {"wrong": "shape"}),
+                           ("scales", True), ("offsets", "0")):
+            products = fixture()
+            products[0][key] = [value]
+            with self.subTest(key=key, value=value):
+                self.assertIn("INVALID_BAND_METADATA", issue_codes(products))
+                with self.assertRaisesRegex(ValueError, "RASTER_INSPECTION_INCOMPLETE"):
+                    build_workspace_report(products, scene_id=SCENE, acquired_at=None,
+                                           bounds=None, footprint=None)
 
 
 if __name__ == "__main__":

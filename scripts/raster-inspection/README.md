@@ -59,3 +59,51 @@ Derived PNGs embed `Contains modified Copernicus Sentinel data 2026`; display
 interfaces should also show that attribution. Generated images and local reports
 remain outside the upstream repository. Permission in the source licence does
 not perform or authorize publishing from this tool.
+
+## Native pixel and bounded-window inspection
+
+`window_reader.py` reads any selected native pixel or integer rectangle from the
+same retained four-product `validation.json`. It checks product/source/acquisition
+tags and before/after file and manifest hashes. Paths must resolve inside that
+fixed input directory; unsigned masks, overviews, PAM and world-file sidecars are
+rejected. This is a local read-only tool, not a new public API or permission grant.
+
+```sh
+python scripts/raster-inspection/window_reader.py \
+  --input-dir /absolute/path/to/retained-window \
+  --source-id existing-local-source --version-id existing-local-version \
+  --pixel 731 413 --raw --output /absolute/path/to/new-pixel-report.json
+
+python scripts/raster-inspection/window_reader.py \
+  --input-dir /absolute/path/to/retained-window \
+  --source-id existing-local-source --version-id existing-local-version \
+  --window 641 533 12 17 --quality-classes 4 5 6 \
+  --quality-rule-version recorded-example-policy-v1 \
+  --output /absolute/path/to/new-window-report.json
+```
+
+Indices start at zero; the rectangle is row start, column start, row count and
+column count. Every read requires either raw mode or an explicit SCL class policy.
+The example class choice is an inspection setting, not scientific quality approval.
+Limits are 4,096 spatial cells, 24,576 channel values, 1 MiB of native value/mask
+arrays and 8 MiB of final UTF-8 JSON. Output files must be new and outside the input.
+Invalid or oversized selections fail before array reads; no clipping, padding,
+reprojection or display-image sampling is performed. Rasterio still reads source
+blocks, and integrity checks hash whole files, so these are not disk-IO limits;
+see [windowed reads](https://rasterio.readthedocs.io/en/stable/topics/windowed-rw.html).
+
+`window_report.py` is pure. Its reports separate spatial cells, channel values,
+per-channel data-valid counts, explicit quality selection and joint counts.
+Valid zero stays zero; masked zero stays visible but is excluded from statistics.
+Nonfinite values use null plus an explicit reason; empty statistics remain null.
+The native-window report also preserves nonfinite NoData labels explicitly. The
+older display-report contract cannot express those labels, so its inventory gate
+rejects that display handoff while the controlled inspection keeps the label kind.
+Overlapping invalid reasons are not added together. Scales, offsets and NoData
+labels are retained separately; encoded values are not converted to reflectance.
+Projected grid area uses the affine determinant and the squared linear-unit
+conversion from the installed CRS API. Angular or unknown units leave square
+metres unknown; grid footprint is not measured water area or true surface area.
+The four products remain one scene. Scientific approval and control-point checks
+are not performed. Service authorization, arbitrary polygon AOIs, mixed-grid
+resampling and browser selection need their separately governed integration.

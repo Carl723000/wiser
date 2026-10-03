@@ -87,7 +87,7 @@ class NativeSelectionTests(unittest.TestCase):
         feet = validate_selection(dict(GRID, linearUnitToMetre=0.3048), WINDOW, channels=1)
         self.assertAlmostEqual(feet["projectedCellAreaM2"], 400 * 0.3048 ** 2)
         for change in ({"projected": False}, {"linearUnitToMetre": None},
-                       {"linearUnitToMetre": math.nan}):
+                       {"linearUnitToMetre": math.nan}, {"linearUnitToMetre": 1e308}):
             result = validate_selection(dict(GRID, **change), WINDOW, channels=1)
             self.assertIsNone(result["projectedCellAreaM2"])
             self.assertEqual(result["areaStatus"], "unknown")
@@ -214,6 +214,20 @@ class WindowStatisticsTests(unittest.TestCase):
     def test_same_source_version_asset_cannot_be_counted_twice(self):
         with self.assertRaisesRegex(ValueError, "DUPLICATE_PRODUCT"):
             self.summary([product(), product()])
+
+    def test_integer_outside_encoded_numeric_domain_is_rejected_without_runtime_overflow(self):
+        with self.assertRaisesRegex(ValueError, "ENCODED_VALUE"):
+            self.summary([product([[[10 ** 1000, 2], [4, 8]]])])
+
+    def test_legitimate_nonfinite_nodata_label_is_separate_from_missing_file_label(self):
+        p = product([[[math.nan, 0], [4, 8]]])
+        p["noData"] = [math.nan]
+        result = self.summary([p])
+        json.dumps(result, allow_nan=False)
+        self.assertEqual(result["products"][0]["noData"], [None])
+        self.assertEqual(result["products"][0]["noDataNonFiniteKinds"], ["NaN"])
+        self.assertEqual(result["counts"]["selectedJointCells"], 3)
+        self.assertTrue(result["products"][0]["cells"][1]["channels"][0]["statisticsIncluded"])
 
 
 if __name__ == "__main__":

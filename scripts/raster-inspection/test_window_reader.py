@@ -2,7 +2,10 @@
 
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -159,7 +162,7 @@ class NativeWindowReaderTests(unittest.TestCase):
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, "HASH_MISMATCH"):
             self.read()
-        path = Path(self.manifest["rasters"][0]["path"])
+        path = Path(self.manifest["rasters"][0]["path"]).resolve()
         self.manifest["rasters"][0]["derivedHash"] = digest(path)
         self.write_manifest()
         original_hash, calls = window_reader.sha256, {}
@@ -204,6 +207,46 @@ class NativeWindowReaderTests(unittest.TestCase):
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, "DUPLICATE_PRODUCT"):
             self.read()
+
+    def test_largest_legal_window_cli_output_obeys_the_actual_utf8_report_limit(self):
+        for entry in self.manifest["rasters"]:
+            band, path = entry["band"], Path(entry["path"])
+            channels = 3 if band == "TCI" else 1
+            with rasterio.open(path, "w", driver="GTiff", width=64, height=64,
+                               count=channels, dtype="uint8", crs="EPSG:32650",
+                               transform=Affine(20, 0, 400000, 0, -20, 4400060)) as ds:
+                ds.write(np.full((channels, 64, 64), 6, dtype="uint8"))
+                ds.update_tags(source_product=SCENE, source_band=band,
+                               source_sha256="b" * 64, sensing_time=DATE)
+            entry["derivedHash"] = digest(path)
+        self.write_manifest()
+        outside = tempfile.TemporaryDirectory(prefix="wiser-window-output-")
+        self.addCleanup(outside.cleanup)
+        output = Path(outside.name) / "maximum-window.json"
+        command = [sys.executable, str(Path(window_reader.__file__).resolve()),
+                   "--input-dir", str(self.root), "--source-id", SOURCE,
+                   "--version-id", VERSION, "--window", "0", "0", "64", "64",
+                   "--raw", "--output", str(output)]
+        process = subprocess.run(command, capture_output=True, text=True, check=False)
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(output.read_text())
+        self.assertEqual(report["counts"]["requestedSpatialCells"], 4096)
+        self.assertEqual(report["counts"]["channelValues"], 24576)
+        self.assertLessEqual(output.stat().st_size, 8 * 1024 * 1024)
+
+    def test_corrupt_manifest_shapes_are_structured_rejections_before_opening_rasters(self):
+        original = deepcopy(self.manifest)
+        cases = [[], dict(original, selectedProduct=None),
+                 dict(original, selectedProduct=dict(original["selectedProduct"], productContentDate=[]))]
+        bad_band = deepcopy(original)
+        bad_band["rasters"][0]["band"] = []
+        cases.append(bad_band)
+        for manifest in cases:
+            (self.root / "validation.json").write_text(json.dumps(manifest))
+            with self.subTest(manifest=manifest), patch.object(window_reader.rasterio, "open") as opener:
+                with self.assertRaisesRegex(ValueError, "INVALID_LOCAL_MANIFEST"):
+                    self.read()
+                opener.assert_not_called()
 
 
 if __name__ == "__main__":

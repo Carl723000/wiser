@@ -8,6 +8,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -63,6 +64,18 @@ def write_json(path, value):
                     encoding="utf-8")
 
 
+def numeric_metadata(values):
+    """Preserve legitimate nonfinite labels without putting NaN/Infinity in JSON."""
+    numbers, kinds = [], []
+    for value in values:
+        kind = None
+        if value is not None and not math.isfinite(value):
+            kind = "NaN" if math.isnan(value) else "+Infinity" if value > 0 else "-Infinity"
+        numbers.append(None if value is None or kind is not None else float(value))
+        kinds.append(kind)
+    return numbers, kinds
+
+
 def source_metadata(path):
     """Read only the saved product XML, without interpreting XML entities."""
     if path is None:
@@ -94,6 +107,9 @@ def read_product(path, band, expected, source_file):
         tags = dataset.tags()
         all_valid_values = pixels[:, valid]
         values, counts = np.unique(pixels[0], return_counts=True) if band == "SCL" else ([], [])
+        nodata, nodata_kinds = numeric_metadata(dataset.nodatavals)
+        scales, scale_kinds = numeric_metadata(dataset.scales)
+        offsets, offset_kinds = numeric_metadata(dataset.offsets)
         product = {
             "band": band,
             "width": dataset.width, "height": dataset.height, "channels": dataset.count,
@@ -107,11 +123,12 @@ def read_product(path, band, expected, source_file):
             "nativeCrs": dataset.crs.to_string() if dataset.crs else None,
             "resolution": list(dataset.res), "nativeBounds": list(dataset.bounds),
             "transform": list(dataset.transform)[:6],
-            "noData": [None if value is None else float(value) for value in dataset.nodatavals],
-            "scales": list(dataset.scales), "offsets": list(dataset.offsets),
+            "noData": nodata, "noDataNonFiniteKinds": nodata_kinds,
+            "scales": scales, "scaleNonFiniteKinds": scale_kinds,
+            "offsets": offsets, "offsetNonFiniteKinds": offset_kinds,
             "stats": {
-                "min": float(all_valid_values.min()) if all_valid_values.size else 0,
-                "max": float(all_valid_values.max()) if all_valid_values.size else 0,
+                "min": float(all_valid_values.min()) if all_valid_values.size else None,
+                "max": float(all_valid_values.max()) if all_valid_values.size else None,
                 "validPixels": int(np.count_nonzero(valid)),
                 "noDataPixels": int(valid.size - np.count_nonzero(valid)),
             },
@@ -124,8 +141,10 @@ def read_product(path, band, expected, source_file):
                                        if band in ("B03", "B8A") else None,
             "sourceSpecialValuesFromSavedManifest": expected.get("sourceSpecialValues"),
             "maskFlags": [[flag.name for flag in flags] for flags in dataset.mask_flag_enums],
-            "perChannelRange": [{"min": float(channel.min()), "max": float(channel.max())}
-                                for channel in pixels],
+            "perChannelRange": [
+                {"min": float(channel[valid_channel].min()) if valid_channel.any() else None,
+                 "max": float(channel[valid_channel].max()) if valid_channel.any() else None}
+                for channel, valid_channel in zip(pixels, (masks != 0) & finite)],
             "processingTag": tags.get("processing"), "sensingTimeTag": tags.get("sensing_time"),
             "path": str(path),
         }
