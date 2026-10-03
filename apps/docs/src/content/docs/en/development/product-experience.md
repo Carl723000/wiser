@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 0ab37fc1462e4039a624c329a95140abbb754ba6
+lastReviewedCommit: 0c2983e7b66c13feb781a3d95dc43f1215b82667
 ---
 
 ## What this guide governs
@@ -178,3 +178,5 @@ Evidence reading starts with the original value, source, time, review state and 
 Map legends describe only displayed material categories and location roles. Reference geometries retain dashed boundaries or hollow points after selection; applicable extents use dotted boundaries. A selected exact location retains its original expression and scale note. Overlap choices show readable source and position names, with fixed identifiers in closed technical details. Withdrawn or version-replaced choices are removed. This display does not create geometry, merge objects, resolve candidates, or approve location accuracy.
 
 Readiness question actions first open the matching typed facts, then let the reader choose a record or fixed source; they never select the first record implicitly. Quantity cards keep counting grains separate. Unrecorded tasks and owners remain explicit; an evidenced fact is not professional approval. Month inputs show the applied coverage scope separately from unsubmitted drafts. Pending name correspondence offers a labeled hypothesis without merging identities or changing raw counts.
+
+Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.

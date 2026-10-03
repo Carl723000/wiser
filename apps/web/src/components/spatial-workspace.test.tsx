@@ -332,7 +332,6 @@ describe('spatial result table reading', () => {
       fireEvent.click(
         within(rows[1]).getByRole('button', {
           name: sampleRecord.objectLabel,
-          exact: true,
         }),
       );
       const dossier = screen.getByRole('region', { name: copy.dossierTitle });
@@ -379,19 +378,16 @@ describe('spatial result table reading', () => {
       expect(
         within(unresolved).queryByRole('button', {
           name: '未定位资料 1',
-          exact: true,
         }),
       ).toBeNull();
       expect(
         within(located).getByRole('button', {
           name: '已定位资料 1',
-          exact: true,
         }),
       ).toBeTruthy();
       fireEvent.click(
         within(unresolved).getByRole('button', {
           name: '未定位资料 41',
-          exact: true,
         }),
       );
       expect(onSelectRecord).toHaveBeenLastCalledWith('unlocated-40');
@@ -399,7 +395,7 @@ describe('spatial result table reading', () => {
       expect(mapProbe.mounts).toBe(1);
       expect(
         within(unresolved)
-          .getByRole('button', { name: '未定位资料 41', exact: true })
+          .getByRole('button', { name: '未定位资料 41' })
           .getAttribute('aria-pressed'),
       ).toBe('true');
       fireEvent.click(
@@ -416,7 +412,7 @@ describe('spatial result table reading', () => {
       );
       expect(
         within(unresolved)
-          .getByRole('button', { name: '未定位资料 41', exact: true })
+          .getByRole('button', { name: '未定位资料 41' })
           .getAttribute('aria-pressed'),
       ).toBe('true');
     },
@@ -435,7 +431,7 @@ describe('spatial result table reading', () => {
       target: { value: '未定位资料 1' },
     });
     expect(
-      within(table).getByRole('button', { name: '未定位资料 1', exact: true }),
+      within(table).getByRole('button', { name: '未定位资料 1' }),
     ).toBeTruthy();
     expect(
       within(unresolved)
@@ -449,7 +445,6 @@ describe('spatial result table reading', () => {
     fireEvent.click(
       within(unresolved).getByRole('button', {
         name: '未定位资料 41',
-        exact: true,
       }),
     );
     rerender(
@@ -489,7 +484,6 @@ describe('spatial result table reading', () => {
     fireEvent.click(
       within(outside).getByRole('button', {
         name: sampleRecord.objectLabel,
-        exact: true,
       }),
     );
     expect(screen.getByTestId('spatial-record-count').textContent).toContain(

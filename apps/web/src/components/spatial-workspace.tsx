@@ -33,6 +33,7 @@ import {
 import { SpatialWorkspaceComparison } from './spatial-workspace-comparison';
 import { SpatialWorkspaceDossier } from './spatial-workspace-dossier';
 import { SpatialWorkspaceMap } from './spatial-workspace-map';
+import { SpatialWorkspaceRecords } from './spatial-workspace-records';
 import styles from './spatial-workspace.module.css';
 
 const noInvalidations: readonly WorkspaceInvalidation[] = [];
@@ -138,8 +139,7 @@ export function SpatialWorkspace({
   const [scenes, setScenes] = useState<SavedScene[]>([]),
     [sceneName, setSceneName] = useState(''),
     [message, setMessage] = useState(''),
-    [saveFailed, setSaveFailed] = useState(false),
-    [recordLimit, setRecordLimit] = useState(40);
+    [saveFailed, setSaveFailed] = useState(false);
   const current = useRef(view);
   current.current = view;
   const callbacks = useRef({ onRegionChange, onSelectRecord });
@@ -240,7 +240,6 @@ export function SpatialWorkspace({
       setBoundsText(next.bounds?.join(',') ?? '');
       setBoundsInvalid(false);
       setDrawBounds(false);
-      setRecordLimit(40);
     }
   }, [regionId, selectedRecordId, pack, invalidationKey]);
   useEffect(() => {
@@ -286,7 +285,6 @@ export function SpatialWorkspace({
     setBoundsText('');
     setBoundsInvalid(false);
     setDrawBounds(false);
-    setRecordLimit(40);
     onRegionChange?.(id);
     onSelectRecord?.(null);
   };
@@ -380,7 +378,6 @@ export function SpatialWorkspace({
     setBoundsText(restored.view.bounds?.join(',') ?? '');
     setBoundsInvalid(false);
     setDrawBounds(false);
-    setRecordLimit(40);
     onRegionChange?.(restored.view.regionId);
     onSelectRecord?.(restored.view.selection?.recordId ?? null);
     const labels = {
@@ -475,35 +472,26 @@ export function SpatialWorkspace({
           : (positions[0]?.id ?? null),
     };
   };
-  const recordButton = (record: WorkspaceRecord) => {
-    const source = pack.sources.find(
-      (item) =>
-        item.id === record.sourceId && item.versionId === record.versionId,
-    );
-    return (
-      <button
-        type="button"
-        key={record.id}
-        className={styles.recordButton}
-        aria-pressed={selection?.recordId === record.id}
-        onClick={() => selectRecord(recordSelection(record))}
-      >
-        <strong>{record.objectLabel}</strong>
-        <span>
-          {copy.kinds[record.kind]} · {record.time.start ?? copy.unknown} ·{' '}
-          {record.metric} · {record.value ?? copy.missing} {record.unit ?? ''}
-        </span>
-        <small>
-          {source?.title ?? copy.sourceMissing} ·{' '}
-          {source?.provider ?? copy.unknown}
-        </small>
-        <span className={styles.recordStatus}>
-          {record.reviewStatus === 'pending'
-            ? copy.pending
-            : copy.syntheticReviewed}
-        </span>
-      </button>
-    );
+  const recordScope = JSON.stringify([
+    view.regionId,
+    view.start,
+    view.end,
+    view.timeRole,
+    view.includeUndated,
+    view.kinds,
+    view.search,
+    view.bounds,
+    view.topicId,
+    view.excludedRecordIds,
+    view.sourcePins,
+  ]);
+  const tableProps = {
+    pack,
+    copy,
+    scope: recordScope,
+    selection,
+    invalidations,
+    sourcePins: view.sourcePins,
   };
   return (
     <div
@@ -975,25 +963,20 @@ export function SpatialWorkspace({
               if (element) paneElements.current.results = element;
             }}
           >
-            <section className={styles.records} aria-label={copy.recordsTitle}>
-              <h2>{copy.recordsTitle}</h2>
-              <div className={styles.recordList}>
-                {filtered.locatedRecords
-                  .slice(0, recordLimit)
-                  .map(recordButton)}
-              </div>
-              {!filtered.records.length ? <p>{copy.emptyRecords}</p> : null}
-              {filtered.locatedRecords.length > recordLimit ? (
-                <button
-                  type="button"
-                  onClick={() => setRecordLimit((limit) => limit + 40)}
-                >
-                  {copy.recordsTitle} ·{' '}
-                  {Math.min(recordLimit, filtered.locatedRecords.length)} /{' '}
-                  {filtered.locatedRecords.length} ↓
-                </button>
-              ) : null}
-            </section>
+            {filtered.locatedRecords.length || !filtered.records.length ? (
+              <section
+                className={styles.records}
+                aria-label={copy.recordsTitle}
+              >
+                <h2>{copy.recordsTitle}</h2>
+                <SpatialWorkspaceRecords
+                  {...tableProps}
+                  records={filtered.locatedRecords}
+                  label={copy.recordsTitle}
+                  onSelect={(record) => selectRecord(recordSelection(record))}
+                />
+              </section>
+            ) : null}
             {filtered.unlocatedRecords.length ? (
               <section
                 className={styles.records}
@@ -1001,20 +984,12 @@ export function SpatialWorkspace({
               >
                 <h2>{copy.unlocatedTitle}</h2>
                 <p className={styles.hint}>{copy.unlocatedHint}</p>
-                <div className={styles.recordList}>
-                  {filtered.unlocatedRecords
-                    .slice(0, recordLimit)
-                    .map(recordButton)}
-                </div>
-                {filtered.unlocatedRecords.length > recordLimit ? (
-                  <button
-                    type="button"
-                    onClick={() => setRecordLimit((limit) => limit + 40)}
-                  >
-                    {copy.unlocatedTitle} · {recordLimit} /{' '}
-                    {filtered.unlocatedRecords.length} ↓
-                  </button>
-                ) : null}
+                <SpatialWorkspaceRecords
+                  {...tableProps}
+                  records={filtered.unlocatedRecords}
+                  label={copy.unlocatedTitle}
+                  onSelect={(record) => selectRecord(recordSelection(record))}
+                />
               </section>
             ) : null}
             {filtered.outsideRecords.length ? (
@@ -1022,33 +997,22 @@ export function SpatialWorkspace({
                 <summary>
                   {copy.outsideBounds} · {filtered.outsideRecords.length}
                 </summary>
-                <div className={styles.recordList}>
-                  {filtered.outsideRecords
-                    .slice(0, recordLimit)
-                    .map((record) => (
-                      <div key={record.id}>
-                        <span>
-                          {record.objectLabel} ·{' '}
-                          {record.time.start ?? copy.unknown}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setView({
-                              ...view,
-                              bounds: null,
-                              selection: recordSelection(record),
-                            });
-                            setBoundsText('');
-                            showPane('evidence', true);
-                            onSelectRecord?.(record.id);
-                          }}
-                        >
-                          {copy.clearBounds} · {copy.selectRecord}
-                        </button>
-                      </div>
-                    ))}
-                </div>
+                <p className={styles.hint}>{copy.outsideSelect}</p>
+                <SpatialWorkspaceRecords
+                  {...tableProps}
+                  records={filtered.outsideRecords}
+                  label={copy.outsideBounds}
+                  onSelect={(record) => {
+                    setView({
+                      ...view,
+                      bounds: null,
+                      selection: recordSelection(record),
+                    });
+                    setBoundsText('');
+                    showPane('evidence', true);
+                    onSelectRecord?.(record.id);
+                  }}
+                />
               </details>
             ) : null}
           </div>

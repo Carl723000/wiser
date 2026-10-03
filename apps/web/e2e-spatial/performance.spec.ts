@@ -42,6 +42,7 @@ test('fixed real pack warm filtering, selection and camera latency', async ({
   const filter = page.getByRole('checkbox', { name: '监测', exact: true });
   const selection = page
     .getByRole('region', { name: '区域资料清单' })
+    .getByRole('table')
     .getByRole('button');
   const camera = page.getByRole('button', { name: '向右旋转', exact: true });
   const samples: Record<string, number[]> = {

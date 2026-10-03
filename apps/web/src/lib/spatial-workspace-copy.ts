@@ -59,11 +59,25 @@ export interface SpatialWorkspaceCopy {
   mapLegendHint: string;
   selectedLocation: string;
   recordsTitle: string;
+  recordColumns: {
+    object: string;
+    time: string;
+    value: string;
+    source: string;
+    location: string;
+  };
+  recordNavigation: string;
+  recordRange: string;
+  recordPage: string;
+  previousRecords: string;
+  nextRecords: string;
+  recordScroll: string;
   recordSearch: string;
   emptyRecords: string;
   unlocatedTitle: string;
   unlocatedHint: string;
   outsideBounds: string;
+  outsideSelect: string;
   partialCoverage: string;
   referenceLocation: string;
   dossierTitle: string;

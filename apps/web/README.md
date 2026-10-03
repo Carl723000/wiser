@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 0ab37fc1462e4039a624c329a95140abbb754ba6
+lastReviewedCommit: 0c2983e7b66c13feb781a3d95dc43f1215b82667
 ---
 
 # WISER Web / 产品界面
@@ -79,6 +79,8 @@ pnpm --filter @wiser/web test:e2e
 
 配置见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#本地多流域资料工作台)。额外验收使用 `pnpm --filter @wiser/web exec playwright test --config playwright.spatial.config.ts`，连接已启动的回环3410预览，不自行启动整套服务。真实Auth、Data API、OAuth和Worker集成另行验证。 / This browser suite connects to an already running loopback3410 preview. Real Auth, Data API, OAuth and Worker integration remains separate.
 
-窄屏不超过800 px时，在地图、结果与证据之间切换单区查阅，保留选择、视角、固定来源和已加载结果；桌面布局保留。 / At up to 800 px, one Map, Results or Evidence pane is visible while selection, camera, fixed sources and loaded results remain intact. Desktop retains its concurrent layout.
+宽度不超过1100 px或高度不超过500 px时，在地图、结果与证据之间切换单区查阅，保留选择、视角、固定来源和已加载结果；桌面布局保留。 / At widths up to 1100 px or heights up to 500 px, one Map, Results or Evidence pane is visible while selection, camera, fixed sources and loaded results remain intact. Desktop retains its concurrent layout.
 
 就绪九问按实际事实类型展开，再选择记录或固定来源；可选的固定哈希补充依据沿用本机回环准入，发布月份与采样时点分开，待审对应只用于假设。真实账号、持久候选和标准入库另行验收。 / Readiness opens actual typed facts before a reader chooses a record or fixed source. Optional hash-pinned supplements retain the local gate; publication months stay separate from sampling dates and pending correspondences stay hypothetical. Authenticated and persistent workflows require separate acceptance.
+
+结果按已定位、位置未确定和范围外分别分页，每页40条；表格保留原时间、原值、来源及位置角色，选择记录进入固定证据。页面切换和全屏往返保留当前阅读页，筛选改变后回到首组；这不等于持久保存或真实账号验收。 / Results page located, unresolved and outside-extent records independently in 40-row tables. Original time, values, sources and location roles remain distinct, and selecting a record opens fixed evidence. Pane/fullscreen transitions retain the current page; changed filters reset it. Durable storage and authenticated acceptance remain separate.

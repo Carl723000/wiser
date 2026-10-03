@@ -648,10 +648,11 @@ test.describe('narrow spatial reading', () => {
       await expect(records).toBeVisible();
       await expect(map).not.toBeVisible();
       await records
-        .getByRole('button')
+        .getByRole('row')
         .filter({ hasText: '潮白河上段' })
         .filter({ hasText: '2023-04' })
         .first()
+        .getByRole('button')
         .click();
       await expect(evidence).toHaveAttribute('aria-selected', 'true');
       await expect(workspace.getByRole('tabpanel')).toBeFocused();

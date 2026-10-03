@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 0ab37fc1462e4039a624c329a95140abbb754ba6
+lastReviewedCommit: 0c2983e7b66c13feb781a3d95dc43f1215b82667
 ---
 
 ## Design direction
@@ -127,3 +127,5 @@ At widths up to 1100 px or heights up to 500 px, the local spatial workbench exp
 Evidence dossiers show source/provider, native time, original values, review state, conditions of use and location limits before technical references. Full fixed-version IDs, original hashes, processing IDs, location coordinate systems and mapped missing-reason codes remain exact in closed technical disclosures. Result cards show source/provider and review status. Identity explanations use pointer-, keyboard- and touch-accessible help; limitations never depend on that help.
 
 Readiness cards use text-backed fact-availability badges and shared semantic tokens. The focused inspector groups source references, records and workflow facts separately, with bounded lists and scrollable coverage tables. Help remains keyboard/touch accessible; missing tasks and invalid coverage input stay visible. Chinese/English, light/dark and 390px/desktop surfaces share the same facts and actions.
+
+Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
