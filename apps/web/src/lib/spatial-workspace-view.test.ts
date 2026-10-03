@@ -22,6 +22,7 @@ import {
   exportWorkspaceTopic,
   workspaceEvidenceUrl,
   workspaceRasterOverlays,
+  workspaceNativeTime,
 } from './spatial-workspace-view';
 
 const rectangle: Geometry = {
@@ -798,6 +799,71 @@ describe('comparison and permitted topic exports', () => {
     const result = compareWorkspaceRecords(zero, zero, pack);
     expect(result.state).toBe('comparable');
     expect(result.difference).toBe(0);
+  });
+
+  it.each([' 未知 ', ' unknown ', '\tUnKnOwN\n', '\u00a0未知\u00a0'])(
+    'does not make an unknown unit comparable by adding whitespace: %s',
+    (unit) => {
+      const left = { ...numeric, unit };
+      const right = { ...numeric, id: 'unknown-unit-next', value: '1.5', unit };
+      const originals = JSON.stringify([left, right]);
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('unit');
+      expect(result.difference).toBeNull();
+      expect(JSON.stringify([left, right])).toBe(originals);
+    },
+  );
+
+  it.each([
+    { precision: 'day', start: '2023-04', end: '2023-04' },
+    { precision: 'day', start: '2023', end: '2023' },
+    { precision: 'month', start: '2023', end: '2023' },
+    { precision: 'day', start: '2023-04-01', end: '2023-04' },
+    { precision: 'day', start: null, end: '2023-04' },
+  ] as const)(
+    'withholds differences when original dates do not support declared precision: %s',
+    (time) => {
+      const left = { ...numeric, time: { ...numeric.time, ...time } };
+      const right = { ...left, id: 'unsupported-precision-next', value: '1.5' };
+      const originals = JSON.stringify([left, right]);
+      // Calendar range expansion is still useful for ordinary time filters.
+      // It must not create missing precision for numeric comparison.
+      expect(workspaceNativeTime(left)).not.toBeNull();
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('time');
+      expect(result.difference).toBeNull();
+      expect(JSON.stringify([left, right])).toBe(originals);
+    },
+  );
+
+  it.each([
+    { precision: 'day', start: '2024-02-29', end: '2024-02-29' },
+    { precision: 'month', start: '2024-02', end: '2024-02' },
+    { precision: 'year', start: '2024', end: '2024' },
+  ] as const)(
+    'retains supported native date precision and valid zero differences: %s',
+    (time) => {
+      const left = {
+        ...numeric,
+        value: '0',
+        time: { ...numeric.time, ...time },
+      };
+      const result = compareWorkspaceRecords(left, left, pack);
+      expect(result.state).toBe('comparable');
+      expect(result.difference).toBe(0);
+    },
+  );
+
+  it('keeps unequal unit strings blocked without silently normalizing or converting them', () => {
+    const result = compareWorkspaceRecords(
+      { ...numeric, unit: ' mg/L ' },
+      { ...numeric, unit: 'mg/L' },
+      pack,
+    );
+    expect(result.reasons).toContain('unit');
+    expect(result.difference).toBeNull();
   });
 
   it.each([
