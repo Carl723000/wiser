@@ -77,7 +77,10 @@ function fixture(
     revoke?: boolean;
     sign?: () => void;
     sizeBytes?: number;
+    sha256?: string;
     fetcher?: typeof globalThis.fetch;
+    authorizeCall?: (call: number) => Promise<void>;
+    contextForToken?: (token: string) => PlatformRequestContext;
   } = {},
 ) {
   let reads = 0;
@@ -86,16 +89,17 @@ function fixture(
     return Promise.resolve({
       url: 'http://private-store/candidate',
       expiresAt: '2099-01-01T00:00:00Z',
-      sha256,
+      sha256: options.sha256 ?? sha256,
       sizeBytes: options.sizeBytes ?? original.byteLength,
     });
   });
   const authorize = vi.fn(() => {
-    if (options.revoke && ++reads > 1)
+    reads += 1;
+    if (options.revoke && reads > 1)
       return Promise.reject(
         Object.assign(new Error('private db detail'), { code: 'NOT_FOUND' }),
       );
-    return Promise.resolve();
+    return options.authorizeCall?.(reads) ?? Promise.resolve();
   });
   const fetch = vi.fn(
     options.fetcher ??
@@ -106,7 +110,11 @@ function fixture(
           }),
         )),
   );
-  const resolver = vi.fn(() => Promise.resolve(options.current ?? context));
+  const resolver = vi.fn((input: { token: string }) =>
+    Promise.resolve(
+      options.contextForToken?.(input.token) ?? options.current ?? context,
+    ),
+  );
   const app = buildApp({
     logger: false,
     modules: [
@@ -157,6 +165,94 @@ describe('fixed pending original HTTP delivery', () => {
     }
   });
 
+  it('shares the responsible human limit with delegated agents', async () => {
+    const waiting: Array<(response: Response) => void> = [];
+    const agentContext = (id: string): PlatformRequestContext => ({
+      ...context,
+      principal: {
+        actorType: 'agent',
+        actorId: id,
+        credentialId: id,
+        delegationId: id,
+        delegatedBy: actorId,
+        authenticationMethod: 'delegated_credential',
+      },
+    });
+    const f = fixture({
+      contextForToken: (token) =>
+        token === 'agent-a'
+          ? agentContext('ca000000-0000-4000-8000-000000000008')
+          : token === 'agent-b'
+            ? agentContext('ca000000-0000-4000-8000-000000000009')
+            : context,
+      fetcher: () =>
+        waiting.length < 2
+          ? new Promise<Response>((resolve) => waiting.push(resolve))
+          : Promise.resolve(new Response(original)),
+    });
+    const first = f.app.inject({
+      method: 'GET',
+      url,
+      headers: { ...headers, authorization: 'Bearer agent-a' },
+    });
+    const second = f.app.inject({
+      method: 'HEAD',
+      url,
+      headers: { ...headers, authorization: 'Bearer agent-b' },
+    });
+    try {
+      await vi.waitFor(() => expect(waiting).toHaveLength(2));
+      const excess = await f.app.inject({ method: 'GET', url, headers });
+      expect(excess.statusCode).toBe(503);
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      for (const resolve of waiting) resolve(new Response(original));
+      await Promise.all([first, second]);
+    }
+  });
+
+  it('bounds the whole API instance across distinct responsible actors', async () => {
+    const waiting: Array<(response: Response) => void> = [];
+    const f = fixture({
+      contextForToken: (token) => {
+        const id = `ca000000-0000-4000-8000-0000000000${token.padStart(2, '0')}`;
+        return {
+          ...context,
+          principal: {
+            ...context.principal,
+            actorId: id,
+            authUserId: id,
+            sessionId: id,
+          },
+        };
+      },
+      fetcher: () =>
+        waiting.length < 4
+          ? new Promise<Response>((resolve) => waiting.push(resolve))
+          : Promise.resolve(new Response(original)),
+    });
+    const requests = [1, 2, 3, 4].map((actor) =>
+      f.app.inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, authorization: `Bearer ${actor}` },
+      }),
+    );
+    try {
+      await vi.waitFor(() => expect(waiting).toHaveLength(4));
+      const excess = await f.app.inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, authorization: 'Bearer 5' },
+      });
+      expect(excess.statusCode).toBe(503);
+      expect(f.fetch).toHaveBeenCalledTimes(4);
+    } finally {
+      for (const resolve of waiting) resolve(new Response(original));
+      await Promise.all(requests);
+    }
+  });
+
   it.each([0, 32 * 1024 * 1024 + 1])(
     'rejects an invalid authorized size before fetching original bytes: %s',
     async (sizeBytes) => {
@@ -166,6 +262,187 @@ describe('fixed pending original HTTP delivery', () => {
       expect(f.fetch).not.toHaveBeenCalled();
     },
   );
+
+  it('releases the reservation after HEAD, 416, an upstream failure and an authorization refusal', async () => {
+    const normal = fixture();
+    for (let index = 0; index < 3; index++) {
+      const head = await normal.app.inject({ method: 'HEAD', url, headers });
+      expect(head.statusCode).toBe(200);
+      const unsatisfiable = await normal.app.inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, range: 'bytes=999999-' },
+      });
+      expect(unsatisfiable.statusCode).toBe(416);
+    }
+    expect(normal.fetch).toHaveBeenCalledTimes(6);
+
+    const failed = fixture({
+      fetcher: () => Promise.reject(new Error('private store failure')),
+    });
+    for (let index = 0; index < 3; index++)
+      expect(
+        (await failed.app.inject({ method: 'GET', url, headers })).statusCode,
+      ).toBe(500);
+    expect(failed.fetch).toHaveBeenCalledTimes(3);
+
+    const refused = fixture({
+      authorizeCall: (call) =>
+        call % 2 === 0
+          ? Promise.reject(
+              Object.assign(new Error('candidate withdrawn'), {
+                code: 'FORBIDDEN',
+              }),
+            )
+          : Promise.resolve(),
+    });
+    for (let index = 0; index < 3; index++)
+      expect(
+        (await refused.app.inject({ method: 'GET', url, headers })).statusCode,
+      ).toBe(403);
+    expect(refused.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps slow or unconsumed response bytes reserved until the client closes', async () => {
+    const bytes = new Uint8Array(256 * 1024).fill(65);
+    const f = fixture({
+      body: bytes,
+      sizeBytes: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    const first = await f.app.inject({
+      method: 'GET',
+      url,
+      headers,
+      payloadAsStream: true,
+    });
+    const second = await f.app.inject({
+      method: 'GET',
+      url,
+      headers,
+      payloadAsStream: true,
+    });
+    try {
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      const excess = await f.app.inject({ method: 'HEAD', url, headers });
+      expect(excess.statusCode).toBe(503);
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      first.raw.res.destroy();
+      second.raw.res.destroy();
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const recovered = await f.app.inject({ method: 'HEAD', url, headers });
+    expect(recovered.statusCode).toBe(200);
+  });
+
+  it('keeps a fresh authorization check before each delivered chunk', async () => {
+    const bytes = new Uint8Array(128 * 1024).fill(66);
+    const f = fixture({
+      body: bytes,
+      sizeBytes: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    const response = await f.app.inject({ method: 'GET', url, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload).toEqual(Buffer.from(bytes));
+    expect(f.authorize).toHaveBeenCalledTimes(4);
+  });
+
+  it('releases the budget when an in-flight client cancels and after principal expiry', async () => {
+    let started!: () => void;
+    const fetching = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let hold = true;
+    const f = fixture({
+      fetcher: (_input, init) =>
+        hold
+          ? new Promise<Response>((_resolve, reject) => {
+              started();
+              init?.signal?.addEventListener('abort', () =>
+                reject(new Error('aborted')),
+              );
+            })
+          : Promise.resolve(new Response(original)),
+    });
+    const caller = new AbortController();
+    const pending = f.app.inject({
+      method: 'GET',
+      url,
+      headers,
+      signal: caller.signal,
+    });
+    await fetching;
+    caller.abort();
+    await expect(pending).rejects.toThrow();
+    expect(f.fetch).toHaveBeenCalledTimes(1);
+    hold = false;
+    for (let index = 0; index < 3; index++)
+      expect(
+        (await f.app.inject({ method: 'GET', url, headers })).statusCode,
+      ).toBe(200);
+
+    const state = {
+      current: context,
+      expireOnFetch: true,
+      fetcher: () => {
+        if (state.expireOnFetch)
+          state.current = {
+            ...context,
+            principal: {
+              ...context.principal,
+              expiresAt: '2020-01-01T00:00:00Z',
+            },
+          };
+        return Promise.resolve(new Response(original));
+      },
+    };
+    const expiry = fixture(state);
+    expect(
+      (await expiry.app.inject({ method: 'GET', url, headers })).statusCode,
+    ).toBe(403);
+    state.current = context;
+    state.expireOnFetch = false;
+    for (let index = 0; index < 3; index++)
+      expect(
+        (await expiry.app.inject({ method: 'GET', url, headers })).statusCode,
+      ).toBe(200);
+  });
+
+  it('holds a cancelled request slot until a non-cooperative upstream fetch settles', async () => {
+    const waiting: Array<(response: Response) => void> = [];
+    const f = fixture({
+      fetcher: () =>
+        waiting.length < 2
+          ? new Promise<Response>((resolve) => waiting.push(resolve))
+          : Promise.resolve(new Response(original)),
+    });
+    const caller = new AbortController();
+    const cancelled = f.app.inject({
+      method: 'GET',
+      url,
+      headers,
+      signal: caller.signal,
+    });
+    const second = f.app.inject({ method: 'GET', url, headers });
+    try {
+      await vi.waitFor(() => expect(waiting).toHaveLength(2));
+      caller.abort();
+      await expect(cancelled).rejects.toThrow();
+      const excess = await f.app.inject({ method: 'HEAD', url, headers });
+      expect(excess.statusCode).toBe(503);
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+      waiting[0]!(new Response(original));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const recovered = await f.app.inject({ method: 'HEAD', url, headers });
+      expect(recovered.statusCode).toBe(200);
+    } finally {
+      for (const resolve of waiting) resolve(new Response(original));
+      await second;
+    }
+  });
 
   it('serves exact original bytes without a published version or signed redirect', async () => {
     const f = fixture();

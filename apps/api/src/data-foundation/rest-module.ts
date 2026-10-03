@@ -25,6 +25,7 @@ import {
 } from './capability-handler.js';
 import type { WiserApiModule } from '../platform/modules.js';
 import { candidateReadAuthority } from './candidate-read-authority.js';
+import { CandidateOriginalBudget } from './candidate-original-budget.js';
 import {
   MAX_CANDIDATE_ORIGINAL_BYTES,
   type CandidateOriginalPort,
@@ -581,6 +582,7 @@ export function createDataFoundationRestModule(
   return {
     id: 'data.foundation.rest',
     register(app) {
+      const candidateOriginalBudget = new CandidateOriginalBudget();
       for (const capabilityId of DATA_CAPABILITY_IDS) {
         const definition = DATA_CAPABILITY_REGISTRY[capabilityId];
         app.route({
@@ -747,7 +749,14 @@ export function createDataFoundationRestModule(
               });
             };
             const controller = new AbortController();
-            const close = () => controller.abort();
+            let releaseBudget: (() => void) | undefined;
+            let deliveryStream: Readable | undefined;
+            let streaming = false;
+            const close = () => {
+              controller.abort();
+              deliveryStream?.destroy();
+              if (streaming) releaseBudget?.();
+            };
             reply.raw.once('close', close);
             try {
               const download = await port.createCandidateDownload(input);
@@ -756,11 +765,29 @@ export function createDataFoundationRestModule(
                 !['http:', 'https:'].includes(url.protocol) ||
                 url.username ||
                 url.password ||
+                !Number.isSafeInteger(download.sizeBytes) ||
+                download.sizeBytes < 1 ||
+                download.sizeBytes > MAX_CANDIDATE_ORIGINAL_BYTES ||
                 !Number.isFinite(Date.parse(download.expiresAt)) ||
                 Date.parse(download.expiresAt) <= Date.now()
               )
                 return sendError(request, reply, errors.unavailable);
               await authorize();
+              if (controller.signal.aborted)
+                return sendError(request, reply, errors.unavailable);
+              releaseBudget =
+                candidateOriginalBudget.tryReserve({
+                  tenantId,
+                  projectId,
+                  responsibleActorId:
+                    resolved.context.principal.delegatedBy ??
+                    resolved.context.principal.actorId,
+                  sizeBytes: download.sizeBytes,
+                }) ?? undefined;
+              if (!releaseBudget) {
+                reply.header('Retry-After', '1');
+                return sendError(request, reply, errors.unavailable);
+              }
               const upstream = await (
                 options.assetContentFetch ?? globalThis.fetch
               )(download.url, {
@@ -771,6 +798,10 @@ export function createDataFoundationRestModule(
                   AbortSignal.timeout(120000),
                 ]),
               });
+              if (controller.signal.aborted) {
+                await upstream.body?.cancel();
+                return sendError(request, reply, errors.unavailable);
+              }
               if (upstream.status !== 200 || !upstream.body) {
                 await upstream.body?.cancel();
                 return sendError(request, reply, errors.unavailable);
@@ -781,6 +812,8 @@ export function createDataFoundationRestModule(
                 upstream.body,
                 download,
               );
+              if (controller.signal.aborted)
+                return sendError(request, reply, errors.unavailable);
               await authorize();
               const type =
                 upstream.headers.get('content-type') ??
@@ -827,21 +860,28 @@ export function createDataFoundationRestModule(
                   controller.close();
                 },
               });
-              return reply.send(
-                Readable.from(
-                  authorizedAssetStream(stream, async () => {
-                    try {
-                      await authorize();
-                      return true;
-                    } catch {
-                      return false;
-                    }
-                  }),
-                  { objectMode: false },
-                ),
+              deliveryStream = Readable.from(
+                authorizedAssetStream(stream, async () => {
+                  try {
+                    await authorize();
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                }),
+                { objectMode: false },
               );
+              streaming = true;
+              try {
+                return reply.send(deliveryStream);
+              } catch (error) {
+                streaming = false;
+                throw error;
+              }
             } catch (error) {
               return sendError(request, reply, mapError(error));
+            } finally {
+              if (!streaming) releaseBudget?.();
             }
           },
         });
