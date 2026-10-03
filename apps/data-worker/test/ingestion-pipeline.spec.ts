@@ -51,6 +51,7 @@ class FakeAuthority implements IngestionAuthorityPort {
   commits = 0;
   frozenCheckpoint?: FrozenIngestionCheckpoint;
   sourceRegistration?: SourceRegistration;
+  reviewGovernance?: unknown;
   state: PipelineIngestionState = 'RECEIVED';
   version = 1;
   versionId?: string;
@@ -79,6 +80,9 @@ class FakeAuthority implements IngestionAuthorityPort {
       securityLevel: this.securityLevel,
       policyVersion: 9,
       assets: this.assets,
+      ...(this.reviewGovernance === undefined
+        ? {}
+        : { reviewGovernance: this.reviewGovernance }),
       ...(this.sourceRegistration === undefined
         ? {}
         : { sourceRegistration: this.sourceRegistration }),
@@ -475,6 +479,79 @@ describe('Agent-native ingestion pipeline', () => {
       expect(authority.commits).toBe(0);
     },
   );
+
+  it('holds high-confidence public data under a trusted independent-review policy', async () => {
+    const { handler, authority } = setup();
+    const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+    authority.reviewGovernance = { frozen: policy, current: policy };
+
+    await expect(handler(job)).resolves.toMatchObject({
+      status: 'WAITING_REVIEW',
+      result: { state: 'REVIEW_REQUIRED' },
+    });
+    expect(authority.commits).toBe(0);
+    expect(authority.frozenCheckpoint?.assetManifest).toMatchObject({
+      reviewGovernance: policy,
+    });
+    expect(authority.frozenCheckpoint?.reviewHash).toBe(
+      canonicalPipelineHash({
+        assetIds: authority.frozenCheckpoint?.assetIds,
+        assetManifest: authority.frozenCheckpoint?.assetManifest,
+        quality: authority.frozenCheckpoint?.quality,
+        alignment: authority.frozenCheckpoint?.alignment,
+      }),
+    );
+  });
+
+  it.each([
+    null,
+    { frozen: { mode: 'UNKNOWN', revision: 1 }, current: null },
+    {
+      frozen: { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 },
+      current: { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 2 },
+    },
+    {
+      frozen: { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 },
+      current: null,
+    },
+  ])(
+    'fails closed on unknown, withdrawn, or changed trusted review policy %j',
+    async (policy) => {
+      const value = setup();
+      value.authority.reviewGovernance = policy;
+      await expect(value.handler(job)).rejects.toMatchObject({
+        category: 'INGESTION_REVIEW_GOVERNANCE_CONFLICT',
+        retryable: false,
+      });
+      expect(value.order).toEqual(['authority:load']);
+      expect(value.authority.commits).toBe(0);
+    },
+  );
+
+  it('rejects an old approved checkpoint lacking the current review-policy hash binding', async () => {
+    const original = setup({ securityLevel: 'L2_RESTRICTED' });
+    await original.handler(job);
+    const frozen = original.authority.frozenCheckpoint;
+    if (frozen === undefined) throw new Error('missing frozen checkpoint');
+    const value = setup({ securityLevel: 'L2_RESTRICTED' });
+    const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+    value.authority.reviewGovernance = { frozen: policy, current: policy };
+    value.authority.state = 'APPROVED';
+    value.authority.version = 11;
+    value.authority.frozenCheckpoint = frozen;
+    await expect(
+      value.handler({
+        ...job,
+        securityLevel: 'L2_RESTRICTED',
+        payload: { ...payload, expectedState: 'APPROVED', expectedVersion: 11 },
+      }),
+    ).rejects.toMatchObject({
+      category: 'INGESTION_REVIEW_GOVERNANCE_CONFLICT',
+      retryable: false,
+    });
+    expect(value.order).toEqual(['authority:load']);
+    expect(value.authority.commits).toBe(0);
+  });
 
   it('persists infected scans as REJECTED and raises a non-retryable safe failure', async () => {
     const { handler, authority } = setup({ clean: false });
