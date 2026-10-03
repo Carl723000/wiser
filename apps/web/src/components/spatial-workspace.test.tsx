@@ -255,6 +255,220 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe('business-first evidence reading', () => {
+  const version = 'f'.repeat(64);
+  const digest = 'a'.repeat(64);
+  const processing = 'monthly-parser:fixed-original:reference-geometry:v101';
+  const record = {
+    ...sampleRecord,
+    id: 'source-row-101',
+    versionId: version,
+    processingVersion: processing,
+    missingReasons: ['concentrations-not-published'],
+    positions: sampleRecord.positions.map((position) => ({
+      ...position,
+      geometryVersionId: version,
+    })),
+  };
+  const data = {
+    ...pack,
+    sources: [{ ...pack.sources[0], versionId: version }],
+    records: [record],
+  };
+  const locales = [
+    ['zh-CN', zh, '技术详情', '定位技术详情', '对象身份说明'],
+    [
+      'en',
+      en,
+      'Technical details',
+      'Location technical details',
+      'Object identity information',
+    ],
+  ] as const;
+
+  it.each(locales)(
+    'keeps business facts and original access visible while technical references start collapsed in %s',
+    (locale, copy, technicalLabel) => {
+      const frozen = JSON.stringify(data);
+      render(
+        <SpatialWorkspace
+          pack={data}
+          locale={locale}
+          copy={copy}
+          selectedRecordId={record.id}
+          sourceHref={(id, versionId) =>
+            `/source?source=${id}&version=${versionId}`
+          }
+        />,
+      );
+      const dossier = screen.getByRole('region', { name: copy.dossierTitle });
+      expect(
+        within(dossier).getByText(version, { exact: true }).closest('details')
+          ?.open,
+      ).toBe(false);
+      expect(
+        screen.getByRole('button', { name: /潮白河原文对象/ }).textContent,
+      ).not.toContain(version);
+      for (const fact of [
+        copy.pending,
+        '公开机构',
+        '溶解氧',
+        '7.8',
+        'mg/L',
+        '原件许可',
+      ])
+        expect(
+          within(dossier)
+            .getByText(fact, { exact: true })
+            .closest('details:not([open])'),
+        ).toBeNull();
+      const href = `/source?source=report&version=${version}`;
+      expect(
+        within(dossier)
+          .getByRole('link', { name: copy.openOriginal })
+          .getAttribute('href'),
+      ).toBe(href);
+      const summary = within(dossier).getByText(technicalLabel, {
+        exact: true,
+      });
+      fireEvent.click(summary);
+      const details = summary.closest('details')!;
+      for (const identifier of [version, digest, record.id, processing])
+        expect(
+          within(details)
+            .getByText(identifier, { exact: true })
+            .closest('details')?.open,
+        ).toBe(true);
+      expect(dossier.textContent).not.toContain('/private/original');
+      expect(
+        within(dossier)
+          .getByRole('link', { name: copy.openOriginal })
+          .getAttribute('href'),
+      ).toBe(href);
+      expect(JSON.stringify(data)).toBe(frozen);
+    },
+  );
+
+  it.each(locales)(
+    'retains visible position limits and localized missing facts while codes and geometry provenance are disclosed on demand in %s',
+    (locale, copy, technicalLabel, locationLabel, identityLabel) => {
+      render(
+        <SpatialWorkspace
+          pack={data}
+          locale={locale}
+          copy={copy}
+          selectedRecordId={record.id}
+        />,
+      );
+      const dossier = screen.getByRole('region', { name: copy.dossierTitle });
+      expect(
+        within(dossier)
+          .getByText(copy.missingReasons!['concentrations-not-published'])
+          .closest('details:not([open])'),
+      ).toBeNull();
+      expect(
+        within(dossier)
+          .getByText('concentrations-not-published', {
+            exact: true,
+          })
+          .closest('details')?.open,
+      ).toBe(false);
+      for (const fact of [
+        copy.positionRoles.reference,
+        '参考线，位置待核',
+        copy.referenceLocation,
+      ])
+        expect(
+          within(dossier)
+            .getByText(fact, { exact: true })
+            .closest('details:not([open])'),
+        ).toBeNull();
+      const position = dossier.querySelector(
+        '[data-position-id="pos-line"]',
+      )! as HTMLElement;
+      const location = within(position)
+        .getByText(locationLabel)
+        .closest('details')!;
+      expect(location.open).toBe(false);
+      fireEvent.click(within(location).getByText(locationLabel));
+      expect(
+        within(location).getByText(version, { exact: true }).closest('details')
+          ?.open,
+      ).toBe(true);
+      expect(
+        within(location)
+          .getAllByText('EPSG:4326')
+          .every((element) => element.textContent === 'EPSG:4326'),
+      ).toBe(true);
+      fireEvent.click(
+        within(dossier).getByText(technicalLabel, { exact: true }),
+      );
+      expect(
+        within(dossier)
+          .getByText('concentrations-not-published', {
+            exact: true,
+          })
+          .closest('details')?.open,
+      ).toBe(true);
+      expect(
+        within(dossier)
+          .getByText(copy.sourceDistinct)
+          .closest('[role="note"]')
+          ?.hasAttribute('hidden'),
+      ).toBe(true);
+      const help = within(dossier).getByRole('button', { name: identityLabel });
+      fireEvent.click(help);
+      expect(
+        within(dossier)
+          .getByText(copy.sourceDistinct)
+          .closest('[role="note"]')
+          ?.hasAttribute('hidden'),
+      ).toBe(false);
+      fireEvent.keyDown(help, { key: 'Escape' });
+      expect(
+        within(dossier)
+          .getByText(copy.sourceDistinct)
+          .closest('[role="note"]')
+          ?.hasAttribute('hidden'),
+      ).toBe(true);
+    },
+  );
+
+  it.each(locales)(
+    'removes opened original and geometry technical evidence immediately on withdrawal in %s',
+    (locale, copy, technicalLabel, locationLabel) => {
+      const props = { pack: data, locale, copy, selectedRecordId: record.id };
+      const { rerender } = render(<SpatialWorkspace {...props} />);
+      const dossier = screen.getByRole('region', { name: copy.dossierTitle });
+      fireEvent.click(
+        within(dossier).getByText(technicalLabel, { exact: true }),
+      );
+      fireEvent.click(
+        within(dossier).getByText(locationLabel, { exact: true }),
+      );
+      expect(
+        within(dossier).getAllByText(version, { exact: true }),
+      ).toHaveLength(2);
+      rerender(
+        <SpatialWorkspace
+          {...props}
+          invalidations={[{ sourceId: 'report', state: 'revoked' }]}
+        />,
+      );
+      for (const identifier of [version, digest, record.id, processing])
+        expect(
+          within(dossier).queryByText(identifier, { exact: true }),
+        ).toBeNull();
+      expect(
+        within(dossier).queryByText(technicalLabel, { exact: true }),
+      ).toBeNull();
+      expect(
+        within(dossier).queryByRole('link', { name: copy.openOriginal }),
+      ).toBeNull();
+    },
+  );
+});
+
 describe('spatial workspace actual interactions', () => {
   it.each([
     ['zh-CN', zh, '原资料未公布浓度明细', '政策要求不代表实测成效'],

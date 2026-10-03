@@ -6,6 +6,87 @@ const output = process.env.WISER_SPATIAL_ACCEPTANCE_DIRECTORY;
 const browserErrors = new WeakMap<BrowserContext, string[]>();
 const browserWarnings = new WeakMap<BrowserContext, string[]>();
 
+test('business evidence stays readable while exact technical references remain available by keyboard in both locales and viewport sizes', async ({
+  page,
+}) => {
+  for (const [locale, labels] of [
+    [
+      'zh-CN',
+      {
+        dossier: '对象证据档案',
+        technical: '技术详情',
+        identity: '对象身份说明',
+        original: '查看公开原文',
+        status: '待专业核验',
+        evidence: '证据',
+        map: '地图',
+        reading: '查阅区域',
+      },
+    ],
+    [
+      'en',
+      {
+        dossier: 'Object evidence dossier',
+        technical: 'Technical details',
+        identity: 'Object identity information',
+        original: 'Read public original',
+        status: 'Pending professional verification',
+        evidence: 'Evidence',
+        map: 'Map',
+        reading: 'Reading pane',
+      },
+    ],
+  ] as const) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto(
+        `/${locale}/data-foundation/spatial-workspace?record=monthly-2023-04%3At1%3Ar14`,
+      );
+      const dossier = page.getByRole('region', { name: labels.dossier });
+      await expect(
+        dossier.getByText(labels.status, { exact: true }),
+      ).toBeVisible();
+      const record = dossier.getByText('monthly-2023-04:t1:r14', {
+        exact: true,
+      });
+      await expect(record).toBeHidden();
+      const original = dossier.getByRole('link', { name: labels.original });
+      await expect(original).toBeVisible();
+      const href = await original.getAttribute('href');
+      const summary = dossier.getByText(labels.technical, { exact: true });
+      await summary.focus();
+      await summary.press('Enter');
+      await expect(record).toBeVisible();
+      await expect(original).toHaveAttribute('href', href!);
+      await summary.press('Enter');
+      await expect(record).toBeHidden();
+      const help = dossier.getByRole('button', { name: labels.identity });
+      await help.click();
+      await expect(help).toHaveAttribute('aria-expanded', 'true');
+      await help.press('Escape');
+      await expect(help).toHaveAttribute('aria-expanded', 'false');
+      if (width === 390) {
+        const tabs = page.getByRole('tablist', { name: labels.reading });
+        await tabs.getByRole('tab', { name: labels.map, exact: true }).click();
+        await tabs
+          .getByRole('tab', { name: labels.evidence, exact: true })
+          .click();
+        await expect(record).toBeHidden();
+        await expect(original).toHaveAttribute('href', href!);
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+      if (output)
+        await page.screenshot({
+          path: join(output, `${locale}-business-evidence-${width}.png`),
+        });
+    }
+  }
+});
+
 test('WebGL gestures cannot restore an obsolete camera after reset, hidden panes, viewport changes or fullscreen', async ({
   page,
 }) => {
