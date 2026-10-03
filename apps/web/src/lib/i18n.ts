@@ -1638,7 +1638,7 @@ const zhCN = {
       leftPeriod: '左侧时期',
       rightPeriod: '右侧时期',
       sameObjectOnly:
-        '数值差异仅限同一来源内对象、指标、单位、时间精度和方法证据。',
+        '数值差异须核对同一来源内对象、采样位置与尺度、指标、单位、时间精度和方法证据。',
       comparable: '满足差异计算条件',
       sideBySide: '仅可并列查阅',
       comparisonEmpty: '当前两侧没有匹配的同一对象记录。',
@@ -1647,6 +1647,7 @@ const zhCN = {
       missingPeriod: '当前时期没有对应记录，未插值。',
       comparisonReasons: {
         object: '对象身份不同或缺失',
+        position: '采样位置或尺度不同、未知或不可用',
         metric: '指标不同或缺失',
         unit: '单位不同或未知',
         time: '时间角色或精度不同或未知',
@@ -5168,7 +5169,7 @@ const en: typeof zhCN = {
       leftPeriod: 'Left period',
       rightPeriod: 'Right period',
       sameObjectOnly:
-        'Numeric differences require the same source-local object, metric, unit, time precision and method evidence.',
+        'Numeric differences require matching source-local objects, sampling position and support, metric, unit, time precision and method evidence.',
       comparable: 'Conditions for a numeric difference met',
       sideBySide: 'Side-by-side reading only',
       comparisonEmpty:
@@ -5179,6 +5180,8 @@ const en: typeof zhCN = {
         'No corresponding record occurs in this period. No interpolation was applied.',
       comparisonReasons: {
         object: 'Object identities differ or are missing',
+        position:
+          'Sampling position or support differs, is unknown or unavailable',
         metric: 'Metrics differ or are missing',
         unit: 'Units differ or are unknown',
         time: 'Time role or precision differs or is unknown',

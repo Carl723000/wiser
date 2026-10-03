@@ -1102,6 +1102,7 @@ export function restoreSpatialWorkspaceView(
 
 export type WorkspaceComparisonReason =
   | 'object'
+  | 'position'
   | 'metric'
   | 'unit'
   | 'time'
@@ -1110,6 +1111,34 @@ export type WorkspaceComparisonReason =
   | 'numeric'
   | 'permission'
   | 'stale';
+
+function comparisonSamplingPosition(
+  record: WorkspaceRecord,
+  pack: WorkspacePack,
+  invalidations: readonly WorkspaceInvalidation[],
+) {
+  // Inspect declarations before display filtering: an unresolved second sample
+  // must not disappear and leave an apparently unambiguous primary location.
+  const sampling = record.positions.filter((item) => item.role === 'sampling');
+  if (record.kind !== 'observation' || sampling.length !== 1) return null;
+  const position = sampling[0];
+  if (
+    !workspaceDisplayPositions(pack, record, invalidations).includes(
+      position,
+    ) ||
+    position.geometry?.type !== 'Point' ||
+    !position.scaleNote?.trim()
+  )
+    return null;
+  // The current contract cannot establish line/area aggregation support.
+  // Compare exact fixed point support without snapping or altering originals.
+  return JSON.stringify([
+    position.geometrySourceId,
+    position.geometryVersionId,
+    position.geometry.coordinates,
+    position.scaleNote,
+  ]);
+}
 
 function comparisonTimeHasNativePrecision(record: WorkspaceRecord) {
   const { precision, start, end } = record.time;
@@ -1135,6 +1164,9 @@ export function compareWorkspaceRecords(
     left.objectId !== right.objectId
   )
     reasons.push('object');
+  const leftSampling = comparisonSamplingPosition(left, pack, invalidations),
+    rightSampling = comparisonSamplingPosition(right, pack, invalidations);
+  if (!leftSampling || leftSampling !== rightSampling) reasons.push('position');
   if (!left.metric.trim() || left.metric !== right.metric)
     reasons.push('metric');
   if (
@@ -1163,7 +1195,7 @@ export function compareWorkspaceRecords(
   )
     reasons.push('method');
   if (
-    /category|class|类别|分类|等级/i.test(
+    /category|class|\bgrade\b|类别|分类|等级/i.test(
       `${left.metric} ${right.metric} ${left.unit ?? ''} ${right.unit ?? ''}`,
     )
   )

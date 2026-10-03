@@ -111,6 +111,7 @@ export interface SpatialWorkspaceCopy {
   missingPeriod: string;
   comparisonReasons: {
     object: string;
+    position: string;
     metric: string;
     unit: string;
     time: string;
