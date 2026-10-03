@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f138532e4705f60ce18f27e83ec50a2c4e280906
+lastReviewedCommit: aefe76d0
 ---
 
 ## 协议边界
@@ -184,7 +184,7 @@ MapLibre 不把 API Bearer 放进 tile URL。登录后的浏览器只请求同�
 
 ## 上传与入库
 
-审核策略和提交责任由服务器维护，upload/create/submit 输入不增加绕过参数。启用 `REQUIRE_INDEPENDENT_REVIEW` 后，通过已有 Operation 查看 `WAITING_REVIEW`。批准人须为已验证、具备原发布授权且不同于提交人和委托人的真人；Agent/service 批准或无法证明独立性时返回 `INDEPENDENT_REVIEW_REQUIRED`（403），策略或检查点绑定变化返回状态冲突。幂等批准重放仍核对当前权威。拒绝操作及创建人确认的格式副本对账保留原契约。
+审核策略和提交责任由服务器维护，upload/create/submit 输入不增加绕过参数。启用 `REQUIRE_INDEPENDENT_REVIEW` 后，通过已有 Operation 查看 `WAITING_REVIEW`。批准人须为已验证、具备原发布授权且不同于提交人和委托人的真人；Agent/service 批准或无法证明独立性时返回 `INDEPENDENT_REVIEW_REQUIRED`（403），策略或检查点绑定变化返回状态冲突。幂等批准重放仍核对当前权威。存在冻结或当前审核策略的会话，其专业驳回复用独立真人与当前策略检查，缓存重放也重新核验；当前会话已不可读取时返回`NOT_FOUND`。两种策略均不存在的旧驳回及创建人确认的格式副本对账保留原行为，Operation取消仍是独立的非审核退出动作。命令Schema和受管准入保持不变。
 
 `data.ingestion.create` 1.1 接受可选 `sourceRegistration`，ingestion get/reject 1.1 保留该描述；1.0 schema 仍可从不可变发现归档读取。完整严格字段以 discovery 为准，包含来源/数据包身份、类型、名称、提供方、访问状态、明确的完整性、限制说明以及 `manifestAssetId` / `manifestSha256`。清单资产必须属于本次入库引用的已完成上传资产。
 

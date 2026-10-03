@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f138532e4705f60ce18f27e83ec50a2c4e280906
+lastReviewedCommit: aefe76d0
 ---
 
 ## Endpoint and authority contract
@@ -87,6 +87,8 @@ Connections expose `nodes` and `pageInfo { endCursor hasNextPage }`; other pages
 ## Mutation fields
 
 `approveDataIngestion` uses the same server policy, immutable responsibility and independent-human checks as REST, including replay. A publish scope alone does not let an Agent/service or submitter approve. The policy is not a caller-supplied mutation field; configured independent review keeps public/high-confidence input pending. See [upload and ingestion](./data-rest.md#upload-and-ingestion) for conflicts and the unchanged command schemas.
+
+`rejectDataIngestion` applies the same independent-human and current-policy checks when the session carries a frozen or current review policy, including cached replay. Legacy rejection without either policy is preserved; `cancelDataOperation` remains a separate non-review exit. These checks use the shared executor and add no mutation field, capability admission or database authority.
 
 `CreateIngestionInput.sourceRegistration` is an optional JSON projection of the strict ingestion 1.1 descriptor. GraphQL and REST use the same manifest binding, authorization, idempotency, validation and source-registration-only semantics; the JSON scalar does not bypass the Capability schema.
 

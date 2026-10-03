@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f138532e4705f60ce18f27e83ec50a2c4e280906
+lastReviewedCommit: aefe76d0
 ---
 
 ## 入口与权威契约
@@ -87,6 +87,8 @@ Connection 返回 `nodes` 与 `pageInfo { endCursor hasNextPage }`。其余分�
 ## Mutation fields
 
 `approveDataIngestion` 与 REST 共用服务器策略、不可变责任和独立真人校验，重放同样检查。只有 publish scope 不足以允许 Agent/service 或提交人批准。策略不是调用方可填写的 mutation 字段；配置独立审核后，公开、高置信度输入也保持待审。冲突处理和原命令 schema 见[上传与入库](./data-rest.md#上传与入库)。
+
+存在冻结或当前审核策略的会话，其`rejectDataIngestion`复用独立真人与当前策略检查，缓存重放也重新核验。两种策略均不存在的旧驳回行为保留，`cancelDataOperation`仍是独立的非审核退出动作。检查由共用executor执行，不增加mutation字段、能力准入或数据库权威。
 
 `CreateIngestionInput.sourceRegistration` 是入库 1.1 严格描述的可选 JSON 映射。GraphQL 与 REST 使用相同的清单绑定、授权、幂等、校验和“仅来源登记”语义；JSON scalar 不绕过 Capability schema。
 

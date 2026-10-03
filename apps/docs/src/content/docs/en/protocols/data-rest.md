@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f138532e4705f60ce18f27e83ec50a2c4e280906
+lastReviewedCommit: aefe76d0
 ---
 
 ## Protocol boundary
@@ -184,7 +184,7 @@ After authority checks, an exact TiTiler PNG coverage miss (`404` JSON containin
 
 ## Upload and ingestion
 
-Review policy and submission responsibility are server-owned; upload/create/submit inputs add no bypass flag. With `REQUIRE_INDEPENDENT_REVIEW` enabled, inspect the existing Operation at `WAITING_REVIEW`. Approval requires a verified human with the existing publish authorization who is neither submitter nor delegator. Agent/service approval or unprovable independence returns `INDEPENDENT_REVIEW_REQUIRED` (403); changed policy or checkpoint binding returns a state conflict. Idempotent approval replay rechecks current authority. Rejection and creator-confirmed reconciliation retain their existing contracts.
+Review policy and submission responsibility are server-owned; upload/create/submit inputs add no bypass flag. With `REQUIRE_INDEPENDENT_REVIEW` enabled, inspect the existing Operation at `WAITING_REVIEW`. Approval requires a verified human with the existing publish authorization who is neither submitter nor delegator. Agent/service approval or unprovable independence returns `INDEPENDENT_REVIEW_REQUIRED` (403); changed policy or checkpoint binding returns a state conflict. Idempotent approval replay rechecks current authority. Professional rejection on a session carrying a frozen or current review policy applies the same independent-human and current-policy checks, including cached replay; unavailable current session access returns `NOT_FOUND`. Rejection without either policy and creator-confirmed reconciliation retain legacy behavior. Operation cancellation remains a separate non-review exit. The command schemas and managed admission remain unchanged.
 
 `data.ingestion.create` 1.1 accepts optional `sourceRegistration`; ingestion get/reject 1.1 preserve that descriptor. Their 1.0 schemas remain in the immutable discovery archive. Obtain the full strict schema from discovery. The descriptor contains source/bundle identity, kind, name, provider, access state, explicit completeness, limitations, and `manifestAssetId` / `manifestSha256`. The manifest asset must be among the completed upload assets supplied to ingestion.
 

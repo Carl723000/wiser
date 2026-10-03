@@ -814,6 +814,17 @@ function assertIndependentReview(
   return resolved.kind === 'REQUIRES_REVIEW' ? resolved.policy : undefined;
 }
 
+function assertGovernedRejectionReviewer(
+  row: Readonly<Record<string, unknown>>,
+  context: DataCapabilityExecutionContext,
+) {
+  if (
+    row['review_policy_snapshot'] != null ||
+    row['current_review_policy'] != null
+  )
+    assertIndependentReview(row, context);
+}
+
 function isAssetAlreadyBoundError(error: unknown): boolean {
   if (error === null || typeof error !== 'object') return false;
   return (
@@ -3017,6 +3028,7 @@ export function createPostgresDataCommandRuntime(
             'REVIEW_REQUIRED',
             context,
           );
+          assertGovernedRejectionReviewer(ingestion.row, context);
           const operationId = text(ingestion.row, 'operation_id');
           const lockedOperation = await lockOperation(
             transactions,
@@ -3127,6 +3139,20 @@ export function createPostgresDataCommandRuntime(
             eventType: 'data.ingestion.rejected',
             securityLevel,
           };
+        },
+        async (client, _timestamp, ledger) => {
+          const rows = await transactions.query(
+            client,
+            context,
+            INGESTION_LOCK_SQL,
+            [input.ingestionId, ...scopeValues(context)],
+          );
+          const row = singleRow(rows);
+          if (row === undefined) throw commandError('NOT_FOUND');
+          assertGovernedRejectionReviewer(row, context);
+          return DATA_CAPABILITY_REGISTRY[
+            'data.ingestion.reject'
+          ].outputSchema.parse(ledger.result);
         },
       );
     }),

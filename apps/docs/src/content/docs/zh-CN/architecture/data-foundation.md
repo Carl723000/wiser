@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f138532e4705f60ce18f27e83ec50a2c4e280906
+lastReviewedCommit: aefe76d0
 ---
 
 ## 当前可运行能力
@@ -118,6 +118,8 @@ MCP Evidence/STAC Resource 通过真实 HTTP 权威边界读取。Evidence GET �
 项目可启用服务器维护的 `REQUIRE_INDEPENDENT_REVIEW` 策略。入库冻结其模式和修订号，并从已验证 Auth 保存不可变的提交人、委托人引用；同一策略进入审核哈希与正式版本资产清单。启用后，公开且高置信度的输入也停在待审。策略缺失、撤销或变更均停止后续处理，客户端参数不能关闭该策略；这些限定范围的引用不构成另一套身份权威。
 
 最终批准须由有权限且不同于提交人及其委托人的真人执行，幂等重放也重新检查。历史责任缺失时不猜填。Worker/runtime 数据库守卫拒绝自动批准和未审核版本的提交、发布。未配置策略的项目保留已有自动路径；真实专业审核仍单独决定。
+
+存在冻结或当前审核策略的会话，其专业`data.ingestion.reject`在写入审核记录前复用独立真人与当前策略检查，缓存命令重放也重新核验；当前会话已不可读取时拒绝重放。两种策略均不存在的旧驳回行为保留，`data.operation.cancel`仍是独立的非审核退出动作。数据库继续允许FAILED、CANCELLED和REJECTED安全退出，这不构成专业审核API的授权。命令Schema、受管能力准入和发布守卫保持不变。
 
 研究数据包可在入库时选择可选的 `sourceRegistration` 类型。迁移 `0010_source_registration.sql` 将不可变的来源描述保存在受 RLS 保护的 Ingestion Session 中。有界 JSON 清单把来源、原始路径与哈希、脱敏副本、部分下载/样本/空文件状态及每个上传资产绑定到精确大小和 SHA-256；缺失、重复、多余或内容变化都会失败。零字节来源单独登记，不伪造非空上传。
 

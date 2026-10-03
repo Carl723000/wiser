@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f138532e4705f60ce18f27e83ec50a2c4e280906
+lastReviewedCommit: aefe76d0
 ---
 
 ## What runs today
@@ -118,6 +118,8 @@ Only an approved frozen review checkpoint can create a formal version. One data-
 Projects may enable the server-owned `REQUIRE_INDEPENDENT_REVIEW` policy. Ingestion freezes its mode/revision together with immutable submitter and delegator references from verified Auth; the same policy is included in the review hash and committed asset manifest. Even public, high-confidence input then stops at review. Missing, withdrawn or changed policy fails closed; a client flag cannot disable it. These scoped references do not create another identity authority.
 
 Final approval requires an authorized human distinct from both the submitter and its delegator, including idempotent replay. Unknown historical responsibility is not guessed. Worker/runtime database guards reject automatic approval and unreviewed version commits/publication. Projects without a configured policy retain the existing automatic path; real professional review remains a separate decision.
+
+Professional `data.ingestion.reject` on a session carrying a frozen or current review policy applies the same independent-human and current-policy check before recording a review, including cached-command replay. Missing current session access denies replay. Rejection without either policy retains legacy behavior; `data.operation.cancel` remains a separate non-review exit. The database still permits FAILED, CANCELLED and REJECTED safety exits without turning them into authorization for a professional API review. Command schemas, managed capability admission and publication guards are unchanged.
 
 Research bundles may select the optional `sourceRegistration` profile on ingestion. Migration `0010_source_registration.sql` stores its immutable descriptor on the RLS-protected ingestion Session. A bounded JSON manifest binds the declared source, original paths/hashes, sanitized derivatives, partial/sample/empty states, and every uploaded asset to exact size and SHA-256. It rejects missing, duplicate, unlisted or changed assets; zero-byte sources are explicitly recorded without fabricating a nonempty upload.
 
