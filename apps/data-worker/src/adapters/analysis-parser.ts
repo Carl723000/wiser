@@ -3,15 +3,15 @@ import {
   ANALYSIS_PARSER_VERSION,
   AnalysisContentError,
   bindAnalysisRecord,
+  createIngestionCandidateRecordBinder,
   type AnalysisContentEvent,
+  type IngestionCandidateIdentity,
 } from '@wiser/data-infra';
 import { DataJobHandlerError } from '../handlers/registry.js';
 
-export interface ExternalAnalysisInput {
+interface ExternalSourceInput {
   readonly bytes: Uint8Array;
   readonly sourceHash: string;
-  readonly dataItemId: string;
-  readonly versionId: string;
   readonly assetId: string;
   readonly format: string;
   readonly path: string;
@@ -22,6 +22,12 @@ export interface ExternalAnalysisInput {
   }[];
   readonly signal?: AbortSignal;
 }
+export interface ExternalAnalysisInput extends ExternalSourceInput {
+  readonly dataItemId: string;
+  readonly versionId: string;
+}
+export interface ExternalIngestionCandidateInput
+  extends ExternalSourceInput, IngestionCandidateIdentity {}
 const errors = new Set<AnalysisContentError['code']>([
   'INVALID_CONTENT',
   'INVALID_GEOMETRY',
@@ -103,10 +109,30 @@ async function* frames(
     reader.releaseLock();
   }
 }
-export function createExternalAnalysisParser(options: {
+interface ExternalParserOptions {
   readonly endpoint: string;
   readonly fetch?: typeof globalThis.fetch;
-}) {
+}
+export function createExternalAnalysisParser(options: ExternalParserOptions) {
+  return createExternalContentParser<ExternalAnalysisInput>(
+    options,
+    (input) => (content) => bindAnalysisRecord(input, content),
+  );
+}
+export function createExternalIngestionCandidateParser(
+  options: ExternalParserOptions,
+) {
+  return createExternalContentParser<ExternalIngestionCandidateInput>(
+    options,
+    createIngestionCandidateRecordBinder,
+  );
+}
+function createExternalContentParser<Input extends ExternalSourceInput>(
+  options: ExternalParserOptions,
+  createBinder: (
+    input: Input,
+  ) => ReturnType<typeof createIngestionCandidateRecordBinder>,
+) {
   const endpoint = new URL(options.endpoint);
   if (
     !['http:', 'https:'].includes(endpoint.protocol) ||
@@ -118,9 +144,8 @@ export function createExternalAnalysisParser(options: {
   )
     throw new Error('Invalid source parser endpoint.');
   const request = options.fetch ?? globalThis.fetch;
-  return async function* (
-    input: ExternalAnalysisInput,
-  ): AsyncGenerator<AnalysisContentEvent> {
+  return async function* (input: Input): AsyncGenerator<AnalysisContentEvent> {
+    const bindRecord = createBinder(input);
     const sources = [
       { path: input.path, bytes: input.bytes, sourceHash: input.sourceHash },
       ...(input.companions ?? []),
@@ -220,7 +245,7 @@ export function createExternalAnalysisParser(options: {
             Object.keys(object(event['values'])).some((key) => !keys?.has(key))
           )
             invalid();
-          const record = bindAnalysisRecord(input, {
+          const record = bindRecord({
             index: event['index'],
             values: event['values'],
             geometry: event['geometry'],

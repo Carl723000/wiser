@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { parse } from 'csv-parse';
+import {
+  IngestionCandidateReferenceSchema,
+  PlatformUuidSchema,
+  Sha256Schema,
+  type IngestionCandidateReference,
+} from '@wiser/data-contracts';
 
 export const ANALYSIS_PARSER_VERSION = '1.0.0';
 export type AnalysisValue =
@@ -65,6 +71,16 @@ export interface AnalysisContentInput {
   readonly sourceHash: string;
   readonly maximumRecords?: number;
 }
+export interface IngestionCandidateIdentity {
+  readonly reference: IngestionCandidateReference;
+  readonly assetId: string;
+  readonly sourceHash: string;
+}
+export interface IngestionCandidateContentInput extends IngestionCandidateIdentity {
+  readonly bytes: Uint8Array;
+  readonly format: 'csv' | 'json';
+  readonly maximumRecords?: number;
+}
 function fail(code: AnalysisContentError['code']): never {
   throw new AnalysisContentError(code);
 }
@@ -96,17 +112,49 @@ function columns(labels: readonly string[]): AnalysisColumn[] {
     fail('INVALID_CONTENT');
   return labels.map((label, index) => ({ key: `c${index + 1}`, label }));
 }
-type AnalysisIdentity = Pick<
+type PublishedAnalysisIdentity = Pick<
   AnalysisContentInput,
   'dataItemId' | 'versionId' | 'assetId' | 'sourceHash'
 >;
+type AnalysisIdentity = PublishedAnalysisIdentity | IngestionCandidateIdentity;
+
+function frozenCandidateIdentity(
+  input: IngestionCandidateIdentity,
+): IngestionCandidateIdentity {
+  const reference = IngestionCandidateReferenceSchema.safeParse(
+    input.reference,
+  );
+  if (
+    'dataItemId' in input ||
+    'versionId' in input ||
+    !reference.success ||
+    !PlatformUuidSchema.safeParse(input.assetId).success ||
+    !Sha256Schema.safeParse(input.sourceHash).success
+  )
+    return fail('INVALID_CONTENT');
+  // Schema validation copies the frozen reference, so later caller mutations
+  // cannot change identities midway through a streaming parser response.
+  return {
+    reference: reference.data,
+    assetId: input.assetId,
+    sourceHash: input.sourceHash,
+  };
+}
 function recordId(input: AnalysisIdentity, index: number): string {
+  const identity =
+    'reference' in input
+      ? [
+          'ingestion-candidate',
+          input.reference.ingestionId,
+          input.reference.reviewHash,
+          input.reference.processingBatchId,
+        ]
+      : [input.dataItemId, input.versionId];
   const hash = createHash('sha256')
     .update(
       [
         ANALYSIS_PARSER_VERSION,
-        input.dataItemId,
-        input.versionId,
+        ...identity,
         input.assetId,
         input.sourceHash,
         String(index),
@@ -134,16 +182,34 @@ function row(
     sourceCrs: geometry === null ? null : 'EPSG:4326',
   };
 }
+interface AnalysisRecordContent {
+  readonly index: number;
+  readonly values: unknown;
+  readonly geometry: unknown;
+  readonly sourceId: unknown;
+  readonly sourceCrs: unknown;
+}
 /** A parser supplies content; the worker binds identifiers to admitted authority. */
 export function bindAnalysisRecord(
+  input: PublishedAnalysisIdentity,
+  content: AnalysisRecordContent,
+): Extract<AnalysisContentEvent, { type: 'record' }> {
+  return bindRecord(input, content);
+}
+
+/** Candidate integrity only; admission and live ownership remain Worker/API gates. */
+export function createIngestionCandidateRecordBinder(
+  input: IngestionCandidateIdentity,
+): (
+  content: AnalysisRecordContent,
+) => Extract<AnalysisContentEvent, { type: 'record' }> {
+  const identity = frozenCandidateIdentity(input);
+  return (content) => bindRecord(identity, content);
+}
+
+function bindRecord(
   input: AnalysisIdentity,
-  content: {
-    readonly index: number;
-    readonly values: unknown;
-    readonly geometry: unknown;
-    readonly sourceId: unknown;
-    readonly sourceCrs: unknown;
-  },
+  content: AnalysisRecordContent,
 ): Extract<AnalysisContentEvent, { type: 'record' }> {
   if (
     !Number.isSafeInteger(content.index) ||
@@ -255,9 +321,23 @@ function sourceCrs(value: Record<string, unknown>): void {
     fail('UNKNOWN_CRS');
 }
 
-/** Parsing never changes source values or asserts scientific quality or units. */
-export async function* parseAnalysisContent(
+/** Published parsing retains the original record-ID derivation unchanged. */
+export function parseAnalysisContent(
   input: AnalysisContentInput,
+): AsyncGenerator<AnalysisContentEvent> {
+  return parseContent(input);
+}
+
+/** Pending parsing never fabricates a catalog version or approves a source. */
+export function parseIngestionCandidateContent(
+  input: IngestionCandidateContentInput,
+): AsyncGenerator<AnalysisContentEvent> {
+  return parseContent({ ...input, ...frozenCandidateIdentity(input) });
+}
+
+/** Parsing never changes source values or asserts scientific quality or units. */
+async function* parseContent(
+  input: AnalysisContentInput | IngestionCandidateContentInput,
 ): AsyncGenerator<AnalysisContentEvent> {
   if (input.bytes.byteLength > 64 * 1024 * 1024) fail('SIZE_LIMIT');
   if (

@@ -94,7 +94,9 @@ describe('pending candidate isolated parser transport', () => {
     const parse = adapters.createExternalIngestionCandidateParser({
       endpoint: 'http://source-parser:3005',
       fetch: (_url, options) => {
-        payload = JSON.parse(String(options?.body));
+        if (typeof options?.body !== 'string')
+          throw new Error('Expected JSON parser request body');
+        payload = JSON.parse(options.body);
         return Promise.resolve(response(frames));
       },
     });
