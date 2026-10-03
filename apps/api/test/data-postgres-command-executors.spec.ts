@@ -1391,6 +1391,7 @@ describe('PostgreSQL Data Foundation command executors', () => {
     const value = runtime();
     value.pool.client.ingestionState = 'REVIEW_REQUIRED';
     value.pool.client.operationStatus = 'WAITING_REVIEW';
+    value.pool.client.submittedActorId = ACTOR_ID;
     await expect(
       executor(value.runtime, 'data.ingestion.approve').execute(
         { ingestionId: INGESTION_ID, expectedVersion: 1 },
@@ -1415,15 +1416,14 @@ describe('PostgreSQL Data Foundation command executors', () => {
     const value = runtime();
     value.pool.client.ingestionState = 'REVIEW_REQUIRED';
     value.pool.client.operationStatus = 'WAITING_REVIEW';
-    const reviewerId = 'd2000000-0000-4000-8000-000000000090';
     await executor(value.runtime, 'data.ingestion.approve').execute(
       { ingestionId: INGESTION_ID, expectedVersion: 1 },
       {
         ...context,
         principal: {
           ...context.principal,
-          actorId: reviewerId.toUpperCase(),
-          authUserId: reviewerId.toUpperCase(),
+          actorId: ACTOR_ID.toUpperCase(),
+          authUserId: ACTOR_ID.toUpperCase(),
         },
       },
     );
@@ -1431,7 +1431,7 @@ describe('PostgreSQL Data Foundation command executors', () => {
       value.pool.client.calls
         .find(({ text }) => text.includes('data.command.scope'))
         ?.values?.slice(5, 8),
-    ).toEqual([reviewerId, 'human', '']);
+    ).toEqual([ACTOR_ID, 'human', '']);
   });
 
   it.each(['agent', 'service'] as const)(
