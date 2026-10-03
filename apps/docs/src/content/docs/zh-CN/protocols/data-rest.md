@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
+lastReviewedCommit: c62b13d630afa068d4aa4cbf23c78ac2e3641455
 ---
 
 ## 协议边界

@@ -42,6 +42,43 @@ it('signs server-streamed version downloads for the internal endpoint only', asy
   expect(presignInternal).toHaveBeenCalledOnce();
 });
 
+it('signs frozen pending originals only for server-internal delivery from canonical quarantine', async () => {
+  const presign = vi.fn(() =>
+    Promise.resolve('https://public.example/never-expose'),
+  );
+  const presignInternal = vi.fn(() =>
+    Promise.resolve('http://private-store/pending'),
+  );
+  const store = createS3AuthorityObjectStore({
+    bucket: 'authority',
+    client: new MemoryS3Client(),
+    presign,
+    presignInternal,
+  });
+  const sign = Reflect.get(store, 'planCandidateDownload') as (
+    input: unknown,
+  ) => Promise<unknown>;
+  await expect(
+    sign({
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      uploadId: UPLOAD_ID,
+      sizeBytes: SIZE,
+      contentType: 'application/octet-stream',
+      sha256: HASH,
+      ttlSeconds: 60,
+    }),
+  ).resolves.toMatchObject({
+    key: `tenants/${TENANT_ID}/projects/${PROJECT_ID}/quarantine/${UPLOAD_ID}/object`,
+    url: 'http://private-store/pending',
+  });
+  expect(presign).not.toHaveBeenCalled();
+  expect(presignInternal.mock.calls[0]?.[0].input).toEqual({
+    Bucket: 'authority',
+    Key: `tenants/${TENANT_ID}/projects/${PROJECT_ID}/quarantine/${UPLOAD_ID}/object`,
+  });
+});
+
 interface StoredObject {
   readonly size: number;
   readonly sha256: string;
