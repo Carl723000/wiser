@@ -967,7 +967,8 @@ export function SpatialWorkspaceMap({
                       fillOpacity="0.2"
                       fillRule="evenodd"
                       stroke={
-                        selection?.recordId === feature.properties.recordId
+                        selection?.recordId === feature.properties.recordId &&
+                        selection.positionId === feature.properties.positionId
                           ? colors.selected
                           : colors.kinds[
                               workspaceRecordKinds.indexOf(
@@ -976,7 +977,8 @@ export function SpatialWorkspaceMap({
                             ]
                       }
                       strokeWidth={
-                        selection?.recordId === feature.properties.recordId
+                        selection?.recordId === feature.properties.recordId &&
+                        selection.positionId === feature.properties.positionId
                           ? 4
                           : 2
                       }

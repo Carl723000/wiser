@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: ecd3e28a0d7c489b505ce68d690621f356a0a881
+lastReviewedCommit: 8d06943b9ff3951979635e3039e80c2ecb35e254
 ---
 
 ## Design direction
@@ -119,3 +119,5 @@ Explanations that help first use belong next to the relevant control or in the s
 For exact route, query, map, and browser-test behavior, use [Frontend development](/en/development/frontend/). For source authority, record identity, spatial accuracy, and review rules, use [Data Foundation architecture](/en/architecture/data-foundation/). User-facing naming and state language are defined in [Product interface and content design](/en/development/product-experience/).
 
 The local spatial workbench reuses shared themes, fullscreen and contextual help. Region, fixed version, unknown location, reference extent and exercise status use text as well as visual cues. Map and list share selection; comparison panes retain independent cameras. A no-WebGL planar fallback is explicit. Screen-coordinate precision supports consistent rendering without changing source precision.
+
+Planar fallback and WebGL maps identify a selected geometry by both record and position. Other positions of the same record retain their ordinary style; a record-only or unavailable position selection does not highlight a geometry. Keyboard selection preserves the exact pair and clearing the selection restores ordinary styling without modifying source geometry.

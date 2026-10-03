@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: ecd3e28a0d7c489b505ce68d690621f356a0a881
+lastReviewedCommit: 8d06943b9ff3951979635e3039e80c2ecb35e254
 ---
 
 ## What this guide governs
@@ -166,3 +166,5 @@ Comparison also rejects unknown units surrounded by whitespace and original date
 The local comparison position guard requires exactly one sampling declaration per observation, a display-permitted evidenced point, and identical fixed geometry source/version, coordinates and support description. Blank or explicitly `unknown`/`未知` support descriptions are rejected, including surrounding whitespace; the original text remains unchanged. It rejects unresolved additional sampling declarations before display filtering. Administrative references or study areas cannot replace sampling evidence; identical line/area geometry does not establish aggregation grain. Known grade codes remain categorical even when numeric. These guards do not establish continuous measurement type or semantic grain equivalence: the current free-text contract lacks that evidence, so real positive comparison acceptance remains open.
 
 The local version-impact calculation includes records that reference a geometry source and its fixed version when the geometry processing rule changes. The dependent record's own parser version does not identify that geometry rule. All matching references require rechecking; unrelated source/version references remain excluded. This calculation does not update records, recompute results, or constitute durable dependency or browser acceptance.
+
+Map selection retains the specific position within a record. Other positions of that record do not become selected together; a record without a selected position remains readable in its dossier.

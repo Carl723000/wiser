@@ -232,11 +232,11 @@ it('retains an actual selectable planar geometry view without WebGL', () => {
   });
 });
 
-it.each<{
+const exactPositionCases: {
   name: string;
   selection: WorkspaceSelection;
   selectedPosition: string | null;
-}>([
+}[] = [
   {
     name: 'the first position',
     selection: { recordId: 'shared-record', positionId: 'p1' },
@@ -249,7 +249,7 @@ it.each<{
   },
   {
     name: 'a record without a position',
-    selection: { recordId: 'shared-record' },
+    selection: { recordId: 'shared-record', positionId: null },
     selectedPosition: null,
   },
   {
@@ -263,9 +263,16 @@ it.each<{
     selectedPosition: null,
   },
   { name: 'no selection', selection: null, selectedPosition: null },
-])(
+];
+it.each(exactPositionCases)(
   'highlights only the exact planar position for $name',
-  ({ selection, selectedPosition }) => {
+  ({
+    selection,
+    selectedPosition,
+  }: {
+    selection: WorkspaceSelection;
+    selectedPosition: string | null;
+  }) => {
     const sameRecordFeatures: WorkspaceMapFeatures = {
       ...features,
       features: features.features.map((feature) => ({
@@ -285,6 +292,13 @@ it.each<{
         selection={selection}
         webGLAvailable={false}
       />,
+    );
+    const previousColors = sameRecordFeatures.features.map((feature) =>
+      [
+        ...container.querySelectorAll(
+          `[data-planar-geometry="${feature.id}"] path`,
+        ),
+      ].map((path) => path.getAttribute('stroke')),
     );
     for (const feature of sameRecordFeatures.features) {
       const paths = container.querySelectorAll(
@@ -315,6 +329,20 @@ it.each<{
       '[data-planar-geometry] path',
     ))
       expect(path.getAttribute('stroke-width')).toBe('2');
+    for (const [
+      featureIndex,
+      feature,
+    ] of sameRecordFeatures.features.entries()) {
+      const paths = container.querySelectorAll(
+        `[data-planar-geometry="${feature.id}"] path`,
+      );
+      for (const [pathIndex, path] of paths.entries()) {
+        const prior = previousColors[featureIndex]?.[pathIndex];
+        if (feature.properties.positionId === selectedPosition)
+          expect(prior).not.toBe(path.getAttribute('stroke'));
+        else expect(prior).toBe(path.getAttribute('stroke'));
+      }
+    }
     expect(JSON.stringify(sameRecordFeatures)).toBe(original);
   },
 );
