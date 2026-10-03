@@ -126,6 +126,36 @@ it('cancels a stalled body before acquiring the DAL', async () => {
   expect(cancel).toHaveBeenCalledOnce();
   expect(getDal).not.toHaveBeenCalled();
 });
+it('bounds a stalled request body by 30 seconds before acquiring the DAL', async () => {
+  vi.useFakeTimers();
+  const controller = new AbortController();
+  const cancel = vi.fn(() => new Promise<void>(() => {}));
+  const body = new ReadableStream<Uint8Array>({
+    start(stream) {
+      stream.enqueue(new TextEncoder().encode('{'));
+    },
+    cancel,
+  });
+  let response: Response | undefined;
+  const pending = call(
+    'open',
+    request(body, { signal: controller.signal }),
+  ).then((value) => {
+    response = value;
+    return value;
+  });
+  try {
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(response?.status).toBe(504);
+    expect(response?.headers.get('cache-control')).toBe('private, no-store');
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(getDal).not.toHaveBeenCalled();
+  } finally {
+    controller.abort();
+    await pending;
+    vi.useRealTimers();
+  }
+});
 it('discards late results after caller cancellation', async () => {
   const controller = new AbortController();
   getDal.mockResolvedValue({ candidateSavedView });
