@@ -967,6 +967,23 @@ describe('comparison and permitted topic exports', () => {
     expect(result.difference).toBeCloseTo(0.3);
   });
 
+  it.each(['unknown', ' 未知 ', '\tUnKnOwN\n', '\u00a0未知\u00a0'])(
+    'does not accept matching explicitly unknown sampling support: %s',
+    (scaleNote) => {
+      const left = {
+        ...numeric,
+        positions: [{ ...samplingPosition, scaleNote }],
+      };
+      const right = { ...left, id: 'synthetic-next', value: '1.5' };
+      const originals = JSON.stringify([left, right]);
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('position');
+      expect(result.difference).toBeNull();
+      expect(JSON.stringify([left, right])).toBe(originals);
+    },
+  );
+
   it.each(['grade', 'GRADE'])(
     'does not subtract known categorical water-quality %s codes',
     (unit) => {
