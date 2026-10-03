@@ -475,31 +475,36 @@ export function SpatialWorkspace({
           : (positions[0]?.id ?? null),
     };
   };
-  const recordButton = (record: WorkspaceRecord) => (
-    <button
-      type="button"
-      key={record.id}
-      className={styles.recordButton}
-      aria-pressed={selection?.recordId === record.id}
-      onClick={() => selectRecord(recordSelection(record))}
-    >
-      <strong>{record.objectLabel}</strong>
-      <span>
-        {copy.kinds[record.kind]} · {record.time.start ?? copy.unknown} ·{' '}
-        {record.metric} · {record.value ?? copy.missing} {record.unit ?? ''}
-      </span>
-      <small>
-        {
-          pack.sources.find(
-            (source) =>
-              source.id === record.sourceId &&
-              source.versionId === record.versionId,
-          )?.title
-        }{' '}
-        · {record.versionId}
-      </small>
-    </button>
-  );
+  const recordButton = (record: WorkspaceRecord) => {
+    const source = pack.sources.find(
+      (item) =>
+        item.id === record.sourceId && item.versionId === record.versionId,
+    );
+    return (
+      <button
+        type="button"
+        key={record.id}
+        className={styles.recordButton}
+        aria-pressed={selection?.recordId === record.id}
+        onClick={() => selectRecord(recordSelection(record))}
+      >
+        <strong>{record.objectLabel}</strong>
+        <span>
+          {copy.kinds[record.kind]} · {record.time.start ?? copy.unknown} ·{' '}
+          {record.metric} · {record.value ?? copy.missing} {record.unit ?? ''}
+        </span>
+        <small>
+          {source?.title ?? copy.sourceMissing} ·{' '}
+          {source?.provider ?? copy.unknown}
+        </small>
+        <span className={styles.recordStatus}>
+          {record.reviewStatus === 'pending'
+            ? copy.pending
+            : copy.syntheticReviewed}
+        </span>
+      </button>
+    );
+  };
   return (
     <div
       className={styles.workspace}

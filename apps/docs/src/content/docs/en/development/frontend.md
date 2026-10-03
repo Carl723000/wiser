@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: da4156702105dd69e8cf13211372a9208193fb1c
+lastReviewedCommit: e04bb401ad96318287812813538182044717d3ba
 ---
 
 ## Two frontend applications
@@ -295,3 +295,5 @@ Packs are bounded to80 pinned source versions,5000 records and150000 geometry ve
 The spatial component listens to `(max-width: 1100px), (max-height: 500px)` and adds a local reading-pane state without changing the shared query or saved-scene contracts. The map, result and dossier wrappers stay mounted; hidden wrappers have no accessible controls. Result/position actions transfer focus to the active pane. Width changes preserve a focused content pane or move removed tab focus to its content. Unit regressions cover exact selection, late camera updates, withdrawals and width changes; the local browser suite checks both locales, fixed-source navigation, planar fallback, fullscreen return and desktop restoration. These viewport checks do not represent a physical phone or authenticated end-to-end acceptance.
 
 WebGL resize events without an original user event do not update the controlled camera. External camera actions stop prior inertia before applying the requested view; hidden maps stop and ignore gesture callbacks. Reflected user camera updates do not stop navigation. Reopening the same result retains its still-permitted exact position; a default position respects the scene's pinned geometry source versions. Browser regressions include real WebGL dragging, camera reset, pane return, intermediate widths, phone landscape and fullscreen.
+
+The local spatial dossier separates business metadata from initially closed Technical details and Location technical details. Original hashes, exact source-local IDs, processing versions, fixed geometry versions and coordinate-system declarations remain retrievable without serializing original filesystem paths. Mapped missing-reason explanations stay visible while their unchanged codes are disclosed on demand. Selection and withdrawal use the existing shared record/source guards; this presentation does not change query, identity, permission or saved-scene contracts.

@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: da4156702105dd69e8cf13211372a9208193fb1c
+lastReviewedCommit: e04bb401ad96318287812813538182044717d3ba
 ---
 
 ## What this guide governs
@@ -172,3 +172,5 @@ Map selection retains the specific position within a record. Other positions of 
 Narrow spatial reading uses Map, Results and Evidence labels instead of shrinking the desktop columns. Region selection uses a compact select and filters start collapsed. Pane changes preserve scope, exact record/position, source version, camera and loaded results; evidence selection and location actions name their destination. Withdrawn evidence is removed from mounted hidden panes as well as the visible pane. This local reading behavior does not establish authenticated intake, review or publication.
 
 Locating or resetting a map remains effective after reading evidence, resizing or returning from fullscreen. Reopening a selected record preserves its specific permitted position and fixed geometry evidence rather than silently choosing the first position.
+
+Evidence reading starts with the original value, source, time, review state and executable original link. Full technical identifiers move into named, keyboard-operable disclosures. Missing information and reference-location limits remain visible. Optional identity explanations use shared contextual help, while withdrawing a source removes both visible and expanded technical evidence.

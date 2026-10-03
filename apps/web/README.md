@@ -16,10 +16,12 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: da4156702105dd69e8cf13211372a9208193fb1c
+lastReviewedCommit: e04bb401ad96318287812813538182044717d3ba
 ---
 
 # WISER Web / 产品界面
+
+证据档案首层保留业务事实、缺项、使用条件和原文入口，完整技术标识按需展开；资料卡突出来源单位与审核状态。 / Evidence dossiers keep business facts, limits, conditions of use and original access visible; full technical references are disclosed on demand. Result cards identify providers and review state.
 
 空间查阅的单区布局覆盖1100 px及以下宽度和500 px及以下高度。WebGL手势后的复位、隐藏区往返和全屏不受旧容器事件回写；同一资料的具体位置和固定几何版本保持一致。 / Single-pane spatial reading covers widths up to 1100 px and heights up to 500 px. Reset, hidden-pane return and fullscreen after WebGL gestures do not accept obsolete resize camera updates; exact position and pinned geometry versions are retained.
 

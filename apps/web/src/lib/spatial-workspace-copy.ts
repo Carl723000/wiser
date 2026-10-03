@@ -71,6 +71,13 @@ export interface SpatialWorkspaceCopy {
   processingVersion: string;
   recordId: string;
   sourceDistinct: string;
+  identityHelp: string;
+  technicalDetails: string;
+  contentHash: string;
+  locationTechnicalDetails: string;
+  displayCrs: string;
+  nativeCrs: string;
+  geometryLocator: string;
   duplicates: string;
   relatedRecords: string;
   rights: string;

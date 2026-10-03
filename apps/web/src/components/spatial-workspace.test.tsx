@@ -303,9 +303,10 @@ describe('business-first evidence reading', () => {
       );
       const dossier = screen.getByRole('region', { name: copy.dossierTitle });
       expect(
-        within(dossier).getByText(version, { exact: true }).closest('details')
-          ?.open,
-      ).toBe(false);
+        within(dossier)
+          .getAllByText(version, { exact: true })
+          .every((element) => element.closest('details')?.open === false),
+      ).toBe(true);
       expect(
         screen.getByRole('button', { name: /潮白河原文对象/ }).textContent,
       ).not.toContain(version);
@@ -363,7 +364,7 @@ describe('business-first evidence reading', () => {
       const dossier = screen.getByRole('region', { name: copy.dossierTitle });
       expect(
         within(dossier)
-          .getByText(copy.missingReasons!['concentrations-not-published'])
+          .getByText(copy.missingReasons['concentrations-not-published'])
           .closest('details:not([open])'),
       ).toBeNull();
       expect(
@@ -383,9 +384,9 @@ describe('business-first evidence reading', () => {
             .getByText(fact, { exact: true })
             .closest('details:not([open])'),
         ).toBeNull();
-      const position = dossier.querySelector(
+      const position = dossier.querySelector<HTMLElement>(
         '[data-position-id="pos-line"]',
-      )! as HTMLElement;
+      )!;
       const location = within(position)
         .getByText(locationLabel)
         .closest('details')!;

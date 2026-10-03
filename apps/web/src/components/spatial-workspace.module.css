@@ -324,6 +324,26 @@
   max-height: 76rem;
   overflow: auto;
 }
+.dossierHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+}
+.dossierHeading button[data-context-help] {
+  text-align: center;
+}
+.technicalDetails {
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  padding: 0.45rem 0.65rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+.technicalDetails dd {
+  font-family: monospace;
+}
 .metadata {
   display: grid;
   grid-template-columns: minmax(5rem, 0.65fr) minmax(0, 1.5fr);
@@ -368,6 +388,10 @@
 .missing {
   color: var(--warning);
   font-size: 0.8rem;
+  border: 1px solid var(--warning-border);
+  border-radius: 0.4rem;
+  background: var(--warning-soft);
+  padding: 0.6rem 0.7rem;
 }
 .invalidationNotices {
   display: grid;
@@ -404,6 +428,14 @@
 .recordButton small {
   font-size: 0.75rem;
   color: var(--text-secondary);
+}
+.recordButton .recordStatus {
+  width: fit-content;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
+  border-radius: 0.3rem;
+  padding: 0.15rem 0.4rem;
 }
 .attribution {
   background: var(--surface);

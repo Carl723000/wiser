@@ -9,6 +9,7 @@ import {
 } from '@/lib/spatial-workspace-view';
 import styles from './spatial-workspace.module.css';
 import { SpatialWorkspaceInvalidations } from './spatial-workspace-invalidations';
+import { ContextHelp } from './context-help';
 
 export interface SpatialWorkspaceDossierProps {
   pack: WorkspacePack;
@@ -71,23 +72,32 @@ export function SpatialWorkspaceDossier({
           );
           return (
             <>
-              <h3>{record.objectLabel}</h3>
+              <div className={styles.dossierHeading}>
+                <h3>{record.objectLabel}</h3>
+                <ContextHelp label={copy.identityHelp}>
+                  {copy.sourceDistinct}
+                </ContextHelp>
+              </div>
               <p className={styles.status}>
                 {record.reviewStatus === 'pending'
                   ? copy.pending
                   : copy.syntheticReviewed}
               </p>
+              {href ? (
+                <a
+                  className={styles.originalLink}
+                  href={href}
+                  target={href.startsWith('/') ? undefined : '_blank'}
+                  rel={href.startsWith('/') ? undefined : 'noopener noreferrer'}
+                >
+                  {copy.openOriginal}
+                </a>
+              ) : null}
               <dl className={styles.metadata}>
                 <dt>{copy.source}</dt>
                 <dd>{source.title}</dd>
                 <dt>{copy.provider}</dt>
                 <dd>{source.provider}</dd>
-                <dt>{copy.version}</dt>
-                <dd>{source.versionId}</dd>
-                <dt>{copy.recordId}</dt>
-                <dd>{record.id}</dd>
-                <dt>{copy.processingVersion}</dt>
-                <dd>{record.processingVersion}</dd>
                 <dt>{copy.nativeTime}</dt>
                 <dd>
                   {record.time.start ?? copy.unknown}
@@ -106,17 +116,56 @@ export function SpatialWorkspaceDossier({
                 <dt>{copy.rights}</dt>
                 <dd>{source.rights.note}</dd>
               </dl>
-              <p className={styles.hint}>{copy.sourceDistinct}</p>
-              {href ? (
-                <a
-                  className={styles.originalLink}
-                  href={href}
-                  target={href.startsWith('/') ? undefined : '_blank'}
-                  rel={href.startsWith('/') ? undefined : 'noopener noreferrer'}
-                >
-                  {copy.openOriginal}
-                </a>
+              {record.missingReasons.length ? (
+                <div className={styles.missing}>
+                  <strong>{copy.missing}</strong>
+                  <ul>
+                    {record.missingReasons.map((reason, index) => (
+                      <li key={index}>
+                        {copy.missingReasons?.[reason] ?? reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
+              <details
+                key={JSON.stringify([
+                  record.sourceId,
+                  record.versionId,
+                  record.id,
+                ])}
+                className={styles.technicalDetails}
+              >
+                <summary>{copy.technicalDetails}</summary>
+                <dl className={styles.metadata}>
+                  <dt>{copy.version}</dt>
+                  <dd>{source.versionId}</dd>
+                  <dt>{copy.contentHash}</dt>
+                  <dd>{source.originalSha256}</dd>
+                  <dt>{copy.recordId}</dt>
+                  <dd>{record.id}</dd>
+                  <dt>{copy.processingVersion}</dt>
+                  <dd>{record.processingVersion}</dd>
+                  {record.missingReasons.some(
+                    (reason) => copy.missingReasons?.[reason],
+                  ) ? (
+                    <>
+                      <dt>{copy.missing}</dt>
+                      <dd>
+                        <ul>
+                          {record.missingReasons
+                            .filter((reason) => copy.missingReasons?.[reason])
+                            .map((reason, index) => (
+                              <li key={index}>
+                                <code>{reason}</code>
+                              </li>
+                            ))}
+                        </ul>
+                      </dd>
+                    </>
+                  ) : null}
+                </dl>
+              </details>
               <details
                 open
                 className={styles.evidence}
@@ -161,11 +210,7 @@ export function SpatialWorkspaceDossier({
                         <dt>{copy.scale}</dt>
                         <dd>{position.scaleNote ?? copy.unknown}</dd>
                         <dt>{copy.geometrySource}</dt>
-                        <dd>
-                          {geometrySource
-                            ? `${geometrySource.title} · ${geometrySource.versionId} · ${position.locator}`
-                            : copy.noGeometry}
-                        </dd>
+                        <dd>{geometrySource?.title ?? copy.noGeometry}</dd>
                       </dl>
                       <blockquote>
                         <cite>{position.evidence.locator}</cite>
@@ -185,32 +230,26 @@ export function SpatialWorkspaceDossier({
                           {copy.locatePosition}
                         </button>
                       ) : null}
+                      <details className={styles.technicalDetails}>
+                        <summary>{copy.locationTechnicalDetails}</summary>
+                        <dl className={styles.metadata}>
+                          <dt>{copy.version}</dt>
+                          <dd>
+                            {geometrySource?.versionId ?? copy.noGeometry}
+                          </dd>
+                          <dt>{copy.displayCrs}</dt>
+                          <dd>{displayPosition?.crs ?? copy.unknown}</dd>
+                          <dt>{copy.nativeCrs}</dt>
+                          <dd>{displayPosition?.nativeCrs ?? copy.unknown}</dd>
+                          <dt>{copy.geometryLocator}</dt>
+                          <dd>{displayPosition?.locator ?? copy.unknown}</dd>
+                        </dl>
+                      </details>
                     </article>
                   );
                 })}
                 {!record.positions.length ? <p>{copy.noGeometry}</p> : null}
               </details>
-              {record.missingReasons.length ? (
-                <div className={styles.missing}>
-                  <strong>{copy.missing}</strong>
-                  <ul>
-                    {record.missingReasons.map((reason, index) => {
-                      const explanation = copy.missingReasons?.[reason];
-                      return (
-                        <li key={index}>
-                          {typeof explanation === 'string' ? (
-                            <>
-                              <span>{explanation}</span> <small>{reason}</small>
-                            </>
-                          ) : (
-                            reason
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ) : null}
               {records.length > 1 ? (
                 <details>
                   <summary>

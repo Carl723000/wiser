@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: da4156702105dd69e8cf13211372a9208193fb1c
+lastReviewedCommit: e04bb401ad96318287812813538182044717d3ba
 ---
 
 ## Design direction
@@ -123,3 +123,5 @@ The local spatial workbench reuses shared themes, fullscreen and contextual help
 Planar fallback and WebGL maps identify a selected geometry by both record and position. Other positions of the same record retain their ordinary style; a record-only or unavailable position selection does not highlight a geometry. Keyboard selection preserves the exact pair and clearing the selection restores ordinary styling without modifying source geometry.
 
 At widths up to 1100 px or heights up to 500 px, the local spatial workbench exposes one named Map, Results or Evidence reading pane. Hidden panes remain mounted to retain map state and reading position, while their controls leave keyboard navigation. Tabs support arrows, Home and End. Selecting a result opens its evidence, and locating an evidenced position returns to the same map. Resizing keeps a focused reading control visible; desktop retains its concurrent layout.
+
+Evidence dossiers show source/provider, native time, original values, review state, conditions of use and location limits before technical references. Full fixed-version IDs, original hashes, processing IDs, location coordinate systems and mapped missing-reason codes remain exact in closed technical disclosures. Result cards show source/provider and review status. Identity explanations use pointer-, keyboard- and touch-accessible help; limitations never depend on that help.
