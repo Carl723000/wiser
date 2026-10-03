@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 8225f4a98fce0d98099df96d0f6c13293fee0589
+lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
 ---
 
 ## What runs today
@@ -470,6 +470,14 @@ The nine question entries point to their actual work/version/object/record, chec
 The spatial workbench `WorkspacePack` is a narrow frontend/local-processor interchange, not a new public query protocol or authority identity store. It preserves originals, extracted rows, textual places, reference geometries, method evidence and pending professional review separately. Same-name source-local objects are not merged. Original paths never reach the browser, and derived graphics cannot expose sources lacking display rights.
 
 An independent synthetic candidate supports accept, exclude and pending exercises followed by source/rule impact calculation. Real candidates remain pending. Exercises are not professional review, authorization, managed correction or publication. Standard intake, ordinary-account authorization and live provider access require their own end-to-end acceptance.
+
+### Measurement definitions and comparison eligibility
+
+The additive measurement contract in `@wiser/data-contracts` retains definition ID/version, source-local ID/fixed version and original SHA-256. Declarations include real/synthetic track, continuous/ordinal/code/unknown type, difference purpose, original evidence, metric, method/unit, time role/precision/length, point/reach/area support, aggregation rule and denominator. Source declaration and professional review remain separate; strings, original values and source-local identities are neither normalized nor merged. These types register no public HTTP operation and an `APPROVED` field cannot grant authorization.
+
+`assessMeasurementComparison` uses caller-supplied fixed definitions and review facts for deterministic eligibility without IO. Missing or duplicate-conflicting definitions, unknown/noncontinuous type, unapproved use, mixed tracks, unapproved records, definition self-review or inadequate evidence withhold calculation. The host adapter must supply authenticated canonical identities, including delegated principals, and actual review results; neither a pure function nor a schema authenticates identities or issues approval. Actual metric, method, unit, native date span and statistical support must match the definition. Aggregates require evidenced positive denominators, with integer observation counts; geometry area and parsed rows cannot fill them. Units are not converted, and differing denominators are not assumed comparable.
+
+Local `WorkspacePack` version1 adds optional definition lists, tracks and record references. Older packs remain readable but receive side-by-side-only comparison without a definition. The server validates and crops by fixed definition-source display rights; export checks redistribution separately. Saved scenes reuse fixed source pins and remove differences when a definition source expires, retaining original records. The local record contract has no real professional-approval fact, so only explicitly synthetic approved positives pass this adapter. Standard candidate persistence, business review, historical references and HTTP wiring require separate acceptance; pure rules or fixed-pack tests do not complete A6.
 
 ### Offline protocol and raster inspection
 

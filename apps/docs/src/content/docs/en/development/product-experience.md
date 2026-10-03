@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 06a00bad923b6abd8fe6bac11d24807ec8f2c40b
+lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
 ---
 
 ## What this guide governs
@@ -163,7 +163,11 @@ Numeric comparison checks both the original values and the computed result. Non-
 
 Comparison also rejects unknown units surrounded by whitespace and original dates that lack their declared day/month/year precision. Unit strings stay unchanged and are not automatically converted or made equivalent. Ordinary date filters may still expand calendar boundaries; that expansion supplies no missing precision for comparison. These checks do not establish positional compatibility or professional approval.
 
-The local comparison position guard requires exactly one sampling declaration per observation, a display-permitted evidenced point, and identical fixed geometry source/version, coordinates and support description. Blank or explicitly `unknown`/`未知` support descriptions are rejected, including surrounding whitespace; the original text remains unchanged. It rejects unresolved additional sampling declarations before display filtering. Administrative references or study areas cannot replace sampling evidence; identical line/area geometry does not establish aggregation grain. Known grade codes remain categorical even when numeric. These guards do not establish continuous measurement type or semantic grain equivalence: the current free-text contract lacks that evidence, so real positive comparison acceptance remains open.
+The local comparison position guard requires exactly one sampling/statistical-support declaration per observation, display permission and original locators, and identical fixed geometry source/version, geometry and support description. Blank or explicitly `unknown`/`未知` support descriptions are rejected, including surrounding whitespace; the original text remains unchanged. It rejects unresolved additional sampling declarations before display filtering. Administrative references or study areas cannot replace sampling evidence; identical line/area geometry does not establish aggregation grain. Reaches and areas enter numeric eligibility only with a fixed definition of statistical support, aggregation rule and actual denominator; points also need an explicit measurement definition.
+
+Continuous quantities, ordinal categories, codes and unknown types are declared separately; known grade codes remain categorical. Source declarations do not replace independent professional review, and numeric appearance or metric names never provide positive evidence of continuity. Missing definitions, metrics, methods, units, native time basis, statistical grain, denominators or fixed versions retain original values and side-by-side reading with reasons. Source, record and definition tracks are checked separately; the local pack supports explicitly synthetic approved positives only, and real pending records receive no numeric difference.
+
+Local saved scenes include referenced definition sources in their existing fixed source pins. Withdrawal or a changed version/hash/processing version removes the calculation while original records remain available side by side; originals and history are not deleted. Contract and local-rule checks do not complete standard candidate persistence, real review, server authorization or browser end-to-end acceptance.
 
 The local version-impact calculation includes records that reference a geometry source and its fixed version when the geometry processing rule changes. The dependent record's own parser version does not identify that geometry rule. All matching references require rechecking; unrelated source/version references remain excluded. This calculation does not update records, recompute results, or constitute durable dependency or browser acceptance.
 

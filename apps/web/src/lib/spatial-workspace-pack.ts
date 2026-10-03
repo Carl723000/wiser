@@ -1,5 +1,11 @@
 import type { Geometry } from 'geojson';
 import {
+  MeasurementBindingSchema,
+  MeasurementDefinitionSchema,
+  MeasurementTrackSchema,
+} from '@wiser/data-contracts';
+import { measurementDefinitionKey } from '@wiser/data-core/measurement-comparison';
+import {
   validWorkspaceTimeFilter,
   workspaceEvidenceUrl,
 } from './spatial-workspace-view';
@@ -185,6 +191,11 @@ function source(value: unknown): Material {
       use: string(status.use),
     },
   };
+  if (v.track !== undefined) {
+    const parsed = MeasurementTrackSchema.safeParse(v.track);
+    if (!parsed.success) fail('measurement-source-track');
+    result.track = parsed.data;
+  }
   if (v.coverageNote !== undefined)
     result.coverageNote = string(v.coverageNote);
   if (v.workId !== undefined) result.workId = string(v.workId);
@@ -308,6 +319,16 @@ function record(value: unknown): WorkspaceRecord {
     const m = object(v.method);
     result.method = { code: string(m.code), evidence: evidence(m.evidence) };
   }
+  if (v.track !== undefined) {
+    const parsed = MeasurementTrackSchema.safeParse(v.track);
+    if (!parsed.success) fail('measurement-track');
+    result.track = parsed.data;
+  }
+  if (v.measurement !== undefined) {
+    const parsed = MeasurementBindingSchema.safeParse(v.measurement);
+    if (!parsed.success) fail('measurement-binding');
+    result.measurement = parsed.data;
+  }
   return result;
 }
 function raster(value: unknown): WorkspaceRasterReport {
@@ -417,6 +438,14 @@ export function parseWorkspacePack(input: unknown): WorkspacePack {
   if (v.schemaVersion !== 1) fail('schema-version');
   const sources = array(v.sources, 80).map(source),
     records = array(v.records).map(record);
+  const definitions =
+    v.measurementDefinitions === undefined
+      ? undefined
+      : array(v.measurementDefinitions, 5000).map((input) => {
+          const parsed = MeasurementDefinitionSchema.safeParse(input);
+          if (!parsed.success) fail('measurement-definition');
+          return parsed.data;
+        });
   const allVersions = new Set(sources.map((s) => `${s.id}\0${s.versionId}`));
   if (
     allVersions.size !== sources.length ||
@@ -440,10 +469,27 @@ export function parseWorkspacePack(input: unknown): WorkspacePack {
       allowed.map((s) => `${s.id}\0${s.versionId}`),
     ),
     ids = new Set(allowed.map((s) => s.id));
+  const visibleDefinitions = definitions?.filter((definition) =>
+    sources.some(
+      (source) =>
+        source.id === definition.reference.sourceId &&
+        source.versionId === definition.reference.sourceVersionId &&
+        source.originalSha256 === definition.reference.sourceSha256 &&
+        allowedVersions.has(`${source.id}\0${source.versionId}`),
+    ),
+  );
+  const definitionKeys = new Set(
+    visibleDefinitions?.map((item) => measurementDefinitionKey(item.reference)),
+  );
   const visibleRecords = records
     .filter((r) => allowedVersions.has(`${r.sourceId}\0${r.versionId}`))
     .map((r) => ({
       ...r,
+      // A denied/unresolved definition does not leak its source reference.
+      ...(r.measurement &&
+      !definitionKeys.has(measurementDefinitionKey(r.measurement.definition))
+        ? { measurement: undefined }
+        : {}),
       positions: r.positions.map((p) =>
         p.geometry &&
         !allowedVersions.has(`${p.geometrySourceId}\0${p.geometryVersionId}`)
@@ -466,6 +512,9 @@ export function parseWorkspacePack(input: unknown): WorkspacePack {
     processingVersion: string(v.processingVersion),
     sources: allowed,
     records: visibleRecords,
+    ...(visibleDefinitions
+      ? { measurementDefinitions: visibleDefinitions }
+      : {}),
     regions: array(v.regions, 6).map((input) => {
       const r = object(input);
       return {

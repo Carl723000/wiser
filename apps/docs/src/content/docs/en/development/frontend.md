@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 0c2983e7b66c13feb781a3d95dc43f1215b82667
+lastReviewedCommit: 1776ccabe9dbabe09fcc4cdd39e2c6fe24d74502
 ---
 
 ## Two frontend applications
@@ -297,6 +297,8 @@ The spatial component listens to `(max-width: 1100px), (max-height: 500px)` and 
 WebGL resize events without an original user event do not update the controlled camera. External camera actions stop prior inertia before applying the requested view; hidden maps stop and ignore gesture callbacks. Reflected user camera updates do not stop navigation. Reopening the same result retains its still-permitted exact position; a default position respects the scene's pinned geometry source versions. Browser regressions include real WebGL dragging, camera reset, pane return, intermediate widths, phone landscape and fullscreen.
 
 The local spatial dossier separates business metadata from initially closed Technical details and Location technical details. Original hashes, exact source-local IDs, processing versions, fixed geometry versions and coordinate-system declarations remain retrievable without serializing original filesystem paths. Mapped missing-reason explanations stay visible while their unchanged codes are disclosed on demand. Selection and withdrawal use the existing shared record/source guards; this presentation does not change query, identity, permission or saved-scene contracts.
+
+Local split-pane comparison uses optional fixed measurement-definition references. Parsing retains original values, evidence and explicit tracks; numeric appearance does not approve an unknown type. Invalid definitions/bindings reject the pack, while non-displayable definition sources and references are cropped. Points, reaches and areas retain original geometries and roles; differences require explicit statistical basis, review facts and actual denominators. Synthetic approved positives remain separate from real pending records. Definition sources join existing saved source pins, passed by the comparison component to reject expired definition or geometry evidence; topic export checks referenced redistribution rights separately. This local wiring registers no public query or review authority.
 
 ### Readiness evidence and drilldowns
 

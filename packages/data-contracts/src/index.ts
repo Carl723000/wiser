@@ -11,3 +11,4 @@ export * from './reconciliation/index.ts';
 export * from './assessment/index.ts';
 export * from './knowledge-relations/index.ts';
 export * from './external-metadata/index.ts';
+export * from './measurement/index.ts';

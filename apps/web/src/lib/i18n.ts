@@ -1743,7 +1743,7 @@ const zhCN = {
       leftPeriod: '左侧时期',
       rightPeriod: '右侧时期',
       sameObjectOnly:
-        '数值差异须核对同一来源内对象、采样位置与尺度、指标、单位、时间精度和方法证据。',
+        '数值差异须核对同一来源内对象、采样位置、获准计量定义、统计粒度、方法、单位与分母。',
       comparable: '满足差异计算条件',
       sideBySide: '仅可并列查阅',
       comparisonEmpty: '当前两侧没有匹配的同一对象记录。',
@@ -1757,6 +1757,9 @@ const zhCN = {
         unit: '单位不同或未知',
         time: '时间角色或精度不同或未知',
         method: '方法证据不足或不一致',
+        measurement: '计量定义缺失、未批准或版本不一致',
+        grain: '统计粒度或聚合规则未明确或不一致',
+        denominator: '聚合分母缺失或不一致',
         categorical: '类别值不作浓度相减',
         numeric: '原值不可计算或差值超出范围',
         permission: '来源使用条件不足',
@@ -5388,7 +5391,7 @@ const en: typeof zhCN = {
       leftPeriod: 'Left period',
       rightPeriod: 'Right period',
       sameObjectOnly:
-        'Numeric differences require matching source-local objects, sampling position and support, metric, unit, time precision and method evidence.',
+        'Numeric differences require the same source-local object, sampling support, approved measurement definition, statistical grain, method, unit and denominator.',
       comparable: 'Conditions for a numeric difference met',
       sideBySide: 'Side-by-side reading only',
       comparisonEmpty:
@@ -5405,6 +5408,11 @@ const en: typeof zhCN = {
         unit: 'Units differ or are unknown',
         time: 'Time role or precision differs or is unknown',
         method: 'Method evidence is missing or inconsistent',
+        measurement:
+          'Measurement definition is missing, unapproved or version-inconsistent',
+        grain:
+          'Statistical grain or aggregation rule is unknown or inconsistent',
+        denominator: 'Aggregation denominator is missing or inconsistent',
         categorical: 'Category values are not subtracted as concentrations',
         numeric: 'Values are not numeric or the difference is out of range',
         permission: 'Source use conditions are insufficient',

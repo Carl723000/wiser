@@ -142,6 +142,9 @@ export interface SpatialWorkspaceCopy {
     unit: string;
     time: string;
     method: string;
+    measurement: string;
+    grain: string;
+    denominator: string;
     categorical: string;
     numeric: string;
     permission: string;

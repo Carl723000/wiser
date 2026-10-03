@@ -77,7 +77,13 @@ export function SpatialWorkspaceComparison({
       .map((other) => ({
         left: record,
         right: other,
-        result: compareWorkspaceRecords(record, other, pack, invalidations),
+        result: compareWorkspaceRecords(
+          record,
+          other,
+          pack,
+          invalidations,
+          view.sourcePins,
+        ),
       })),
   );
   const selectedPairs = pairs.filter(

@@ -6,7 +6,8 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./project-readiness": "./src/project-readiness.ts"
+    "./project-readiness": "./src/project-readiness.ts",
+    "./measurement-comparison": "./src/measurement-comparison.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

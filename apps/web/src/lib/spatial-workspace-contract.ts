@@ -1,4 +1,9 @@
 import type { Geometry } from 'geojson';
+import type {
+  MeasurementBinding,
+  MeasurementDefinition,
+  MeasurementTrack,
+} from '@wiser/data-contracts';
 
 /** Local processing interchange only; not a public query or authority model. */
 export type RegionId =
@@ -10,6 +15,8 @@ export interface WorkspaceEvidence {
   url: string | null;
 }
 export interface Material {
+  /** A missing track stays unknown; a record label cannot classify its source. */
+  track?: MeasurementTrack;
   /** Shared work identity for counting versions/copies, never an object identity merge. */
   workId?: string;
   id: string;
@@ -88,6 +95,9 @@ export interface WorkspaceRecord {
   value: string | null;
   unit: string | null;
   method?: { code: string; evidence: WorkspaceEvidence };
+  /** Explicit track and fixed source-defined comparison context; no inferred type. */
+  track?: MeasurementTrack;
+  measurement?: MeasurementBinding;
   positions: WorkspacePosition[];
   evidence: WorkspaceEvidence[];
   processingVersion: string;
@@ -168,6 +178,7 @@ export interface WorkspacePack {
   processingVersion: string;
   sources: Material[];
   records: WorkspaceRecord[];
+  measurementDefinitions?: MeasurementDefinition[];
   regions: WorkspaceRegion[];
   topicPackages: WorkspaceTopicPackage[];
   rasterReports: WorkspaceRasterReport[];

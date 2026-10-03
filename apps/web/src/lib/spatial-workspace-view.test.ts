@@ -24,6 +24,7 @@ import {
   workspaceRasterOverlays,
   workspaceNativeTime,
 } from './spatial-workspace-view';
+import { parseWorkspacePack } from './spatial-workspace-pack';
 
 const rectangle: Geometry = {
   type: 'Polygon',
@@ -745,7 +746,102 @@ describe('pinned scenes and source invalidation', () => {
   });
 });
 
+const untypedPack = pack;
 describe('comparison and permitted topic exports', () => {
+  // These definitions and decisions are synthetic test facts, not a declaration
+  // or professional approval of the shared monthly report fixture.
+  const syntheticDefinition = (precision: 'day' | 'month' | 'year') => ({
+    schemaVersion: 1 as const,
+    reference: {
+      definitionId: `synthetic-tn-${precision}`,
+      definitionVersion: 'synthetic-v1',
+      sourceId: source.id,
+      sourceVersionId: source.versionId,
+      sourceSha256: source.originalSha256,
+    },
+    track: 'SYNTHETIC' as const,
+    measurementType: 'CONTINUOUS' as const,
+    differenceUse: 'ALLOWED' as const,
+    sourceDeclaration: {
+      state: 'DECLARED' as const,
+      evidence: {
+        locator: 'synthetic definition §1',
+        text: 'Synthetic test concentration, not real source approval',
+      },
+    },
+    professionalReview: {
+      state: 'APPROVED' as const,
+      submittedBy: 'synthetic-proposer',
+      reviewedBy: 'synthetic-independent-reviewer',
+      decisionId: 'synthetic-review',
+      evidence: {
+        locator: 'synthetic review row',
+        text: 'Synthetic independent review only',
+      },
+    },
+    metric: {
+      code: 'total-nitrogen',
+      definition: 'Synthetic total nitrogen concentration',
+      evidence: {
+        locator: 'synthetic metric row',
+        text: 'Synthetic continuous concentration',
+      },
+    },
+    unit: {
+      code: 'mg/L',
+      evidence: { locator: 'synthetic unit row', text: 'Synthetic mg/L' },
+    },
+    method: {
+      code: 'HJ-636',
+      evidence: {
+        locator: 'synthetic method row',
+        text: 'Synthetic method code, not a real determination',
+      },
+    },
+    temporal: {
+      kind: 'INSTANT' as const,
+      precision: precision.toUpperCase() as 'DAY' | 'MONTH' | 'YEAR',
+      role: 'OBSERVATION' as const,
+      length: 1,
+      basis: `Synthetic single observation with ${precision} precision`,
+      evidence: {
+        locator: 'synthetic time row',
+        text: 'Synthetic time definition',
+      },
+    },
+    spatial: {
+      kind: 'POINT' as const,
+      support: 'Synthetic fixed sampling point',
+      evidence: {
+        locator: 'synthetic support row',
+        text: 'Synthetic point support only',
+      },
+    },
+    aggregation: {
+      rule: 'SINGLE' as const,
+      definition: 'Synthetic individual sample',
+      evidence: {
+        locator: 'synthetic rule row',
+        text: 'Synthetic single observation, no aggregate',
+      },
+      denominator: {
+        kind: 'NONE' as const,
+        unit: null,
+        basis: 'No aggregate denominator',
+        evidence: {
+          locator: 'synthetic denominator row',
+          text: 'Synthetic individual sample',
+        },
+      },
+    },
+  });
+  const pack: WorkspacePack = {
+    ...untypedPack,
+    sources: untypedPack.sources.map((s) => ({ ...s, track: 'SYNTHETIC' })),
+    measurementDefinitions: ['day', 'month', 'year'].map((precision) =>
+      syntheticDefinition(precision as 'day' | 'month' | 'year'),
+    ),
+  };
   // Explicitly synthetic point support. The shared record's reference river
   // geometry cannot serve as positive evidence for a sampling difference.
   const samplingPosition: WorkspacePosition = {
@@ -766,6 +862,14 @@ describe('comparison and permitted topic exports', () => {
     value: '1.2',
     unit: 'mg/L',
     positions: [samplingPosition],
+    track: 'SYNTHETIC',
+    reviewStatus: 'synthetic-reviewed',
+    measurement: {
+      definition: syntheticDefinition('month').reference,
+      track: 'SYNTHETIC',
+      positionId: samplingPosition.id,
+      denominator: null,
+    },
     method: {
       code: 'HJ-636',
       evidence: {
@@ -782,13 +886,20 @@ describe('comparison and permitted topic exports', () => {
   ])(
     'keeps %s values side by side without an evidenced measurement definition',
     (metric, unit, a, b) => {
-      const left = { ...numeric, metric, unit, value: a };
+      const left = {
+        ...numeric,
+        metric,
+        unit,
+        value: a,
+        measurement: undefined,
+      };
       const right = {
         ...numeric,
         id: 'undefined-measurement-next',
         metric,
         unit,
         value: b,
+        measurement: undefined,
       };
       const original = JSON.stringify([left, right]);
       const result = compareWorkspaceRecords(left, right, pack);
@@ -801,6 +912,7 @@ describe('comparison and permitted topic exports', () => {
   it('does not make missing statistical grain comparable with a descriptive scale note', () => {
     const left = {
       ...numeric,
+      measurement: undefined,
       positions: [{ ...samplingPosition, scaleNote: 'monthly data' }],
     };
     const right = { ...left, id: 'undefined-statistic-next', value: '1.5' };
@@ -821,6 +933,7 @@ describe('comparison and permitted topic exports', () => {
           sourceSha256: source.originalSha256,
         },
         track: 'SYNTHETIC' as const,
+        positionId: samplingPosition.id,
         denominator: null,
       },
     };
@@ -1148,6 +1261,10 @@ describe('comparison and permitted topic exports', () => {
         ...numeric,
         value: '0',
         time: { ...numeric.time, ...time },
+        measurement: {
+          ...numeric.measurement!,
+          definition: syntheticDefinition(time.precision).reference,
+        },
       };
       const result = compareWorkspaceRecords(left, left, pack);
       expect(result.state).toBe('comparable');
@@ -1210,6 +1327,391 @@ describe('comparison and permitted topic exports', () => {
     ]);
     expect(result.reasons).toContain('stale');
     expect(result.difference).toBeNull();
+  });
+
+  it.each(['REACH', 'AREA'] as const)(
+    'permits evidenced synthetic %s aggregates without inventing support from geometry',
+    (kind) => {
+      const definition = {
+        ...syntheticDefinition('month'),
+        temporal: {
+          ...syntheticDefinition('month').temporal,
+          kind: 'PERIOD' as const,
+          basis: 'Synthetic calendar month',
+        },
+        spatial: {
+          ...syntheticDefinition('month').spatial,
+          kind,
+          support: `Synthetic fixed ${kind} mean`,
+        },
+        aggregation: {
+          ...syntheticDefinition('month').aggregation,
+          rule: 'MEAN' as const,
+          definition: 'Synthetic mean of independent observations',
+          denominator: {
+            kind: 'OBSERVATIONS' as const,
+            unit: 'count',
+            basis: 'Independent synthetic observations',
+            evidence: {
+              locator: 'synthetic denominator row',
+              text: 'Five independent synthetic observations',
+            },
+          },
+        },
+      };
+      const geometry: Geometry =
+        kind === 'REACH'
+          ? {
+              type: 'LineString',
+              coordinates: [
+                [1, 1],
+                [2, 2],
+              ],
+            }
+          : {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [1, 1],
+                  [2, 1],
+                  [2, 2],
+                  [1, 2],
+                  [1, 1],
+                ],
+              ],
+            };
+      const aggregate: WorkspaceRecord = {
+        ...numeric,
+        positions: [
+          {
+            ...samplingPosition,
+            geometry,
+            scaleNote: `Synthetic ${kind} support`,
+          },
+        ],
+        measurement: {
+          ...numeric.measurement!,
+          denominator: {
+            kind: 'OBSERVATIONS',
+            value: 5,
+            unit: 'count',
+            basis: 'Independent synthetic observations',
+            evidence: {
+              locator: 'synthetic original row',
+              text: 'Synthetic denominator 5, not real monthly observations',
+            },
+          },
+        },
+      };
+      const typedPack = { ...pack, measurementDefinitions: [definition] };
+      const original = JSON.stringify([aggregate, typedPack]);
+      const result = compareWorkspaceRecords(
+        aggregate,
+        { ...aggregate, value: '1.5' },
+        typedPack,
+      );
+      expect(result.state).toBe('comparable');
+      expect(result.difference).toBeCloseTo(0.3);
+      expect(
+        compareWorkspaceRecords(
+          aggregate,
+          {
+            ...aggregate,
+            measurement: { ...aggregate.measurement!, denominator: null },
+          },
+          typedPack,
+        ).difference,
+      ).toBeNull();
+      expect(
+        compareWorkspaceRecords(
+          aggregate,
+          {
+            ...aggregate,
+            positions: [{ ...aggregate.positions[0], role: 'reference' }],
+          },
+          typedPack,
+        ).reasons,
+      ).toContain('position');
+      expect(
+        compareWorkspaceRecords(
+          aggregate,
+          {
+            ...aggregate,
+            positions: [
+              ...aggregate.positions,
+              {
+                ...samplingPosition,
+                id: 'unresolved-extra',
+                match: 'candidate',
+              },
+            ],
+          },
+          typedPack,
+        ).difference,
+      ).toBeNull();
+      expect(JSON.stringify([aggregate, typedPack])).toBe(original);
+    },
+  );
+
+  it('keeps real pending records and undefined indices side by side even with a synthetic definition', () => {
+    expect(
+      compareWorkspaceRecords(
+        { ...numeric, track: 'REAL', reviewStatus: 'pending' },
+        numeric,
+        pack,
+      ).difference,
+    ).toBeNull();
+    const index = {
+      ...numeric,
+      metric: 'source-defined index',
+      unit: 'index',
+      value: '3',
+    };
+    expect(
+      compareWorkspaceRecords(index, { ...index, value: '4' }, pack).difference,
+    ).toBeNull();
+  });
+  it('requires an explicit matching source track instead of trusting a synthetic label on the record', () => {
+    const realPack = {
+      ...pack,
+      sources: pack.sources.map((s) => ({ ...s, track: 'REAL' as const })),
+    };
+    expect(
+      compareWorkspaceRecords(numeric, numeric, realPack).difference,
+    ).toBeNull();
+  });
+
+  it.each(['stale', 'revoked', 'missing'] as const)(
+    'removes calculation when the independent definition source is %s',
+    (state) => {
+      const definitionSource = {
+        ...source,
+        track: 'SYNTHETIC' as const,
+        id: 'synthetic-definition-source',
+        versionId: 'synthetic-definition-v1',
+      };
+      const definition = {
+        ...syntheticDefinition('month'),
+        reference: {
+          ...syntheticDefinition('month').reference,
+          sourceId: definitionSource.id,
+          sourceVersionId: definitionSource.versionId,
+        },
+      };
+      const bound = {
+        ...numeric,
+        measurement: {
+          ...numeric.measurement!,
+          definition: definition.reference,
+        },
+      };
+      const typedPack = {
+        ...pack,
+        sources: [...pack.sources, definitionSource],
+        measurementDefinitions: [definition],
+      };
+      expect(compareWorkspaceRecords(bound, bound, typedPack).difference).toBe(
+        0,
+      );
+      expect(
+        compareWorkspaceRecords(bound, bound, typedPack, [
+          {
+            sourceId: definitionSource.id,
+            versionId: definitionSource.versionId,
+            state,
+          },
+        ]).difference,
+      ).toBeNull();
+      const denied = {
+        ...typedPack,
+        sources: typedPack.sources.map((s) =>
+          s.id === definitionSource.id
+            ? { ...s, rights: { ...s.rights, displayAllowed: false } }
+            : s,
+        ),
+      };
+      expect(
+        compareWorkspaceRecords(bound, bound, denied).difference,
+      ).toBeNull();
+      const changedHash = {
+        ...typedPack,
+        sources: typedPack.sources.map((s) =>
+          s.id === definitionSource.id
+            ? { ...s, originalSha256: 'b'.repeat(64) }
+            : s,
+        ),
+      };
+      expect(
+        compareWorkspaceRecords(bound, bound, changedHash).difference,
+      ).toBeNull();
+    },
+  );
+
+  it('validates and retains additive comparison context while old packs remain readable', () => {
+    expect(parseWorkspacePack(untypedPack).records).toHaveLength(
+      untypedPack.records.length,
+    );
+    const typed = { ...pack, records: [numeric] };
+    const parsed = parseWorkspacePack(typed);
+    expect(parsed.records[0].measurement).toEqual(numeric.measurement);
+    expect(parsed.measurementDefinitions).toEqual(pack.measurementDefinitions);
+    expect(
+      compareWorkspaceRecords(parsed.records[0], parsed.records[0], parsed)
+        .difference,
+    ).toBe(0);
+    expect(JSON.stringify(parsed)).not.toContain('/private/');
+    expect(() =>
+      parseWorkspacePack({
+        ...typed,
+        records: [
+          {
+            ...numeric,
+            measurement: { ...numeric.measurement, track: 'inferred' },
+          },
+        ],
+      }),
+    ).toThrow('measurement-binding');
+    expect(() =>
+      parseWorkspacePack({
+        ...typed,
+        measurementDefinitions: [
+          { ...pack.measurementDefinitions![0], injected: true },
+        ],
+      }),
+    ).toThrow('measurement-definition');
+  });
+
+  it('crops denied definition evidence and references from browser packs and exports', () => {
+    const definitionSource = {
+      ...source,
+      track: 'SYNTHETIC' as const,
+      id: 'synthetic-private-definition',
+      versionId: 'definition-v1',
+      title: 'Synthetic private definition',
+      rights: {
+        ...source.rights,
+        displayAllowed: false,
+        redistributionAllowed: false,
+      },
+    };
+    const definition = {
+      ...syntheticDefinition('month'),
+      reference: {
+        ...syntheticDefinition('month').reference,
+        sourceId: definitionSource.id,
+        sourceVersionId: definitionSource.versionId,
+      },
+    };
+    const bound = {
+      ...numeric,
+      measurement: {
+        ...numeric.measurement!,
+        definition: definition.reference,
+      },
+    };
+    const denied = {
+      ...pack,
+      records: [bound],
+      sources: [...pack.sources, definitionSource],
+      measurementDefinitions: [definition],
+    };
+    const parsed = parseWorkspacePack(denied);
+    expect(parsed.records[0].measurement).toBeUndefined();
+    expect(parsed.measurementDefinitions).toEqual([]);
+    expect(JSON.stringify(parsed)).not.toContain(definitionSource.id);
+    const visible = {
+      ...denied,
+      sources: denied.sources.map((s) =>
+        s.id === definitionSource.id
+          ? { ...s, rights: { ...s.rights, displayAllowed: true } }
+          : s,
+      ),
+    };
+    const exported = exportWorkspaceTopic(visible, 'chaobai-topic');
+    expect(exported?.records).toHaveLength(1);
+    expect(exported?.records[0].measurement).toBeUndefined();
+    expect(exported?.measurementDefinitions).toEqual([]);
+    expect(JSON.stringify(exported)).not.toContain(definitionSource.id);
+  });
+
+  it('exports only the fixed permitted definitions actually referenced by the topic', () => {
+    const typed = { ...pack, records: [numeric] };
+    const exported = exportWorkspaceTopic(typed, 'chaobai-topic');
+    expect(exported?.measurementDefinitions).toEqual([
+      syntheticDefinition('month'),
+    ]);
+    expect(exported?.records[0].measurement).toEqual(numeric.measurement);
+    expect(JSON.stringify(exported)).not.toContain('/private/');
+  });
+
+  it('pins the independent definition source without dropping original records after a definition-rule change', () => {
+    const definitionSource = {
+      ...source,
+      track: 'SYNTHETIC' as const,
+      id: 'synthetic-definition-source',
+      versionId: 'synthetic-definition-v1',
+    };
+    const definition = {
+      ...syntheticDefinition('month'),
+      reference: {
+        ...syntheticDefinition('month').reference,
+        sourceId: definitionSource.id,
+        sourceVersionId: definitionSource.versionId,
+      },
+    };
+    const bound = {
+      ...numeric,
+      measurement: {
+        ...numeric.measurement!,
+        definition: definition.reference,
+      },
+    };
+    const typedPack = {
+      ...pack,
+      records: [bound],
+      sources: [...pack.sources, definitionSource],
+      measurementDefinitions: [definition],
+    };
+    const scene = captureSpatialWorkspaceView(
+      typedPack,
+      createSpatialWorkspaceView(typedPack),
+    );
+    expect(scene.sourcePins).toContainEqual({
+      sourceId: definitionSource.id,
+      versionId: definitionSource.versionId,
+      sha256: definitionSource.originalSha256,
+      processingVersion: definitionSource.processingVersion,
+    });
+    const changed = {
+      ...typedPack,
+      sources: typedPack.sources.map((s) =>
+        s.id === definitionSource.id
+          ? { ...s, processingVersion: 'changed-definition-rule' }
+          : s,
+      ),
+    };
+    const restored = restoreSpatialWorkspaceView(changed, scene)!;
+    expect(restored.notices).toContainEqual({
+      sourceId: definitionSource.id,
+      versionId: definitionSource.versionId,
+      state: 'stale',
+    });
+    expect(
+      filterSpatialWorkspace(changed, restored.view).records.map((r) => r.id),
+    ).toEqual([bound.id]);
+    expect(
+      compareWorkspaceRecords(
+        bound,
+        bound,
+        changed,
+        [],
+        restored.view.sourcePins,
+      ).difference,
+    ).toBeNull();
+    expect(
+      compareWorkspaceRecords(bound, bound, typedPack, [], scene.sourcePins)
+        .difference,
+    ).toBe(0);
   });
 
   it('exports only redistribution-permitted content and never original local paths', () => {

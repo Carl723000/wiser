@@ -13,3 +13,4 @@ export * from './intake-assessment.ts';
 export * from './knowledge-relations.js';
 export * from './business-query.js';
 export * from './project-readiness.js';
+export * from './measurement-comparison.js';

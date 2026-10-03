@@ -1,4 +1,8 @@
 import type { FeatureCollection, Geometry, Position } from 'geojson';
+import {
+  assessMeasurementComparison,
+  measurementDefinitionKey,
+} from '@wiser/data-core/measurement-comparison';
 import type {
   Material,
   RegionId,
@@ -857,6 +861,18 @@ export function captureSpatialWorkspaceView(
   const needed = new Set(
     records.map((record) => sourceKey(record.sourceId, record.versionId)),
   );
+  for (const record of records) {
+    const ref = record.measurement?.definition;
+    const definitionSource =
+      ref && packSource(pack, ref.sourceId, ref.sourceVersionId);
+    if (
+      ref &&
+      definitionSource?.originalSha256 === ref.sourceSha256 &&
+      readableSource(pack, ref.sourceId, ref.sourceVersionId, invalidations) &&
+      withinPins(definitionSource, view.sourcePins)
+    )
+      needed.add(sourceKey(ref.sourceId, ref.sourceVersionId));
+  }
   for (const record of records)
     for (const position of workspaceDisplayPositions(
       pack,
@@ -1121,6 +1137,9 @@ export type WorkspaceComparisonReason =
   | 'unit'
   | 'time'
   | 'method'
+  | 'measurement'
+  | 'grain'
+  | 'denominator'
   | 'categorical'
   | 'numeric'
   | 'permission'
@@ -1130,29 +1149,58 @@ function comparisonSamplingPosition(
   record: WorkspaceRecord,
   pack: WorkspacePack,
   invalidations: readonly WorkspaceInvalidation[],
+  sourcePins: readonly WorkspaceSourcePin[] | null,
 ) {
   // Inspect declarations before display filtering: an unresolved second sample
   // must not disappear and leave an apparently unambiguous primary location.
   const sampling = record.positions.filter((item) => item.role === 'sampling');
   if (record.kind !== 'observation' || sampling.length !== 1) return null;
   const position = sampling[0];
+  const kind =
+    position.geometry?.type === 'Point'
+      ? ('POINT' as const)
+      : ['LineString', 'MultiLineString'].includes(
+            position.geometry?.type ?? '',
+          )
+        ? ('REACH' as const)
+        : ['Polygon', 'MultiPolygon'].includes(position.geometry?.type ?? '')
+          ? ('AREA' as const)
+          : null;
+  const definition =
+    record.measurement &&
+    pack.measurementDefinitions?.find(
+      (item) =>
+        measurementDefinitionKey(item.reference) ===
+        measurementDefinitionKey(record.measurement!.definition),
+    );
   if (
-    !workspaceDisplayPositions(pack, record, invalidations).includes(
-      position,
-    ) ||
-    position.geometry?.type !== 'Point' ||
+    !workspaceDisplayPositions(
+      pack,
+      record,
+      invalidations,
+      sourcePins,
+    ).includes(position) ||
+    !kind ||
+    !position.geometry ||
+    (kind !== 'POINT' &&
+      (record.measurement?.positionId !== position.id ||
+        definition?.spatial.kind !== kind)) ||
     !position.scaleNote?.trim() ||
     /^(unknown|未知)$/i.test(position.scaleNote.trim())
   )
     return null;
-  // The current contract cannot establish line/area aggregation support.
-  // Compare exact fixed point support without snapping or altering originals.
-  return JSON.stringify([
-    position.geometrySourceId,
-    position.geometryVersionId,
-    position.geometry.coordinates,
-    position.scaleNote,
-  ]);
+  // Geometry equality is necessary, not sufficient: the typed rule separately
+  // verifies actual aggregation grain. Never snap or alter original support.
+  return {
+    id: position.id,
+    kind,
+    key: JSON.stringify([
+      position.geometrySourceId,
+      position.geometryVersionId,
+      position.geometry,
+      position.scaleNote,
+    ]),
+  };
 }
 
 function comparisonTimeHasNativePrecision(record: WorkspaceRecord) {
@@ -1170,6 +1218,7 @@ export function compareWorkspaceRecords(
   right: WorkspaceRecord,
   pack: WorkspacePack,
   invalidations: readonly WorkspaceInvalidation[] = [],
+  sourcePins: readonly WorkspaceSourcePin[] | null = null,
 ) {
   const reasons: WorkspaceComparisonReason[] = [];
   if (
@@ -1179,9 +1228,65 @@ export function compareWorkspaceRecords(
     left.objectId !== right.objectId
   )
     reasons.push('object');
-  const leftSampling = comparisonSamplingPosition(left, pack, invalidations),
-    rightSampling = comparisonSamplingPosition(right, pack, invalidations);
-  if (!leftSampling || leftSampling !== rightSampling) reasons.push('position');
+  const leftSampling = comparisonSamplingPosition(
+      left,
+      pack,
+      invalidations,
+      sourcePins,
+    ),
+    rightSampling = comparisonSamplingPosition(
+      right,
+      pack,
+      invalidations,
+      sourcePins,
+    );
+  if (!leftSampling || leftSampling.key !== rightSampling?.key)
+    reasons.push('position');
+  const definitions = (pack.measurementDefinitions ?? []).filter(
+    (definition) => {
+      const ref = definition.reference;
+      return (
+        pack.sources.some(
+          (source) =>
+            source.id === ref.sourceId &&
+            source.versionId === ref.sourceVersionId &&
+            source.track === definition.track &&
+            source.originalSha256 === ref.sourceSha256 &&
+            withinPins(source, sourcePins),
+        ) &&
+        readableSource(pack, ref.sourceId, ref.sourceVersionId, invalidations)
+      );
+    },
+  );
+  const facts = (
+    record: WorkspaceRecord,
+    sampling: ReturnType<typeof comparisonSamplingPosition>,
+  ) => ({
+    binding: record.measurement,
+    track: record.track,
+    sourceTrack: packSource(pack, record.sourceId, record.versionId)?.track,
+    // This local pack has no authoritative real-record approval state. Real
+    // candidates stay side by side; the standard adapter must supply that fact.
+    recordApproved:
+      record.track === 'SYNTHETIC' &&
+      record.reviewStatus === 'synthetic-reviewed',
+    metric: record.metric,
+    unit: record.unit,
+    method: record.method?.code ?? null,
+    time: {
+      ...record.time,
+      precision: record.time.precision.toUpperCase(),
+      role: record.time.role.toUpperCase(),
+    },
+    positionId: sampling?.id ?? null,
+    geometryKind: sampling?.kind ?? null,
+  });
+  for (const reason of assessMeasurementComparison(
+    facts(left, leftSampling),
+    facts(right, rightSampling),
+    definitions,
+  ).reasons)
+    if (!reasons.includes(reason)) reasons.push(reason);
   if (!left.metric.trim() || left.metric !== right.metric)
     reasons.push('metric');
   if (
@@ -1299,6 +1404,19 @@ export function exportWorkspaceTopic(
   const allowed = new Set(
     allowedSources.map((source) => sourceKey(source.id, source.versionId)),
   );
+  const definitions = (pack.measurementDefinitions ?? []).filter((definition) =>
+    allowedSources.some(
+      (source) =>
+        source.id === definition.reference.sourceId &&
+        source.versionId === definition.reference.sourceVersionId &&
+        source.originalSha256 === definition.reference.sourceSha256,
+    ),
+  );
+  const definitionKeys = new Set(
+    definitions.map((definition) =>
+      measurementDefinitionKey(definition.reference),
+    ),
+  );
   const records = pack.records
     .filter(
       (record) =>
@@ -1313,6 +1431,12 @@ export function exportWorkspaceTopic(
     )
     .map((record) => ({
       ...record,
+      ...(record.measurement &&
+      !definitionKeys.has(
+        measurementDefinitionKey(record.measurement.definition),
+      )
+        ? { measurement: undefined }
+        : {}),
       evidence: record.evidence.map((evidence) => ({
         ...evidence,
         url: workspaceEvidenceUrl(evidence.url),
@@ -1347,6 +1471,7 @@ export function exportWorkspaceTopic(
   const sourceIds = new Set(
     records.flatMap((record) => [
       record.sourceId,
+      ...(record.measurement ? [record.measurement.definition.sourceId] : []),
       ...record.positions.flatMap((position) =>
         position.geometrySourceId ? [position.geometrySourceId] : [],
       ),
@@ -1361,6 +1486,7 @@ export function exportWorkspaceTopic(
       provider: source.provider,
       originalSha256: source.originalSha256,
       processingVersion: source.processingVersion,
+      ...(source.track ? { track: source.track } : {}),
       evidenceUrl: workspaceEvidenceUrl(source.evidenceUrl),
       rights: source.rights,
       duplicateOf: source.duplicateOf,
@@ -1375,6 +1501,18 @@ export function exportWorkspaceTopic(
     processingVersion: pack.processingVersion,
     sources,
     records,
+    ...(pack.measurementDefinitions
+      ? {
+          measurementDefinitions: definitions.filter((definition) =>
+            records.some(
+              (record) =>
+                record.measurement &&
+                measurementDefinitionKey(record.measurement.definition) ===
+                  measurementDefinitionKey(definition.reference),
+            ),
+          ),
+        }
+      : {}),
   };
 }
 
