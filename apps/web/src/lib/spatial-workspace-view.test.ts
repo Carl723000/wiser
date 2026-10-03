@@ -746,11 +746,26 @@ describe('pinned scenes and source invalidation', () => {
 });
 
 describe('comparison and permitted topic exports', () => {
+  // Explicitly synthetic point support. The shared record's reference river
+  // geometry cannot serve as positive evidence for a sampling difference.
+  const samplingPosition: WorkspacePosition = {
+    ...position,
+    id: 'synthetic-sampling-position',
+    expression: 'Synthetic sampling point only',
+    role: 'sampling',
+    geometry: { type: 'Point', coordinates: [1, 1] },
+    scaleNote: 'Synthetic point support; not a real station or aggregate',
+    evidence: {
+      locator: 'synthetic sampling row',
+      text: 'Synthetic sampling point, not a real monitoring location',
+    },
+  };
   const numeric: WorkspaceRecord = {
     ...record,
     metric: 'total-nitrogen',
     value: '1.2',
     unit: 'mg/L',
+    positions: [samplingPosition],
     method: {
       code: 'HJ-636',
       evidence: {
@@ -760,6 +775,216 @@ describe('comparison and permitted topic exports', () => {
       },
     },
   };
+
+  it.each<{ name: string; positions: WorkspacePosition[] }>([
+    { name: 'missing sampling position', positions: [] },
+    { name: 'reference river only', positions: [position] },
+    {
+      name: 'same point used as a study area',
+      positions: [{ ...samplingPosition, role: 'study-area' }],
+    },
+    {
+      name: 'moved sampling point',
+      positions: [
+        {
+          ...samplingPosition,
+          geometry: { type: 'Point', coordinates: [2, 2] },
+        },
+      ],
+    },
+    {
+      name: 'shared reference cannot cover a moved sampling point',
+      positions: [
+        position,
+        {
+          ...samplingPosition,
+          geometry: { type: 'Point', coordinates: [2, 2] },
+        },
+      ],
+    },
+    {
+      name: 'shared reference cannot cover candidate sampling',
+      positions: [position, { ...samplingPosition, match: 'candidate' }],
+    },
+    {
+      name: 'an extra ambiguous sampling declaration',
+      positions: [
+        samplingPosition,
+        { ...samplingPosition, id: 'extra', match: 'ambiguous' },
+      ],
+    },
+    {
+      name: 'multiple bound sampling declarations without primary support',
+      positions: [samplingPosition, { ...samplingPosition, id: 'extra' }],
+    },
+    {
+      name: 'same point with changed support description',
+      positions: [{ ...samplingPosition, scaleNote: 'Synthetic area average' }],
+    },
+    {
+      name: 'unknown sampling support',
+      positions: [{ ...samplingPosition, scaleNote: null }],
+    },
+    {
+      name: 'empty sampling support',
+      positions: [{ ...samplingPosition, scaleNote: '  ' }],
+    },
+    {
+      name: 'unknown coordinate system',
+      positions: [{ ...samplingPosition, crs: null }],
+    },
+    {
+      name: 'invalid sampling geometry',
+      positions: [
+        {
+          ...samplingPosition,
+          geometry: { type: 'Point', coordinates: [1, 91] },
+        },
+      ],
+    },
+    {
+      name: 'missing fixed geometry source',
+      positions: [{ ...samplingPosition, geometrySourceId: null }],
+    },
+    {
+      name: 'missing geometry evidence',
+      positions: [{ ...samplingPosition, evidence: { locator: '', text: '' } }],
+    },
+    {
+      name: 'missing geometry locator',
+      positions: [{ ...samplingPosition, locator: null }],
+    },
+    {
+      name: 'a different fixed geometry source despite equal coordinates',
+      positions: [
+        {
+          ...samplingPosition,
+          geometrySourceId: 'report',
+          geometryVersionId: 'report-v1',
+        },
+      ],
+    },
+    {
+      name: 'an unavailable fixed geometry version',
+      positions: [{ ...samplingPosition, geometryVersionId: 'absent-version' }],
+    },
+  ])('withholds a numeric difference for $name', ({ positions }) => {
+    const left = { ...numeric, positions: [position, samplingPosition] };
+    const right = { ...numeric, id: 'synthetic-next', value: '1.5', positions };
+    const originals = JSON.stringify([left, right, pack]);
+    const result = compareWorkspaceRecords(left, right, pack);
+    expect(result.state).toBe('side-by-side');
+    expect(result.reasons).toContain('position');
+    expect(result.difference).toBeNull();
+    expect(JSON.stringify([left, right, pack])).toBe(originals);
+  });
+
+  it.each<Geometry>([
+    {
+      type: 'LineString',
+      coordinates: [
+        [1, 1],
+        [2, 2],
+      ],
+    },
+    {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [0, 0],
+          [3, 0],
+          [3, 3],
+          [0, 3],
+          [0, 0],
+        ],
+      ],
+    },
+    {
+      type: 'MultiPoint',
+      coordinates: [
+        [1, 1],
+        [2, 2],
+      ],
+    },
+  ])(
+    'does not infer aggregation grain from identical %s sampling geometry',
+    (geometry) => {
+      const left = {
+        ...numeric,
+        positions: [{ ...samplingPosition, geometry }],
+      };
+      const right = { ...left, id: 'synthetic-next', value: '1.5' };
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('position');
+      expect(result.difference).toBeNull();
+    },
+  );
+
+  it.each(['stale', 'revoked', 'missing'] as const)(
+    'withholds differences when the geometry source is %s',
+    (state) => {
+      const result = compareWorkspaceRecords(numeric, numeric, pack, [
+        {
+          sourceId: 'geometry',
+          versionId: 'geometry-v1',
+          state,
+        },
+      ]);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('position');
+      expect(result.difference).toBeNull();
+    },
+  );
+
+  it('withholds differences when the geometry source loses display permission', () => {
+    const denied = {
+      ...pack,
+      sources: pack.sources.map((item) =>
+        item.id === 'geometry'
+          ? { ...item, rights: { ...item.rights, displayAllowed: false } }
+          : item,
+      ),
+    };
+    const result = compareWorkspaceRecords(numeric, numeric, denied);
+    expect(result.state).toBe('side-by-side');
+    expect(result.reasons).toContain('position');
+    expect(result.difference).toBeNull();
+  });
+
+  it('retains synthetic point differences when references differ but sampling support is unchanged', () => {
+    const result = compareWorkspaceRecords(
+      { ...numeric, positions: [position, samplingPosition] },
+      {
+        ...numeric,
+        id: 'synthetic-next',
+        value: '1.5',
+        positions: [samplingPosition],
+      },
+      pack,
+    );
+    expect(result.state).toBe('comparable');
+    expect(result.difference).toBeCloseTo(0.3);
+  });
+
+  it.each(['grade', 'GRADE'])(
+    'does not subtract known categorical water-quality %s codes',
+    (unit) => {
+      const left = {
+        ...numeric,
+        metric: 'water-quality grade',
+        unit,
+        value: '3',
+      };
+      const right = { ...left, id: 'synthetic-grade-next', value: '4' };
+      const originals = JSON.stringify([left, right]);
+      const result = compareWorkspaceRecords(left, right, pack);
+      expect(result.state).toBe('side-by-side');
+      expect(result.reasons).toContain('categorical');
+      expect(result.difference).toBeNull();
+      expect(JSON.stringify([left, right])).toBe(originals);
+    },
+  );
   it('computes a difference only when object, metric, unit, native time precision and method evidence agree', () => {
     const next = {
       ...numeric,
