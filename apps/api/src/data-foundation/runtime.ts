@@ -72,7 +72,10 @@ import {
 } from './runtime-config.js';
 import { createSpecialQueryExecutors } from './special-query-executors.js';
 import { PostgresExplorationExecutor } from './exploration-runtime.js';
-import { createExplorationSavedExecutors } from './exploration-saved.js';
+import {
+  createExplorationSavedExecutors,
+  createIngestionCandidateSavedExecutors,
+} from './exploration-saved.js';
 import { createKnowledgeRelationExecutors } from './knowledge-relations-runtime.js';
 import { createAssessmentExecutors } from './assessment-runtime.js';
 import { createReconciliationExecutors } from './reconciliation-runtime.js';
@@ -284,6 +287,7 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       }),
       new PostgresExplorationExecutor(pg),
       ...createExplorationSavedExecutors(pg),
+      ...createIngestionCandidateSavedExecutors(pg),
       ...createReconciliationExecutors(pg),
       ...createAssessmentExecutors(pg),
       ...createKnowledgeRelationExecutors(pg),

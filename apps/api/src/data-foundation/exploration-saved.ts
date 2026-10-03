@@ -1,4 +1,5 @@
 import { applyResourceReadScope } from './resource-read-scope.js';
+export { createIngestionCandidateSavedExecutors } from './ingestion-candidate-saved.js';
 import {
   loadBusinessRelations,
   storedBusinessMembership,

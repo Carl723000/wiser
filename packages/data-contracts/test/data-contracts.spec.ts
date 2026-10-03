@@ -153,7 +153,21 @@ for (const serverOwnedField of [
   delete createDataItemInput[serverOwnedField];
 }
 
+const savedCandidateReference = {
+  kind: 'ingestion-candidate',
+  ingestionId: INGESTION_ID,
+  processingBatchId: OPERATION_ID,
+  reviewHash: 'a'.repeat(64),
+};
 const validCapabilityInputs = {
+  'data.ingestion.candidate.view.create': {
+    title: 'Fixed candidate',
+    references: [savedCandidateReference],
+    viewSpec: { page: { kind: 'assets', reference: savedCandidateReference } },
+  },
+  'data.ingestion.candidate.view.list': { first: 2 },
+  'data.ingestion.candidate.view.open': { viewId: OPERATION_ID },
+  'data.ingestion.candidate.view.revoke': { viewId: OPERATION_ID },
   'data.ingestion.candidate.get': {
     kind: 'ingestion-candidate',
     ingestionId: INGESTION_ID,
@@ -417,6 +431,58 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.ingestion.candidate.view.create': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-views',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'createDataIngestionCandidateView',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_view_create' },
+    skillMapping: { operation: 'data.ingestion.candidate.view.create' },
+  },
+  'data.ingestion.candidate.view.list': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestion-candidate-views',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateViews',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_view_list' },
+    skillMapping: { operation: 'data.ingestion.candidate.view.list' },
+  },
+  'data.ingestion.candidate.view.open': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-views/:viewId/open',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateView',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_view_open' },
+    skillMapping: { operation: 'data.ingestion.candidate.view.open' },
+  },
+  'data.ingestion.candidate.view.revoke': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-views/:viewId/revoke',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'revokeDataIngestionCandidateView',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_view_revoke' },
+    skillMapping: { operation: 'data.ingestion.candidate.view.revoke' },
+  },
   'data.ingestion.candidate.get': {
     restMapping: {
       method: 'GET',
@@ -929,6 +995,10 @@ const expectedCapabilityMappings = {
 } satisfies Record<DataCapabilityId, unknown>;
 
 const expectedCapabilityScopes = {
+  'data.ingestion.candidate.view.create': ['data.operation.read'],
+  'data.ingestion.candidate.view.list': ['data.operation.read'],
+  'data.ingestion.candidate.view.open': ['data.operation.read'],
+  'data.ingestion.candidate.view.revoke': ['data.operation.read'],
   'data.ingestion.candidate.get': ['data.operation.read'],
   'data.ingestion.candidate.records': ['data.operation.read'],
   'data.ingestion.candidate.geometry': ['data.operation.read'],
@@ -1000,6 +1070,22 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.ingestion.candidate.view.create': {
+    input: '2b28d33a1738d2b34edadc81975d5044ad756712e863be6652a1700c8ffd8f96',
+    output: '3bf5251b63772e50b6d73f3741f52132178211e7aacf88d8e324b842578ea346',
+  },
+  'data.ingestion.candidate.view.list': {
+    input: '192d245f4825d8279c86c14b131d26f432e696430491dbd052608220100362bb',
+    output: '0c9361192ba72911bb86bb98b5a6c662e4557abccfd53ba359c27bbd1ca332fc',
+  },
+  'data.ingestion.candidate.view.open': {
+    input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+    output: '5073d84d452e04b194b87b696dc2f8ac64e6fed69a9caf9b31e3de78101dd8ea',
+  },
+  'data.ingestion.candidate.view.revoke': {
+    input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+    output: 'b64d20829012c71b47f3aedbab16def427e4962c0033cefb806309ae0db1f7a0',
+  },
   'data.ingestion.candidate.get': {
     input: '8f0a08c7f8b978ec14e047603797063113ba141f517be3cf3ca883325a0605e7',
     output: 'ae14d5c8166ea71589b849ec47fb4b890159ac8928ca98f1ccf578104ca53954',
@@ -1523,6 +1609,10 @@ describe('Data Foundation capability registry', () => {
       'data.ingestion.candidate.get',
       'data.ingestion.candidate.records',
       'data.ingestion.candidate.geometry',
+      'data.ingestion.candidate.view.create',
+      'data.ingestion.candidate.view.list',
+      'data.ingestion.candidate.view.open',
+      'data.ingestion.candidate.view.revoke',
       'data.ingestion.approve',
       'data.ingestion.reject',
       'data.operation.cancel',
@@ -1766,10 +1856,13 @@ describe('Data Foundation capability registry', () => {
 
   it('rejects missing required input fields wherever the operation requires them', () => {
     let checkedCapabilities = 0;
+    const defaultableCapabilities: DataCapabilityId[] = [];
 
     for (const capabilityId of DATA_CAPABILITY_IDS) {
       const definition = DATA_CAPABILITY_REGISTRY[capabilityId];
       const input = validCapabilityInputs[capabilityId];
+      if (definition.inputSchema.safeParse({}).success)
+        defaultableCapabilities.push(capabilityId);
       for (const field of Object.keys(input)) {
         const incompleteInput: Record<string, unknown> = { ...input };
         delete incompleteInput[field];
@@ -1780,7 +1873,14 @@ describe('Data Foundation capability registry', () => {
       }
     }
 
-    expect(checkedCapabilities).toBe(DATA_CAPABILITY_IDS.length - 2);
+    expect(defaultableCapabilities).toEqual([
+      'data.catalog.search',
+      'data.ingestion.candidate.view.list',
+      'data.explore.view.list',
+    ]);
+    expect(checkedCapabilities).toBe(
+      DATA_CAPABILITY_IDS.length - defaultableCapabilities.length,
+    );
   });
 
   it('rejects raw database and projection-store languages', () => {

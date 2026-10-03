@@ -48,6 +48,10 @@ const EXPECTED_DATA_TOOLS = [
   'data_ingestion_candidate_get',
   'data_ingestion_candidate_records',
   'data_ingestion_candidate_geometry',
+  'data_ingestion_candidate_view_create',
+  'data_ingestion_candidate_view_list',
+  'data_ingestion_candidate_view_open',
+  'data_ingestion_candidate_view_revoke',
   'data_ingestion_approve',
   'data_ingestion_reject',
   'data_operation_cancel',
@@ -435,3 +439,49 @@ describe('Data Foundation MCP module', () => {
     });
   });
 });
+
+it.each(['create', 'list', 'open', 'revoke'] as const)(
+  'preserves fixed candidate view %s HTTP semantics and destructive annotation',
+  async (name) => {
+    const http = new RecordingDataHttpClient();
+    const client = await connect(http);
+    const tool = (await client.listTools()).tools.find(
+      (t) => t.name === `data_ingestion_candidate_view_${name}`,
+    );
+    expect(tool?.annotations?.readOnlyHint).toBe(
+      name === 'list' || name === 'open',
+    );
+    expect(tool?.annotations?.destructiveHint).toBe(name === 'revoke');
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'a'.repeat(64),
+    };
+    const args =
+      name === 'create'
+        ? {
+            title: 'Fixed pending source',
+            references: [reference],
+            viewSpec: { page: { kind: 'assets', reference } },
+            idempotencyKey: IDEMPOTENCY_KEY,
+          }
+        : name === 'list'
+          ? { first: 2 }
+          : {
+              viewId: VERSION_ID,
+              ...(name === 'revoke' ? { idempotencyKey: IDEMPOTENCY_KEY } : {}),
+            };
+    http.next = { fixed: true };
+    const result = await client.callTool({
+      name: `data_ingestion_candidate_view_${name}`,
+      arguments: args,
+    });
+    expect(result.isError).not.toBe(true);
+    expect(http.requests[0]).toMatchObject({
+      method: name === 'list' ? 'GET' : 'POST',
+      path: `/ingestion-candidate-views${name === 'open' || name === 'revoke' ? `/${VERSION_ID}/${name}` : ''}`,
+    });
+    expect(JSON.stringify(http.requests)).not.toContain('versionId');
+  },
+);

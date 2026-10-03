@@ -68,7 +68,21 @@ const point = {
   crs: 'EPSG:4490',
 };
 
+const savedCandidateReference = {
+  kind: 'ingestion-candidate',
+  ingestionId: INGESTION_ID,
+  processingBatchId: OPERATION_ID,
+  reviewHash: 'a'.repeat(64),
+};
 const validInputs = {
+  'data.ingestion.candidate.view.create': {
+    title: 'Frozen pending materials',
+    references: [savedCandidateReference],
+    viewSpec: { page: { kind: 'assets', reference: savedCandidateReference } },
+  },
+  'data.ingestion.candidate.view.list': { first: 2 },
+  'data.ingestion.candidate.view.open': { viewId: OPERATION_ID },
+  'data.ingestion.candidate.view.revoke': { viewId: OPERATION_ID },
   'data.ingestion.candidate.get': {
     kind: 'ingestion-candidate',
     ingestionId: INGESTION_ID,

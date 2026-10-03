@@ -844,6 +844,16 @@ function requestHash(
         actorId: context.principal.actorId,
         tenantId: context.authorization.tenantId,
         projectId: context.authorization.projectId,
+        ...([
+          'data.ingestion.candidate.view.create',
+          'data.ingestion.candidate.view.revoke',
+        ].includes(capabilityId)
+          ? {
+              actorType: context.principal.actorType,
+              delegatedBy: context.principal.delegatedBy ?? null,
+              purpose: context.authorization.purpose,
+            }
+          : {}),
         ...(context.authorization.resourceAccess
           ? {
               resourceFingerprint:

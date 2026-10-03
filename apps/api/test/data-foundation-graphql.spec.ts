@@ -564,3 +564,93 @@ it.each([
     );
   },
 );
+
+it.each([
+  ['dataIngestionCandidateViews', 'list', 'query'],
+  ['dataIngestionCandidateView', 'open', 'query'],
+  ['createDataIngestionCandidateView', 'create', 'mutation'],
+  ['revokeDataIngestionCandidateView', 'revoke', 'mutation'],
+] as const)(
+  'routes fixed candidate view %s through the common authenticated handler',
+  async (field, name, kind) => {
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({ marker: name }),
+    );
+    const { app } = appWith({ handler: { execute } });
+    const input =
+      name === 'list'
+        ? { first: 2 }
+        : name === 'create'
+          ? {
+              title: 'fixed',
+              references: [
+                {
+                  kind: 'ingestion-candidate',
+                  ingestionId: INGESTION_ID,
+                  processingBatchId: OPERATION_ID,
+                  reviewHash: 'a'.repeat(64),
+                },
+              ],
+              viewSpec: {
+                page: {
+                  kind: 'assets',
+                  reference: {
+                    kind: 'ingestion-candidate',
+                    ingestionId: INGESTION_ID,
+                    processingBatchId: OPERATION_ID,
+                    reviewHash: 'a'.repeat(64),
+                  },
+                },
+              },
+            }
+          : { viewId: OPERATION_ID };
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(kind === 'mutation'),
+      payload: {
+        query: `${kind} View($input:JSON!){${field}(input:$input)}`,
+        variables: { input },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(responseErrors(response)).toBeUndefined();
+    expect(response.json()).toMatchObject({
+      data: { [field]: { marker: name } },
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityId: `data.ingestion.candidate.view.${name}`,
+        input,
+        requestContext,
+        ...(kind === 'mutation' ? { idempotencyKey: IDEMPOTENCY_KEY } : {}),
+      }),
+    );
+  },
+);
+it.each(['dataIngestionCandidateViews', 'dataIngestionCandidateView'])(
+  'rechecks current fixed candidates for each %s alias',
+  async (field) => {
+    let count = 0;
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({ current: ++count }),
+    );
+    const { app } = appWith({ handler: { execute } });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(),
+      payload: {
+        query: `query View($input:JSON!){a:${field}(input:$input) b:${field}(input:$input)}`,
+        variables: {
+          input: field.endsWith('Views') ? {} : { viewId: OPERATION_ID },
+        },
+      },
+    });
+    expect(responseErrors(response)).toBeUndefined();
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(response.json()).toMatchObject({
+      data: { a: { current: 1 }, b: { current: 2 } },
+    });
+  },
+);

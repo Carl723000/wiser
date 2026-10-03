@@ -504,6 +504,51 @@ function cursorScope(
   };
 }
 
+function candidateCursorScope(
+  id: DataCapabilityId,
+  context: DataCapabilityExecutionContext,
+  input: Record<string, unknown>,
+): CursorScope {
+  return {
+    ...cursorScope(id, context, input),
+    queryHash: queryHash({
+      ...input,
+      candidateActor: context.principal.actorId,
+      candidateActorType: context.principal.actorType,
+      candidateDelegator: context.principal.delegatedBy ?? null,
+      candidatePurpose: context.authorization.purpose,
+    }),
+  };
+}
+
+/** Rebind only a server-verified fixed candidate anchor; never persist an authority cursor. */
+export function encodeCandidateContinuation(
+  id:
+    | 'data.ingestion.candidate.get'
+    | 'data.ingestion.candidate.records'
+    | 'data.ingestion.candidate.geometry',
+  context: DataCapabilityExecutionContext,
+  input: Record<string, unknown>,
+  position: readonly (number | string)[],
+): string {
+  return encodeCursor(candidateCursorScope(id, context, input), position);
+}
+
+export function candidateSavedListCursor(
+  context: DataCapabilityExecutionContext,
+  input: Record<string, unknown>,
+  position?: readonly string[],
+): readonly (number | string)[] | string | undefined {
+  const scope = candidateCursorScope(
+    'data.ingestion.candidate.view.list',
+    context,
+    input,
+  );
+  return position
+    ? encodeCursor(scope, position)
+    : decodeCursor(input.after, scope);
+}
+
 function encodeCursor(
   scope: CursorScope,
   position: readonly (number | string)[],
@@ -1143,20 +1188,6 @@ export interface PostgresDataReadRuntime {
 function candidateReadExecutors(
   transactions: ReadTransactions,
 ): readonly DataCapabilityExecutor[] {
-  const candidateScope = (
-    id: DataCapabilityId,
-    context: DataCapabilityExecutionContext,
-    input: Record<string, unknown>,
-  ): CursorScope => ({
-    ...cursorScope(id, context, input),
-    queryHash: queryHash({
-      ...input,
-      candidateActor: context.principal.actorId,
-      candidateActorType: context.principal.actorType,
-      candidateDelegator: context.principal.delegatedBy ?? null,
-      candidatePurpose: context.authorization.purpose,
-    }),
-  });
   const requireAuthority = async (
     client: PostgresDataReadClient,
     context: DataCapabilityExecutionContext,
@@ -1227,7 +1258,7 @@ function candidateReadExecutors(
           reviewHash: input.reviewHash,
           processingBatchId: input.processingBatchId,
         });
-        const scope = candidateScope(id, context, input);
+        const scope = candidateCursorScope(id, context, input);
         const cursor = decodeCursor(input.after, scope);
         if (
           cursor &&

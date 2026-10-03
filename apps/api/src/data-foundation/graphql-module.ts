@@ -160,6 +160,8 @@ type Query {
     after: String
   ): DataItemVersionConnection!
   dataItemVersion(id: ID!, version: ID!): DataItemVersion
+  dataIngestionCandidateViews(input: JSON!): JSON!
+  dataIngestionCandidateView(input: JSON!): JSON!
   dataIngestionCandidate(input: JSON!): JSON!
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
@@ -174,6 +176,8 @@ type Mutation {
   createDataAssessment(input: JSON!): JSON!
   createDataReconciliation(input: JSON!): JSON!
   reviewDataReconciliation(input: JSON!): JSON!
+  createDataIngestionCandidateView(input: JSON!): JSON!
+  revokeDataIngestionCandidateView(input: JSON!): JSON!
   createDataExploreView(input: JSON!): JSON!
   revokeDataExploreView(input: JSON!): JSON!
   createDataAnalysis(input: JSON!): JSON!
@@ -224,6 +228,10 @@ export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   dataItemVersion: 'data.catalog.versions.get',
   dataIngestion: 'data.ingestion.get',
   dataIngestionDetail: 'data.ingestion.get',
+  dataIngestionCandidateViews: 'data.ingestion.candidate.view.list',
+  dataIngestionCandidateView: 'data.ingestion.candidate.view.open',
+  createDataIngestionCandidateView: 'data.ingestion.candidate.view.create',
+  revokeDataIngestionCandidateView: 'data.ingestion.candidate.view.revoke',
   dataIngestionCandidate: 'data.ingestion.candidate.get',
   dataIngestionCandidateRecords: 'data.ingestion.candidate.records',
   dataIngestionCandidateGeometry: 'data.ingestion.candidate.geometry',
@@ -340,6 +348,17 @@ class CapabilityLoader {
           });
         });
     }
+    if (
+      capabilityId === 'data.ingestion.candidate.view.list' ||
+      capabilityId === 'data.ingestion.candidate.view.open'
+    ) {
+      return this.#handler.execute({
+        capabilityId,
+        input,
+        requestContext: this.#requestContext,
+        signal: this.#signal,
+      });
+    }
     const key = `${capabilityId}:${JSON.stringify(input)}`;
     const cached = this.#cache.get(key);
     if (cached !== undefined) return cached;
@@ -362,6 +381,8 @@ function complexityRule(maximum: number): ValidationRule {
         const weight = [
           'externalSourceMetadata',
           'dataQuery',
+          'dataIngestionCandidateViews',
+          'dataIngestionCandidateView',
           'dataExploreViews',
           'dataExploreView',
           'exportDataExplore',
@@ -741,6 +762,18 @@ const resolvers = {
       args: { id: string },
       context: GraphqlContext,
     ) => executeQuery(context, 'data.ingestion.get', { ingestionId: args.id }),
+    dataIngestionCandidateViews: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(context, 'data.ingestion.candidate.view.list', args.input),
+    dataIngestionCandidateView: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(context, 'data.ingestion.candidate.view.open', args.input),
     dataIngestionCandidate: (
       _: unknown,
       args: { input: unknown },
@@ -798,6 +831,26 @@ const resolvers = {
       context: GraphqlContext,
     ) => executeCommand(context, 'data.reconciliation.review', args.input),
 
+    createDataIngestionCandidateView: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.view.create',
+        args.input,
+      ),
+    revokeDataIngestionCandidateView: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.view.revoke',
+        args.input,
+      ),
     createDataExploreView: (
       _: unknown,
       args: { input: unknown },

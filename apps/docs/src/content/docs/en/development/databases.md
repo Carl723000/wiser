@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
+lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -249,3 +249,9 @@ Apply additive `0039_candidate_fingerprinted_original.sql` after 0038. The froze
 Apply additive `0040_managed_intake_access.sql` after 0039, then reprovision runtime roles. Its invoker responsibility function permits current API maintenance of owned QUARANTINED assets only during upload completion or ingestion creation. Session/input SELECT requires immutable owner/delegator maintenance or independent human review. The existing published-version action-grant fast path and legacy Worker visibility remain; FINGERPRINTED originals/content blobs, approval and publication are outside this migration. Rollback-only `managed-intake-access.spec.ts` checks owned/foreign/unknown/delegated subjects, maintenance withdrawal, purpose/expiry/project changes and no published version grant. Run it with `WISER_DATA_PG_INTEGRATION=1` on a disposable fully migrated database; a skip is not an SQL/RLS result. Do not reset existing preview data or rewrite previous checksums.
 
 `0041_candidate_original_reads.sql` adds an invoker-only fixed-reference original guard after the managed-intake migration 0040. It retains the existing restrictive `catalog.asset.resource_read_scope` expression verbatim and adds only API-authorized, versionless FINGERPRINTED candidate originals. It does not broaden published grants, change stored rows or approve materials. The existing blob policy follows the RLS-visible asset. The adapter requires matching candidate/input/asset/blob hashes and sizes, CLEAN input and a canonical quarantine key, writes a scoped authorization audit, and uses internal signing only. Reprovision runtime roles after the ordered migrations. HTTP/adapter unit checks are not SQL/RLS acceptance; run the rollback-only migration fixtures against an isolated migrated database and keep skipped checks explicitly unverified.
+
+## Fixed candidate saved-view storage
+
+Apply additive `0042_ingestion_candidate_saved_views.sql` after 0037–0041 with the existing checked-sum Data runner, then reprovision runtime roles. The new `service.ingestion_candidate_saved_view` contains immutable scoped creator/delegator/purpose and exact candidate references plus strict display state, not a second source/Auth database. Invoker helpers read existing candidate RLS without a saved-table recursion; API-only live authority and every member intersect tenant/project/security/policy. Private ownership or explicit project sharing never grants material access. Configuration is immutable; only the current responsible owner may set revoked_at once.
+
+Runtime provisioning must retain SELECT/INSERT plus column-only UPDATE(revoked_at), denying broad UPDATE/DELETE and Worker writes. `packages/data-infra/test/migrations/ingestion-candidate-saved.spec.ts` runs in the existing isolated PostgreSQL CI step with `WISER_DATA_PG_INTEGRATION=1`: cumulative legal FINGERPRINTED/CLEAN/versionless originals, all references, owner/delegator versus independent reviewer, stale checkpoint, scope/expiry/purpose withdrawal, immutable state, revoke and provisioning regression. Fixtures roll back. An ordinary-unit skip is unverified SQL, not a pass. Do not reset preview data or alter applied checksums. Disable the new capabilities or restore a compatible build to recover, preserving candidate/saved history; actual Auth/Worker/browser recovery and export gates remain separate.

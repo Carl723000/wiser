@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
+lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
 ---
 
 ## HTTP adapter only
@@ -305,7 +305,7 @@ Requests without this mode retain the 100-item limit and existing behavior. The 
 
 ## Frozen candidate contracts
 
-Candidate contract types are separate from published-version inputs. They currently add no operation, field or Tool to this protocol. Their strict identities, parser outcomes and bounded record pages are documented in [Data Foundation architecture](/en/architecture/data-foundation/#frozen-candidate-contracts); live candidate authorization and transport integration are separate acceptance work.
+Candidate contract types are separate from published-version inputs. The tools below retain this separate identity. Their strict identities, parser outcomes and bounded record pages are documented in [Data Foundation architecture](/en/architecture/data-foundation/#frozen-candidate-contracts); live candidate authorization and transport integration are separate acceptance work.
 
 ### Pending ingestion candidates (1.0)
 
@@ -320,3 +320,9 @@ The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
 
 These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
+
+## Fixed candidate saved-view tools (1.0)
+
+Registry mappings expose `data_ingestion_candidate_view_create/list/open/revoke` over the same authorized HTTP contract. Create/revoke are idempotent commands, and revoke has destructiveHint true; list/open are read-only tools. The trusted connection supplies identity, tenant/project and purpose, never tool arguments. Fixed references, strict view state, all-member permission, delegation, expiry, pagination and 128 KiB envelope follow REST.
+
+Open returns a fresh input for `data_ingestion_candidate_get/records/geometry`; invoke only the mapped HTTP-backed tool to read that exact page. Do not store an opaque authority cursor, fetch storage directly, convert an ingestion ID to versionId or interpret a saved view as material approval. Unknown legacy responsibility and any unreadable member fail closed. Published saved tools and earlier transport mappings retain their behavior. A synthetic gateway check is not live persistent/browser recovery or controlled export evidence.

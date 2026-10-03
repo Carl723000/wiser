@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
+lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
 ---
 
 ## 只做 HTTP 适配
@@ -305,7 +305,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 
 ## 候选固定输入契约
 
-候选契约与已发布版本输入分别定义，当前未在本协议新增操作、字段或Tool。严格身份、解析状态及有界记录页见[数据基座架构](/zh-CN/architecture/data-foundation/#候选固定输入契约)；候选当前权限核对与接口接线仍需另行验收。
+候选契约与已发布版本输入分别定义，下列工具保留独立身份。严格身份、解析状态及有界记录页见[数据基座架构](/zh-CN/architecture/data-foundation/#候选固定输入契约)；候选当前权限核对与接口接线仍需另行验收。
 
 ### 待审接收候选（1.0）
 
@@ -320,3 +320,9 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 `data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约继续归档，REST、GraphQL、MCP和Skill采用同一注册契约。只使用返回的引用衔接现有三项候选读取。
 
 本切片未放行受管Operation状态／事件、恢复／取消、批准／拒绝及其他维护能力。候选发现不授予专业批准或发布权；真实Auth、SQL／RLS和浏览器链须单独完成验收，不能由合成测试替代。
+
+## 候选固定视图工具（1.0）
+
+注册映射通过同一受权HTTP契约提供`data_ingestion_candidate_view_create/list/open/revoke`。创建／撤回为幂等命令，撤回标记destructiveHint true；列表／打开为只读工具。身份、租户／项目及用途来自可信连接，不进入工具参数。固定引用、严格显示状态、全部成员权限、委托、期限、分页及128 KiB结果上限均沿用REST。
+
+打开返回`data_ingestion_candidate_get/records/geometry`的新输入，只调用对应HTTP工具读取同一页。不持久保存权限游标、不直接访问存储、不把接收编号当作versionId，也不将保存当作专业批准。旧记录责任不明或任一成员不可读时拒绝。已发布保存工具与早期传输映射保持原行为；合成Gateway检查不等于真实持久／页面恢复或受控导出验收。

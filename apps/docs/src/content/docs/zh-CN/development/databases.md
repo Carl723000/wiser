@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: 32e6cc882bfeb34712806ad63bcefbcceba760d5
+lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -249,3 +249,9 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 0039后追加`0040_managed_intake_access.sql`并重新配置运行角色。invoker责任函数只在完成上传或创建入库时，允许当前API维护者读取自有QUARANTINED资产；会话／输入SELECT要求不可变提交者／委托人维护权或独立人工审核权。已发布版本的动作授权快路径与旧Worker可见性保持，FINGERPRINTED原件／内容对象、批准和发布不在此迁移范围。回滚型`managed-intake-access.spec.ts`检查自有／他人／未知／委托责任、维护撤回、用途／期限／项目变化及不新增已发布版本授权。须以`WISER_DATA_PG_INTEGRATION=1`在完整迁移的一次性数据库运行，跳过不是SQL／RLS结果；不得重置既有预览数据或重写已应用校验和。
 
 `0041_candidate_original_reads.sql` 在受管接收迁移 0040 之后增加 invoker 固定原件守卫，原样保留既有 `catalog.asset.resource_read_scope` 限制，只追加当前 API 受权、未发布 FINGERPRINTED 候选原件的读取。它不扩大已发布授权、不改业务行、不批准资料；既有内容对象策略跟随 RLS 可见资产。适配器核对候选／输入／资产／内容对象哈希与字节数、CLEAN 扫描及标准隔离路径，追加范围内授权审计并只使用内部签名。顺序迁移后重新配置运行角色。HTTP／适配器单元检查不等于 SQL／RLS 验收；回滚用例须在隔离且已迁移的数据库运行，跳过项继续标为未验证。
+
+## 候选固定保存存储
+
+沿用Data校验和迁移器，在0037–0041后追加`0042_ingestion_candidate_saved_views.sql`并重新配置运行角色。新`service.ingestion_candidate_saved_view`保存不可变的范围、创建／委托／用途事实、固定候选引用及严格显示状态，不形成第二套来源或账号数据库。invoker辅助函数读取已有候选RLS，不递归查保存表；API角色的当前权限与全部成员共同核租户／项目、密级及策略。私有归属或明确项目分享不授予资料权限。配置不可变，仅当前责任所有人可一次设置revoked_at。
+
+角色重新配置须保留SELECT／INSERT及仅`UPDATE(revoked_at)`的列权限，禁止宽UPDATE／DELETE与Worker写入。`packages/data-infra/test/migrations/ingestion-candidate-saved.spec.ts`接入既有隔离PostgreSQL CI步骤，以`WISER_DATA_PG_INTEGRATION=1`检查累积迁移下合法FINGERPRINTED／CLEAN／无版本原件、全部引用、所有人／委托与独立审核者、失效检查点、范围／期限／用途撤回、不可变配置、撤回和角色配置回归；用例全部回滚。普通单元阶段跳过代表SQL未验证，不算通过。不重置预览数据、不改既有迁移校验和。恢复可关闭新能力或回退兼容构建，候选与保存历史保留；真实Auth、Worker、浏览器恢复及导出仍独立验收。

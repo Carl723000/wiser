@@ -344,7 +344,12 @@ function registerTools(
         inputSchema: toolInputSchema(id),
         outputSchema: ToolOutputSchema,
         annotations:
-          definition.kind === 'query' ? readAnnotations : commandAnnotations,
+          definition.kind === 'query'
+            ? readAnnotations
+            : {
+                ...commandAnnotations,
+                destructiveHint: id === 'data.ingestion.candidate.view.revoke',
+              },
       },
       async (input) => {
         try {
