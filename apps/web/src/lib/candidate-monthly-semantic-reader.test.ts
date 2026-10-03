@@ -186,6 +186,18 @@ function savedOpen() {
   };
 }
 
+function requestPath(input: Parameters<typeof globalThis.fetch>[0]): string {
+  return typeof input === 'string'
+    ? input
+    : input instanceof URL
+      ? input.href
+      : input.url;
+}
+function requestBody(init?: RequestInit): Record<string, unknown> {
+  if (typeof init?.body !== 'string') throw new Error('Expected JSON body');
+  return JSON.parse(init.body) as Record<string, unknown>;
+}
+
 function transport(
   data = fixture(),
   overrides: {
@@ -198,17 +210,21 @@ function transport(
 ) {
   const fetch = vi
     .fn<typeof globalThis.fetch>()
-    .mockImplementation(async (url, init) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      const path = String(url);
+    .mockImplementation((url, init) => {
+      const body = requestBody(init);
+      const path = requestPath(url);
       const override = overrides.onCall?.(path, body);
-      if (override) return override;
+      if (override) return Promise.resolve(override);
       if (path.endsWith('/candidate-saved-views/open'))
-        return Response.json(overrides.saved ?? savedOpen());
+        return Promise.resolve(Response.json(overrides.saved ?? savedOpen()));
       if (path.endsWith('/candidates/get'))
-        return Response.json(data.assetPages[body.after ? 1 : 0]);
+        return Promise.resolve(
+          Response.json(data.assetPages[body.after ? 1 : 0]),
+        );
       if (path.endsWith('/candidates/records'))
-        return Response.json(data.recordPages[body.after ? 1 : 0]);
+        return Promise.resolve(
+          Response.json(data.recordPages[body.after ? 1 : 0]),
+        );
       throw new Error(`Unexpected route ${path}`);
     });
   return fetch;
@@ -246,11 +262,11 @@ describe('current-authority candidate monthly semantic read', () => {
     expect(JSON.stringify(result)).not.toMatch(
       /versionId|objectId|dataItemId|geometry/,
     );
-    const calls = fetch.mock.calls.map(([url, init]) => [
-      String(url),
-      JSON.parse(String(init?.body)),
-    ]);
-    expect(calls.map(([url]) => String(url).split('/').at(-1))).toEqual([
+    const calls = fetch.mock.calls.map(([url, init]) => ({
+      path: requestPath(url),
+      body: requestBody(init),
+    }));
+    expect(calls.map(({ path }) => path.split('/').at(-1))).toEqual([
       'get',
       'get',
       'records',
@@ -259,9 +275,7 @@ describe('current-authority candidate monthly semantic read', () => {
     ]);
     expect(
       calls.every(
-        ([, body]) =>
-          !('tenantId' in (body as object)) &&
-          !('projectId' in (body as object)),
+        ({ body }) => !('tenantId' in body) && !('projectId' in body),
       ),
     ).toBe(true);
   });
@@ -277,7 +291,7 @@ describe('current-authority candidate monthly semantic read', () => {
     expect(result.kind).toBe('READY');
     expect(
       fetch.mock.calls.filter(([url]) =>
-        String(url).endsWith('/candidate-saved-views/open'),
+        requestPath(url).endsWith('/candidate-saved-views/open'),
       ),
     ).toHaveLength(2);
     const wrong = transport(fixture(), {
@@ -297,7 +311,9 @@ describe('current-authority candidate monthly semantic read', () => {
       readCandidateMonthlySemantics(fixed, new AbortController().signal, wrong),
     ).rejects.toMatchObject({ kind: 'invalid' });
     expect(
-      wrong.mock.calls.some(([url]) => String(url).endsWith('/candidates/get')),
+      wrong.mock.calls.some(([url]) =>
+        requestPath(url).endsWith('/candidates/get'),
+      ),
     ).toBe(false);
   });
 
@@ -342,6 +358,31 @@ describe('current-authority candidate monthly semantic read', () => {
     ).toMatchObject({
       kind: 'NOT_PARSED',
       reason: 'CONVERSION_PROVENANCE_UNAVAILABLE',
+      records: [],
+    });
+    expect(
+      await readCandidateMonthlySemantics(
+        { ...input, fixed: { ...input.fixed, originalSha256: null } },
+        new AbortController().signal,
+        transport(),
+      ),
+    ).toMatchObject({
+      kind: 'NOT_PARSED',
+      reason: 'MISSING_ORIGINAL_HASH',
+      records: [],
+    });
+    expect(
+      await readCandidateMonthlySemantics(
+        {
+          ...input,
+          fixed: { ...input.fixed, preparedSha256: 'e'.repeat(64) },
+        },
+        new AbortController().signal,
+        transport(),
+      ),
+    ).toMatchObject({
+      kind: 'NOT_PARSED',
+      reason: 'SOURCE_CHANGED',
       records: [],
     });
   });
@@ -399,21 +440,69 @@ describe('current-authority candidate monthly semantic read', () => {
         transport(changed),
       ),
     ).rejects.toMatchObject({ kind: 'invalid' });
-  });
-
-  it('rejects a cursor cycle and bounded page exhaustion', async () => {
-    const cycle = fixture();
-    cycle.assetPages[1] = {
-      ...cycle.assetPages[1],
-      nextCursor: 'asset-after-1',
+    const unknown = fixture();
+    unknown.recordPages[1] = {
+      ...unknown.recordPages[1],
+      records: unknown.recordPages[1].records.map((record) =>
+        record.index === 9
+          ? { ...record, values: { ...record.values, c1: 'changed layout' } }
+          : record,
+      ),
     };
     await expect(
       readCandidateMonthlySemantics(
         input,
         new AbortController().signal,
-        transport(cycle),
+        transport(unknown),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'NOT_PARSED',
+      reason: 'UNKNOWN_LAYOUT',
+      records: [],
+    });
+  });
+
+  it('rejects a cursor cycle and bounded page exhaustion', async () => {
+    const cycle = fixture();
+    const thirdAssetId = '10000000-0000-4000-8000-000000000006';
+    const cycleFetch = transport(cycle, {
+      onCall: (url, body) => {
+        if (!url.endsWith('/candidates/get')) return undefined;
+        const next =
+          body.after === 'asset-after-2'
+            ? {
+                ...cycle.assetPages[1],
+                totalAssetCount: 3,
+                assets: [
+                  { ...cycle.assetPages[1].assets[0], assetId: thirdAssetId },
+                ],
+                nextCursor: 'asset-after-1',
+              }
+            : body.after === 'asset-after-1'
+              ? {
+                  ...cycle.assetPages[1],
+                  totalAssetCount: 3,
+                  nextCursor: 'asset-after-2',
+                }
+              : {
+                  ...cycle.assetPages[0],
+                  totalAssetCount: 3,
+                };
+        return Response.json(next);
+      },
+    });
+    await expect(
+      readCandidateMonthlySemantics(
+        input,
+        new AbortController().signal,
+        cycleFetch,
       ),
     ).rejects.toMatchObject({ kind: 'invalid' });
+    expect(
+      cycleFetch.mock.calls.filter(([url]) =>
+        requestPath(url).endsWith('/candidates/get'),
+      ),
+    ).toHaveLength(3);
     let sequence = 0;
     const unbounded = transport(fixture(), {
       onCall: (url) => {
@@ -469,6 +558,41 @@ describe('current-authority candidate monthly semantic read', () => {
         input,
         new AbortController().signal,
         expired,
+      ),
+    ).rejects.toMatchObject({ kind: 'stale' });
+    let currentGets = 0;
+    const changedAtRecheck = transport(fixture(), {
+      onCall: (url) => {
+        if (!url.endsWith('/candidates/get')) return undefined;
+        currentGets++;
+        return currentGets === 3
+          ? Response.json({
+              ...fixture().assetPages[0],
+              parserVersion: 'new-fixed-parser-run',
+            })
+          : undefined;
+      },
+    });
+    await expect(
+      readCandidateMonthlySemantics(
+        input,
+        new AbortController().signal,
+        changedAtRecheck,
+      ),
+    ).rejects.toMatchObject({ kind: 'stale' });
+    let opens = 0;
+    const revokedSaved = transport(fixture(), {
+      onCall: (url) => {
+        if (!url.endsWith('/candidate-saved-views/open')) return undefined;
+        opens++;
+        return opens === 2 ? new Response('', { status: 410 }) : undefined;
+      },
+    });
+    await expect(
+      readCandidateMonthlySemantics(
+        { ...input, savedViewId },
+        new AbortController().signal,
+        revokedSaved,
       ),
     ).rejects.toMatchObject({ kind: 'stale' });
     const abort = new AbortController();

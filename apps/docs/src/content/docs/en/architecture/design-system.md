@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: a507a91148ce8a75a2e4ca7032e523a3dd2628ff
+lastReviewedCommit: 9adf25d4bcdf1fe1b937c9dc0ba99a469e33d67a
 ---
 
 ## Design direction
@@ -139,3 +139,5 @@ Intake detail presents pending-review candidate materials through named Original
 The existing map accepts a private display collection without published-version identities. Candidate selection highlights only a member record in the current geometry page; collection parts retain the same record, and clearing restores ordinary drawing. This is reading focus, not positional verification. Full-workspace expansion keeps the reader mounted, confines keyboard focus and restores focus/scroll on exit. Saved-view controls create, list, reopen and revoke through the service, with no browser content archive. These implementation and synthetic behavior checks require separate real browser/theme/390px acceptance.
 
 Original links from a reopened saved view retain its canonical `savedViewId` on both asset cards and selected records, alongside the fixed candidate and asset, so the server can check the full manifest. Direct candidate reading keeps its single-original link without a saved-view identity.
+
+Candidate tabs have stable labelled panels. The inactive map stays mounted but hidden, and its controls stay outside keyboard navigation. Returning to the same fixed candidate, asset, CRS and native drawing preserves the current map instance and reading camera even when a newly authorized response has a new cursor. Changed candidate identity, asset or drawing and denied access remove the previous drawing. Only this bounded in-memory display source is retained; fresh server reads and full saved-manifest checks remain mandatory. This tab recovery does not apply a persisted saved camera or period, and actual browser layout/camera acceptance is separate.

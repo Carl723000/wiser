@@ -80,6 +80,7 @@ const native = {
 const copy = getDictionary('en').dataFoundation.candidateReader;
 const fetch = vi.fn<typeof globalThis.fetch>();
 let geometryReads = 0;
+let nativeReply = native;
 function requestUrl(value: RequestInfo | URL) {
   return typeof value === 'string'
     ? value
@@ -96,7 +97,12 @@ function requestInput(init?: RequestInit): Record<string, unknown> {
 }
 function fixtureReply(url: RequestInfo | URL, init?: RequestInit) {
   const input = requestInput(init);
-  const reference = { ...ref, reviewHash: input.reviewHash };
+  const reference = {
+    ...ref,
+    ingestionId: input.ingestionId,
+    processingBatchId: input.processingBatchId,
+    reviewHash: input.reviewHash,
+  };
   const chosenAsset = input.assetId === otherAssetId ? otherAssetId : assetId;
   const chosenRecord = chosenAsset === otherAssetId ? otherRecordId : recordId;
   if (requestUrl(url).endsWith('/geometry')) {
@@ -112,7 +118,7 @@ function fixtureReply(url: RequestInfo | URL, init?: RequestInit) {
           index: 1,
           sourceId: 'table:1/row:1',
           sourceCrs: 'EPSG:4326',
-          geometry: native,
+          geometry: nativeReply,
         },
       ],
       nextCursor: `fresh-authorized-cursor-${geometryReads}`,
@@ -159,6 +165,7 @@ beforeEach(() => {
   probe.instances.length = 0;
   probe.hits.length = 0;
   geometryReads = 0;
+  nativeReply = native;
   fetch.mockImplementation((url, init) =>
     Promise.resolve(fixtureReply(url, init)),
   );
@@ -177,7 +184,7 @@ async function openMap() {
   const buttons = await screen.findAllByRole('button', {
     name: copy.readGeometry,
   });
-  fireEvent.click(buttons[0]!);
+  fireEvent.click(buttons[0]);
   await screen.findByRole('region', { name: 'Map' });
   await settle();
   return view;
@@ -186,9 +193,17 @@ const position = { center: [116.7, 40.2], zoom: 9 };
 
 it('keeps the map engine and reading camera while its tab is hidden, without exposing hidden map controls', async () => {
   const view = await openMap();
-  const engine = probe.instances[0]!;
+  const engine = probe.instances[0];
   engine.camera = position;
   const canvas = screen.getByRole('region', { name: 'Map' });
+  expect(screen.getByRole('checkbox', { name: 'Map' })).toBeDefined();
+  for (const tab of screen.getAllByRole('tab')) {
+    const target = tab.getAttribute('aria-controls');
+    expect(target).not.toBeNull();
+    expect(document.getElementById(target ?? '')?.getAttribute('role')).toBe(
+      'tabpanel',
+    );
+  }
   fireEvent.click(screen.getByRole('tab', { name: 'Records' }));
   await screen.findByText('Synthetic camera fixture');
   await settle();
@@ -201,8 +216,13 @@ it('keeps the map engine and reading camera while its tab is hidden, without exp
 });
 it('returns to the same drawing after a new authorized geometry reply and uses its new cursor', async () => {
   await openMap();
-  const engine = probe.instances[0]!;
+  const engine = probe.instances[0];
   engine.camera = position;
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Map' }));
+  expect(screen.getByRole('checkbox', { name: 'Map' })).toHaveProperty(
+    'checked',
+    false,
+  );
   fireEvent.click(screen.getByRole('tab', { name: 'Records' }));
   await screen.findByText('Synthetic camera fixture');
   await settle();
@@ -212,6 +232,10 @@ it('returns to the same drawing after a new authorized geometry reply and uses i
   expect(probe.instances).toHaveLength(1);
   expect(engine.removed).toBe(false);
   expect(engine.camera).toEqual(position);
+  expect(screen.getByRole('checkbox', { name: 'Map' })).toHaveProperty(
+    'checked',
+    false,
+  );
   fireEvent.click(screen.getByRole('button', { name: copy.nextGeometry }));
   await settle();
   const last = requestInput(fetch.mock.calls.at(-1)?.[1]);
@@ -220,7 +244,7 @@ it('returns to the same drawing after a new authorized geometry reply and uses i
 });
 it('retains map selection and camera on a selected-record round trip and full-workspace expansion', async () => {
   await openMap();
-  const engine = probe.instances[0]!;
+  const engine = probe.instances[0];
   engine.camera = position;
   probe.hits = [{ properties: { recordId } }];
   act(() => engine.events.get('click')?.({ point: { x: 1, y: 2 } }));
@@ -251,7 +275,7 @@ it('retains map selection and camera on a selected-record round trip and full-wo
 });
 it('clears the hidden map and its camera when current permission is denied', async () => {
   const view = await openMap();
-  const engine = probe.instances[0]!;
+  const engine = probe.instances[0];
   engine.camera = position;
   fetch.mockResolvedValueOnce(
     Response.json({ code: 'NOT_AUTHORIZED' }, { status: 403 }),
@@ -266,7 +290,7 @@ it('clears the hidden map and its camera when current permission is denied', asy
 });
 it('does not reuse a former camera after the fixed candidate changes, even for identical native geometry', async () => {
   const { rerender } = await openMap();
-  const previous = probe.instances[0]!;
+  const previous = probe.instances[0];
   previous.camera = position;
   rerender(
     <IngestionCandidateReader
@@ -277,7 +301,7 @@ it('does not reuse a former camera after the fixed candidate changes, even for i
   const buttons = await screen.findAllByRole('button', {
     name: copy.readGeometry,
   });
-  fireEvent.click(buttons[0]!);
+  fireEvent.click(buttons[0]);
   await screen.findByRole('region', { name: 'Map' });
   await settle();
   expect(previous.removed).toBe(true);
@@ -289,11 +313,11 @@ it('does not reuse a former camera after the fixed candidate changes, even for i
 });
 it('does not transfer a camera to a different asset with the same native coordinates', async () => {
   await openMap();
-  const previous = probe.instances[0]!;
+  const previous = probe.instances[0];
   previous.camera = position;
   fireEvent.click(screen.getByRole('tab', { name: 'Originals' }));
   fireEvent.click(
-    screen.getAllByRole('button', { name: copy.readGeometry })[1]!,
+    screen.getAllByRole('button', { name: copy.readGeometry })[1],
   );
   await screen.findByRole('region', { name: 'Map' });
   await settle();
@@ -301,4 +325,86 @@ it('does not transfer a camera to a different asset with the same native coordin
   expect(probe.instances).toHaveLength(2);
   expect(probe.instances[1]?.camera).not.toEqual(position);
   expect(requestInput(fetch.mock.calls.at(-1)?.[1]).assetId).toBe(otherAssetId);
+});
+
+it('replaces the old drawing when new authorized native geometry differs within the same fixed candidate', async () => {
+  await openMap();
+  const previous = probe.instances[0];
+  previous.camera = position;
+  nativeReply = {
+    type: 'LineString',
+    coordinates: [
+      [115, 39, 12],
+      [116, 39, 13],
+    ],
+  };
+  fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+  await settle();
+  expect(geometryReads).toBe(2);
+  expect(previous.removed).toBe(true);
+  expect(probe.instances).toHaveLength(2);
+  expect(probe.instances[1]?.camera).not.toEqual(position);
+  expect(native.coordinates).toEqual([
+    [116, 40, 12],
+    [117, 40, 13],
+  ]);
+});
+
+it('does not retain a current-batch camera when a saved view opens another fixed batch in the same reader', async () => {
+  await openMap();
+  const previous = probe.instances[0];
+  previous.camera = position;
+  const oldRef = {
+    ...ref,
+    processingBatchId: '10000000-0000-4000-8000-000000000007',
+    reviewHash: 'c'.repeat(64),
+  };
+  const viewId = '10000000-0000-4000-8000-000000000009';
+  const savedView = {
+    kind: 'ingestion-candidate-view',
+    viewId,
+    title: 'Synthetic historical camera fixture',
+    visibility: 'private',
+    createdAt: '2026-10-03T00:00:00Z',
+    revokedAt: null,
+  };
+  const opened = {
+    kind: 'ingestion-candidate-view',
+    savedView,
+    references: [oldRef],
+    viewSpec: {
+      page: { kind: 'geometry', reference: oldRef, assetId, first: 50 },
+    },
+    request: {
+      capabilityId: 'data.ingestion.candidate.geometry',
+      input: { ...oldRef, assetId, first: 50 },
+    },
+  };
+  fetch.mockImplementation((url, init) =>
+    Promise.resolve(
+      requestUrl(url).endsWith('/list')
+        ? Response.json({ items: [savedView], nextCursor: null })
+        : requestUrl(url).endsWith('/open')
+          ? Response.json(opened)
+          : fixtureReply(url, init),
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Load saved views' }));
+  await screen.findByText(savedView.title);
+  fireEvent.click(screen.getByRole('button', { name: 'Reopen view' }));
+  await screen.findByDisplayValue(savedView.title);
+  await settle();
+  expect(previous.removed).toBe(true);
+  expect(probe.instances).toHaveLength(2);
+  expect(probe.instances[1]?.camera).not.toEqual(position);
+  const geometryRequest = fetch.mock.calls
+    .filter(([url]) => requestUrl(url).endsWith('/geometry'))
+    .at(-1);
+  expect(requestInput(geometryRequest?.[1])).toMatchObject({
+    ...oldRef,
+    assetId,
+  });
+  expect(
+    fetch.mock.calls.filter(([url]) => requestUrl(url).endsWith('/open')),
+  ).toHaveLength(2);
 });

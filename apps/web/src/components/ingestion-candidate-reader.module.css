@@ -139,6 +139,14 @@
   gap: 1rem;
   min-width: 0;
 }
+.tabPanel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.tabPanel[hidden] {
+  display: none;
+}
 .assetList,
 .geometryList {
   list-style: none;

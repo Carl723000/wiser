@@ -40,6 +40,17 @@ const firstPosition = (): Navigation => ({ previous: [] });
 const first = 50;
 const noStacExtents = [] as const;
 
+function geometryDrawingKey(page: IngestionCandidateGeometryPage | null) {
+  return page === null
+    ? null
+    : JSON.stringify({
+        reference: candidateSavedReferenceKey(page.reference),
+        assetId: page.assetId.toLowerCase(),
+        crs: page.crs,
+        features: page.features,
+      });
+}
+
 export function IngestionCandidateReader({
   reference,
   locale,
@@ -185,7 +196,9 @@ function CandidateSession({
   const [records, setRecords] = useState<IngestionCandidateRecordPage | null>(
     null,
   );
-  const [geometry, setGeometry] =
+  const [geometry, setGeometryPage] =
+    useState<IngestionCandidateGeometryPage | null>(null);
+  const [mapGeometry, setMapGeometry] =
     useState<IngestionCandidateGeometryPage | null>(null);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -206,10 +219,10 @@ function CandidateSession({
   const id = useId();
   const mapFeatures = useMemo(
     () =>
-      geometry
-        ? candidateMapFeatures(geometry)
+      mapGeometry
+        ? candidateMapFeatures(mapGeometry)
         : { type: 'FeatureCollection' as const, features: [] },
-    [geometry],
+    [mapGeometry],
   );
   const labels = useMemo(
     () => ({
@@ -220,6 +233,17 @@ function CandidateSession({
     }),
     [dictionary.mapPage, copy.map, copy.processingBatch, copy.pending],
   );
+
+  function setGeometry(value: IngestionCandidateGeometryPage | null) {
+    // Every read still obtains current authorization and a new cursor. Only an
+    // identical fixed drawing retains its map instance and reading camera.
+    setGeometryPage(value);
+    setMapGeometry((previous) =>
+      geometryDrawingKey(previous) === geometryDrawingKey(value)
+        ? previous
+        : value,
+    );
+  }
 
   function clearContent() {
     setAssets(null);
@@ -871,226 +895,241 @@ function CandidateSession({
               </button>
             ))}
           </div>
-          <section
-            role="tabpanel"
-            id={`${id}-panel-${tab}`}
-            aria-labelledby={`${id}-${tab}`}
-            className={styles.content}
-          >
-            {tab === 'originals' ? (
-              <>
-                <h3>{copy.assetsCaption}</h3>
-                <ul className={styles.assetList}>
-                  {assets.assets.map((asset, index) => (
-                    <li key={asset.assetId}>
-                      <div>
-                        <strong>
-                          {copy.originals} {index + 1}
-                        </strong>
-                        <span
-                          className={styles.status}
-                          data-state={asset.status}
-                        >
-                          {copy.statuses[asset.status]}
-                        </span>
-                      </div>
-                      <dl className={styles.assetCounts}>
+          <div className={styles.content}>
+            <section
+              role="tabpanel"
+              id={`${id}-panel-originals`}
+              aria-labelledby={`${id}-originals`}
+              className={styles.tabPanel}
+              hidden={tab !== 'originals'}
+            >
+              {tab === 'originals' ? (
+                <>
+                  <h3>{copy.assetsCaption}</h3>
+                  <ul className={styles.assetList}>
+                    {assets.assets.map((asset, index) => (
+                      <li key={asset.assetId}>
                         <div>
-                          <dt>{copy.recordCount}</dt>
-                          <dd>{asset.recordCount ?? copy.unknown}</dd>
+                          <strong>
+                            {copy.originals} {index + 1}
+                          </strong>
+                          <span
+                            className={styles.status}
+                            data-state={asset.status}
+                          >
+                            {copy.statuses[asset.status]}
+                          </span>
                         </div>
-                        <div>
-                          <dt>{copy.featureCount}</dt>
-                          <dd>{asset.featureCount ?? copy.unknown}</dd>
-                        </div>
-                      </dl>
-                      <div className={styles.actions}>
-                        <a
-                          href={candidateOriginalUrl(
-                            fixed,
-                            asset.assetId,
-                            locale,
-                            openedView?.savedView.viewId,
-                          )}
-                        >
-                          {copy.downloadOriginal}
-                        </a>
-                        <button
-                          type="button"
-                          disabled={
-                            busy ||
-                            asset.recordCount === null ||
-                            asset.recordCount === 0
-                          }
-                          onClick={() => void loadRecords(asset.assetId)}
-                        >
-                          {copy.readRecords}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            busy ||
-                            asset.featureCount === null ||
-                            asset.featureCount === 0
-                          }
-                          onClick={() => void loadGeometry(asset.assetId)}
-                        >
-                          {copy.readGeometry}
-                        </button>
-                      </div>
-                      <details>
-                        <summary>{copy.technical}</summary>
-                        <dl className={styles.technical}>
-                          <dt>{copy.asset}</dt>
-                          <dd>{asset.assetId}</dd>
-                          <dt>{copy.sourceHash}</dt>
-                          <dd>{asset.sourceHash}</dd>
+                        <dl className={styles.assetCounts}>
+                          <div>
+                            <dt>{copy.recordCount}</dt>
+                            <dd>{asset.recordCount ?? copy.unknown}</dd>
+                          </div>
+                          <div>
+                            <dt>{copy.featureCount}</dt>
+                            <dd>{asset.featureCount ?? copy.unknown}</dd>
+                          </div>
                         </dl>
-                      </details>
-                    </li>
-                  ))}
-                </ul>
-                {pager(
-                  assetNav,
-                  assets.nextCursor,
-                  assets.assets.at(-1)?.assetId,
-                  copy.previousAssets,
-                  copy.nextAssets,
-                  loadAssets,
-                )}
-              </>
-            ) : null}
-            {tab === 'records' ? (
-              <>
-                {records ? (
-                  <>
-                    <div className={styles.tableWrap} tabIndex={0}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>{copy.row}</th>
-                            {records.columns.map((column) => (
-                              <th key={column.key}>{column.label}</th>
-                            ))}
-                            <th>{copy.locator}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {records.records.map((record) => (
-                            <tr
-                              key={record.recordId}
-                              data-selected={
-                                record.recordId.toLowerCase() ===
-                                selected?.toLowerCase()
-                              }
-                            >
-                              <th>
-                                <button
-                                  type="button"
-                                  aria-pressed={
-                                    record.recordId.toLowerCase() ===
-                                    selected?.toLowerCase()
-                                  }
-                                  aria-label={`${copy.selectRecord} ${record.index}`}
-                                  onClick={() => setSelected(record.recordId)}
-                                >
-                                  {record.index}
-                                </button>
-                              </th>
-                              {records.columns.map((column) => (
-                                <td key={column.key}>
-                                  {displayValue(
-                                    Object.hasOwn(record.values, column.key)
-                                      ? record.values[column.key]
-                                      : undefined,
-                                  )}
-                                </td>
-                              ))}
-                              <td>{record.sourceId ?? copy.locationUnknown}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {records.records.length === 0 ? (
-                      <p>{copy.noRecords}</p>
-                    ) : null}
-                    {pager(
-                      recordNav,
-                      records.nextCursor,
-                      records.records.at(-1)?.recordId,
-                      copy.previousRecords,
-                      copy.nextRecords,
-                      (position) => loadRecords(records.assetId, position),
-                    )}
-                  </>
-                ) : (
-                  <p>{copy.noRecords}</p>
-                )}
-              </>
-            ) : null}
-            {tab === 'map' ? (
-              <>
-                {geometry ? (
-                  <>
-                    <div className={styles.summaryHeader}>
-                      <span>
-                        {copy.geometryRecords}: {geometry.features.length} ·{' '}
-                        {copy.drawingParts}: {mapFeatures.features.length}
-                      </span>
-                      <ContextHelp label={copy.mapHelp}>
-                        {copy.mapExplanation}
-                      </ContextHelp>
-                    </div>
-                    <p className={styles.notice}>{copy.geometryPending}</p>
-                    {geometry.features.length ? (
-                      <DataFoundationMap
-                        locale={locale}
-                        ariaLabel={copy.map}
-                        displayCrs="EPSG:4326"
-                        features={mapFeatures}
-                        stacExtents={noStacExtents}
-                        labels={labels}
-                        onSelectRecord={selectRecord}
-                        selectedRecordId={selected}
-                      />
-                    ) : (
-                      <p>{copy.noGeometry}</p>
-                    )}
-                    <ul className={styles.geometryList}>
-                      {geometry.features.map((feature) => (
-                        <li key={feature.recordId}>
+                        <div className={styles.actions}>
+                          <a
+                            href={candidateOriginalUrl(
+                              fixed,
+                              asset.assetId,
+                              locale,
+                              openedView?.savedView.viewId,
+                            )}
+                          >
+                            {copy.downloadOriginal}
+                          </a>
                           <button
                             type="button"
-                            aria-pressed={
-                              feature.recordId.toLowerCase() ===
-                              selected?.toLowerCase()
+                            disabled={
+                              busy ||
+                              asset.recordCount === null ||
+                              asset.recordCount === 0
                             }
-                            onClick={() => selectRecord(feature.recordId)}
+                            onClick={() => void loadRecords(asset.assetId)}
                           >
-                            {copy.selectRecord} {feature.index} ·{' '}
-                            {copy.geometryKinds[feature.geometry.type]}
+                            {copy.readRecords}
                           </button>
-                          <span>
-                            {feature.sourceId ?? copy.locationUnknown}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {pager(
-                      geometryNav,
-                      geometry.nextCursor,
-                      geometry.features.at(-1)?.recordId,
-                      copy.previousGeometry,
-                      copy.nextGeometry,
-                      (position) => loadGeometry(geometry.assetId, position),
-                    )}
-                  </>
-                ) : (
-                  <p>{copy.noGeometry}</p>
-                )}
-              </>
-            ) : null}
+                          <button
+                            type="button"
+                            disabled={
+                              busy ||
+                              asset.featureCount === null ||
+                              asset.featureCount === 0
+                            }
+                            onClick={() => void loadGeometry(asset.assetId)}
+                          >
+                            {copy.readGeometry}
+                          </button>
+                        </div>
+                        <details>
+                          <summary>{copy.technical}</summary>
+                          <dl className={styles.technical}>
+                            <dt>{copy.asset}</dt>
+                            <dd>{asset.assetId}</dd>
+                            <dt>{copy.sourceHash}</dt>
+                            <dd>{asset.sourceHash}</dd>
+                          </dl>
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                  {pager(
+                    assetNav,
+                    assets.nextCursor,
+                    assets.assets.at(-1)?.assetId,
+                    copy.previousAssets,
+                    copy.nextAssets,
+                    loadAssets,
+                  )}
+                </>
+              ) : null}
+            </section>
+            <section
+              role="tabpanel"
+              id={`${id}-panel-records`}
+              aria-labelledby={`${id}-records`}
+              className={styles.tabPanel}
+              hidden={tab !== 'records'}
+            >
+              {tab === 'records' ? (
+                <>
+                  {records ? (
+                    <>
+                      <div className={styles.tableWrap} tabIndex={0}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>{copy.row}</th>
+                              {records.columns.map((column) => (
+                                <th key={column.key}>{column.label}</th>
+                              ))}
+                              <th>{copy.locator}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {records.records.map((record) => (
+                              <tr
+                                key={record.recordId}
+                                data-selected={
+                                  record.recordId.toLowerCase() ===
+                                  selected?.toLowerCase()
+                                }
+                              >
+                                <th>
+                                  <button
+                                    type="button"
+                                    aria-pressed={
+                                      record.recordId.toLowerCase() ===
+                                      selected?.toLowerCase()
+                                    }
+                                    aria-label={`${copy.selectRecord} ${record.index}`}
+                                    onClick={() => setSelected(record.recordId)}
+                                  >
+                                    {record.index}
+                                  </button>
+                                </th>
+                                {records.columns.map((column) => (
+                                  <td key={column.key}>
+                                    {displayValue(
+                                      Object.hasOwn(record.values, column.key)
+                                        ? record.values[column.key]
+                                        : undefined,
+                                    )}
+                                  </td>
+                                ))}
+                                <td>
+                                  {record.sourceId ?? copy.locationUnknown}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {records.records.length === 0 ? (
+                        <p>{copy.noRecords}</p>
+                      ) : null}
+                      {pager(
+                        recordNav,
+                        records.nextCursor,
+                        records.records.at(-1)?.recordId,
+                        copy.previousRecords,
+                        copy.nextRecords,
+                        (position) => loadRecords(records.assetId, position),
+                      )}
+                    </>
+                  ) : (
+                    <p>{copy.noRecords}</p>
+                  )}
+                </>
+              ) : null}
+            </section>
+            <section
+              role="tabpanel"
+              id={`${id}-panel-map`}
+              aria-labelledby={`${id}-map`}
+              className={styles.tabPanel}
+              hidden={tab !== 'map'}
+            >
+              {geometry ? (
+                <>
+                  <div className={styles.summaryHeader}>
+                    <span>
+                      {copy.geometryRecords}: {geometry.features.length} ·{' '}
+                      {copy.drawingParts}: {mapFeatures.features.length}
+                    </span>
+                    <ContextHelp label={copy.mapHelp}>
+                      {copy.mapExplanation}
+                    </ContextHelp>
+                  </div>
+                  <p className={styles.notice}>{copy.geometryPending}</p>
+                  {geometry.features.length ? (
+                    <DataFoundationMap
+                      locale={locale}
+                      ariaLabel={copy.map}
+                      displayCrs="EPSG:4326"
+                      features={mapFeatures}
+                      stacExtents={noStacExtents}
+                      labels={labels}
+                      onSelectRecord={selectRecord}
+                      selectedRecordId={selected}
+                    />
+                  ) : (
+                    <p>{copy.noGeometry}</p>
+                  )}
+                  <ul className={styles.geometryList}>
+                    {geometry.features.map((feature) => (
+                      <li key={feature.recordId}>
+                        <button
+                          type="button"
+                          aria-pressed={
+                            feature.recordId.toLowerCase() ===
+                            selected?.toLowerCase()
+                          }
+                          onClick={() => selectRecord(feature.recordId)}
+                        >
+                          {copy.selectRecord} {feature.index} ·{' '}
+                          {copy.geometryKinds[feature.geometry.type]}
+                        </button>
+                        <span>{feature.sourceId ?? copy.locationUnknown}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {pager(
+                    geometryNav,
+                    geometry.nextCursor,
+                    geometry.features.at(-1)?.recordId,
+                    copy.previousGeometry,
+                    copy.nextGeometry,
+                    (position) => loadGeometry(geometry.assetId, position),
+                  )}
+                </>
+              ) : (
+                <p>{copy.noGeometry}</p>
+              )}
+            </section>
             {selectedRow ? (
               <aside className={styles.selection}>
                 <h3>
@@ -1136,7 +1175,7 @@ function CandidateSession({
                 ) : null}
               </aside>
             ) : null}
-          </section>
+          </div>
           <section className={styles.savedSection} aria-label={copy.saveTitle}>
             <div className={styles.summaryHeader}>
               <h3>{copy.saveTitle}</h3>

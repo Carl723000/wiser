@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: a507a91148ce8a75a2e4ca7032e523a3dd2628ff
+lastReviewedCommit: 9adf25d4bcdf1fe1b937c9dc0ba99a469e33d67a
 ---
 
 ## What this guide governs
@@ -194,3 +194,5 @@ An intake with an authorized completed candidate offers originals, raw parsed re
 Fixed-view actions persist only the typed candidate list and reading state. Reopening checks every member's present access, uses a newly issued server read request and restores its page anchor and selected record. Refresh/retry cannot discard that full-list check or combine a historical batch with current original links. A denied or changed reference clears loaded materials and saved titles. Cross-intake views provide the corresponding task link; validated view links survive login. Existing saved map/period settings are retained and visibly marked when this raw reader cannot apply them. Actual account, database and browser acceptance remains distinct from synthetic component tests.
 
 Original links from a reopened saved view retain its canonical `savedViewId` on both asset cards and selected records, alongside the fixed candidate and asset, so the server can check the full manifest. Direct candidate reading keeps its single-original link without a saved-view identity.
+
+Map-to-record and record-to-map reading within the same fixed drawing retains map camera, selection and layer state. Each return still reads an authorized geometry page and uses its newly issued cursor. Inactive panels are hidden and their controls are excluded from focus; full-workspace expansion keeps the map mounted. A changed reference, asset, drawing or access denial clears the previous map. This recovery remains within the mounted reader and does not claim persisted-camera/period restoration or real browser acceptance from a synthetic engine lifecycle test.
