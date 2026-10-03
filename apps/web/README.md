@@ -16,10 +16,12 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: df429156c2ec70aff4783a77dd04737a50f99f45
+lastReviewedCommit: 63663a0837dd0a3a3c3bba0b768900480eea7cd5
 ---
 
 # WISER Web / 产品界面
+
+空间查阅的单区布局覆盖1100 px及以下宽度和500 px及以下高度。WebGL手势后的复位、隐藏区往返和全屏不受旧容器事件回写；同一资料的具体位置和固定几何版本保持一致。 / Single-pane spatial reading covers widths up to 1100 px and heights up to 500 px. Reset, hidden-pane return and fullscreen after WebGL gestures do not accept obsolete resize camera updates; exact position and pinned geometry versions are retained.
 
 `apps/web` 是 WISER Portal、数据基座与智能体演练场共用的产品网页。中文是默认语言：`/` 跳转至 `/zh-CN`，英文入口为 `/en`。Portal 与登录页公开；业务工作区依照当前登录账号和项目权限展示。 / `apps/web` serves the Portal, Data Foundation, and Agent EXCON. Chinese is the default language, and business workspaces show only what the signed-in account may access.
 

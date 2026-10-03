@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-03
-lastReviewedCommit: df429156c2ec70aff4783a77dd04737a50f99f45
+lastReviewedCommit: 63663a0837dd0a3a3c3bba0b768900480eea7cd5
 ---
 
 ## What this guide governs
@@ -170,3 +170,5 @@ The local version-impact calculation includes records that reference a geometry 
 Map selection retains the specific position within a record. Other positions of that record do not become selected together; a record without a selected position remains readable in its dossier.
 
 Narrow spatial reading uses Map, Results and Evidence labels instead of shrinking the desktop columns. Region selection uses a compact select and filters start collapsed. Pane changes preserve scope, exact record/position, source version, camera and loaded results; evidence selection and location actions name their destination. Withdrawn evidence is removed from mounted hidden panes as well as the visible pane. This local reading behavior does not establish authenticated intake, review or publication.
+
+Locating or resetting a map remains effective after reading evidence, resizing or returning from fullscreen. Reopening a selected record preserves its specific permitted position and fixed geometry evidence rather than silently choosing the first position.

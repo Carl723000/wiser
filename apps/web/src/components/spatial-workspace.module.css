@@ -215,7 +215,7 @@
   gap: 1rem;
   min-width: 0;
 }
-.mapAndRecords > section > h2 {
+.readingPane > section > h2 {
   margin-bottom: 0.6rem;
 }
 .readingPane {
@@ -520,7 +520,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 800px) {
+@media (max-width: 1100px), (max-height: 500px) {
+  .mainLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .readingPane {
     max-height: calc(100dvh - 8rem);
     overflow: auto;

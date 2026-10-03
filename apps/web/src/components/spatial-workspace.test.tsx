@@ -702,7 +702,7 @@ describe('narrow spatial reading panes', () => {
       'matchMedia',
       vi.fn((query: string) => ({
         get matches() {
-          return query === '(max-width: 800px)' && narrow;
+          return query === '(max-width: 1100px), (max-height: 500px)' && narrow;
         },
         media: query,
         addEventListener: vi.fn((_type: string, listener: () => void) => {

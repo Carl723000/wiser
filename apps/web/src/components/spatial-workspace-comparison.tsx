@@ -19,6 +19,7 @@ import { SpatialWorkspaceInvalidations } from './spatial-workspace-invalidations
 import styles from './spatial-workspace.module.css';
 
 export interface SpatialWorkspaceComparisonProps {
+  active?: boolean;
   pack: WorkspacePack;
   view: SpatialWorkspaceView;
   copy: SpatialWorkspaceCopy;
@@ -27,6 +28,7 @@ export interface SpatialWorkspaceComparisonProps {
   invalidations?: readonly WorkspaceInvalidation[];
 }
 export function SpatialWorkspaceComparison({
+  active = true,
   pack,
   view,
   copy,
@@ -203,6 +205,7 @@ export function SpatialWorkspaceComparison({
                 )}
               </p>
               <SpatialWorkspaceMap
+                active={active}
                 features={filtered.features}
                 rasterReports={workspaceRasterOverlays(
                   pack,

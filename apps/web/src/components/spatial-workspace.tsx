@@ -109,7 +109,7 @@ export function SpatialWorkspace({
   };
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
-    const query = window.matchMedia('(max-width: 800px)');
+    const query = window.matchMedia('(max-width: 1100px), (max-height: 500px)');
     const update = () => {
       if (query.matches) {
         const focused = readingPanes.find((pane) =>
@@ -457,20 +457,31 @@ export function SpatialWorkspace({
     region?.type === 'composite'
       ? copy.regionTypes[region.type]
       : copy.unknown;
+  const recordSelection = (
+    record: WorkspaceRecord,
+  ): NonNullable<WorkspaceSelection> => {
+    const positions = workspaceDisplayPositions(
+      pack,
+      record,
+      invalidations,
+      view.sourcePins,
+    );
+    return {
+      recordId: record.id,
+      positionId:
+        selection?.recordId === record.id &&
+        positions.some((position) => position.id === selection.positionId)
+          ? selection.positionId
+          : (positions[0]?.id ?? null),
+    };
+  };
   const recordButton = (record: WorkspaceRecord) => (
     <button
       type="button"
       key={record.id}
       className={styles.recordButton}
       aria-pressed={selection?.recordId === record.id}
-      onClick={() =>
-        selectRecord({
-          recordId: record.id,
-          positionId:
-            workspaceDisplayPositions(pack, record, invalidations)[0]?.id ??
-            null,
-        })
-      }
+      onClick={() => selectRecord(recordSelection(record))}
     >
       <strong>{record.objectLabel}</strong>
       <span>
@@ -859,6 +870,7 @@ export function SpatialWorkspace({
           >
             {view.comparison.enabled ? (
               <SpatialWorkspaceComparison
+                active={!narrow || readingPane === 'map'}
                 pack={pack}
                 view={view}
                 copy={copy}
@@ -870,6 +882,7 @@ export function SpatialWorkspace({
               <section aria-label={copy.mapTitle}>
                 <h2>{copy.mapTitle}</h2>
                 <SpatialWorkspaceMap
+                  active={!narrow || readingPane === 'map'}
                   features={filtered.features}
                   rasterReports={workspaceRasterOverlays(
                     pack,
@@ -1019,15 +1032,7 @@ export function SpatialWorkspace({
                             setView({
                               ...view,
                               bounds: null,
-                              selection: {
-                                recordId: record.id,
-                                positionId:
-                                  workspaceDisplayPositions(
-                                    pack,
-                                    record,
-                                    invalidations,
-                                  )[0]?.id ?? null,
-                              },
+                              selection: recordSelection(record),
                             });
                             setBoundsText('');
                             showPane('evidence', true);

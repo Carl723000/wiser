@@ -2,7 +2,14 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import * as maplibre from 'maplibre-gl';
 import Map, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { FeatureCollection, Geometry, Position } from 'geojson';
 import type {
   WorkspaceBounds,
@@ -62,6 +69,7 @@ const grid: FeatureCollection = {
 };
 
 export interface SpatialWorkspaceMapProps {
+  active?: boolean;
   features: WorkspaceMapFeatures;
   camera: WorkspaceCamera;
   mode: '2d' | '3d';
@@ -218,6 +226,7 @@ function geometryPaths(
 }
 
 export function SpatialWorkspaceMap({
+  active = true,
   features,
   camera,
   mode,
@@ -237,12 +246,36 @@ export function SpatialWorkspaceMap({
     container = useRef<HTMLDivElement>(null),
     drawStart = useRef<number[] | null>(null);
   const id = useId().replaceAll(':', '');
+  const lastGestureCamera = useRef<string | null>(null);
+  const effectiveCamera = {
+    longitude: camera.longitude,
+    latitude: camera.latitude,
+    zoom: camera.zoom,
+    bearing: camera.bearing,
+    pitch: mode === '2d' ? 0 : camera.pitch,
+  };
+  const cameraKey = JSON.stringify(effectiveCamera);
   const [ready, setReady] = useState(false),
     [available, setAvailable] = useState<boolean | null>(
       webGLAvailable ?? null,
     ),
     [failed, setFailed] = useState(false),
     [retry, setRetry] = useState(0);
+  useLayoutEffect(() => {
+    if (!ready || failed || !available) return;
+    const native = map.current?.getMap();
+    if (!native) return;
+    if (!active) {
+      native.stop();
+      return;
+    }
+    if (lastGestureCamera.current !== cameraKey) {
+      // The binding skips controlled updates during inertia. External locate,
+      // reset and restore actions take precedence over that earlier gesture.
+      native.stop();
+      native.jumpTo(JSON.parse(cameraKey) as WorkspaceCamera);
+    }
+  }, [active, available, cameraKey, failed, ready, retry]);
   const [frame, setFrame] = useState<ScreenFrame | null>(null),
     [size, setSize] = useState({ width: 800, height: 460 }),
     [pendingBounds, setPendingBounds] = useState<WorkspaceBounds | null>(null);
@@ -705,15 +738,20 @@ export function SpatialWorkspaceMap({
               setReady(false);
               setFrame(null);
             }}
-            onMove={({ viewState }) =>
-              onCamera({
+            onMove={({ viewState, originalEvent }) => {
+              // Hidden/show resize events may carry an old proposed camera.
+              // They are not user navigation and must not change owned state.
+              if (!active || !originalEvent) return;
+              const next = {
                 longitude: viewState.longitude,
                 latitude: viewState.latitude,
                 zoom: viewState.zoom,
                 bearing: viewState.bearing,
                 pitch: mode === '2d' ? 0 : viewState.pitch,
-              })
-            }
+              };
+              lastGestureCamera.current = JSON.stringify(next);
+              onCamera(next);
+            }}
             onMouseDown={(event) => {
               if (drawBounds) {
                 drawStart.current = [event.lngLat.lng, event.lngLat.lat];
