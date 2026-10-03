@@ -1127,7 +1127,8 @@ function comparisonSamplingPosition(
       position,
     ) ||
     position.geometry?.type !== 'Point' ||
-    !position.scaleNote?.trim()
+    !position.scaleNote?.trim() ||
+    /^(unknown|未知)$/i.test(position.scaleNote.trim())
   )
     return null;
   // The current contract cannot establish line/area aggregation support.
