@@ -3,6 +3,99 @@ import { versionImpact } from './spatial-version-impact';
 import { syntheticReviewRecord } from './spatial-candidate-review';
 
 describe('fixed version impact', () => {
+  it('keeps a single-record correction narrow across the complete frozen input', () => {
+    const record = syntheticReviewRecord();
+    const sibling = {
+      ...record,
+      id: 'same-source-other-record',
+      objectId: 'other-object',
+      positions: [{ ...record.positions[0], id: 'other-position' }],
+    };
+    const records = [record, sibling];
+    const before = JSON.stringify(records);
+    const change = {
+      sourceId: record.sourceId,
+      previousVersionId: record.versionId,
+      nextVersionId: 'corrected',
+      reason: 'original-revised' as const,
+      scope: { kind: 'records' as const, recordIds: [record.id] },
+    };
+    const topics = [record, sibling].map((item) => ({
+      id: `topic-${item.id}`,
+      title: item.objectLabel,
+      regionIds: item.regionIds,
+      sourceIds: [item.sourceId],
+      recordIds: [item.id],
+      question: 'Synthetic fixed input',
+      gaps: [],
+    }));
+    const result = versionImpact(records, [change], topics);
+    expect(result.recordIds).toEqual([record.id]);
+    expect(result.objectIds).toEqual([record.objectId]);
+    expect(result.positionIds).toEqual(record.positions.map((item) => item.id));
+    expect(result.topicIds).toEqual([`topic-${record.id}`]);
+    expect(JSON.stringify(records)).toBe(before);
+  });
+  it('limits a position correction to its exact record and position reference', () => {
+    const record = syntheticReviewRecord();
+    const position = record.positions[0];
+    const selected = {
+      ...record,
+      positions: [position, { ...position, id: 'another-position' }],
+    };
+    const sibling = {
+      ...record,
+      id: 'same-reference-other-record',
+      positions: [{ ...position, id: 'another-record-position' }],
+    };
+    const change = {
+      sourceId: position.geometrySourceId!,
+      previousVersionId: position.geometryVersionId!,
+      nextVersionId: 'position-corrected',
+      reason: 'geometry-revised' as const,
+      scope: {
+        kind: 'positions' as const,
+        recordId: record.id,
+        positionIds: [position.id],
+      },
+    };
+    const result = versionImpact([selected, sibling], [change], []);
+    expect(result.recordIds).toEqual([record.id]);
+    expect(result.positionIds).toEqual([position.id]);
+  });
+  it('does not widen empty or mismatched fixed correction scopes', () => {
+    const record = syntheticReviewRecord();
+    const change = {
+      sourceId: record.sourceId,
+      previousVersionId: record.versionId,
+      nextVersionId: 'corrected',
+      reason: 'original-revised' as const,
+      scope: { kind: 'records' as const, recordIds: [] as string[] },
+    };
+    expect(versionImpact([record], [change], []).recordIds).toEqual([]);
+    expect(
+      versionImpact(
+        [record],
+        [{ ...change, scope: { kind: 'records', recordIds: ['absent'] } }],
+        [],
+      ).recordIds,
+    ).toEqual([]);
+  });
+  it('keeps a withdrawn source invalidation complete despite a narrow correction hint', () => {
+    const record = syntheticReviewRecord();
+    const sibling = { ...record, id: 'also-withdrawn' };
+    const change = {
+      sourceId: record.sourceId,
+      previousVersionId: record.versionId,
+      nextVersionId: null,
+      reason: 'rights-withdrawn' as const,
+      scope: { kind: 'records' as const, recordIds: [record.id] },
+    };
+    expect(versionImpact([record, sibling], [change], []).recordIds).toEqual([
+      record.id,
+      sibling.id,
+    ]);
+  });
   it('propagates changed original evidence to record, map, demand use and topic package', () => {
     const record = syntheticReviewRecord();
     const result = versionImpact(
