@@ -10,6 +10,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IngestionCandidateReader } from './ingestion-candidate-reader';
 import { getDictionary } from '@/lib/i18n';
+import { authorityCamera, displayCamera } from '@/lib/amap-camera';
 
 // This exercises the actual Reader and map component. Only the WebGL engine and
 // network replies are synthetic; it does not claim a real browser camera check.
@@ -19,6 +20,7 @@ const probe = vi.hoisted(() => ({
     camera: { center: number[]; zoom: number };
     events: Map<string, (value: unknown) => void>;
     filter: ReturnType<typeof vi.fn>;
+    fitted: boolean;
   }>,
   hits: [] as Array<{ properties: { recordId: string } }>,
 }));
@@ -30,7 +32,9 @@ vi.mock('maplibre-gl', () => ({
     camera = { center: [0, 0], zoom: 1 };
     events = new Map<string, (value: unknown) => void>();
     filter = vi.fn();
-    constructor() {
+    fitted = false;
+    constructor(options: { center: number[]; zoom: number }) {
+      this.camera = { center: options.center, zoom: options.zoom };
       probe.instances.push(this);
     }
     touchZoomRotate = { disableRotation: vi.fn() };
@@ -38,12 +42,29 @@ vi.mock('maplibre-gl', () => ({
       return probe.hits;
     }
     on(event: string, action: (value: unknown) => void) {
-      this.events.set(event, action);
+      const previous = this.events.get(event);
+      this.events.set(event, (value) => {
+        previous?.(value);
+        action(value);
+      });
     }
     once(event: string, action: (value: unknown) => void) {
-      this.events.set(event, action);
+      this.on(event, action);
     }
     off() {}
+    loaded() {
+      return false;
+    }
+    getCenter() {
+      return { lng: this.camera.center[0], lat: this.camera.center[1] };
+    }
+    getZoom() {
+      return this.camera.zoom;
+    }
+    fitBounds() {
+      this.fitted = true;
+      this.camera = { center: [116.5, 40], zoom: 7 };
+    }
     getLayer(id: string) {
       return id.startsWith('reader-selected-') ? { id } : undefined;
     }
@@ -407,4 +428,117 @@ it('does not retain a current-batch camera when a saved view opens another fixed
   expect(
     fetch.mock.calls.filter(([url]) => requestUrl(url).endsWith('/open')),
   ).toHaveLength(2);
+});
+
+const savedCamera = {
+  longitude: 116.7,
+  latitude: 40.2,
+  zoom: 9,
+  bearing: 0,
+  pitch: 0,
+};
+const savedId = '10000000-0000-4000-8000-000000000009';
+const period = {
+  from: '2023-12',
+  to: '2024-02',
+  unit: 'month',
+  includeUndated: false,
+};
+function savedCameraReply(camera = savedCamera) {
+  const savedView = {
+    kind: 'ingestion-candidate-view',
+    viewId: savedId,
+    title: 'Synthetic saved camera',
+    visibility: 'private',
+    createdAt: '2026-10-03T00:00:00Z',
+    revokedAt: null,
+  };
+  return {
+    kind: 'ingestion-candidate-view',
+    savedView,
+    references: [ref],
+    viewSpec: {
+      page: { kind: 'geometry', reference: ref, assetId, first: 50 },
+      focus: { reference: ref, assetId, recordId },
+      map: { camera, layers: { points: true, lines: false, polygons: true } },
+      period,
+    },
+    request: {
+      capabilityId: 'data.ingestion.candidate.geometry',
+      input: { ...ref, assetId, first: 50 },
+    },
+  };
+}
+async function openPersistedCamera(camera = savedCamera) {
+  const opened = savedCameraReply(camera);
+  fetch.mockImplementation((url, init) =>
+    Promise.resolve(
+      requestUrl(url).endsWith('/open')
+        ? Response.json(opened)
+        : requestUrl(url).endsWith('/create')
+          ? Response.json({
+              savedView: { ...opened.savedView, viewId: otherRecordId },
+            })
+          : fixtureReply(url, init),
+    ),
+  );
+  render(
+    <IngestionCandidateReader
+      reference={ref}
+      savedViewId={savedId}
+      locale="en"
+    />,
+  );
+  await screen.findByDisplayValue(opened.savedView.title);
+  await settle();
+  return opened;
+}
+
+it('restores the server-fixed two-dimensional camera on reopening without the load fit overwriting it', async () => {
+  await openPersistedCamera();
+  const engine = probe.instances[0];
+  act(() => engine.events.get('load')?.(undefined));
+  const display = displayCamera(savedCamera);
+  expect(engine.camera).toEqual({
+    center: [display.longitude, display.latitude],
+    zoom: display.zoom,
+  });
+  expect(engine.fitted).toBe(false);
+});
+
+it('saves the current reading camera as a new view without changing fixed members, the page, focus or retained settings', async () => {
+  const opened = await openPersistedCamera();
+  const engine = probe.instances[0];
+  engine.camera = { center: [117.2, 40.3], zoom: 10 };
+  act(() => engine.events.get('moveend')?.(undefined));
+  fireEvent.change(screen.getByRole('textbox', { name: copy.viewName }), {
+    target: { value: 'Another reading' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: copy.save }));
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => requestUrl(url).endsWith('/create')),
+    ).toBe(true),
+  );
+  const create = fetch.mock.calls.find(([url]) =>
+    requestUrl(url).endsWith('/create'),
+  );
+  const input = requestInput(create?.[1]);
+  expect(input.references).toEqual(opened.references);
+  expect(input.viewSpec).toMatchObject({
+    page: opened.viewSpec.page,
+    focus: opened.viewSpec.focus,
+    period,
+    map: {
+      camera: authorityCamera({
+        longitude: 117.2,
+        latitude: 40.3,
+        zoom: 10,
+        bearing: 0,
+        pitch: 0,
+      }),
+      layers: opened.viewSpec.map.layers,
+    },
+  });
+  expect(opened.viewSpec.map.camera).toEqual(savedCamera);
 });
