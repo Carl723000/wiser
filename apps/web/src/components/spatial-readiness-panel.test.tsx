@@ -171,7 +171,8 @@ it('reuses readiness calculation during unrelated rerenders and recalculates cha
   const { rerender } = render(
     <SpatialReadinessPanel pack={pack} regionId="chaobai" copy={copy} />,
   );
-  expect(calculation).toHaveBeenCalledTimes(1);
+  const initialCalls = calculation.mock.calls.length;
+  expect(initialCalls).toBeGreaterThan(0);
   rerender(
     <SpatialReadinessPanel
       pack={pack}
@@ -180,7 +181,7 @@ it('reuses readiness calculation during unrelated rerenders and recalculates cha
       onSelectRecord={vi.fn()}
     />,
   );
-  expect(calculation).toHaveBeenCalledTimes(1);
+  expect(calculation.mock.calls.length).toBe(initialCalls);
   rerender(
     <SpatialReadinessPanel
       pack={pack}
@@ -189,7 +190,7 @@ it('reuses readiness calculation during unrelated rerenders and recalculates cha
       staleRecordIds={[pack.records[0].id]}
     />,
   );
-  expect(calculation).toHaveBeenCalledTimes(2);
+  expect(calculation.mock.calls.length).toBeGreaterThan(initialCalls);
   expect(screen.getByRole('status').textContent).toContain(copy.staleLabel);
 });
 it('opens the actual quantity result set and lets the reader choose a later record', () => {
@@ -410,8 +411,16 @@ it('shows all nine questions and 19 needs and passes an explicitly selected evid
       onSelectRecord={select}
     />,
   );
-  expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(9);
-  expect(screen.getAllByText(/^K5-\d{3}$/)).toHaveLength(19);
+  for (const title of Object.values(copy.questionLabels)) {
+    expect(
+      screen.getByRole('heading', { level: 3, name: title }).closest('article'),
+    ).not.toBeNull();
+  }
+  expect(
+    within(screen.getByText(copy.needHeading).parentElement!).getAllByText(
+      /^K5-\d{3}$/,
+    ),
+  ).toHaveLength(19);
   expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
   const article = screen
     .getByRole('heading', { name: 'How much' })
@@ -445,11 +454,9 @@ it('places the six-range matrix first and selects the matching need and regional
     copy.matrixRegions.chaobai,
   );
   expect(
-    (
-      screen.getByRole('combobox', {
-        name: copy.needLabel,
-      }) as HTMLSelectElement
-    ).value,
+    screen.getByRole<HTMLSelectElement>('combobox', {
+      name: copy.needLabel,
+    }).value,
   ).toBe('K5-001');
   expect(cell.getAttribute('aria-pressed')).toBe('true');
 });

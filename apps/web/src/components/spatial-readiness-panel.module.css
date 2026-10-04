@@ -234,3 +234,105 @@
     grid-template-columns: 1fr;
   }
 }
+
+.matrix {
+  margin: 16px 0 24px;
+}
+.matrix h3 {
+  margin: 0;
+}
+.matrix label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+.matrix select {
+  min-height: 44px;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+}
+.matrixScroll {
+  overflow: auto;
+  max-block-size: 34rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.matrix table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  font-size: 12px;
+}
+.matrix th {
+  text-align: left;
+  padding: 10px;
+  background: var(--surface-raised);
+  z-index: 1;
+}
+.matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.matrix tbody th {
+  position: sticky;
+  left: 0;
+  min-width: 140px;
+  max-width: 170px;
+  border-bottom: 1px solid var(--border);
+}
+.matrix th small {
+  display: block;
+  margin-top: 5px;
+  font-weight: 400;
+}
+.matrix td {
+  padding: 5px;
+  min-width: 155px;
+  border-bottom: 1px solid var(--border);
+}
+.matrix td button {
+  display: grid;
+  gap: 6px;
+  inline-size: 100%;
+  min-block-size: 44px;
+  text-align: left;
+  font-size: 12px;
+}
+.matrix td button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-soft);
+}
+.matrix td strong {
+  font-size: 17px;
+}
+.matrix td strong small {
+  font-size: 12px;
+  font-weight: 400;
+}
+.matrixAxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.matrixAxes span {
+  font-size: 11px;
+  padding: 3px;
+  background: var(--surface-tint);
+  border-radius: 4px;
+}
+.matrix [data-state='KNOWN'],
+.uses [data-use-state='CHECKS_PASSED'] {
+  color: var(--success);
+}
+.matrix [data-state='PENDING_REVIEW'],
+.uses [data-use-state='BLOCKED'] {
+  color: var(--warning);
+}

@@ -1327,7 +1327,7 @@ const zhCN = {
           '缺浓度、方法和连续观测依据',
         'concentration-flow-window-missing': '缺同窗口浓度与流量',
         'some-records-stale': '受影响记录需重新核对',
-        'material-not-obtained': '本批尚未取得对应实质资料',
+        'material-not-obtained': '当前可见范围尚无对应资料',
         'exact-position-unknown': '精确位置尚不明确',
         'concentrations-not-published': '未发布浓度明细',
         'category-not-reported': '原表为无水、无法监测或其他非类别值',
@@ -1375,7 +1375,7 @@ const zhCN = {
       sourcesLabel: '资料版本',
       recordsLabel: '记录',
       states: {
-        'not-obtained': '未取得',
+        'not-obtained': '当前可见范围无资料',
         partial: '部分资料',
         restricted: '受限',
         stale: '待重新核对',
@@ -1462,6 +1462,26 @@ const zhCN = {
       presentMonth: '已有发布记录',
       missingMonth: '缺少对应发布记录',
       taskKinds: { CLEANING: '清洗任务', QUALITY_CONTROL: '质控任务' },
+      matrixTitle: '六范围资料就绪矩阵',
+      matrixHelp:
+        '每格表示当前可见资料在一个范围和一类需求中的情况。取得、解析、专业核验和展示许可分别记录；用途检查不代替专业批准。范围可能重叠，数量不可相加；时窗记录单列，缺月原因须回查原文。',
+      matrixUse: '用途条件',
+      matrixWindowRecords: '时窗记录',
+      matrixAxes: {
+        obtained: '取得',
+        parsed: '解析',
+        professional: '核验',
+        authorized: '展示许可',
+      },
+      matrixRegions: {
+        bth: '京津冀全域',
+        yongding: '永定河',
+        chaobai: '潮白河',
+        beiyun: '北运河',
+        'daqing-baiyangdian': '大清河—白洋淀',
+        bohai: '渤海湾',
+      },
+      usePendingReview: '专业审核未通过，尚不可进行业务计算',
       factStates: {
         OPEN: '待处理',
         PENDING_REVIEW: '待专业核验',
@@ -5221,6 +5241,27 @@ const en: typeof zhCN = {
         CLEANING: 'Cleaning task',
         QUALITY_CONTROL: 'Quality-control task',
       },
+      matrixTitle: 'Six-range material readiness matrix',
+      matrixHelp:
+        'Each cell covers currently readable materials for one range and need. Acquisition, parsing, professional review and display access remain separate; use checks do not grant professional approval. Ranges overlap and their counts cannot be summed. Window rows are separate; missing-period reasons require evidence.',
+      matrixUse: 'Use conditions',
+      matrixWindowRecords: 'Window rows',
+      matrixAxes: {
+        obtained: 'Obtained',
+        parsed: 'Parsed',
+        professional: 'Review',
+        authorized: 'Display access',
+      },
+      matrixRegions: {
+        bth: 'Beijing–Tianjin–Hebei',
+        yongding: 'Yongding',
+        chaobai: 'Chaobai',
+        beiyun: 'Beiyun',
+        'daqing-baiyangdian': 'Daqing–Baiyangdian',
+        bohai: 'Bohai Bay',
+      },
+      usePendingReview:
+        'Professional approval remains required for business computation',
       factStates: {
         OPEN: 'Open',
         PENDING_REVIEW: 'Pending professional verification',

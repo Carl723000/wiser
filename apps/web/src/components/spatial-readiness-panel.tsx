@@ -24,6 +24,11 @@ import type {
   RegionId,
   WorkspacePack,
 } from '../lib/spatial-workspace-contract';
+import {
+  buildReadinessMatrix,
+  MATRIX_REGIONS,
+  type MatrixAxis,
+} from '../lib/spatial-readiness-matrix';
 import { ContextHelp } from './context-help';
 import styles from './spatial-readiness-panel.module.css';
 
@@ -87,6 +92,13 @@ export interface ReadinessCopy {
   missingMonth: string;
   taskKinds: Record<'CLEANING' | 'QUALITY_CONTROL', string>;
   factStates: Record<string, string>;
+  matrixTitle: string;
+  matrixHelp: string;
+  matrixUse: string;
+  matrixWindowRecords: string;
+  matrixAxes: Record<MatrixAxis, string>;
+  matrixRegions: Record<RegionId, string>;
+  usePendingReview: string;
 }
 export interface SpatialReadinessPanelProps {
   pack: WorkspacePack;
@@ -94,6 +106,7 @@ export interface SpatialReadinessPanelProps {
   staleRecordIds?: readonly string[];
   facts?: ProjectReadinessInput | null;
   onSelectRecord?: (id: string) => void;
+  onSelectRegion?: (id: RegionId) => void;
   sourceHref?: (sourceId: string, versionId: string) => string;
   copy: ReadinessCopy;
 }
@@ -106,10 +119,21 @@ export function SpatialReadinessPanel({
   staleRecordIds = emptyStaleRecordIds,
   facts = null,
   onSelectRecord,
+  onSelectRegion,
   sourceHref,
   copy,
 }: SpatialReadinessPanelProps) {
   const [needId, setNeedId] = useState('K5-001');
+  const [matrixUse, setMatrixUse] = useState<UseId>('archive');
+  const [matrixSelection, setMatrixSelection] = useState<{
+    base: RegionId;
+    selected: RegionId;
+  } | null>(null);
+  const activeRegion = onSelectRegion
+    ? regionId
+    : matrixSelection?.base === regionId
+      ? matrixSelection.selected
+      : regionId;
   const [window, setWindow] = useState(facts?.requirement.window ?? null);
   const [startMonth, setStartMonth] = useState(window?.start ?? '');
   const [endMonth, setEndMonth] = useState(window?.end ?? '');
@@ -130,12 +154,17 @@ export function SpatialReadinessPanel({
   const inspector = useRef<HTMLElement>(null);
   const result = useMemo(
     () =>
-      buildReadiness(pack, regionId, staleRecordIds, facts, {
+      buildReadiness(pack, activeRegion, staleRecordIds, facts, {
         needId,
         window,
         dateRole,
       }),
-    [pack, regionId, staleRecordIds, facts, needId, window, dateRole],
+    [pack, activeRegion, staleRecordIds, facts, needId, window, dateRole],
+  );
+  const matrix = useMemo(
+    () =>
+      buildReadinessMatrix(pack, staleRecordIds, facts, { window, dateRole }),
+    [pack, staleRecordIds, facts, window, dateRole],
   );
   const label = (code: string) => copy.detailLabels[code] ?? copy.unknown;
   // A detail list cannot survive a changed source/version/readability or fact set.
@@ -159,13 +188,13 @@ export function SpatialReadinessPanel({
   ]);
   const selected =
     opened?.needId === needId &&
-    opened.regionId === regionId &&
+    opened.regionId === activeRegion &&
     opened.scope === scope
       ? result.questions.find((question) => question.id === opened.id)
       : null;
   const rows = result.project.monthly[coverageMode];
   function open(id: ReadinessQuestionId) {
-    setOpened({ id, needId, regionId, scope });
+    setOpened({ id, needId, regionId: activeRegion, scope });
     setLimit(pageSize);
     setCoverageMode('raw');
     // The section remains in the document; keyboard users can continue at its heading.
@@ -225,6 +254,120 @@ export function SpatialReadinessPanel({
         {copy.title}{' '}
         <ContextHelp label={copy.help}>{copy.scopeNote}</ContextHelp>
       </h2>
+      <section className={styles.matrix} aria-label={copy.matrixTitle}>
+        <h3>
+          {copy.matrixTitle}{' '}
+          <ContextHelp label={copy.help}>{copy.matrixHelp}</ContextHelp>
+        </h3>
+        <p>
+          {copy.sourcesLabel}: {matrix.totals.sources} · {copy.recordsLabel}:{' '}
+          {matrix.totals.records}
+        </p>
+        <label>
+          {copy.matrixUse}
+          <select
+            aria-label={copy.matrixUse}
+            value={matrixUse}
+            onChange={(event) => setMatrixUse(event.target.value as UseId)}
+          >
+            {Object.entries(copy.useLabels).map(([id, title]) => (
+              <option key={id} value={id}>
+                {title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className={styles.matrixScroll} tabIndex={0}>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">{copy.needLabel}</th>
+                {MATRIX_REGIONS.map((id) => (
+                  <th key={id} scope="col">
+                    {copy.matrixRegions[id]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {NEED_IDS.map((id) => (
+                <tr key={id}>
+                  <th scope="row">
+                    {id}
+                    <small>{copy.needLabels[id] ?? copy.unknown}</small>
+                  </th>
+                  {MATRIX_REGIONS.map((region) => {
+                    const cell = matrix.cells.find(
+                      (item) => item.regionId === region && item.needId === id,
+                    )!;
+                    const use = cell.uses.find(
+                      (item) => item.id === matrixUse,
+                    )!;
+                    return (
+                      <td key={region}>
+                        <button
+                          type="button"
+                          data-matrix-region={region}
+                          data-matrix-need={id}
+                          aria-pressed={
+                            activeRegion === region && needId === id
+                          }
+                          aria-label={`${copy.matrixRegions[region]} · ${id} · ${copy.needLabels[id] ?? copy.unknown} · ${copy.recordsLabel}: ${cell.counts.records} · ${copy.factStates[use.state] ?? copy.unknown}`}
+                          onClick={() => {
+                            if (!onSelectRegion)
+                              setMatrixSelection({
+                                base: regionId,
+                                selected: region,
+                              });
+                            setNeedId(id);
+                            setOpened(null);
+                            onSelectRegion?.(region);
+                          }}
+                        >
+                          <strong>
+                            {cell.counts.records}{' '}
+                            <small>{copy.recordsLabel}</small>
+                          </strong>
+                          {window && (
+                            <span>
+                              {copy.matrixWindowRecords}:{' '}
+                              {cell.windowRecordIds.length}
+                            </span>
+                          )}
+                          <span className={styles.matrixAxes}>
+                            {(Object.keys(cell.axes) as MatrixAxis[]).map(
+                              (axis) => (
+                                <span
+                                  key={axis}
+                                  data-state={cell.axes[axis].state}
+                                  title={`${copy.matrixAxes[axis]}: ${copy.questionStates[cell.axes[axis].state as keyof typeof copy.questionStates] ?? copy.factStates[cell.axes[axis].state] ?? copy.unknown}`}
+                                >
+                                  {copy.matrixAxes[axis]} ·{' '}
+                                  {cell.axes[axis].state === 'UNKNOWN'
+                                    ? copy.unknown
+                                    : (copy.questionStates[
+                                        cell.axes[axis]
+                                          .state as keyof typeof copy.questionStates
+                                      ] ??
+                                      copy.factStates[cell.axes[axis].state] ??
+                                      copy.unknown)}
+                                </span>
+                              ),
+                            )}
+                          </span>
+                          <span data-use-state={use.state}>
+                            {copy.factStates[use.state] ?? copy.unknown}
+                          </span>
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <fieldset className={styles.selection}>
         <legend>{copy.selectionHeading}</legend>
         <label>
@@ -291,7 +434,8 @@ export function SpatialReadinessPanel({
         {windowError && <p role="alert">{copy.windowError}</p>}
       </fieldset>
       <p data-testid="readiness-active-scope">
-        {copy.activeScope}: {needId} · {copy.dateRoles[dateRole]} ·{' '}
+        {copy.activeScope}: {copy.matrixRegions[activeRegion]} · {needId} ·{' '}
+        {copy.dateRoles[dateRole]} ·{' '}
         {window ? `${window.start} — ${window.end}` : copy.unknown}
       </p>
       <dl className={styles.counts}>
@@ -704,7 +848,14 @@ export function SpatialReadinessPanel({
           {result.uses.map((use) => (
             <li key={use.id}>
               <strong>{copy.useLabels[use.id]}</strong>
-              <span>{use.eligible ? copy.useEligible : copy.useBlocked}</span>
+              <span data-use-state={use.state}>
+                {copy.factStates[use.state] ?? copy.unknown}
+              </span>
+              {use.eligible ? (
+                <span>{copy.useEligible}</span>
+              ) : use.state === 'CHECKS_PASSED' ? (
+                <span>{copy.usePendingReview}</span>
+              ) : null}
               <p>{use.reasons.map(label).join(' · ')}</p>
             </li>
           ))}

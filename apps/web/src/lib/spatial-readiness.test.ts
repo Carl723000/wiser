@@ -411,7 +411,11 @@ describe('readiness visibility and use-check provenance', () => {
     ).toBe('UNKNOWN');
   });
   it('retains explicitly synthetic reviewed records only in a separately selected synthetic track', () => {
-    const source = { ...material, track: 'SYNTHETIC' as const };
+    const source = {
+      ...material,
+      track: 'SYNTHETIC' as const,
+      status: { ...material.status, professionalReview: 'approved' },
+    };
     const row = {
       ...record,
       track: 'SYNTHETIC' as const,
@@ -443,25 +447,61 @@ describe('readiness visibility and use-check provenance', () => {
     expect(selected.records[0].id).toBe(row.id);
   });
   it('reads a scoped core use-check while keeping technical sufficiency separate from real professional approval', () => {
-    const input = pack();
+    const concentration: WorkspaceRecord = {
+      ...record,
+      id: 'concentration',
+      metric: '氨氮',
+      value: '0.2',
+      unit: 'mg/L',
+      method: { code: 'synthetic-method', evidence: record.evidence[0] },
+      time: {
+        start: '2023-04-01',
+        end: '2023-04-01',
+        precision: 'day',
+        role: 'observation',
+      },
+    };
+    const flow: WorkspaceRecord = {
+      ...concentration,
+      id: 'flow',
+      metric: '流量',
+      value: '2',
+      unit: 'm3/s',
+    };
+    const input = pack([material], [concentration, flow]);
     const facts = publicationFacts(input);
-    const key = JSON.stringify([
-      JSON.stringify([
-        facts.sources[0].workId,
-        facts.sources[0].versionId,
-        facts.sources[0].assetId,
-      ]),
-      record.id,
-    ]);
-    const withChecks = {
+    const withChecks: ProjectReadinessInput = {
       ...facts,
+      requirement: {
+        ...facts.requirement,
+        purpose: 'nitrogen-load',
+        dateRole: 'OBSERVATION',
+      },
+      records: facts.records.map((value, index) => ({
+        ...value,
+        time: { ...value.time, role: 'OBSERVATION' },
+        metric: {
+          ...value.metric!,
+          kind: index === 0 ? 'CONCENTRATION' : 'FLOW',
+          method: 'synthetic-method',
+        },
+      })),
       useChecks: [
         {
           id: 'load-check-v1',
           purpose: 'nitrogen-load',
-          computation: 'FLUX' as const,
-          state: 'CHECKS_PASSED' as const,
-          recordIds: [key],
+          computation: 'FLUX',
+          state: 'CHECKS_PASSED',
+          recordIds: facts.records.map((value) =>
+            JSON.stringify([
+              JSON.stringify([
+                value.source.workId,
+                value.source.versionId,
+                value.source.assetId,
+              ]),
+              value.id,
+            ]),
+          ),
           reasons: ['paired-synthetic-input-test'],
           evidence: facts.records[0].evidence,
         },
@@ -474,6 +514,31 @@ describe('readiness visibility and use-check provenance', () => {
     expect(use?.eligible).toBe(false);
     expect(use?.ruleVersion).toBe(result.project.ruleVersion);
     expect(result.counts.professionallyReviewed).toBe(0);
+    const stale = buildReadiness(input, 'chaobai', ['flow'], withChecks);
+    expect(stale.uses.find((item) => item.id === 'pollution-load')?.state).toBe(
+      'BLOCKED',
+    );
+    const withdrawn = buildReadiness(
+      pack(
+        [
+          {
+            ...material,
+            rights: { ...material.rights, displayAllowed: false },
+          },
+        ],
+        input.records,
+      ),
+      'chaobai',
+      [],
+      withChecks,
+    );
+    expect(
+      withdrawn.uses.find((item) => item.id === 'pollution-load')?.checkIds,
+    ).toEqual([]);
+    expect(
+      withdrawn.uses.find((item) => item.id === 'pollution-load')?.state,
+    ).toBe('UNKNOWN');
+    expect(withdrawn.counts.records).toBe(0);
   });
 });
 
@@ -619,6 +684,9 @@ describe('readiness rechecks current evidence bindings', () => {
       const result = buildReadiness(withdrawn, 'chaobai', [], admitted);
       expect(JSON.stringify(result)).not.toContain(privateExcerpt);
       expect(JSON.stringify(result)).not.toContain(other.id);
+      if (carrier === 'field') expect(result.project.fields).toEqual([]);
+      if (carrier === 'task') expect(result.project.tasks).toEqual([]);
+      if (carrier === 'use-check') expect(result.project.useChecks).toEqual([]);
       expect(result.records.map((item) => item.id)).toEqual([record.id]);
       expect(result.project.records[0].rawValue).toBe(record.value);
       if (carrier === 'record-evidence' || carrier === 'object-footnotes') {

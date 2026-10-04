@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: bef8dfa287220444d3a08896f268a3f394402574
+lastReviewedCommit: 3b85ac6c86954937880d3224b9b3fd74d991a5ad
 ---
 
 ## Two frontend applications
@@ -319,3 +319,5 @@ The candidate-original Web route `/api/data-foundation/candidate-assets/:ingesti
 Pagination defaults to 50 and preserves a persisted page size; only issued cursors are used for current reads, with at most 32 in-memory backward positions. Durable views save typed asset/record anchors, not opaque cursors. Explicit record/map lookup reads at most ten bounded pages and reports absence rather than inventing random access. The private map adapter expands only GeometryCollection drawing parts, preserves original geometry/Z/source CRS/record identity, and passes neither `dataItemId` nor `versionId`. The existing map's optional record callback and selected-record drawing focus leave the published DTO unchanged; stable empty STAC input avoids recreating the map on selection.
 
 Reopen uses the service's fresh request, verifies the whole saved manifest again before committing visible content, and rechecks it before/after subsequent material reads. Retry/refresh reopens that view even after content clearing. Saving creates an immutable view; revoke clears an active view. Saved map/period configuration is retained, with an explicit unapplied state in the raw reader. No local storage, fixed package fallback, professional decision or publication is added. Real session/SQL/original/browser acceptance is still required after these isolated tests.
+
+The local readiness panel presents a keyboard-operable six-range by19-demand matrix and a declared-use selector. Selecting one cell changes the existing region/demand scope and closes stale details. Shared memoized rule results retain visible record identities, real/synthetic separation and withdrawn-source filtering. The existing question cards and bounded detail pages remain available. Original inventory and current-window row counts are separate; source registration outside the chosen month does not falsely become missing material. This UI changes no public query or persistence contract. Real session, database and browser acceptance remain separate.

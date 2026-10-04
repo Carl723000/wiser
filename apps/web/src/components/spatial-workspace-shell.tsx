@@ -276,6 +276,10 @@ export function SpatialWorkspaceShell({
           sourceHref={(sourceId, versionId) =>
             `/${locale}/data-foundation/spatial-workspace/source?source=${encodeURIComponent(sourceId)}&version=${encodeURIComponent(versionId)}`
           }
+          onSelectRegion={(id) => {
+            if (impact) setExerciseRegionId(id);
+            else setRegionId(id);
+          }}
           onSelectRecord={selectRecord}
         />
       </section>

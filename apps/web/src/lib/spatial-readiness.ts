@@ -95,6 +95,9 @@ export interface ReadinessResult {
   uses: {
     id: UseId;
     eligible: boolean;
+    state: ProjectReadinessResult['useChecks'][number]['state'];
+    checkIds: string[];
+    ruleVersion: string;
     recordIds: string[];
     reasons: string[];
   }[];
@@ -327,20 +330,28 @@ export function buildReadiness(
   });
   const inRegion = (ids: readonly RegionId[]) =>
     regionId === 'bth' || ids.includes(regionId);
+  const track = selection.track ?? 'REAL';
   const readableRecords = pack.records.filter(
     (record) =>
-      record.reviewStatus === 'pending' &&
+      (record.track === undefined || record.track === track) &&
+      (record.reviewStatus !== 'synthetic-reviewed' ||
+        (track === 'SYNTHETIC' && record.track === 'SYNTHETIC')) &&
       inRegion(record.regionIds) &&
       pack.sources.some(
         (source) =>
           source.id === record.sourceId &&
           source.versionId === record.versionId &&
-          source.rights.displayAllowed,
+          source.rights.displayAllowed &&
+          (source.track ?? 'REAL') === track,
       ),
   );
   const needs = NEED_IDS.map((id): ReadinessNeed => {
     const matchingSources = pack.sources.filter(
-      (source) => inRegion(source.regionIds) && source.needIds.includes(id),
+      (source) =>
+        source.rights.displayAllowed &&
+        (source.track ?? 'REAL') === track &&
+        inRegion(source.regionIds) &&
+        source.needIds.includes(id),
     );
     const matchingRecords = readableRecords.filter((record) =>
       record.needIds.includes(id),
@@ -389,43 +400,103 @@ export function buildReadiness(
   const mapRecords = usable.filter(
     (record) => factById.get(record.id)?.spatial?.state === 'LOCATED',
   );
+  const useCheck = (
+    id: UseId,
+    computation: ProjectReadinessResult['useChecks'][number]['computation'],
+    fallbackRecords: WorkspaceRecord[],
+    fallbackReasons: string[],
+    calculation = false,
+  ): ReadinessResult['uses'][number] => {
+    const checks = project.useChecks.filter(
+      (check) =>
+        check.computation === computation && check.recordIds.length > 0,
+    );
+    const recordByKey = new Map(
+      project.records.map((record) => [readinessRecordKey(record), record]),
+    );
+    const checkRecords = unique(checks.flatMap((check) => check.recordIds));
+    const hasStale = checkRecords.some((key) =>
+      stale.has(recordByKey.get(key)!.id),
+    );
+    const state =
+      hasStale || checks.some((check) => check.state === 'BLOCKED')
+        ? 'BLOCKED'
+        : checks.some((check) => check.state === 'UNKNOWN')
+          ? 'UNKNOWN'
+          : checks.some((check) => check.state === 'LIMITED')
+            ? 'LIMITED'
+            : checks.length
+              ? 'CHECKS_PASSED'
+              : fallbackRecords.length && !calculation
+                ? 'LIMITED'
+                : 'UNKNOWN';
+    const ids = checks.length
+      ? checkRecords.map((key) => recordByKey.get(key)!.id)
+      : fallbackRecords.map((record) => record.id);
+    return {
+      id,
+      state,
+      checkIds: checks.map((check) => check.id),
+      ruleVersion: project.ruleVersion,
+      eligible: calculation
+        ? state === 'CHECKS_PASSED' &&
+          checkRecords.length > 0 &&
+          checkRecords.every(
+            (key) => recordByKey.get(key)!.professionalState === 'APPROVED',
+          )
+        : fallbackRecords.length > 0 &&
+          state !== 'BLOCKED' &&
+          state !== 'UNKNOWN',
+      recordIds: ids,
+      reasons: checks.length
+        ? unique(checks.flatMap((check) => check.reasons))
+        : [
+            ...fallbackReasons,
+            ...(calculation ? ['use-check-not-present'] : []),
+          ],
+    };
+  };
+  const readingUse = (
+    id: UseId,
+    current: WorkspaceRecord[],
+    reasons: string[],
+  ): ReadinessResult['uses'][number] => ({
+    id,
+    state: current.length ? 'LIMITED' : 'UNKNOWN',
+    checkIds: [],
+    ruleVersion: project.ruleVersion,
+    eligible: current.length > 0,
+    recordIds: current.map((record) => record.id),
+    reasons,
+  });
   const uses: ReadinessResult['uses'] = [
-    {
-      id: 'archive',
-      eligible: usable.length > 0,
-      recordIds: usable.map((record) => record.id),
-      reasons: ['source-and-version-required'],
-    },
-    {
-      id: 'monthly-category',
-      eligible: category.length > 0,
-      recordIds: category.map((record) => record.id),
-      reasons: ['published-category-only', 'sampling-frequency-unknown'],
-    },
-    {
-      id: 'report-summary',
-      eligible: report.length > 0,
-      recordIds: report.map((record) => record.id),
-      reasons: ['reported-scope-only', 'publication-year-distinct'],
-    },
-    {
-      id: 'reference-map',
-      eligible: mapRecords.length > 0,
-      recordIds: mapRecords.map((record) => record.id),
-      reasons: ['reference-not-sampling', 'native-scale-retained'],
-    },
-    {
-      id: 'concentration-trend',
-      eligible: false,
-      recordIds: [],
-      reasons: ['concentration-method-time-series-missing'],
-    },
-    {
-      id: 'pollution-load',
-      eligible: false,
-      recordIds: [],
-      reasons: ['concentration-flow-window-missing'],
-    },
+    readingUse('archive', usable, ['source-and-version-required']),
+    useCheck('monthly-category', 'CATEGORY_REVIEW', category, [
+      'published-category-only',
+      'sampling-frequency-unknown',
+    ]),
+    readingUse('report-summary', report, [
+      'reported-scope-only',
+      'publication-year-distinct',
+    ]),
+    readingUse('reference-map', mapRecords, [
+      'reference-not-sampling',
+      'native-scale-retained',
+    ]),
+    useCheck(
+      'concentration-trend',
+      'CONCENTRATION_DIFFERENCE',
+      [],
+      ['concentration-method-time-series-missing'],
+      true,
+    ),
+    useCheck(
+      'pollution-load',
+      'FLUX',
+      [],
+      ['concentration-flow-window-missing'],
+      true,
+    ),
   ];
   if (stale.size) uses.forEach((use) => use.reasons.push('some-records-stale'));
   return {
@@ -455,7 +526,22 @@ export function buildReadiness(
       samplingSites: null,
       validObservations: project.counts.independentObservations,
       professionallyReviewed: sources.filter(
-        (source) => source.status.professionalReview === 'approved',
+        (source) =>
+          track === 'SYNTHETIC' &&
+          source.track === 'SYNTHETIC' &&
+          source.status.professionalReview === 'approved' &&
+          project.records.some(
+            (record) =>
+              fixedSourceKey(record.source) ===
+              fixedSourceKey(materialReference(source)),
+          ) &&
+          project.records
+            .filter(
+              (record) =>
+                fixedSourceKey(record.source) ===
+                fixedSourceKey(materialReference(source)),
+            )
+            .every((record) => record.professionalState === 'APPROVED'),
       ).length,
       assets: project.counts.assets,
       monthlyRecords: project.counts.monthlyRecords,

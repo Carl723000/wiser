@@ -146,7 +146,7 @@ it('clears previously readable B evidence from the real inspector after withdraw
   );
   inspectQuality();
   expect(screen.queryByText(privateExcerpt)).toBeNull();
-  expect(view.container.textContent).not.toContain(other.id);
+  expect(view.container.innerHTML).not.toContain(other.id);
   expect(view.container.textContent).not.toContain('B-dependent-check');
   expect(screen.getByText(currentExcerpt)).toBeTruthy();
 });

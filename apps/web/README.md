@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: bef8dfa287220444d3a08896f268a3f394402574
+lastReviewedCommit: 3b85ac6c86954937880d3224b9b3fd74d991a5ad
 ---
 
 # WISER Web / 产品界面
@@ -94,3 +94,5 @@ pnpm --filter @wiser/web test:e2e
 候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态；未应用的既有地图／时段配置明确提示。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state; retained map/period settings not applied here are explicitly identified.
 
 真实账号、候选持久保存、原件读取和浏览器验证需在获准运行环境另行完成，不以合成回归代替。 / Real accounts, persisted candidates, originals and browser behavior require their authorized runtime checks, not synthetic substitutes.
+
+就绪总览提供六范围×19需求矩阵；当前展示许可、取得、解析与专业核验分别显示，点选进入相同区域与需求的九问明细。全局按集合去重，时窗记录与历史资料分列；真实待审资料不能由技术检查升级为专业批准。 / The readonly six-range by19-demand matrix separates display permission, original receipt, parsing and independent review. Cell selection shares the existing question scope; overlapping totals use a set union and current-window rows stay separate from historical inventory. Technical checks do not approve real pending materials.

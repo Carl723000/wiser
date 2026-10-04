@@ -4,6 +4,9 @@ import {
   type ProjectReadinessInput,
   type ProjectReadinessRecord,
   type ProjectReadinessResult,
+  type ProjectReadinessTrack,
+  type ReadinessEvidence,
+  type ReadinessFactScope,
   type ReadinessSourceReference,
 } from '@wiser/data-core/project-readiness';
 import type {
@@ -15,6 +18,7 @@ import type {
 import { workspaceDisplayPositions } from './spatial-workspace-view';
 
 export interface ReadinessSelection {
+  track?: ProjectReadinessTrack;
   needId: string;
   window: { start: string; end: string } | null;
   dateRole: 'PUBLICATION' | 'OBSERVATION' | 'EVENT';
@@ -52,6 +56,108 @@ function canonicalMaterial(
   return current;
 }
 
+/** Rebind every evidence carrier to the current display scope, never a saved permission snapshot. */
+function currentReadinessFacts(
+  facts: ProjectReadinessInput,
+  sources: ReadonlySet<string>,
+  records: ReadonlySet<string>,
+): ProjectReadinessInput {
+  const sourceAllowed = (source: ReadinessSourceReference) =>
+    sources.has(fixedSourceKey(source));
+  const evidenceAllowed = (items: readonly ReadinessEvidence[]) =>
+    items.every((item) => sourceAllowed(item.source));
+  const recordsAllowed = (ids: readonly string[]) =>
+    ids.every((id) => records.has(id));
+  const scopeAllowed = (scope: ReadinessFactScope) =>
+    scope.recordIds.length + scope.sources.length > 0 &&
+    recordsAllowed(scope.recordIds) &&
+    scope.sources.every(sourceAllowed);
+  const series = facts.series
+    .filter((item) => evidenceAllowed(item.evidence))
+    .map((item) => ({ ...item, sources: item.sources.filter(sourceAllowed) }))
+    .filter((item) => item.sources.length > 0);
+  // Existing detail consumers find the first raw correspondence by ID. A later
+  // permitted duplicate must not revive that first object's withdrawn evidence.
+  const firstCorrespondence = new Map<
+    string,
+    ProjectReadinessInput['correspondences'][number]
+  >();
+  for (const item of facts.correspondences) {
+    if (!firstCorrespondence.has(item.id))
+      firstCorrespondence.set(item.id, item);
+  }
+  const selectedReconciliation = facts.reconciliations?.find(
+    (item) => item.id === facts.selectedReconciliationId,
+  );
+  const reconciliations = facts.reconciliations?.filter(
+    (item) =>
+      item.recordIds.length > 0 &&
+      recordsAllowed(item.recordIds) &&
+      evidenceAllowed(item.evidence),
+  );
+  return {
+    ...facts,
+    sources: facts.sources.filter(sourceAllowed),
+    records: facts.records
+      .filter(
+        (item) =>
+          records.has(readinessRecordKey(item)) &&
+          sourceAllowed(item.source) &&
+          evidenceAllowed(item.evidence) &&
+          evidenceAllowed(item.object?.footnotes ?? []),
+      )
+      .map((item) => ({
+        ...item,
+        series: series.some(
+          (declaration) =>
+            declaration.id === item.series?.id &&
+            declaration.version === item.series.version &&
+            declaration.sources.some(
+              (source) =>
+                fixedSourceKey(source) === fixedSourceKey(item.source),
+            ),
+        )
+          ? item.series
+          : null,
+      })),
+    series,
+    correspondences: facts.correspondences.filter(
+      (item) =>
+        firstCorrespondence.get(item.id) === item &&
+        item.memberRecordIds.length > 0 &&
+        recordsAllowed(item.memberRecordIds) &&
+        evidenceAllowed(item.evidence),
+    ),
+    checks: facts.checks?.filter(
+      (item) => scopeAllowed(item) && evidenceAllowed(item.evidence),
+    ),
+    fields: facts.fields?.filter(
+      (item) => sourceAllowed(item.source) && evidenceAllowed(item.evidence),
+    ),
+    tasks: facts.tasks?.filter(
+      (item) => scopeAllowed(item) && evidenceAllowed(item.evidence),
+    ),
+    useChecks: facts.useChecks?.filter(
+      (item) =>
+        item.recordIds.length > 0 &&
+        recordsAllowed(item.recordIds) &&
+        evidenceAllowed(item.evidence),
+    ),
+    reconciliations,
+    selectedReconciliationId:
+      selectedReconciliation &&
+      reconciliations?.includes(selectedReconciliation)
+        ? selectedReconciliation.id
+        : undefined,
+    areaDenominator:
+      facts.areaDenominator &&
+      recordsAllowed(facts.areaDenominator.recordIds) &&
+      evidenceAllowed(facts.areaDenominator.evidence)
+        ? facts.areaDenominator
+        : undefined,
+  };
+}
+
 /** Same-system, readonly adapter. It does not authorize or publish any record. */
 export function projectReadinessFromPack(
   pack: WorkspacePack,
@@ -64,11 +170,13 @@ export function projectReadinessFromPack(
   records: WorkspaceRecord[];
   sources: Material[];
 } {
-  facts = facts?.track === 'REAL' ? facts : null;
+  const track = selection.track ?? 'REAL';
+  facts = facts?.track === track ? facts : null;
   const inRegion = (ids: readonly string[]) =>
     regionId === 'bth' || ids.includes(regionId);
   const readable = pack.sources.filter(
-    (source) => source.rights.displayAllowed,
+    (source) =>
+      source.rights.displayAllowed && (source.track ?? 'REAL') === track,
   );
   const sourceFor = (record: WorkspaceRecord) =>
     readable.find(
@@ -79,7 +187,11 @@ export function projectReadinessFromPack(
     ...new Map(
       pack.records
         .filter(
-          (record) => record.reviewStatus === 'pending' && sourceFor(record),
+          (record) =>
+            sourceFor(record) &&
+            (record.track === undefined || record.track === track) &&
+            (record.reviewStatus !== 'synthetic-reviewed' ||
+              (track === 'SYNTHETIC' && record.track === 'SYNTHETIC')),
         )
         .map((record) => [record.id, record]),
     ).values(),
@@ -90,6 +202,23 @@ export function projectReadinessFromPack(
       return [fixedSourceKey(materialReference(canonical)), canonical] as const;
     }),
   );
+  // Read permission covers the supplied pack, while the core separately owns
+  // need/region calculation scope. A readable cross-scope witness may explain
+  // UNKNOWN; it must not become scoped observations or a passed check.
+  const currentSources = new Set(sourceMap.keys());
+  const currentRecords = new Set(
+    realRecords
+      .map((record) => ({
+        id: record.id,
+        source: materialReference(
+          canonicalMaterial(sourceFor(record)!, readable),
+        ),
+      }))
+      .map(readinessRecordKey),
+  );
+  facts = facts
+    ? currentReadinessFacts(facts, currentSources, currentRecords)
+    : null;
   const stale = new Set(staleIds);
   const evidence = (
     record: WorkspaceRecord,
@@ -104,7 +233,7 @@ export function projectReadinessFromPack(
     const source = canonicalMaterial(sourceFor(record)!, readable);
     const reference = materialReference(source);
     const fact =
-      facts?.track === 'REAL'
+      facts?.track === track
         ? facts.records.find(
             (item) =>
               item.id === record.id &&
@@ -181,7 +310,14 @@ export function projectReadinessFromPack(
         method: record.method?.code ?? null,
       },
       parsing: record.evidence.length ? 'READY' : 'NOT_PARSED',
-      professionalState: 'PENDING_REVIEW',
+      professionalState:
+        track === 'SYNTHETIC' &&
+        record.track === 'SYNTHETIC' &&
+        source.track === 'SYNTHETIC' &&
+        record.reviewStatus === 'synthetic-reviewed' &&
+        fact?.professionalState === 'APPROVED'
+          ? 'APPROVED'
+          : 'PENDING_REVIEW',
       evidence: evidence(record, reference),
       spatial,
     };
@@ -200,7 +336,7 @@ export function projectReadinessFromPack(
       : current;
   });
   const input: ProjectReadinessInput = {
-    track: 'REAL',
+    track,
     requirement: {
       needId: selection.needId,
       regionId,
@@ -213,7 +349,7 @@ export function projectReadinessFromPack(
     },
     sources: [...sourceMap.entries()].map(([key, source]) => ({
       ...materialReference(source),
-      track: 'REAL',
+      track,
       kind:
         facts?.sources.find((item) => fixedSourceKey(item) === key)?.kind ??
         (source.kind === 'spatial'
