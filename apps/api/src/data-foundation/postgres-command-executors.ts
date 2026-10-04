@@ -848,6 +848,7 @@ const MANAGED_INTAKE_COMMANDS = new Set<DataCapabilityId>([
   'data.uploadSession.complete',
   'data.ingestion.create',
   'data.ingestion.submit',
+  'data.ingestion.resume',
 ]);
 
 function requestHash(
@@ -2713,6 +2714,7 @@ export function createPostgresDataCommandRuntime(
           );
           const ingestion = singleRow(ingestionResult);
           if (ingestion === undefined) throw commandError('NOT_FOUND');
+          assertIngestionOwner(ingestion, context);
           if (text(ingestion, 'state') !== 'RECEIVED') {
             throw commandError('STATE_CONFLICT');
           }

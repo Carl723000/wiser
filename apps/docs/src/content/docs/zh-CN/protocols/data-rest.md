@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 82d4e9ea0fef8d01de203705e7c737565f1f8881
+lastReviewedCommit: 95f8cc22cac2463fd55eb342923c853a34029ddc
 ---
 
 ## 协议边界
@@ -83,7 +83,7 @@ Idempotency-Key: <uuid>
 If-Match: "v3"
 ```
 
-适用范围是 upload Session complete、ingestion submit/approve/reject 与 Operation cancel。Header 与 body 中已有的 `expectedVersion` 必须一致。成功响应在能找到聚合版本时返回 `ETag: "vN"`。所有身份、业务与错误响应使用 `private, no-store`。
+适用范围是 upload Session complete、ingestion submit/resume/approve/reject 与 Operation cancel。Header 与 body 中已有的 `expectedVersion` 必须一致。成功响应在能找到聚合版本时返回 `ETag: "vN"`。所有身份、业务与错误响应使用 `private, no-store`。
 
 `data.ingestion.resume` 接收原入库单 ID；`expectedVersion` 与 `If-Match` 使用当前 **Operation** 版本。仅当原任务已过排队期限、仍为从未领取的 PENDING Job，且原 Operation 仍在 RUNNING 时才允许恢复。成功后保持 Operation ID 不变、版本递增，并记录 RESUMED 事件、审计及 Outbox。使用新的 UUID 幂等键；模糊失败仅重试完全相同的请求。
 

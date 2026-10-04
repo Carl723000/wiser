@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: fc702011c832942776425598ae7a94d719ce033b
+lastReviewedCommit: 95f8cc22cac2463fd55eb342923c853a34029ddc
 ---
 
 ## What runs today
@@ -530,6 +530,8 @@ Pending ownership and independent review compare only validated UUID identities,
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
 
 `data.operation.get/events` admit managed reads only for an exact standard `data.uploadSession.create` or `data.ingestion.create` task. Each read checks fresh trusted Auth, authorized purpose, expiry and resource scope, then immutable upload responsibility or ingestion-session responsibility before reading status, errors or events. Current maintenance permission admits the original actor/type/delegator or its responsible human delegator; current publish permission admits only an independent human reviewer. Unknown legacy responsibility, other tasks and foreign scopes fail without diagnostic leakage. Managed event continuations additionally bind actor, type, delegator and purpose; a new request under another currently authorized purpose is allowed, but cannot reuse that cursor. Managed errors keep the existing stable error-code format and retryable flag, use `HANDLER_UNEXPECTED` for invalid upstream codes, replace free-text diagnostics with `Operation failed.`, and omit event messages. No submission metadata or storage keys are returned. Session RLS and the existing Operation immutability trigger remain in force; no new Operation policy or migration is required. Legacy reads and DTO/discovery archives are unchanged. Resume/cancel, approval/rejection and additional maintenance capabilities remain excluded. Candidate discovery and status reads grant no professional approval or publication. Real Auth, SQL/RLS, Worker and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
+
+The internal `data.ingestion.resume` executor checks current maintenance authority, immutable submitter/delegator responsibility and purpose-bound same-key replay when a managed resource scope is present. Public managed admission still rejects resume; this defense does not establish live Auth or SQL/RLS acceptance.
 
 ### Web candidate read transport
 
