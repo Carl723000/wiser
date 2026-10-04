@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 9594690b
+lastReviewedCommit: db1e2345
 ---
 
 ## 两个前端应用
@@ -317,6 +317,8 @@ WebGL没有原始用户事件的容器缩放回调不回写受控相机。外部
 ### 接收候选查阅页面
 
 `ingestions/[ingestionId]`采用严格的`ingestionDetail`1.2，传递可为null的完整候选引用，不构造已发布版本。可选`candidateView`只接受一个UUID，并保留在经核对的登录目的页。客户端只调用同源候选get／records／geometry及保存视图create／list／open／revoke入口。共用严格契约、完整引用／资产／条数核对、流式严格UTF-8 JSON预算（资料3 MiB、保存128 KiB）、取消和安全错误保护响应。引用改变后卸载并取消旧请求；当前权限拒绝清除内容和标题。
+
+既有`project`可见范围标为“本人及获权独立审核人”，不表示项目全员可读。保存范围帮助说明全部候选仍须当前获权，分享视图不授予资料访问权限；枚举值、服务端授权和保存查询契约均不改。
 
 默认每页50条，重开保留已存页大小；当前分页仅使用服务器游标，内存中最多保留32个往返位置。持久视图使用明确资产／记录锚点，不保存不透明游标。所选记录与地图往返最多逐页检查10个有界页，未找到时如实提示，不制造随机定位能力。私有地图适配仅展开GeometryCollection绘制部分，保留原几何、Z、来源坐标系及记录身份，不传`dataItemId/versionId`。现有地图的可选记录回调和选中高亮不改已发布DTO；稳定的空STAC输入避免选择时重建地图。
 

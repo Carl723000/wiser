@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f0483217b1039f99e82ad538518cc22b6a4d0f22
+lastReviewedCommit: db1e2345
 ---
 
 ## Protocol boundary

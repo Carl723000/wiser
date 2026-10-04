@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 9594690b
+lastReviewedCommit: db1e2345
 ---
 
 ## Two frontend applications
@@ -319,6 +319,8 @@ The candidate-original Web route `/api/data-foundation/candidate-assets/:ingesti
 ### Intake candidate reader
 
 `ingestions/[ingestionId]` uses strict `ingestionDetail` 1.2; it forwards the nullable complete candidate reference, never a fabricated published version. The optional `candidateView` query accepts one UUID and remains in the validated login destination. The client reader calls only same-origin candidate get/records/geometry and saved-view create/list/open/revoke BFFs. Strict shared schemas, full-reference/asset/page checks, streamed fatal-UTF-8 JSON budgets (3 MiB material, 128 KiB save), cancellation and safe errors guard replies. Changes of reference remount/cancel the previous owner; current denial clears content and titles.
+
+The existing `project` visibility is labelled “Me and authorized independent reviewers”, not all project members. The saved-scope help explains that every candidate still requires current access and sharing grants no material permission; enum values, service authorization and saved-query contracts are unchanged.
 
 Pagination defaults to 50 and preserves a persisted page size; only issued cursors are used for current reads, with at most 32 in-memory backward positions. Durable views save typed asset/record anchors, not opaque cursors. Explicit record/map lookup reads at most ten bounded pages and reports absence rather than inventing random access. The private map adapter expands only GeometryCollection drawing parts, preserves original geometry/Z/source CRS/record identity, and passes neither `dataItemId` nor `versionId`. The existing map's optional record callback and selected-record drawing focus leave the published DTO unchanged; stable empty STAC input avoids recreating the map on selection.
 

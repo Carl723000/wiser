@@ -2947,7 +2947,7 @@ const zhCN = {
       viewName: '视图名称',
       visibility: '可见范围',
       private: '仅本人',
-      project: '当前项目',
+      project: '本人及获权独立审核人',
       save: '保存视图',
       savedList: '已保存视图',
       loadSaved: '读取保存视图',
@@ -2960,7 +2960,7 @@ const zhCN = {
       previousSaved: '上一页保存视图',
       saveHelp: '保存范围',
       saveExplanation:
-        '新建固定视图，保存候选清单、分页位置与所选记录；不修改旧视图。重开时重新核对全部候选的当前权限并读取服务器内容，不保存原件或记录副本。',
+        '新建固定视图，保存候选清单、分页位置与所选记录；不修改旧视图。重开时重新核对全部候选的当前权限并读取服务器内容，不保存原件或记录副本。“本人及获权独立审核人”仅向当前有权查阅全部候选的独立审核人开放；分享视图不授予资料访问权限。',
       revokeHelp: '撤回规则',
       revokeExplanation: '撤回后，此固定视图不可再打开。',
       otherIntake: '此视图包含其他接收任务，请从对应任务继续查阅。',
@@ -6874,7 +6874,7 @@ const en: typeof zhCN = {
       viewName: 'View name',
       visibility: 'Visibility',
       private: 'Only me',
-      project: 'Current project',
+      project: 'Me and authorized independent reviewers',
       save: 'Save view',
       savedList: 'Saved views',
       loadSaved: 'Load saved views',
@@ -6887,7 +6887,7 @@ const en: typeof zhCN = {
       previousSaved: 'Previous saved views',
       saveHelp: 'Saved scope',
       saveExplanation:
-        'Create an immutable view with the fixed candidate list, page position and selected record. Reopening checks current access to every candidate and reads server content again, without copying originals or records.',
+        'Create an immutable view with the fixed candidate list, page position and selected record. Reopening checks current access to every candidate and reads server content again, without copying originals or records. “Me and authorized independent reviewers” includes only independent reviewers who currently have access to every candidate; sharing a view grants no material access.',
       revokeHelp: 'Revocation policy',
       revokeExplanation: 'After revocation this fixed view cannot be reopened.',
       otherIntake:
