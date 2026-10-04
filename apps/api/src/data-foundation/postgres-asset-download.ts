@@ -1,4 +1,5 @@
 import { applyResourceReadScope } from './resource-read-scope.js';
+import type { CandidateOriginalOutcome } from './candidate-original-outcomes.js';
 import type { S3AuthorityObjectStore } from '@wiser/data-infra/object-store';
 import type { PlatformRequestContext } from '@wiser/platform-contracts';
 import {
@@ -134,6 +135,18 @@ export class PostgresDataAssetDownloadPort {
     if (!this.#candidate)
       throw new PostgresDataAssetDownloadError('UNAVAILABLE');
     await this.#candidate.authorizeCandidateDownload(input);
+  }
+
+  async appendCandidateOriginalOutcome(
+    outcomeReceipt: object,
+    outcome: CandidateOriginalOutcome,
+  ): Promise<void> {
+    if (!this.#candidate)
+      throw new PostgresDataAssetDownloadError('UNAVAILABLE');
+    await this.#candidate.appendCandidateOriginalOutcome(
+      outcomeReceipt,
+      outcome,
+    );
   }
 
   async createDownload(input: {

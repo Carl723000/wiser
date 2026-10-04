@@ -10,6 +10,10 @@ import type { S3AuthorityObjectStore } from '@wiser/data-infra/object-store';
 import type { AssetDownloadPool } from './postgres-asset-download.js';
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { setCandidateReadAuthority } from './candidate-read-authority.js';
+import {
+  CandidateOriginalOutcomeSchema,
+  type CandidateOriginalOutcome,
+} from './candidate-original-outcomes.js';
 
 export const MAX_CANDIDATE_ORIGINAL_BYTES = 32 * 1024 * 1024;
 export interface CandidateOriginalInput {
@@ -23,12 +27,18 @@ export interface CandidateOriginalDownload {
   readonly expiresAt: string;
   readonly sha256: string;
   readonly sizeBytes: number;
+  /** Opaque in-process receipt. Never serialized to clients or accepted from JSON. */
+  readonly outcomeReceipt: object;
 }
 export interface CandidateOriginalPort {
   createCandidateDownload(
     input: CandidateOriginalInput,
   ): Promise<CandidateOriginalDownload>;
   authorizeCandidateDownload(input: CandidateOriginalInput): Promise<void>;
+  appendCandidateOriginalOutcome(
+    outcomeReceipt: object,
+    outcome: CandidateOriginalOutcome,
+  ): Promise<void>;
 }
 
 const SCOPE_SQL = `/* data.candidate-original.scope */
@@ -37,7 +47,8 @@ select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,tr
   set_config('wiser.candidate_original_ingestion',$5,true),
   set_config('wiser.candidate_original_batch',$6,true),
   set_config('wiser.candidate_original_review_hash',$7,true),
-  set_config('wiser.candidate_original_asset',$8,true)
+  set_config('wiser.candidate_original_asset',$8,true),
+  set_config('statement_timeout','10000',true)
 `;
 const LOOKUP_SQL = `/* data.candidate-original.lookup */
 select encode(candidate.source_hash,'hex') as source_hash,
@@ -68,6 +79,37 @@ values($1::uuid,$2::uuid,$3::uuid,'data.ingestion.candidate.original.read','inge
   'ALLOWED',$5,jsonb_build_object('traceId',$6::text,'assetId',$7::text,'processingBatchId',$8::text,'reviewHash',$9::text,
     'actorType',$12::text,'delegatedBy',$13::text),$10,$11::bigint,1)
 `;
+const OUTCOME_SCOPE_SQL = `/* data.candidate-original.outcome-scope */
+select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),
+  set_config('wiser.max_security_level',$3,true),set_config('wiser.policy_version',$4,true),
+  set_config('statement_timeout','10000',true)
+`;
+const OUTCOME_SQL = `/* data.candidate-original.outcome */
+insert into security.audit_event(tenant_id,project_id,event_id,actor_id,action,resource_type,resource_id,
+  decision,purpose,context,security_level,policy_version,row_version)
+values($1::uuid,$2::uuid,$3::uuid,$4::uuid,'data.ingestion.candidate.original.output','ingestion-candidate',$5,
+  $6,$7,$8::jsonb,$9,$10::bigint,1)
+`;
+interface OriginalOutcomeReceipt {
+  readonly binding: {
+    readonly tenantId: string;
+    readonly projectId: string;
+    readonly maxSecurityLevel: string;
+    readonly authzVersion: number;
+    readonly purpose: string;
+    readonly traceId: string;
+    readonly actorId: string;
+    readonly actorType: string;
+    readonly delegatedBy: string | null;
+    readonly reference: IngestionCandidateReference;
+    readonly assetId: string;
+  };
+  readonly sizeBytes: number;
+  readonly securityLevel: unknown;
+  readonly policyVersion: unknown;
+  outcome?: CandidateOriginalOutcome;
+  append?: Promise<void>;
+}
 function safeError(code: 'NOT_FOUND' | 'UNAVAILABLE') {
   return Object.assign(new Error('Pending original access is unavailable.'), {
     code,
@@ -75,6 +117,7 @@ function safeError(code: 'NOT_FOUND' | 'UNAVAILABLE') {
 }
 
 export class PostgresCandidateOriginalPort implements CandidateOriginalPort {
+  private readonly receipts = new WeakMap<object, OriginalOutcomeReceipt>();
   constructor(
     private readonly pool: AssetDownloadPool,
     private readonly store: Pick<
@@ -173,14 +216,39 @@ export class PostgresCandidateOriginalPort implements CandidateOriginalPort {
           input.context.principal.actorType,
           input.context.principal.delegatedBy ?? null,
         ]);
-        download = Object.freeze({
-          url: signed.url,
-          expiresAt: signed.expiresAt,
-          sha256: hash,
-          sizeBytes,
-        });
+        download = Object.freeze(
+          Object.defineProperty(
+            {
+              url: signed.url,
+              expiresAt: signed.expiresAt,
+              sha256: hash,
+              sizeBytes,
+            },
+            'outcomeReceipt',
+            { value: Object.freeze({}), enumerable: false },
+          ),
+        ) as CandidateOriginalDownload;
       }
       await client.query('COMMIT');
+      if (download)
+        this.receipts.set(download.outcomeReceipt, {
+          binding: Object.freeze({
+            tenantId: authorization.tenantId,
+            projectId: authorization.projectId,
+            maxSecurityLevel: authorization.maxSecurityLevel,
+            authzVersion: authorization.authzVersion,
+            purpose: authorization.purpose,
+            traceId: input.context.traceId,
+            actorId: input.context.principal.actorId,
+            actorType: input.context.principal.actorType,
+            delegatedBy: input.context.principal.delegatedBy ?? null,
+            reference: Object.freeze({ ...reference.data }),
+            assetId: input.assetId,
+          }),
+          sizeBytes: download.sizeBytes,
+          securityLevel: row?.['security_level'],
+          policyVersion: row?.['policy_version'],
+        });
       return download;
     } catch (error) {
       try {
@@ -202,7 +270,11 @@ export class PostgresCandidateOriginalPort implements CandidateOriginalPort {
   async createCandidateDownload(
     input: CandidateOriginalInput,
   ): Promise<CandidateOriginalDownload> {
-    const result = await this.run(input, true);
+    // Fix signing responsibility before asynchronous store/SQL calls.
+    const result = await this.run(
+      { ...input, context: structuredClone(input.context) },
+      true,
+    );
     if (!result) throw safeError('UNAVAILABLE');
     return result;
   }
@@ -210,5 +282,81 @@ export class PostgresCandidateOriginalPort implements CandidateOriginalPort {
     input: CandidateOriginalInput,
   ): Promise<void> {
     await this.run(input, false);
+  }
+  async appendCandidateOriginalOutcome(
+    outcomeReceipt: object,
+    value: CandidateOriginalOutcome,
+  ): Promise<void> {
+    const outcome = CandidateOriginalOutcomeSchema.safeParse(value);
+    const receipt = this.receipts.get(outcomeReceipt);
+    if (
+      !outcome.success ||
+      !receipt ||
+      outcome.data.originalBytes !== receipt.sizeBytes
+    )
+      throw safeError('UNAVAILABLE');
+    if (receipt.append) {
+      if (JSON.stringify(receipt.outcome) !== JSON.stringify(outcome.data))
+        throw safeError('UNAVAILABLE');
+      return receipt.append;
+    }
+    receipt.outcome = outcome.data;
+    receipt.append = this.appendOutcome(receipt, outcome.data);
+    return receipt.append;
+  }
+
+  private async appendOutcome(
+    receipt: OriginalOutcomeReceipt,
+    outcome: CandidateOriginalOutcome,
+  ): Promise<void> {
+    let client: Awaited<ReturnType<AssetDownloadPool['connect']>>;
+    try {
+      client = await this.pool.connect();
+    } catch {
+      throw safeError('UNAVAILABLE');
+    }
+    try {
+      const binding = receipt.binding;
+      const { reference, assetId } = binding;
+      await client.query('BEGIN');
+      // Historical output metadata only. Do not rerun or elevate original access.
+      await client.query(OUTCOME_SCOPE_SQL, [
+        binding.tenantId,
+        binding.projectId,
+        binding.maxSecurityLevel,
+        String(binding.authzVersion),
+      ]);
+      await client.query(OUTCOME_SQL, [
+        binding.tenantId,
+        binding.projectId,
+        outcome.attemptId,
+        binding.actorId,
+        reference.ingestionId,
+        outcome.terminal,
+        binding.purpose,
+        JSON.stringify({
+          ...outcome,
+          traceId: binding.traceId,
+          assetId,
+          processingBatchId: reference.processingBatchId,
+          reviewHash: reference.reviewHash,
+          actorType: binding.actorType,
+          delegatedBy: binding.delegatedBy,
+          byteMeaning: 'offered-to-api-response-stream',
+        }),
+        receipt.securityLevel,
+        receipt.policyVersion,
+      ]);
+      await client.query('COMMIT');
+    } catch {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* Preserve the failed append. */
+      }
+      throw safeError('UNAVAILABLE');
+    } finally {
+      client.release();
+    }
   }
 }

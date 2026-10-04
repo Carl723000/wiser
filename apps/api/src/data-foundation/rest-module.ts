@@ -27,6 +27,12 @@ import type { WiserApiModule } from '../platform/modules.js';
 import { candidateReadAuthority } from './candidate-read-authority.js';
 import { CandidateOriginalBudget } from './candidate-original-budget.js';
 import {
+  CandidateOriginalOutcomeRecorder,
+  CandidateOriginalAuditObserver,
+  CANDIDATE_ORIGINAL_OPERATION_TIMEOUT_MS,
+  type CandidateOriginalOutcomeError,
+} from './candidate-original-outcomes.js';
+import {
   MAX_CANDIDATE_ORIGINAL_BYTES,
   type CandidateOriginalPort,
   type CandidateOriginalDownload,
@@ -583,6 +589,18 @@ export function createDataFoundationRestModule(
     id: 'data.foundation.rest',
     register(app) {
       const candidateOriginalBudget = new CandidateOriginalBudget();
+      const originalAudits = new CandidateOriginalAuditObserver(
+        (code, attemptId) => {
+          app.log.error(
+            { code, attemptId },
+            'Candidate original output audit was not confirmed.',
+          );
+        },
+      );
+      app.addHook('onClose', (_instance, done) => {
+        originalAudits.close();
+        done();
+      });
       for (const capabilityId of DATA_CAPABILITY_IDS) {
         const definition = DATA_CAPABILITY_REGISTRY[capabilityId];
         app.route({
@@ -725,7 +743,8 @@ export function createDataFoundationRestModule(
             const port = options.assetDownload!;
             if (
               !port.createCandidateDownload ||
-              !port.authorizeCandidateDownload
+              !port.authorizeCandidateDownload ||
+              !port.appendCandidateOriginalOutcome
             )
               return sendError(request, reply, errors.unavailable);
             const input = {
@@ -752,7 +771,17 @@ export function createDataFoundationRestModule(
             let releaseBudget: (() => void) | undefined;
             let deliveryStream: Readable | undefined;
             let streaming = false;
+            let outcomes: CandidateOriginalOutcomeRecorder | undefined;
+            let deliveryFailure: CandidateOriginalOutcomeError =
+              'CLIENT_CLOSED';
+            const observeOriginalAudit = (task: Promise<void>) =>
+              originalAudits.observe(task, outcomes!.attemptId);
+            reply.raw.once('finish', () => {
+              if (outcomes) void observeOriginalAudit(outcomes.finish());
+            });
             const close = () => {
+              if (outcomes)
+                void observeOriginalAudit(outcomes.interrupt(deliveryFailure));
               controller.abort();
               deliveryStream?.destroy();
               if (streaming) releaseBudget?.();
@@ -760,6 +789,31 @@ export function createDataFoundationRestModule(
             reply.raw.once('close', close);
             try {
               const download = await port.createCandidateDownload(input);
+              // The opaque receipt is internal; signed storage URLs never enter outcome metadata.
+              if (
+                !download.outcomeReceipt ||
+                typeof download.outcomeReceipt !== 'object'
+              )
+                return sendError(request, reply, errors.unavailable);
+              if (
+                Number.isSafeInteger(download.sizeBytes) &&
+                download.sizeBytes >= 1 &&
+                download.sizeBytes <= MAX_CANDIDATE_ORIGINAL_BYTES
+              )
+                outcomes = new CandidateOriginalOutcomeRecorder(
+                  request.method as 'GET' | 'HEAD',
+                  range !== undefined,
+                  download.sizeBytes,
+                  (outcome) =>
+                    port.appendCandidateOriginalOutcome!(
+                      download.outcomeReceipt,
+                      outcome,
+                    ),
+                );
+              if (controller.signal.aborted) {
+                if (outcomes) await observeOriginalAudit(outcomes.interrupt());
+                return sendError(request, reply, errors.unavailable);
+              }
               const url = new URL(download.url);
               if (
                 !['http:', 'https:'].includes(url.protocol) ||
@@ -785,6 +839,10 @@ export function createDataFoundationRestModule(
                   sizeBytes: download.sizeBytes,
                 }) ?? undefined;
               if (!releaseBudget) {
+                if (outcomes)
+                  await observeOriginalAudit(
+                    outcomes.fail('CAPACITY_REJECTED', 'CAPACITY_LIMIT'),
+                  );
                 reply.header('Retry-After', '1');
                 return sendError(request, reply, errors.unavailable);
               }
@@ -795,7 +853,7 @@ export function createDataFoundationRestModule(
                 redirect: 'error',
                 signal: AbortSignal.any([
                   controller.signal,
-                  AbortSignal.timeout(120000),
+                  AbortSignal.timeout(CANDIDATE_ORIGINAL_OPERATION_TIMEOUT_MS),
                 ]),
               });
               if (controller.signal.aborted) {
@@ -831,12 +889,17 @@ export function createDataFoundationRestModule(
                 .header('Content-Type', type)
                 .header('Accept-Ranges', 'bytes');
               if (!selected) {
+                if (outcomes)
+                  await observeOriginalAudit(
+                    outcomes.fail('OUTPUT_FAILED', 'RANGE_UNSATISFIABLE'),
+                  );
                 reply
                   .status(416)
                   .header('Content-Range', `bytes */${bytes.length}`);
                 return reply.send();
               }
               const { start, end } = selected;
+              outcomes?.select(start, end);
               reply
                 .status(range === undefined ? 200 : 206)
                 .header('Content-Length', String(end - start + 1));
@@ -860,17 +923,28 @@ export function createDataFoundationRestModule(
                   controller.close();
                 },
               });
-              deliveryStream = Readable.from(
-                authorizedAssetStream(stream, async () => {
-                  try {
-                    await authorize();
-                    return true;
-                  } catch {
-                    return false;
-                  }
-                }),
-                { objectMode: false },
-              );
+              const authorized = authorizedAssetStream(stream, async () => {
+                try {
+                  await authorize();
+                  return true;
+                } catch {
+                  deliveryFailure = 'AUTHORITY_CHANGED';
+                  return false;
+                }
+              });
+              async function* measured() {
+                for await (const chunk of authorized) {
+                  outcomes?.offer(chunk.byteLength);
+                  yield chunk;
+                }
+              }
+              deliveryStream = Readable.from(measured(), { objectMode: false });
+              deliveryStream.once('error', () => {
+                if (outcomes)
+                  void observeOriginalAudit(
+                    outcomes.interrupt(deliveryFailure),
+                  );
+              });
               streaming = true;
               try {
                 return reply.send(deliveryStream);
@@ -879,6 +953,33 @@ export function createDataFoundationRestModule(
                 throw error;
               }
             } catch (error) {
+              const integrityCode =
+                error instanceof Error && 'originalIntegrityCode' in error
+                  ? error.originalIntegrityCode
+                  : undefined;
+              if (outcomes) {
+                if (
+                  integrityCode === 'HASH_MISMATCH' ||
+                  integrityCode === 'SIZE_MISMATCH'
+                )
+                  await observeOriginalAudit(
+                    outcomes.fail('INTEGRITY_FAILED', integrityCode),
+                  );
+                else if (controller.signal.aborted)
+                  await observeOriginalAudit(
+                    outcomes.interrupt(deliveryFailure),
+                  );
+                else
+                  await observeOriginalAudit(
+                    outcomes.fail(
+                      'OUTPUT_FAILED',
+                      mapError(error).code === 'FORBIDDEN' ||
+                        mapError(error).code === 'NOT_FOUND'
+                        ? 'AUTHORITY_CHANGED'
+                        : 'UNAVAILABLE',
+                    ),
+                  );
+              }
               return sendError(request, reply, mapError(error));
             } finally {
               if (!streaming) releaseBudget?.();
@@ -1125,9 +1226,12 @@ async function verifyCandidateOriginal(
   body: ReadableStream<Uint8Array>,
   expected: CandidateOriginalDownload,
 ): Promise<Buffer> {
-  const unavailable = () =>
+  const unavailable = (
+    originalIntegrityCode?: 'SIZE_MISMATCH' | 'HASH_MISMATCH',
+  ) =>
     Object.assign(new Error('Original verification unavailable'), {
       code: 'UNAVAILABLE',
+      ...(originalIntegrityCode ? { originalIntegrityCode } : {}),
     });
   const reader = body.getReader();
   let complete = false;
@@ -1149,15 +1253,17 @@ async function verifyCandidateOriginal(
         break;
       }
       const end = length + next.value.byteLength;
-      if (end > expected.sizeBytes) throw unavailable();
+      if (end > expected.sizeBytes) throw unavailable('SIZE_MISMATCH');
       bytes.set(next.value, length);
       hash.update(bytes.subarray(length, end));
       length = end;
     }
-    if (length !== expected.sizeBytes || hash.digest('hex') !== expected.sha256)
-      throw unavailable();
+    if (length !== expected.sizeBytes) throw unavailable('SIZE_MISMATCH');
+    if (hash.digest('hex') !== expected.sha256)
+      throw unavailable('HASH_MISMATCH');
     return bytes;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && 'originalIntegrityCode' in error) throw error;
     throw unavailable();
   } finally {
     try {

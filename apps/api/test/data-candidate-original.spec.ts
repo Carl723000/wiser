@@ -3,6 +3,12 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { PlatformRequestContext } from '@wiser/platform-contracts';
 import { buildApp } from '../src/app.js';
+import {
+  CandidateOriginalOutcomeSchema,
+  CandidateOriginalAuditObserver,
+  type CandidateOriginalOutcome,
+} from '../src/data-foundation/candidate-original-outcomes.js';
+import type { CandidateOriginalPort } from '../src/data-foundation/postgres-candidate-original.js';
 import { PostgresDataAssetDownloadPort } from '../src/data-foundation/postgres-asset-download.js';
 import { createDataFoundationRestModule } from '../src/data-foundation/rest-module.js';
 
@@ -53,23 +59,7 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-interface CandidatePort {
-  createCandidateDownload(input: {
-    context: PlatformRequestContext;
-    reference: typeof reference;
-    assetId: string;
-  }): Promise<{
-    url: string;
-    expiresAt: string;
-    sha256: string;
-    sizeBytes: number;
-  }>;
-  authorizeCandidateDownload(input: {
-    context: PlatformRequestContext;
-    reference: typeof reference;
-    assetId: string;
-  }): Promise<void>;
-}
+type CandidatePort = CandidateOriginalPort;
 function fixture(
   options: {
     body?: Uint8Array | ReadableStream<Uint8Array>;
@@ -82,17 +72,22 @@ function fixture(
     authorizeCall?: (call: number) => Promise<void>;
     contextForToken?: (token: string) => PlatformRequestContext;
     outcomeFailure?: boolean;
+    omitOutcomePort?: boolean;
+    downloadWait?: Promise<void>;
+    outcomeTask?: Promise<void>;
   } = {},
 ) {
   let reads = 0;
-  const download = vi.fn(() => {
+  const download = vi.fn(async () => {
     options.sign?.();
-    return Promise.resolve({
+    await options.downloadWait;
+    return {
+      outcomeReceipt: Object.freeze({}),
       url: 'http://private-store/candidate',
       expiresAt: '2099-01-01T00:00:00Z',
       sha256: options.sha256 ?? sha256,
       sizeBytes: options.sizeBytes ?? original.byteLength,
-    });
+    };
   });
   const authorize = vi.fn(() => {
     reads += 1;
@@ -111,10 +106,11 @@ function fixture(
           }),
         )),
   );
-  const outcome = vi.fn(() =>
-    options.outcomeFailure
-      ? Promise.reject(new Error('private audit detail'))
-      : Promise.resolve(),
+  const outcome = vi.fn(
+    (_receipt: object, _outcome: CandidateOriginalOutcome) =>
+      options.outcomeFailure
+        ? Promise.reject(new Error('private audit detail'))
+        : (options.outcomeTask ?? Promise.resolve()),
   );
   const resolver = vi.fn((input: { token: string }) =>
     Promise.resolve(
@@ -134,7 +130,9 @@ function fixture(
             ),
           createCandidateDownload: download,
           authorizeCandidateDownload: authorize,
-          appendCandidateOriginalOutcome: outcome,
+          ...(options.omitOutcomePort
+            ? {}
+            : { appendCandidateOriginalOutcome: outcome }),
         },
         assetContentFetch: fetch,
       }),
@@ -149,6 +147,7 @@ describe('candidate original service-output outcomes', () => {
     ['GET', undefined, 'FULL', original.byteLength],
     ['GET', 'bytes=0-2', 'RANGE', 3],
     ['HEAD', undefined, 'HEAD', 0],
+    ['HEAD', 'bytes=0-2', 'HEAD', 0],
   ] as const)(
     'records %s %s after response finish with distinct server attempts',
     async (method, range, mode, offeredBytes) => {
@@ -164,7 +163,10 @@ describe('candidate original service-output outcomes', () => {
         terminal: 'OUTPUT_COMPLETED',
         method,
         mode,
+        selectedBytes: offeredBytes,
         offeredBytes,
+        rangeStart: range ? 0 : null,
+        rangeEnd: range ? 2 : null,
         originalBytes: original.byteLength,
         errorCode: null,
       });
@@ -230,6 +232,162 @@ describe('candidate original service-output outcomes', () => {
     );
     expect(new Set(attempts).size).toBe(3);
   });
+});
+
+describe('candidate original output audit failures', () => {
+  it('fails closed before signing or fetching when the trusted outcome port is absent', async () => {
+    const f = fixture({ omitOutcomePort: true });
+    expect(
+      (await f.app.inject({ method: 'GET', url, headers })).statusCode,
+    ).toBe(503);
+    expect(f.download).not.toHaveBeenCalled();
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.outcome).not.toHaveBeenCalled();
+  });
+  it('records cancellation that happened before the signing promise returned its receipt', async () => {
+    let resume!: () => void;
+    const downloadWait = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const f = fixture({ downloadWait });
+    const caller = new AbortController();
+    const request = f.app.inject({
+      method: 'GET',
+      url,
+      headers,
+      signal: caller.signal,
+    });
+    await vi.waitFor(() => expect(f.download).toHaveBeenCalledOnce());
+    caller.abort();
+    await expect(request).rejects.toThrow();
+    resume();
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+    expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+      terminal: 'OUTPUT_INTERRUPTED',
+      errorCode: 'CLIENT_CLOSED',
+      offeredBytes: 0,
+    });
+    expect(f.fetch).not.toHaveBeenCalled();
+  });
+  it('reports an unconfirmed append with a fixed diagnostic without rewriting delivered output', async () => {
+    const f = fixture({ outcomeFailure: true });
+    const log = vi.spyOn(f.app.log, 'error');
+    const response = await f.app.inject({ method: 'GET', url, headers });
+    expect(response.rawPayload).toEqual(Buffer.from(original));
+    await vi.waitFor(() => expect(log).toHaveBeenCalled());
+    expect(log.mock.calls[0]).toEqual([
+      {
+        code: 'CANDIDATE_ORIGINAL_OUTCOME_AUDIT_FAILED',
+        attemptId: f.outcome.mock.calls[0]?.[1].attemptId,
+      },
+      'Candidate original output audit was not confirmed.',
+    ]);
+    expect(f.outcome).toHaveBeenCalledOnce();
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private');
+  });
+  it('correlates two independent failed attempts without names, URLs or exception details', async () => {
+    const f = fixture({ outcomeFailure: true });
+    const log = vi.spyOn(f.app.log, 'error');
+    for (let index = 0; index < 2; index++)
+      expect(
+        (await f.app.inject({ method: 'GET', url, headers })).statusCode,
+      ).toBe(200);
+    await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(2));
+    const logged = log.mock.calls.map(
+      (call) => (call[0] as { attemptId: string }).attemptId,
+    );
+    expect(new Set(logged).size).toBe(2);
+    expect(logged).toEqual(
+      f.outcome.mock.calls.map((call) => call[1].attemptId),
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(
+      /private|Bearer|原月报|SQL/,
+    );
+  });
+  it('records the offered prefix when authority is lost during response output', async () => {
+    const bytes = new Uint8Array(128 * 1024).fill(65);
+    const f = fixture({
+      body: bytes,
+      sizeBytes: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      authorizeCall: (call) =>
+        call === 4
+          ? Promise.reject(
+              Object.assign(new Error('private changed scope'), {
+                code: 'FORBIDDEN',
+              }),
+            )
+          : Promise.resolve(),
+    });
+    await expect(
+      f.app.inject({ method: 'GET', url, headers }),
+    ).rejects.toThrow();
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+    expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+      terminal: 'OUTPUT_INTERRUPTED',
+      errorCode: 'AUTHORITY_CHANGED',
+      offeredBytes: 65536,
+      selectedBytes: bytes.byteLength,
+    });
+  });
+  it('bounds original-audit shutdown even when the trusted append promise never settles', async () => {
+    let settle!: () => void;
+    const outcomeTask = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const f = fixture({ outcomeTask });
+    const log = vi.spyOn(f.app.log, 'error');
+    const response = await f.app.inject({ method: 'GET', url, headers });
+    expect(response.statusCode).toBe(200);
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+    let closed = false;
+    const closing = f.app.close().then(() => {
+      closed = true;
+    });
+    try {
+      await vi.waitFor(() => expect(closed).toBe(true), { timeout: 150 });
+      expect(log).toHaveBeenCalledOnce();
+      expect(log.mock.calls[0]?.[0]).toEqual({
+        code: 'CANDIDATE_ORIGINAL_OUTCOME_AUDIT_UNCONFIRMED',
+        attemptId: f.outcome.mock.calls[0]?.[1].attemptId,
+      });
+    } finally {
+      // Clean up the baseline's infinite wait without weakening the assertion.
+      settle();
+      await closing;
+    }
+  });
+  it('diagnoses one failed terminal only once across finish followed by close', async () => {
+    const f = fixture({ outcomeFailure: true });
+    const log = vi.spyOn(f.app.log, 'error');
+    const response = await f.app.inject({ method: 'GET', url, headers });
+    await vi.waitFor(() => expect(log).toHaveBeenCalledOnce());
+    response.raw.res.emit('close');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(f.outcome).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalledOnce();
+  });
+  it.each(['GET', 'HEAD'] as const)(
+    'records an unsatisfiable %s range as a rejection rather than completed output',
+    async (method) => {
+      const f = fixture();
+      expect(
+        (
+          await f.app.inject({
+            method,
+            url,
+            headers: { ...headers, range: 'bytes=999999-' },
+          })
+        ).statusCode,
+      ).toBe(416);
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'OUTPUT_FAILED',
+        errorCode: 'RANGE_UNSATISFIABLE',
+        offeredBytes: 0,
+      });
+    },
+  );
 });
 
 describe('fixed pending original HTTP delivery', () => {
@@ -473,6 +631,12 @@ describe('fixed pending original HTTP delivery', () => {
     caller.abort();
     await expect(pending).rejects.toThrow();
     expect(f.fetch).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+    expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+      terminal: 'OUTPUT_INTERRUPTED',
+      errorCode: 'CLIENT_CLOSED',
+      offeredBytes: 0,
+    });
     hold = false;
     for (let index = 0; index < 3; index++)
       expect(
@@ -715,11 +879,29 @@ function databaseFixture(
     security_level: 'L0_PUBLIC',
     policy_version: 7,
   },
+  failOutcome = false,
+  options: {
+    signingCommitWait?: Promise<void>;
+    outcomeCommitWait?: Promise<void>;
+    failOutcomeCommit?: boolean;
+  } = {},
 ) {
   const queries: { text: string; values?: readonly unknown[] }[] = [];
+  let commits = 0;
   const client = {
     query(text: string, values?: readonly unknown[]) {
       queries.push({ text, ...(values ? { values } : {}) });
+      if (text === 'COMMIT') {
+        commits += 1;
+        if (commits === 1 && options.signingCommitWait)
+          return options.signingCommitWait.then(() => ({ rows: [] }));
+        if (commits === 2 && options.failOutcomeCommit)
+          return Promise.reject(new Error('private COMMIT outcome unknown'));
+        if (commits === 2 && options.outcomeCommitWait)
+          return options.outcomeCommitWait.then(() => ({ rows: [] }));
+      }
+      if (failOutcome && text.includes('data.candidate-original.outcome */'))
+        return Promise.reject(new Error('private SQL error'));
       return Promise.resolve({
         rows: text.includes('candidate-original.lookup')
           ? row
@@ -839,4 +1021,264 @@ describe('pending original fixed authority database boundary', () => {
       expect(f.queries.at(-1)?.text).toBe('ROLLBACK');
     },
   );
+});
+
+function completedOutcome() {
+  return CandidateOriginalOutcomeSchema.parse({
+    schemaVersion: 1,
+    attemptId: 'ca000000-0000-4000-8000-000000000008',
+    method: 'GET',
+    mode: 'FULL',
+    startedAt: '2026-10-04T00:00:00Z',
+    durationMs: 1,
+    terminal: 'OUTPUT_COMPLETED',
+    originalBytes: original.byteLength,
+    selectedBytes: original.byteLength,
+    offeredBytes: original.byteLength,
+    rangeStart: null,
+    rangeEnd: null,
+    errorCode: null,
+  });
+}
+
+describe('candidate original trusted append-only output carrier', () => {
+  it('appends one terminal with the frozen signing actor, original policy and no URL or raw bytes', async () => {
+    const f = databaseFixture();
+    const mutable = structuredClone(context);
+    const download = await f.port.createCandidateDownload({
+      context: mutable,
+      reference,
+      assetId,
+    });
+    mutable.principal.actorId = uploadId;
+    const terminal = completedOutcome();
+    await Promise.all([
+      f.port.appendCandidateOriginalOutcome(download.outcomeReceipt, terminal),
+      f.port.appendCandidateOriginalOutcome(download.outcomeReceipt, terminal),
+    ]);
+    const appends = f.queries.filter((q) =>
+      q.text.includes('data.candidate-original.outcome */'),
+    );
+    expect(appends).toHaveLength(1);
+    expect(appends[0]?.values?.slice(0, 7)).toEqual([
+      tenantId,
+      projectId,
+      terminal.attemptId,
+      actorId,
+      ingestionId,
+      'OUTPUT_COMPLETED',
+      context.authorization.purpose,
+    ]);
+    expect(appends[0]?.values?.slice(8)).toEqual(['L0_PUBLIC', 7]);
+    const metadata: unknown = JSON.parse(String(appends[0]?.values?.[7]));
+    expect(metadata).toMatchObject({
+      ...terminal,
+      assetId,
+      processingBatchId,
+      reviewHash,
+      byteMeaning: 'offered-to-api-response-stream',
+    });
+    expect(JSON.stringify(appends)).not.toMatch(
+      /private-store|原月报|storage_key/,
+    );
+    expect(
+      f.queries.filter((q) =>
+        q.text.includes('data.candidate-original.audit */'),
+      ),
+    ).toHaveLength(1);
+    expect(f.queries.some((q) => /update|delete/i.test(q.text))).toBe(false);
+    expect(f.signer).toHaveBeenCalledOnce();
+    expect(f.queries.at(-1)?.text).toBe('COMMIT');
+  });
+  it('freezes responsibility before signing COMMIT completes, preserving ALLOWED and output attribution', async () => {
+    let resume!: () => void;
+    const signingCommitWait = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const f = databaseFixture(undefined, false, { signingCommitWait });
+    const mutable = {
+      ...context,
+      principal: { ...context.principal },
+      authorization: { ...context.authorization },
+    };
+    const pending = f.port.createCandidateDownload({
+      context: mutable,
+      reference,
+      assetId,
+    });
+    await vi.waitFor(() =>
+      expect(f.queries.some((q) => q.text === 'COMMIT')).toBe(true),
+    );
+    mutable.principal.actorId = uploadId;
+    mutable.authorization.tenantId = actorId;
+    mutable.authorization.projectId = uploadId;
+    mutable.authorization.authzVersion = 99;
+    resume();
+    const download = await pending;
+    await f.port.appendCandidateOriginalOutcome(
+      download.outcomeReceipt,
+      completedOutcome(),
+    );
+    expect(
+      f.queries
+        .find((q) => q.text.includes('data.candidate-original.audit */'))
+        ?.values?.slice(0, 3),
+    ).toEqual([tenantId, projectId, actorId]);
+    expect(
+      f.queries
+        .find((q) => q.text.includes('data.candidate-original.outcome */'))
+        ?.values?.slice(0, 4),
+    ).toEqual([tenantId, projectId, completedOutcome().attemptId, actorId]);
+    expect(
+      f.queries.find((q) =>
+        q.text.includes('data.candidate-original.outcome-scope */'),
+      )?.values,
+    ).toEqual([
+      tenantId,
+      projectId,
+      context.authorization.maxSecurityLevel,
+      '7',
+    ]);
+  });
+  it('retains an unconfirmed COMMIT and does not repeat INSERT or change historical ALLOWED', async () => {
+    const f = databaseFixture(undefined, false, { failOutcomeCommit: true });
+    const download = await f.port.createCandidateDownload({
+      context,
+      reference,
+      assetId,
+    });
+    for (let index = 0; index < 2; index++)
+      await expect(
+        f.port.appendCandidateOriginalOutcome(
+          download.outcomeReceipt,
+          completedOutcome(),
+        ),
+      ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(
+      f.queries.filter((q) =>
+        q.text.includes('data.candidate-original.outcome */'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      f.queries.filter((q) =>
+        q.text.includes('data.candidate-original.audit */'),
+      ),
+    ).toHaveLength(1);
+    expect(f.queries.filter((q) => q.text === 'COMMIT')).toHaveLength(2);
+    expect(f.queries.some((q) => /update|delete/i.test(q.text))).toBe(false);
+  });
+  it('does not release a connection or claim rollback while an unconfirmed SQL promise is running', async () => {
+    let resume!: () => void;
+    const outcomeCommitWait = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const f = databaseFixture(undefined, false, { outcomeCommitWait });
+    const download = await f.port.createCandidateDownload({
+      context,
+      reference,
+      assetId,
+    });
+    const terminal = completedOutcome();
+    const pending = f.port.appendCandidateOriginalOutcome(
+      download.outcomeReceipt,
+      terminal,
+    );
+    await vi.waitFor(() =>
+      expect(f.queries.filter((q) => q.text === 'COMMIT')).toHaveLength(2),
+    );
+    const report = vi.fn();
+    const observer = new CandidateOriginalAuditObserver(report);
+    const observed = observer.observe(pending, terminal.attemptId);
+    observer.close();
+    await observed;
+    expect(report).toHaveBeenCalledWith(
+      'CANDIDATE_ORIGINAL_OUTCOME_AUDIT_UNCONFIRMED',
+      terminal.attemptId,
+    );
+    expect(f.client.release).toHaveBeenCalledOnce();
+    expect(f.queries.some((q) => q.text === 'ROLLBACK')).toBe(false);
+    resume();
+    await pending;
+    expect(f.client.release).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenCalledOnce();
+  });
+  it('rejects forged or mutated receipts and conflicting terminals before a new DB write', async () => {
+    const f = databaseFixture();
+    const download = await f.port.createCandidateDownload({
+      context,
+      reference,
+      assetId,
+    });
+    const terminal = completedOutcome();
+    const prior = f.queries.length;
+    const other = databaseFixture();
+    await expect(
+      other.port.appendCandidateOriginalOutcome(
+        download.outcomeReceipt,
+        terminal,
+      ),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(other.queries).toHaveLength(0);
+    await expect(
+      f.port.appendCandidateOriginalOutcome({}, terminal),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    await expect(
+      f.port.appendCandidateOriginalOutcome(
+        { ...download.outcomeReceipt },
+        terminal,
+      ),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    await expect(
+      f.port.appendCandidateOriginalOutcome(download.outcomeReceipt, {
+        ...terminal,
+        originalBytes: original.byteLength - 1,
+      }),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(f.queries).toHaveLength(prior);
+    await f.port.appendCandidateOriginalOutcome(
+      download.outcomeReceipt,
+      terminal,
+    );
+    const appended = f.queries.length;
+    await expect(
+      f.port.appendCandidateOriginalOutcome(download.outcomeReceipt, {
+        ...terminal,
+        terminal: 'OUTPUT_INTERRUPTED',
+        errorCode: 'CLIENT_CLOSED',
+      }),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(f.queries).toHaveLength(appended);
+  });
+  it('rolls back a failed terminal append, preserves ALLOWED and never retries an uncertain write', async () => {
+    const f = databaseFixture(undefined, true);
+    const download = await f.port.createCandidateDownload({
+      context,
+      reference,
+      assetId,
+    });
+    await expect(
+      f.port.appendCandidateOriginalOutcome(
+        download.outcomeReceipt,
+        completedOutcome(),
+      ),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    await expect(
+      f.port.appendCandidateOriginalOutcome(
+        download.outcomeReceipt,
+        completedOutcome(),
+      ),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(
+      f.queries.filter((q) =>
+        q.text.includes('data.candidate-original.outcome */'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      f.queries.filter((q) =>
+        q.text.includes('data.candidate-original.audit */'),
+      ),
+    ).toHaveLength(1);
+    expect(f.queries.at(-1)?.text).toBe('ROLLBACK');
+    expect(f.queries.some((q) => /update|delete/i.test(q.text))).toBe(false);
+  });
 });
