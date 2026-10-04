@@ -88,6 +88,9 @@ it('does not promote an undeclared record into an explicitly synthetic source tr
   expect(result.records).toEqual([]);
   expect(result.project.records).toEqual([]);
   expect(result.counts.records).toBe(0);
+  expect(result.needs.find((need) => need.id === 'K5-001')?.recordIds).toEqual(
+    [],
+  );
 });
 function publicationFacts(input: WorkspacePack): ProjectReadinessInput {
   const sources = input.sources.map((source) => ({

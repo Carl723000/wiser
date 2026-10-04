@@ -3,6 +3,71 @@ import { versionImpact } from './spatial-version-impact';
 import { syntheticReviewRecord } from './spatial-candidate-review';
 
 describe('fixed version impact', () => {
+  it.each(['original-revised', 'rule-changed'] as const)(
+    'does not narrow a shared %s to the supplied record hint',
+    (reason) => {
+      const record = syntheticReviewRecord();
+      const sibling = { ...record, id: 'same-fixed-input-sibling' };
+      const unrelated = {
+        ...record,
+        id: 'different-fixed-input',
+        sourceId: 'unrelated-source',
+        positions: [],
+      };
+      const before = JSON.stringify([record, sibling, unrelated]);
+      const impact = versionImpact(
+        [record, sibling, unrelated],
+        [
+          {
+            sourceId: record.sourceId,
+            previousVersionId: record.versionId,
+            nextVersionId: record.versionId,
+            previousProcessingVersion: record.processingVersion,
+            reason,
+            scope: { kind: 'records', recordIds: [record.id] },
+          },
+        ],
+        [],
+      );
+      expect(impact.recordIds).toEqual([record.id, sibling.id]);
+      expect(impact.findings.map((finding) => finding.reason)).toEqual([
+        reason,
+        reason,
+      ]);
+      expect(JSON.stringify([record, sibling, unrelated])).toBe(before);
+    },
+  );
+  it('keeps a shared geometry revision complete despite a position correction hint', () => {
+    const record = syntheticReviewRecord();
+    const position = record.positions[0];
+    const sibling = {
+      ...record,
+      id: 'other-geometry-dependent',
+      positions: [{ ...position, id: 'other-dependent-position' }],
+    };
+    const impact = versionImpact(
+      [record, sibling],
+      [
+        {
+          sourceId: position.geometrySourceId!,
+          previousVersionId: position.geometryVersionId!,
+          nextVersionId: 'new-geometry-version',
+          reason: 'geometry-revised',
+          scope: {
+            kind: 'positions',
+            recordId: record.id,
+            positionIds: [position.id],
+          },
+        },
+      ],
+      [],
+    );
+    expect(impact.recordIds).toEqual([record.id, sibling.id]);
+    expect(impact.positionIds).toEqual([
+      position.id,
+      'other-dependent-position',
+    ]);
+  });
   it('keeps a single-record correction narrow across the complete frozen input', () => {
     const record = syntheticReviewRecord();
     const sibling = {
