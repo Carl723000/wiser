@@ -5,6 +5,8 @@ import type {
 } from './spatial-workspace-contract';
 
 export type ImpactReason =
+  | 'record-corrected'
+  | 'position-corrected'
   | 'original-revised'
   | 'rule-changed'
   | 'geometry-revised'
@@ -51,12 +53,19 @@ export function versionImpact(
   for (const change of changes) {
     if (change.reason === 'new-period' || change.previousVersionId === null)
       continue;
-    // Permission withdrawal and a missing fixed source concern the entire
-    // reference. A correction hint cannot leave its other dependents visible.
+    // Exact record/position corrections are local dependency hints. Shared
+    // originals, processing rules, geometry versions and access changes still
+    // concern every matching fixed dependent; a hint cannot narrow them.
     const scope =
-      change.reason === 'rights-withdrawn' || change.reason === 'source-missing'
-        ? undefined
-        : change.scope;
+      change.reason === 'record-corrected' ||
+      change.reason === 'position-corrected'
+        ? change.scope
+        : undefined;
+    if (
+      (change.reason === 'record-corrected' && scope?.kind !== 'records') ||
+      (change.reason === 'position-corrected' && scope?.kind !== 'positions')
+    )
+      continue;
     for (const record of records) {
       if (
         (scope?.kind === 'records' && !scope.recordIds.includes(record.id)) ||

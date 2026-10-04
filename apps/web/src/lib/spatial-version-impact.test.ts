@@ -82,7 +82,7 @@ describe('fixed version impact', () => {
       sourceId: record.sourceId,
       previousVersionId: record.versionId,
       nextVersionId: 'corrected',
-      reason: 'original-revised' as const,
+      reason: 'record-corrected' as const,
       scope: { kind: 'records' as const, recordIds: [record.id] },
     };
     const topics = [record, sibling].map((item) => ({
@@ -117,7 +117,7 @@ describe('fixed version impact', () => {
       sourceId: position.geometrySourceId!,
       previousVersionId: position.geometryVersionId!,
       nextVersionId: 'position-corrected',
-      reason: 'geometry-revised' as const,
+      reason: 'position-corrected' as const,
       scope: {
         kind: 'positions' as const,
         recordId: record.id,
@@ -134,7 +134,7 @@ describe('fixed version impact', () => {
       sourceId: record.sourceId,
       previousVersionId: record.versionId,
       nextVersionId: 'corrected',
-      reason: 'original-revised' as const,
+      reason: 'record-corrected' as const,
       scope: { kind: 'records' as const, recordIds: [] as string[] },
     };
     expect(versionImpact([record], [change], []).recordIds).toEqual([]);
@@ -146,6 +146,31 @@ describe('fixed version impact', () => {
       ).recordIds,
     ).toEqual([]);
   });
+  it.each(['record-corrected', 'position-corrected'] as const)(
+    'rejects a %s without its exact matching scope kind',
+    (reason) => {
+      const record = syntheticReviewRecord();
+      const change = {
+        sourceId: record.sourceId,
+        previousVersionId: record.versionId,
+        nextVersionId: record.versionId,
+        reason,
+      };
+      expect(versionImpact([record], [change], []).recordIds).toEqual([]);
+      const mismatchedScope =
+        reason === 'record-corrected'
+          ? {
+              kind: 'positions' as const,
+              recordId: record.id,
+              positionIds: record.positions.map((position) => position.id),
+            }
+          : { kind: 'records' as const, recordIds: [record.id] };
+      expect(
+        versionImpact([record], [{ ...change, scope: mismatchedScope }], [])
+          .recordIds,
+      ).toEqual([]);
+    },
+  );
   it('keeps a withdrawn source invalidation complete despite a narrow correction hint', () => {
     const record = syntheticReviewRecord();
     const sibling = { ...record, id: 'also-withdrawn' };
@@ -209,7 +234,7 @@ describe('fixed version impact', () => {
     expect(result.recordIds).toEqual([record.id]);
     expect(result.positionIds).toContain(position.id);
   });
-  it('distinguishes new months from original revisions and allows narrow rule changes', () => {
+  it('distinguishes new months and restricts a rule change to its processing version', () => {
     const record = syntheticReviewRecord();
     expect(
       versionImpact(

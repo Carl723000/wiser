@@ -333,7 +333,7 @@ export function buildReadiness(
   const track = selection.track ?? 'REAL';
   const readableRecords = pack.records.filter(
     (record) =>
-      (record.track === undefined || record.track === track) &&
+      (record.track ?? 'REAL') === track &&
       (record.reviewStatus !== 'synthetic-reviewed' ||
         (track === 'SYNTHETIC' && record.track === 'SYNTHETIC')) &&
       inRegion(record.regionIds) &&
