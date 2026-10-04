@@ -76,7 +76,7 @@ function input(
             sources,
             evidence: [
               {
-                source: sources[0]!,
+                source: sources[0],
                 locator: 'series/title',
                 excerpt: 'Explicit synthetic series declaration.',
               },
@@ -106,7 +106,7 @@ test('monthly cells retain all original value kinds, typed zero and evidence key
   const project = calculateProjectReadiness(input(records));
   const rows = buildMonthlyReadout(project);
   assert.equal(rows.length, 1);
-  const actual = rows[0]!.cells.slice(0, 8).map((cell) => cell.entries[0]);
+  const actual = rows[0].cells.slice(0, 8).map((cell) => cell.entries[0]);
   assert.deepEqual(
     actual.map((entry) => entry.value.raw),
     rawValues,
@@ -119,9 +119,9 @@ test('monthly cells retain all original value kinds, typed zero and evidence key
     actual.map((entry) => entry.recordKey),
     records.map(readinessRecordKey),
   );
-  assert.equal(rows[0]!.cells[8]!.state, 'MISSING');
+  assert.equal(rows[0].cells[8].state, 'MISSING');
   assert.ok(
-    rows[0]!.cells.slice(0, 8).every((cell) => cell.state === 'PRESENT'),
+    rows[0].cells.slice(0, 8).every((cell) => cell.state === 'PRESENT'),
   );
 });
 
@@ -131,24 +131,18 @@ test('same-month values with a repeated source-local ID keep both fixed sources'
     record(source('b'), '2023-01', 'Ⅳ'),
   ];
   const project = calculateProjectReadiness(input(records));
-  const cells = buildMonthlyReadout(project)[0]!.cells;
-  assert.equal(cells[0]!.entries.length, 2);
+  const cells = buildMonthlyReadout(project)[0].cells;
+  assert.equal(cells[0].entries.length, 2);
   assert.deepEqual(
-    cells[0]!.entries.map((entry) => entry.value.raw),
+    cells[0].entries.map((entry) => entry.value.raw),
     ['Ⅱ', 'Ⅳ'],
   );
   assert.deepEqual(
-    cells[0]!.entries.map((entry) => entry.recordKey),
+    cells[0].entries.map((entry) => entry.recordKey),
     records.map(readinessRecordKey),
   );
-  assert.equal(
-    cells[0]!.entries[0]!.record.source.versionId,
-    'fixed-version-a',
-  );
-  assert.equal(
-    cells[0]!.entries[1]!.record.source.versionId,
-    'fixed-version-b',
-  );
+  assert.equal(cells[0].entries[0].record.source.versionId, 'fixed-version-a');
+  assert.equal(cells[0].entries[1].record.source.versionId, 'fixed-version-b');
 });
 
 test('a different time role stays outside monthly cells and does not certify missing months', () => {
@@ -164,14 +158,14 @@ test('a different time role stays outside monthly cells and does not certify mis
     },
   ];
   const project = calculateProjectReadiness(input(records));
-  const row = buildMonthlyReadout(project)[0]!;
+  const row = buildMonthlyReadout(project)[0];
   assert.equal(row.coverageKnown, false);
-  assert.equal(row.cells[1]!.state, 'UNKNOWN');
-  assert.deepEqual(row.cells[1]!.entries, []);
-  assert.equal(row.unknownTimeEntries[0]!.value.raw, 'Ⅲ');
+  assert.equal(row.cells[1].state, 'UNKNOWN');
+  assert.deepEqual(row.cells[1].entries, []);
+  assert.equal(row.unknownTimeEntries[0].value.raw, 'Ⅲ');
   assert.equal(
-    row.unknownTimeEntries[0]!.recordKey,
-    readinessRecordKey(records[1]!),
+    row.unknownTimeEntries[0].recordKey,
+    readinessRecordKey(records[1]),
   );
 });
 
@@ -181,13 +175,13 @@ test('no declared window creates no artificial empty months', () => {
     ...f,
     requirement: { ...f.requirement, window: null },
   });
-  const row = buildMonthlyReadout(project)[0]!;
+  const row = buildMonthlyReadout(project)[0];
   assert.equal(row.coverageKnown, false);
   assert.deepEqual(
     row.cells.map((cell) => cell.month),
     ['2023-02'],
   );
-  assert.equal(row.cells[0]!.required, false);
+  assert.equal(row.cells[0].required, false);
 });
 
 test('same names in unrelated declared series remain separate until an explicit correspondence', () => {
@@ -197,7 +191,7 @@ test('same names in unrelated declared series remain separate until an explicit 
     series: { id: 'another-series', version: 'fixed-series-v1' },
   };
   const f = input([a, b]);
-  const series = [...f.series, { ...f.series[0]!, id: 'another-series' }];
+  const series = [...f.series, { ...f.series[0], id: 'another-series' }];
   const project = calculateProjectReadiness({ ...f, series });
   const rows = buildMonthlyReadout(project);
   assert.equal(rows.length, 2);
@@ -236,11 +230,11 @@ test('hypothesis mode follows the existing correspondence without changing raw m
   const hypothesis = buildMonthlyReadout(project, 'hypothetical');
   assert.equal(hypothesis.length, 1);
   assert.deepEqual(
-    hypothesis[0]!.objectKeys,
-    project.monthly.hypothetical[0]!.objectKeys,
+    hypothesis[0].objectKeys,
+    project.monthly.hypothetical[0].objectKeys,
   );
-  assert.deepEqual(hypothesis[0]!.originalNames, ['原表河段', '另一个原名']);
-  assert.equal(project.records[0]!.professionalState, 'PENDING_REVIEW');
+  assert.deepEqual(hypothesis[0].originalNames, ['原表河段', '另一个原名']);
+  assert.equal(project.records[0].professionalState, 'PENDING_REVIEW');
 });
 
 test('year precision and unparsed rows are unknown-month entries rather than inferred month observations', () => {
@@ -255,9 +249,7 @@ test('year precision and unparsed rows are unknown-month entries rather than inf
     },
     { ...record(source('b'), '2023-02', '无水'), parsing: 'PARTIAL' as const },
   ];
-  const row = buildMonthlyReadout(
-    calculateProjectReadiness(input(records)),
-  )[0]!;
+  const row = buildMonthlyReadout(calculateProjectReadiness(input(records)))[0];
   assert.ok(
     row.cells.every(
       (cell) => cell.state === 'UNKNOWN' && cell.entries.length === 0,
@@ -273,9 +265,9 @@ test('a document value in the same result never enters monthly coverage', () => 
   const a = record(source('a'), '2023-01', 'Ⅱ');
   const otherSource = { ...source('doc'), kind: 'DOCUMENT' as const };
   const b = record(otherSource, '2023-01', 'private-non-monthly-value');
-  const row = buildMonthlyReadout(calculateProjectReadiness(input([a, b])))[0]!;
+  const row = buildMonthlyReadout(calculateProjectReadiness(input([a, b])))[0];
   assert.deepEqual(
-    row.cells[0]!.entries.map((entry) => entry.value.raw),
+    row.cells[0].entries.map((entry) => entry.value.raw),
     ['Ⅱ'],
   );
   assert.ok(!JSON.stringify(row).includes('private-non-monthly-value'));
@@ -307,12 +299,12 @@ test('orphan values never create a readout entry or match only a local record ID
   const withoutFixedValue = {
     ...project,
     values: [
-      { ...project.values[0]!, recordId: 'table:1/row:5', raw: 'wrong-value' },
+      { ...project.values[0], recordId: 'table:1/row:5', raw: 'wrong-value' },
     ],
   };
-  const row = buildMonthlyReadout(withoutFixedValue)[0]!;
-  assert.deepEqual(row.cells[0]!.entries, []);
-  assert.equal(row.cells[0]!.state, 'UNKNOWN');
-  assert.deepEqual(row.unresolvedRecordKeys, project.monthly.raw[0]!.recordIds);
+  const row = buildMonthlyReadout(withoutFixedValue)[0];
+  assert.deepEqual(row.cells[0].entries, []);
+  assert.equal(row.cells[0].state, 'UNKNOWN');
+  assert.deepEqual(row.unresolvedRecordKeys, project.monthly.raw[0].recordIds);
   assert.ok(!JSON.stringify(row).includes('wrong-value'));
 });

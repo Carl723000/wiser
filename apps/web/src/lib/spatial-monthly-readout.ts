@@ -87,7 +87,7 @@ export function buildMonthlyReadout(
 
     const coverageKnown =
       row.missingMonths !== null && unresolvedRecordKeys.length === 0;
-    const missing = new Set(coverageKnown ? row.missingMonths! : []);
+    const missing = new Set(coverageKnown ? row.missingMonths : []);
     const months = [...new Set([...required, ...observed])].sort();
     return {
       objectKeys: row.objectKeys,
