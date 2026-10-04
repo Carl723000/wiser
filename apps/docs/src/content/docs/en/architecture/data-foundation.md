@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f00c7932
+lastReviewedCommit: 0cccbe71
 ---
 
 ## What runs today
@@ -465,7 +465,11 @@ The source management catalog runs under `wiser_data_metadata`, a non-login, non
 
 Monthly named-object coverage requires an evidenced publication-series declaration and preserves printed names, markers, footnotes and every source-local object. Each object has its own missing-month cells against the explicit demand window; unknown, failed or mismatched date facts remain unknown. The window is a coverage target, not a silent record filter. Non-monthly records remain separate. Pending correspondence yields hypothetical coverage only; approved correspondence may join a covered name set for statistics only when it explicitly covers every participating record within one series. Neither operation merges original identities. Already approved records remain in the selected track.
 
-Category, category interval, dry, unmonitored, null, empty and numeric zero remain distinct. Numeric concentration-difference or flux checks cannot use categorical values; missing context remains unknown, and concentration differences do not silently convert mismatched metric/unit/method contexts. The rule preserves actual use-check decisions and does not execute or approve a scientific computation. Independent observation counts require an explicitly selected, evidenced verification of the exact record scope; density additionally requires an evidenced area denominator for that scope.
+Category, category interval, dry, unmonitored, null, empty and numeric zero remain distinct. Numeric concentration-difference or flux checks cannot use categorical values; missing context remains unknown, and concentration differences do not silently convert mismatched metric/unit/method contexts. Independent observation counts require an explicitly selected, evidenced verification of the exact record scope; density additionally requires an evidenced area denominator for that scope.
+
+Readiness rule `wiser.project-readiness.v2` deterministically restricts each supplied `FLUX` state; `CHECKS_PASSED`, `LIMITED`, `UNKNOWN` and `BLOCKED` are upper bounds, never approval inputs. A complete pair requires exactly one finite, nonnegative concentration and one finite, nonnegative flow; READY parsing; current scoped evidence for the check and both originals; the same fixed source-local object or a current evidenced APPROVED correspondence; and the same valid Gregorian observation day inside an explicit observation-month window. Known object, day, window, parsing or unit-dimension violations produce `BLOCKED`; missing identity, evidence, pairing support, units or methods remain `UNKNOWN`. Original records, values, names, identities and monthly coverage scope stay unchanged. No implicit pair is selected from additional values.
+
+The internal v2 unit table proves mass/volume and volume/time compatibility for mg/L, μg/L, ug/L, m3/s, m³/s and L/s, with explicit scales relative to mg/L and m³/s; it performs no conversion or flux arithmetic. Only SYNTHETIC fixture definitions NH3-N/`synthetic-colorimetry-v1` and DISCHARGE/`synthetic-current-meter-v1` prove methods in this narrow test path. These strings do not approve REAL methods. A reviewed measurement-definition binding, period-support/integration declaration and signed-flow direction are absent from the current readiness carrier, so general methods, month/year pairing and negative flow remain `UNKNOWN`. REAL flux is never eligible through this path. Rule tests, current local evidence rebinding and synthetic approval fields do not prove Auth acceptance, calculation permission, professional approval or scientific computation.
 
 The nine question entries point to their actual work/version/object/record, check, field, coverage cell, task or use-check facts. `KNOWN` describes fact availability, not quality approval; absent checks, owners and observation denominators are not fabricated. These internal types do not add a public HTTP DTO, persistence authority, permission grant, professional decision, candidate read path or UI. Service and Web integration require their own governed acceptance; pure-rule tests are not end-to-end project readiness.
 

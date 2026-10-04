@@ -484,6 +484,34 @@ describe('flux conditions are a deterministic upper bound on supplied states', (
     });
   });
 
+  it('does not apply a publication window to observation pairing', () => {
+    const input = changedRecords((r) => ({
+      ...r,
+      time: { ...r.time, value: '2023-05-01' },
+    }));
+    const result = calculateProjectReadiness({
+      ...input,
+      requirement: { ...input.requirement, dateRole: 'PUBLICATION' },
+    });
+    expect(result.useChecks[0]).toMatchObject({
+      state: 'UNKNOWN',
+      reasons: ['TIME_PAIRING_UNKNOWN'],
+    });
+  });
+
+  it('treats inherited object-property names as unknown unit strings', () => {
+    const result = calculateProjectReadiness(
+      changedRecords((r, i) => ({
+        ...r,
+        metric: { ...r.metric!, unit: i === 0 ? 'toString' : 'constructor' },
+      })),
+    );
+    expect(result.useChecks[0]).toMatchObject({
+      state: 'UNKNOWN',
+      reasons: ['UNIT_UNKNOWN'],
+    });
+  });
+
   it('keeps an undeclared requirement window unknown', () => {
     const input = fixture();
     const result = calculateProjectReadiness({

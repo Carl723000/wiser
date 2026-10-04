@@ -461,6 +461,95 @@ describe('readiness visibility and use-check provenance', () => {
     expect(selected.counts.professionallyReviewed).toBe(1);
     expect(selected.records[0].id).toBe(row.id);
   });
+  it('retains a separately selected complete SYNTHETIC flux positive with both original zeros', () => {
+    const source: Material = { ...material, track: 'SYNTHETIC' };
+    const concentration: WorkspaceRecord = {
+      ...record,
+      id: 'synthetic-concentration',
+      track: 'SYNTHETIC',
+      reviewStatus: 'synthetic-reviewed',
+      metric: 'NH3-N',
+      unit: 'mg/L',
+      value: '0.00',
+      time: {
+        start: '2023-04-01',
+        end: '2023-04-01',
+        precision: 'day',
+        role: 'observation',
+      },
+      method: {
+        code: 'synthetic-colorimetry-v1',
+        evidence: record.evidence[0],
+      },
+    };
+    const flow: WorkspaceRecord = {
+      ...concentration,
+      id: 'synthetic-flow',
+      metric: 'DISCHARGE',
+      unit: 'm3/s',
+      value: '0',
+      method: {
+        code: 'synthetic-current-meter-v1',
+        evidence: record.evidence[0],
+      },
+    };
+    const input = pack([source], [concentration, flow]);
+    const initial = publicationFacts(input);
+    const facts: ProjectReadinessInput = {
+      ...initial,
+      track: 'SYNTHETIC',
+      requirement: {
+        ...initial.requirement,
+        purpose: 'synthetic-flux-conditions',
+        dateRole: 'OBSERVATION',
+        window: { start: '2023-04', end: '2023-04' },
+      },
+      sources: initial.sources.map((value) => ({
+        ...value,
+        track: 'SYNTHETIC',
+        kind: 'TABLE',
+      })),
+      records: initial.records.map((value, index) => ({
+        ...value,
+        time: { ...value.time, role: 'OBSERVATION' },
+        metric: {
+          ...value.metric!,
+          kind: index === 0 ? 'CONCENTRATION' : 'FLOW',
+          method: input.records[index].method!.code,
+        },
+        professionalState: 'APPROVED',
+      })),
+      useChecks: [
+        {
+          id: 'synthetic-load-check-v1',
+          purpose: 'synthetic-flux-conditions',
+          computation: 'FLUX',
+          state: 'CHECKS_PASSED',
+          recordIds: initial.records.map(readinessRecordKey),
+          reasons: [],
+          evidence: initial.records[0].evidence,
+        },
+      ],
+    };
+    const result = buildReadiness(input, 'chaobai', [], facts, {
+      track: 'SYNTHETIC',
+      needId: facts.requirement.needId,
+      dateRole: 'OBSERVATION',
+      window: facts.requirement.window,
+    });
+    expect(
+      result.uses.find((item) => item.id === 'pollution-load'),
+    ).toMatchObject({
+      state: 'CHECKS_PASSED',
+      eligible: true,
+      reasons: [],
+    });
+    expect(result.project.records.map((value) => value.rawValue)).toEqual([
+      '0.00',
+      '0',
+    ]);
+    expect(result).not.toHaveProperty('flux');
+  });
   it('keeps REAL flux methods unknown and professional eligibility false', () => {
     const concentration: WorkspaceRecord = {
       ...record,

@@ -235,7 +235,7 @@ export interface ProjectReadinessResult {
   readonly questions: readonly ReadinessQuestion[];
 }
 
-const RULE_VERSION = 'wiser.project-readiness.v1';
+const RULE_VERSION = 'wiser.project-readiness.v2';
 const CATEGORY = '(?:Ⅰ|Ⅱ|Ⅲ|Ⅳ|Ⅴ|Ⅵ|I|II|III|IV|V|VI|劣Ⅴ|劣V)';
 const CATEGORY_VALUE = new RegExp(`^${CATEGORY}(?:类)?$`);
 const CATEGORY_RANGE = new RegExp(
@@ -307,6 +307,191 @@ export function classifyReadinessValue(
               ? 'NUMERIC'
               : 'TEXT';
   return { raw, kind, numericValue: kind === 'NUMERIC' ? Number(text) : null };
+}
+
+// v2 uses these explicit scales only to prove compatible dimensions. It does
+// not multiply observations or integrate a flux. Unknown units remain unknown.
+const FLUX_UNITS: Readonly<
+  Record<
+    string,
+    {
+      readonly kind: 'CONCENTRATION' | 'FLOW';
+      readonly scaleToStandard: number;
+    }
+  >
+> = {
+  'mg/L': { kind: 'CONCENTRATION', scaleToStandard: 1 },
+  'μg/L': { kind: 'CONCENTRATION', scaleToStandard: 0.001 },
+  'ug/L': { kind: 'CONCENTRATION', scaleToStandard: 0.001 },
+  'm3/s': { kind: 'FLOW', scaleToStandard: 1 },
+  'm³/s': { kind: 'FLOW', scaleToStandard: 1 },
+  'L/s': { kind: 'FLOW', scaleToStandard: 0.001 },
+};
+const USE_STATE_ORDER: Readonly<Record<ReadinessUseCheck['state'], number>> = {
+  CHECKS_PASSED: 0,
+  LIMITED: 1,
+  UNKNOWN: 2,
+  BLOCKED: 3,
+};
+
+function validObservationDay(value: string): boolean {
+  if (!/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(value))
+    return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8));
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year > 0 && day <= days[month - 1]!;
+}
+
+function restrictFluxUseCheck(
+  check: ReadinessUseCheck,
+  selected: readonly ProjectReadinessRecord[],
+  requirement: ProjectReadinessInput['requirement'],
+  track: ProjectReadinessTrack,
+  correspondences: readonly ReadinessCorrespondence[],
+  hasEvidence: (evidence: readonly ReadinessEvidence[]) => boolean,
+): ReadinessUseCheck {
+  const blocked: string[] = [];
+  const unknown: string[] = [];
+  const finish = (): ReadinessUseCheck => {
+    const derived = blocked.length
+      ? 'BLOCKED'
+      : unknown.length
+        ? 'UNKNOWN'
+        : 'CHECKS_PASSED';
+    return {
+      ...check,
+      state:
+        USE_STATE_ORDER[check.state] >= USE_STATE_ORDER[derived]
+          ? check.state
+          : derived,
+      reasons: unique([...check.reasons, ...blocked, ...unknown]),
+    };
+  };
+  if (
+    !hasEvidence(check.evidence) ||
+    selected.some((record) => !hasEvidence(record.evidence))
+  )
+    unknown.push('EVIDENCE_UNKNOWN');
+  if (
+    selected.some(
+      (record) => classifyReadinessValue(record.rawValue).kind !== 'NUMERIC',
+    )
+  )
+    blocked.push('NON_NUMERIC_INPUT');
+  const concentrations = selected.filter(
+    (record) => record.metric?.kind === 'CONCENTRATION',
+  );
+  const flows = selected.filter((record) => record.metric?.kind === 'FLOW');
+  if (!concentrations.length || !flows.length)
+    blocked.push('CONCENTRATION_AND_FLOW_REQUIRED');
+  if (blocked.length) return finish();
+  if (
+    selected.length !== 2 ||
+    concentrations.length !== 1 ||
+    flows.length !== 1
+  )
+    unknown.push('PAIRING_SCOPE_UNKNOWN');
+  if (
+    concentrations.some(
+      (record) => classifyReadinessValue(record.rawValue).numericValue! < 0,
+    )
+  )
+    blocked.push('NEGATIVE_CONCENTRATION');
+  // Direction/sign semantics are not part of the existing readiness carrier.
+  if (
+    flows.some(
+      (record) => classifyReadinessValue(record.rawValue).numericValue! < 0,
+    )
+  )
+    unknown.push('FLOW_DIRECTION_UNKNOWN');
+  if (selected.some((record) => record.parsing !== 'READY'))
+    blocked.push('PARSING_INCOMPLETE');
+
+  if (selected.some((record) => !record.object?.key.trim()))
+    unknown.push('OBJECT_IDENTITY_UNKNOWN');
+  else if (new Set(selected.map(objectKey)).size !== 1) {
+    const approved = correspondences.some(
+      (item) =>
+        item.status === 'APPROVED' &&
+        check.recordIds.every((id) => item.memberRecordIds.includes(id)),
+    );
+    if (!approved) {
+      if (
+        new Set(selected.map((record) => sourceKey(record.source))).size === 1
+      )
+        blocked.push('OBJECT_MISMATCH');
+      else unknown.push('OBJECT_IDENTITY_UNKNOWN');
+    }
+  }
+
+  if (
+    selected.some(
+      (record) =>
+        !record.metric?.unit?.trim() ||
+        !record.metric.method?.trim() ||
+        record.time.role !== 'OBSERVATION' ||
+        record.time.value === null ||
+        record.time.precision === 'UNKNOWN',
+    )
+  )
+    unknown.push('NUMERIC_CONTEXT_UNKNOWN');
+  for (const record of selected) {
+    const unitName = record.metric?.unit ?? '';
+    const unit = Object.hasOwn(FLUX_UNITS, unitName)
+      ? FLUX_UNITS[unitName]
+      : undefined;
+    if (unit === undefined) unknown.push('UNIT_UNKNOWN');
+    else if (unit.kind !== record.metric?.kind)
+      blocked.push('UNIT_DIMENSION_INCOMPATIBLE');
+    // These are fixture definitions, not a general method vocabulary or REAL
+    // method approval. Readiness has no reviewed MeasurementDefinition binding.
+    const method = record.metric;
+    if (
+      track !== 'SYNTHETIC' ||
+      !(
+        (method?.kind === 'CONCENTRATION' &&
+          method.code === 'NH3-N' &&
+          method.method === 'synthetic-colorimetry-v1') ||
+        (method?.kind === 'FLOW' &&
+          method.code === 'DISCHARGE' &&
+          method.method === 'synthetic-current-meter-v1')
+      )
+    )
+      unknown.push('METHOD_UNKNOWN');
+  }
+
+  const exactDays = selected.flatMap((record) =>
+    record.time.role === 'OBSERVATION' &&
+    record.time.precision === 'DAY' &&
+    record.time.value !== null
+      ? [record.time.value]
+      : [],
+  );
+  if (
+    requirement.dateRole !== 'OBSERVATION' ||
+    exactDays.length !== selected.length
+  )
+    unknown.push('TIME_PAIRING_UNKNOWN');
+  if (exactDays.some((day) => !validObservationDay(day)))
+    blocked.push('INVALID_DATE');
+  const validDays = exactDays.filter(validObservationDay);
+  if (new Set(validDays).size > 1) blocked.push('TIME_PAIRING_MISMATCH');
+  if (requirement.window === null) unknown.push('REQUIREMENT_WINDOW_UNKNOWN');
+  else if (
+    requirement.dateRole === 'OBSERVATION' &&
+    validDays.some((day) => {
+      const month = monthOrdinal(day.slice(0, 7))!;
+      return (
+        month < monthOrdinal(requirement.window!.start)! ||
+        month > monthOrdinal(requirement.window!.end)!
+      );
+    })
+  )
+    blocked.push('OUTSIDE_REQUIREMENT_WINDOW');
+  return finish();
 }
 interface NamedGroup {
   readonly key: string;
@@ -540,14 +725,22 @@ export function calculateProjectReadiness(
         check.recordIds.every((id) => recordMap.has(id)),
     )
     .map((check): ReadinessUseCheck => {
+      if (check.computation === 'FLUX')
+        return restrictFluxUseCheck(
+          check,
+          check.recordIds.map((id) => recordMap.get(id)!),
+          input.requirement,
+          input.track,
+          correspondences,
+          hasEvidence,
+        );
       if (!hasEvidence(check.evidence))
         return {
           ...check,
           state: 'UNKNOWN',
           reasons: unique([...check.reasons, 'EVIDENCE_UNKNOWN']),
         };
-      if (!['CONCENTRATION_DIFFERENCE', 'FLUX'].includes(check.computation))
-        return check;
+      if (check.computation !== 'CONCENTRATION_DIFFERENCE') return check;
       const selected = check.recordIds.map((id) => recordMap.get(id)!);
       const reasons = [...check.reasons];
       if (
@@ -562,12 +755,6 @@ export function calculateProjectReadiness(
         selected.some((record) => record.metric?.kind !== 'CONCENTRATION')
       )
         reasons.push('CONCENTRATION_REQUIRED');
-      if (
-        check.computation === 'FLUX' &&
-        (!selected.some((record) => record.metric?.kind === 'CONCENTRATION') ||
-          !selected.some((record) => record.metric?.kind === 'FLOW'))
-      )
-        reasons.push('CONCENTRATION_AND_FLOW_REQUIRED');
       if (reasons.length > check.reasons.length)
         return { ...check, state: 'BLOCKED', reasons: unique(reasons) };
       if (
