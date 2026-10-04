@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -29,6 +30,25 @@ const reference = {
   reviewHash: 'a'.repeat(64),
 };
 const changedReference = { ...reference, reviewHash: 'b'.repeat(64) };
+const viewId = 'a0000000-0000-4000-8000-000000000099';
+const savedView = {
+  kind: 'ingestion-candidate-view',
+  viewId,
+  title: 'Fixed raster view',
+  visibility: 'private',
+  createdAt: '2026-10-03T00:00:00Z',
+  revokedAt: null,
+};
+const openedView = {
+  kind: 'ingestion-candidate-view',
+  savedView,
+  references: [reference],
+  viewSpec: { page: { kind: 'assets', reference, first: 50 } },
+  request: {
+    capabilityId: 'data.ingestion.candidate.get',
+    input: { ...reference, first: 50 },
+  },
+};
 const bands = ['B03', 'B8A', 'SCL', 'TCI'] as const;
 const assets = bands.map((band, index) => ({
   assetId: `a0000000-0000-4000-8000-00000000001${index}`,
@@ -247,4 +267,283 @@ it('terminates its selection on unmount and never infers a candidate from local 
   const signal = rasterRead.mock.calls[0][1];
   mounted.unmount();
   expect(signal.aborted).toBe(true);
+});
+
+it('does not read any pixels from a complete but ambiguous four-product asset listing', async () => {
+  fetchMock.mockImplementation((_url, init) => {
+    const input = requestBody(init);
+    const index =
+      typeof input.after === 'string' ? cursors.indexOf(input.after) + 1 : 0;
+    const current = page(index);
+    return Promise.resolve(
+      Response.json({
+        ...current,
+        assets:
+          index === 1
+            ? [{ ...assets[1], sourceHash: RETAINED_RASTER_HASHES.B03 }]
+            : current.assets,
+      }),
+    );
+  });
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await screen.findByRole('alert');
+  expect(rasterRead).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('candidate-raster-window-values')).toBeNull();
+});
+
+it('refuses repeated cursors before handing a partial asset listing to the raster reader', async () => {
+  fetchMock.mockImplementation((_url, init) => {
+    const input = requestBody(init);
+    const index =
+      typeof input.after === 'string' ? cursors.indexOf(input.after) + 1 : 0;
+    return Promise.resolve(
+      Response.json({
+        ...page(index),
+        nextCursor: index === 2 ? cursors[0] : page(index).nextCursor,
+      }),
+    );
+  });
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await screen.findByRole('alert');
+  expect(rasterRead).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('candidate-raster-window-values')).toBeNull();
+});
+
+it('refuses a completed asset listing that lacks one of the four fixed originals', async () => {
+  fetchMock.mockImplementation((_url, init) => {
+    const input = requestBody(init);
+    const index =
+      typeof input.after === 'string' ? cursors.indexOf(input.after) + 1 : 0;
+    const current = page(index);
+    return Promise.resolve(
+      Response.json({
+        ...current,
+        assets:
+          index === 3
+            ? [{ ...assets[3], sourceHash: 'f'.repeat(64) }]
+            : current.assets,
+      }),
+    );
+  });
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await screen.findByRole('alert');
+  expect(rasterRead).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('candidate-raster-window-values')).toBeNull();
+});
+
+it('aborts a manual read, removes its pixels and permits a fresh bounded selection', async () => {
+  let finish!: (value: CandidateRasterWindowResult) => void;
+  rasterRead.mockImplementationOnce(
+    () =>
+      new Promise<CandidateRasterWindowResult>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await waitFor(() => expect(rasterRead).toHaveBeenCalledTimes(1));
+  const signal = rasterRead.mock.calls[0][1];
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel read' }));
+  expect(signal.aborted).toBe(true);
+  finish(result({ row: 0, column: 0, rows: 1, columns: 1 }));
+  await Promise.resolve();
+  expect(screen.queryByTestId('candidate-raster-window-values')).toBeNull();
+  formWindow(77, 318, 1, 1);
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  expect(
+    (await screen.findByTestId('candidate-raster-window-values')).textContent,
+  ).toContain('1713');
+  expect(rasterRead).toHaveBeenCalledTimes(2);
+});
+
+it('keeps the old candidate raster inactive during a pending parent refresh', async () => {
+  let release!: (response: Response) => void;
+  let gets = 0;
+  fetchMock.mockImplementation((_url, init) => {
+    const input = requestBody(init);
+    const index =
+      typeof input.after === 'string' ? cursors.indexOf(input.after) + 1 : 0;
+    gets++;
+    if (gets === 2)
+      return new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    return Promise.resolve(Response.json(page(index)));
+  });
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await screen.findByRole('link', { name: 'Download original' });
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh candidate' }));
+  await waitFor(() => expect(gets).toBe(2));
+  const inspector = screen.getByRole('button', {
+    name: 'Inspect native raster',
+  });
+  expect(inspector.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(inspector);
+  expect(rasterRead).not.toHaveBeenCalled();
+  act(() => release(Response.json(page(0))));
+  await screen.findByRole('link', { name: 'Download original' });
+});
+
+it('waits for a saved-view change and sends only the new fixed view to pixel reading', async () => {
+  let releaseOpen!: (response: Response) => void;
+  let opens = 0;
+  fetchMock.mockImplementation((url, init) => {
+    const path = requestUrl(url);
+    if (path.endsWith('/list'))
+      return Promise.resolve(
+        Response.json({ items: [savedView], nextCursor: null }),
+      );
+    if (path.endsWith('/open')) {
+      opens++;
+      return opens === 1
+        ? new Promise<Response>((resolve) => {
+            releaseOpen = resolve;
+          })
+        : Promise.resolve(Response.json(openedView));
+    }
+    const input = requestBody(init);
+    const index =
+      typeof input.after === 'string' ? cursors.indexOf(input.after) + 1 : 0;
+    return Promise.resolve(Response.json(page(index)));
+  });
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await screen.findByRole('link', { name: 'Download original' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load saved views' }));
+  await screen.findByText(savedView.title);
+  fireEvent.click(screen.getByRole('button', { name: 'Reopen view' }));
+  await waitFor(() => expect(opens).toBe(1));
+  expect(
+    screen
+      .getByRole('button', { name: 'Inspect native raster' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+  act(() => releaseOpen(Response.json(openedView)));
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('link', { name: 'Download original' })
+        .getAttribute('href'),
+    ).toContain(`savedViewId=${viewId}`),
+  );
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await waitFor(() => expect(rasterRead).toHaveBeenCalledTimes(1));
+  expect(rasterRead.mock.calls[0][0].savedViewId).toBe(viewId);
+});
+
+it('aborts the old decode and discards its late reply on a parent refresh', async () => {
+  let finish!: (value: CandidateRasterWindowResult) => void;
+  rasterRead.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await waitFor(() => expect(rasterRead).toHaveBeenCalledTimes(1));
+  const signal = rasterRead.mock.calls[0][1];
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh candidate' }));
+  expect(signal.aborted).toBe(true);
+  finish(result({ row: 0, column: 0, rows: 1, columns: 1 }));
+  await screen.findByRole('link', { name: 'Download original' });
+  expect(screen.queryByTestId('candidate-raster-window-values')).toBeNull();
+});
+
+it('bounds complete-asset discovery within the same user selection deadline', async () => {
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fetchMock.mockImplementationOnce(() => new Promise<Response>(() => {}));
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+    await act(() => vi.advanceTimersByTime(120_000));
+    expect(screen.getByRole('alert').textContent).toContain(
+      'temporarily unavailable',
+    );
+    expect(rasterRead).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('candidate-raster-window-values')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('shows explicit SCL selection, fixed-mask basis, joint counts and projected grid area without inferring water area', async () => {
+  rasterRead.mockImplementation((input) => {
+    const base = result(input.window);
+    return Promise.resolve({
+      ...base,
+      quality: input.quality,
+      values: {
+        ...base.values,
+        B03: Uint16Array.of(0, 1713, 1200, 1300),
+        SCL: Uint8Array.of(0, 4, 9, 6),
+      },
+      validMask: Uint8Array.of(255, 255, 255, 255),
+      qualityMask: Uint8Array.of(1, 1, 0, 0),
+    });
+  });
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  formWindow(650, 535, 2, 2);
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'Quality selection' }),
+    {
+      target: { value: 'scl-classes' },
+    },
+  );
+  fireEvent.change(
+    screen.getByRole('textbox', {
+      name: 'Allowed SCL classes (0–11, comma-separated)',
+    }),
+    { target: { value: '0,4' } },
+  );
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Quality rule version' }),
+    { target: { value: 'scl-user-v1' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await waitFor(() => expect(rasterRead).toHaveBeenCalledTimes(1));
+  expect(rasterRead.mock.calls[0][0].quality).toEqual({
+    kind: 'scl-classes',
+    allowedClasses: [0, 4],
+    ruleVersion: 'scl-user-v1',
+  });
+  const values = await screen.findByTestId('candidate-raster-window-values');
+  expect(values.textContent).toContain('Rasterio');
+  expect(values.textContent).toContain('all_valid');
+  expect(values.textContent).toContain('Original-mask valid cells: 4');
+  expect(values.textContent).toContain('Joint included cells: 2');
+  expect(values.textContent).toContain('Excluded cells: 2');
+  expect(values.textContent).toContain('400 m²');
+  expect(values.textContent).toContain('800 m²');
+  expect(values.textContent).toContain('not measured water area');
+});
+
+it('rejects an unversioned or duplicated SCL class selection before reading originals', async () => {
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'Quality selection' }),
+    {
+      target: { value: 'scl-classes' },
+    },
+  );
+  fireEvent.change(
+    screen.getByRole('textbox', {
+      name: 'Allowed SCL classes (0–11, comma-separated)',
+    }),
+    { target: { value: '4,4' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  expect(screen.getByRole('alert').textContent).toContain('integer window');
+  expect(rasterRead).not.toHaveBeenCalled();
 });

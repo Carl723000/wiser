@@ -29,6 +29,7 @@ import {
 } from '@/lib/ingestion-candidate-reader';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
+import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-panel';
 import styles from './ingestion-candidate-reader.module.css';
 
 type Tab = 'originals' | 'records' | 'map';
@@ -212,6 +213,8 @@ function CandidateSession({
   );
   const [notice, setNotice] = useState<string | null>(null);
   const pending = useRef<AbortController | null>(null);
+  const rasterCancel = useRef<(() => void) | null>(null);
+  const [rasterEpoch, setRasterEpoch] = useState(0);
   const owner = useRef(true);
   const [expanded, setExpanded] = useState(false);
   const panel = useRef<HTMLElement>(null);
@@ -246,6 +249,7 @@ function CandidateSession({
   }
 
   function clearContent() {
+    rasterCancel.current?.();
     setAssets(null);
     setRecords(null);
     setGeometry(null);
@@ -265,6 +269,8 @@ function CandidateSession({
     setOtherLink(null);
   }
   async function execute(work: (signal: AbortSignal) => Promise<void>) {
+    rasterCancel.current?.();
+    setRasterEpoch((value) => value + 1);
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
@@ -380,6 +386,7 @@ function CandidateSession({
     });
   }
   function switchTab(next: Tab) {
+    if (next !== 'originals') rasterCancel.current?.();
     setTab(next);
     if (next === 'map' && assetId) void loadGeometry(assetId, geometryNav);
     else if (next === 'records' && assetId)
@@ -976,6 +983,21 @@ function CandidateSession({
                       </li>
                     ))}
                   </ul>
+                  <IngestionCandidateRasterPanel
+                    key={`${candidateSavedReferenceKey(fixed)}:${openedView?.savedView.viewId ?? ''}:${rasterEpoch}`}
+                    reference={fixed}
+                    locale={locale}
+                    savedViewId={openedView?.savedView.viewId}
+                    parentBusy={busy}
+                    cancelSlot={rasterCancel}
+                    onAuthorityFailure={(kind) => {
+                      pending.current?.abort();
+                      pending.current = null;
+                      setBusy(false);
+                      clearContent();
+                      setFailure(kind);
+                    }}
+                  />
                   {pager(
                     assetNav,
                     assets.nextCursor,
