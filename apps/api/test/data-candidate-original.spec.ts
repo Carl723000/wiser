@@ -81,6 +81,7 @@ function fixture(
     fetcher?: typeof globalThis.fetch;
     authorizeCall?: (call: number) => Promise<void>;
     contextForToken?: (token: string) => PlatformRequestContext;
+    outcomeFailure?: boolean;
   } = {},
 ) {
   let reads = 0;
@@ -110,6 +111,11 @@ function fixture(
           }),
         )),
   );
+  const outcome = vi.fn(() =>
+    options.outcomeFailure
+      ? Promise.reject(new Error('private audit detail'))
+      : Promise.resolve(),
+  );
   const resolver = vi.fn((input: { token: string }) =>
     Promise.resolve(
       options.contextForToken?.(input.token) ?? options.current ?? context,
@@ -128,14 +134,103 @@ function fixture(
             ),
           createCandidateDownload: download,
           authorizeCandidateDownload: authorize,
+          appendCandidateOriginalOutcome: outcome,
         },
         assetContentFetch: fetch,
       }),
     ],
   });
   apps.push(app);
-  return { app, download, authorize, fetch, resolver };
+  return { app, download, authorize, fetch, resolver, outcome };
 }
+
+describe('candidate original service-output outcomes', () => {
+  it.each([
+    ['GET', undefined, 'FULL', original.byteLength],
+    ['GET', 'bytes=0-2', 'RANGE', 3],
+    ['HEAD', undefined, 'HEAD', 0],
+  ] as const)(
+    'records %s %s after response finish with distinct server attempts',
+    async (method, range, mode, offeredBytes) => {
+      const f = fixture();
+      const response = await f.app.inject({
+        method,
+        url,
+        headers: { ...headers, ...(range ? { range } : {}) },
+      });
+      expect(response.statusCode).toBe(range ? 206 : 200);
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'OUTPUT_COMPLETED',
+        method,
+        mode,
+        offeredBytes,
+        originalBytes: original.byteLength,
+        errorCode: null,
+      });
+      expect(f.outcome.mock.calls[0]?.[1]).toHaveProperty(
+        'attemptId',
+        expect.stringMatching(/^[a-f0-9-]{36}$/),
+      );
+      expect(JSON.stringify(f.outcome.mock.calls)).not.toContain(
+        'private-store',
+      );
+    },
+  );
+  it.each([
+    ['hash', original, 'b'.repeat(64), 'HASH_MISMATCH'],
+    ['short', original.subarray(0, 2), sha256, 'SIZE_MISMATCH'],
+    [
+      'oversized',
+      new Uint8Array(original.byteLength + 1),
+      sha256,
+      'SIZE_MISMATCH',
+    ],
+  ] as const)(
+    'records the bounded %s integrity failure without disclosing original bytes',
+    async (_kind, body, expectedHash, errorCode) => {
+      const f = fixture({ body, sha256: expectedHash });
+      const response = await f.app.inject({ method: 'GET', url, headers });
+      expect(response.statusCode).toBe(503);
+      expect(response.body).not.toContain('原月报');
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'INTEGRITY_FAILED',
+        errorCode,
+        offeredBytes: 0,
+      });
+    },
+  );
+  it('records capacity rejection and does not fetch a third original', async () => {
+    const waiting: Array<(response: Response) => void> = [];
+    const f = fixture({
+      fetcher: () => new Promise<Response>((resolve) => waiting.push(resolve)),
+    });
+    const first = f.app.inject({ method: 'GET', url, headers });
+    const second = f.app.inject({ method: 'HEAD', url, headers });
+    try {
+      await vi.waitFor(() => expect(waiting).toHaveLength(2));
+      const excess = await f.app.inject({ method: 'GET', url, headers });
+      expect(excess.statusCode).toBe(503);
+      expect(excess.headers['retry-after']).toBe('1');
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'CAPACITY_REJECTED',
+        errorCode: 'CAPACITY_LIMIT',
+        offeredBytes: 0,
+      });
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      for (const resolve of waiting) resolve(new Response(original));
+      await Promise.all([first, second]);
+    }
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledTimes(3));
+    const attempts = f.outcome.mock.calls.map(
+      (call) => (call[1] as { attemptId: string }).attemptId,
+    );
+    expect(new Set(attempts).size).toBe(3);
+  });
+});
 
 describe('fixed pending original HTTP delivery', () => {
   it('bounds concurrent GET, HEAD and Range upstream reads for one responsible actor', async () => {
