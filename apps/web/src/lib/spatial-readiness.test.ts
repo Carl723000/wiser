@@ -461,7 +461,7 @@ describe('readiness visibility and use-check provenance', () => {
     expect(selected.counts.professionallyReviewed).toBe(1);
     expect(selected.records[0].id).toBe(row.id);
   });
-  it('reads a scoped core use-check while keeping technical sufficiency separate from real professional approval', () => {
+  it('keeps REAL flux methods unknown and professional eligibility false', () => {
     const concentration: WorkspaceRecord = {
       ...record,
       id: 'concentration',
@@ -524,7 +524,11 @@ describe('readiness visibility and use-check provenance', () => {
     };
     const result = buildReadiness(input, 'chaobai', [], withChecks);
     const use = result.uses.find((item) => item.id === 'pollution-load');
-    expect(use?.state).toBe('CHECKS_PASSED');
+    expect(use?.state).toBe('UNKNOWN');
+    expect(result.project.useChecks[0]?.reasons).toEqual([
+      'METHOD_UNKNOWN',
+      'paired-synthetic-input-test',
+    ]);
     expect(use?.checkIds).toEqual(['load-check-v1']);
     expect(use?.eligible).toBe(false);
     expect(use?.ruleVersion).toBe(result.project.ruleVersion);
