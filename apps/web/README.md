@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: d6d21c480d30e7e027be7aebe26e0ae2ec3f39cf
+lastReviewedCommit: 669ef4d205ab5916aad30bc6579842d4b236ca50
 ---
 
 # WISER Web / 产品界面
@@ -76,6 +76,8 @@ pnpm --filter @wiser/web test:e2e
 ## 本机空间资料工作台 / Local spatial workbench
 
 `/{locale}/data-foundation/spatial-workspace` 仅在显式本机开发模式下读取已核对的资料包，不作为正式Data API失败时的替代。空间证据、就绪／合成复核和遥感检查在同一界面，复用固定版本回查、双窗、场景恢复和全屏。 / This explicitly enabled local-only workspace reads a validated pack, never substitutes fixtures for failed production Data reads, and shares exact-source, comparison, saved-scene and fullscreen interactions.
+
+阅读链接保留轨道、区域、需求、日期角色、月／日范围、页签及固定来源／记录／具体位置，刷新与返回时复核当前可显示输入；不完整或失效的链接显示恢复操作。地图与矩阵共用受控范围，精确日条件须明确切换后才核对月覆盖；合成演练不写入真实阅读链接。旧裸工作台入口仍打开真实总览，旧不完整记录／来源链接需重新选择。 / Private reading URLs restore track, region, need, date role, month/day scope, tabs and exact source/record/position pins against current displayable input. Invalid links show recovery actions; controlled map/matrix state prevents hidden-pane rewrites. Day-filtered coverage requires an explicit month-window choice. Exercises remain separate, bare workspace links retain the REAL overview, and incomplete old source/record links require selection again.
 
 可选的公共地理参照由两份固定哈希OSM GeoJSON独立提供：四区行政面／永定河线与五条端点补证参考河线。地图内各有开关，并保留许可、来源哈希和未核实边界说明；它们不增加业务记录或已定位数。绝对路径配置与固定哈希见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#本地多流域资料工作台)。 / Optional hash-pinned OSM reference files supply separate administrative, watercourse and endpoint-evidence layers. Their controls and license/hash details do not add business records or verified locations. See [Frontend development](../docs/src/content/docs/en/development/frontend.md#local-multi-region-material-workspace) for local paths and fixed hashes.
 

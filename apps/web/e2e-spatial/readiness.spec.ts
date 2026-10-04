@@ -137,6 +137,17 @@ test('per-name gaps and pending correspondence preserve every real record and so
   const copy = await openReadiness(page, 'zh-CN', 'beiyun');
   await count(page, 'records', '384');
   await count(page, 'namedObjects', '49');
+  await expect(page.getByTestId('readiness-active-scope')).toContainText(
+    copy.unknown,
+  );
+  await page.getByLabel(copy.startMonth).fill('2023-04');
+  await page.getByLabel(copy.endMonth).fill('2023-11');
+  await page
+    .getByRole('button', { name: copy.applyWindow, exact: true })
+    .click();
+  await expect(page.getByTestId('readiness-active-scope')).toContainText(
+    '2023-04 — 2023-11',
+  );
   const detail = await inspect(page, copy.questionLabels.gaps, copy.inspect);
   const table = detail.getByRole('table', { name: copy.reportWindowsLabel });
   const expanded = detail;
@@ -170,9 +181,11 @@ test('applied window, date role, pagination and keyboard focus do not reuse a st
 }) => {
   const copy = await openReadiness(page, 'zh-CN', 'chaobai');
   const scope = page.getByTestId('readiness-active-scope');
+  await expect(scope).toContainText(copy.unknown);
+  const initialScope = await scope.textContent();
   await page.getByLabel(copy.startMonth).fill('2023-05');
   await page.getByLabel(copy.endMonth).fill('2023-06');
-  await expect(scope).toContainText('2023-04 — 2023-11');
+  await expect(scope).toHaveText(initialScope!);
   await page
     .getByRole('button', { name: copy.applyWindow, exact: true })
     .click();

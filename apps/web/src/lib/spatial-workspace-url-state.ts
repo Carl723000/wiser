@@ -7,6 +7,7 @@ import {
   createSpatialWorkspaceView,
   filterSpatialWorkspace,
   validWorkspaceTimeFilter,
+  workspaceNativeTime,
   workspaceDisplayPositions,
   workspaceRegionIds,
   type WorkspaceInvalidation,
@@ -19,8 +20,11 @@ export interface WorkspaceReadingUrlState {
   track?: ProjectReadinessTrack;
   regionId: RegionId | null;
   needId: string | null;
-  dateRole: ReadinessSelection['dateRole'] | null;
+  dateRole: ReadinessSelection['dateRole'] | 'ACQUISITION' | 'UNKNOWN' | null;
   monthWindow: ReadinessSelection['window'];
+  /** Exact filtering boundaries; not a declaration of observation precision. */
+  dayWindow?: { start: string | null; end: string | null };
+  includeUndated?: boolean;
   tab: 'spatial' | 'readiness' | 'raster' | null;
   pane: 'map' | 'results' | 'evidence' | null;
   source: WorkspaceSourcePin | null;
@@ -47,6 +51,7 @@ export type WorkspaceReadingUrlFailure =
   | 'size'
   | 'scope'
   | 'month-window'
+  | 'day-window'
   | 'source'
   | 'record'
   | 'position'
@@ -66,6 +71,9 @@ const parameterNames = new Set([
   'dateRole',
   'monthStart',
   'monthEnd',
+  'dayStart',
+  'dayEnd',
+  'includeUndated',
   'tab',
   'pane',
   'source',
@@ -174,6 +182,28 @@ function monthOrdinal(value: string): number | null {
   return Number(match[1]) * 12 + Number(match[2]) - 1;
 }
 
+function calendarDay(value: string): boolean {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.exec(value);
+  if (!match || match[1] === '0000') return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const days = [
+    31,
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return Number(match[3]) <= days[month - 1];
+}
+
 export function decodeWorkspaceReadingUrl(
   input: WorkspaceReadingSearchParams,
   context: WorkspaceReadingUrlContext,
@@ -189,15 +219,23 @@ export function decodeWorkspaceReadingUrl(
   const dateRole = params.get('dateRole');
   const tab = params.get('tab');
   const pane = params.get('pane');
+  const undated = params.get('includeUndated');
   if (
     !['REAL', 'SYNTHETIC'].includes(track) ||
+    (undated !== null && !['true', 'false'].includes(undated)) ||
     (region !== null &&
       (!workspaceRegionIds.includes(region as RegionId) ||
         context.pack.regions.filter((item) => item.id === region).length !==
           1)) ||
     (need !== null && !needIds.has(need)) ||
     (dateRole !== null &&
-      !['PUBLICATION', 'OBSERVATION', 'EVENT'].includes(dateRole)) ||
+      ![
+        'PUBLICATION',
+        'OBSERVATION',
+        'EVENT',
+        'ACQUISITION',
+        'UNKNOWN',
+      ].includes(dateRole)) ||
     (tab !== null && !['spatial', 'readiness', 'raster'].includes(tab)) ||
     (pane !== null && !['map', 'results', 'evidence'].includes(pane))
   )
@@ -205,6 +243,17 @@ export function decodeWorkspaceReadingUrl(
 
   const start = params.get('monthStart');
   const end = params.get('monthEnd');
+  const dayStart = params.get('dayStart');
+  const dayEnd = params.get('dayEnd');
+  const hasDays = dayStart !== null || dayEnd !== null;
+  if (hasDays && (start !== null || end !== null)) return invalid('day-window');
+  if (
+    hasDays &&
+    ((dayStart !== null && !calendarDay(dayStart)) ||
+      (dayEnd !== null && !calendarDay(dayEnd)) ||
+      (dayStart !== null && dayEnd !== null && dayStart > dayEnd))
+  )
+    return invalid('day-window');
   let monthWindow: ReadinessSelection['window'] = null;
   if (start !== null || end !== null) {
     if (start === null || end === null || dateRole === null)
@@ -228,6 +277,8 @@ export function decodeWorkspaceReadingUrl(
     needId: need,
     dateRole: dateRole as WorkspaceReadingUrlState['dateRole'],
     monthWindow,
+    ...(hasDays ? { dayWindow: { start: dayStart, end: dayEnd } } : {}),
+    ...(undated !== null ? { includeUndated: undated === 'true' } : {}),
     tab: tab as WorkspaceReadingUrlState['tab'],
     pane: pane as WorkspaceReadingUrlState['pane'],
     source: null,
@@ -278,14 +329,21 @@ export function decodeWorkspaceReadingUrl(
       context.pack,
       state.regionId ?? 'bth',
     );
-    view.start = monthWindow?.start ?? null;
-    view.end = monthWindow?.end ?? null;
+    view.start = state.dayWindow?.start ?? monthWindow?.start ?? null;
+    view.end = state.dayWindow?.end ?? monthWindow?.end ?? null;
     view.timeRole =
       (state.dateRole?.toLowerCase() as typeof view.timeRole) ?? 'all';
-    view.includeUndated = monthWindow === null;
+    view.includeUndated =
+      state.includeUndated ?? (monthWindow === null && !hasDays);
     if (
       (need !== null && !record.needIds.includes(need)) ||
-      (state.dateRole !== null && record.time.role !== view.timeRole) ||
+      (state.dateRole !== null &&
+        record.time.role !== view.timeRole &&
+        !(
+          state.includeUndated === true &&
+          record.time.role === 'unknown' &&
+          workspaceNativeTime(record) === null
+        )) ||
       !filterSpatialWorkspace(
         { ...context.pack, records: [record] },
         view,
@@ -396,16 +454,20 @@ export function encodeWorkspaceReadingUrl(
     'source',
     'selection',
   ];
-  if (
-    !exactFields(state, stateFields) &&
-    !exactFields(state, [...stateFields, 'track'])
-  )
+  const optionalStateFields = ['track', 'dayWindow', 'includeUndated'].filter(
+    (key) => Object.hasOwn(state, key),
+  );
+  if (!exactFields(state, [...stateFields, ...optionalStateFields]))
     return invalid('parameters');
   if (target === 'source' && state.source === null) return invalid('target');
   const params = new URLSearchParams();
   if (Object.hasOwn(state, 'track')) {
     if (typeof state.track !== 'string') return invalid('parameters');
     params.set('track', state.track);
+  }
+  if (Object.hasOwn(state, 'includeUndated')) {
+    if (typeof state.includeUndated !== 'boolean') return invalid('parameters');
+    params.set('includeUndated', String(state.includeUndated));
   }
   if (
     !appendFields(
@@ -436,6 +498,22 @@ export function encodeWorkspaceReadingUrl(
     })
   )
     return invalid('parameters');
+  if (Object.hasOwn(state, 'dayWindow')) {
+    if (
+      !exactFields(state.dayWindow, ['start', 'end']) ||
+      (state.dayWindow.start === null && state.dayWindow.end === null)
+    )
+      return invalid('day-window');
+    if (
+      !appendFields(
+        params,
+        state.dayWindow,
+        { start: 'dayStart', end: 'dayEnd' },
+        true,
+      )
+    )
+      return invalid('parameters');
+  }
   if (state.source !== null && !appendPin(params, state.source, sourceNames))
     return invalid('parameters');
   if (state.selection !== null) {

@@ -17,10 +17,10 @@ vi.mock('@/lib/spatial-workspace-local', () => ({
 }));
 vi.mock('@/components/spatial-workspace-shell', () => ({
   SpatialWorkspaceShell: ({
-    initialRecordId,
+    initialReadingState,
   }: {
-    initialRecordId: string | null;
-  }) => <div>{initialRecordId ?? 'ready'}</div>,
+    initialReadingState: { selection: { recordId: string } | null };
+  }) => <div>{initialReadingState?.selection?.recordId ?? 'ready'}</div>,
 }));
 const load = vi.mocked(loadLocalSpatialWorkspace);
 const pack = {
@@ -32,7 +32,25 @@ const pack = {
       provider: 'Publisher',
       originalSha256: 'a'.repeat(64),
       evidenceUrl: 'https://example.org/report',
-      rights: { note: 'public' },
+      kind: 'report',
+      processingVersion: 'p1',
+      regionIds: ['chaobai'],
+      needIds: ['K5-001'],
+      duplicateOf: null,
+      rights: {
+        public: false,
+        displayAllowed: true,
+        redistributionAllowed: false,
+        note: 'Synthetic fixture only',
+      },
+      status: {
+        original: 'saved',
+        parsed: 'ready',
+        checked: 'unknown',
+        professionalReview: 'pending',
+        space: 'reference',
+        use: 'unknown',
+      },
     },
   ],
   records: [
@@ -43,11 +61,52 @@ const pack = {
       objectLabel: 'River',
       metric: 'category',
       value: 'Ⅲ',
-      time: { start: '2023-04' },
+      objectId: 'fixture-object',
+      kind: 'observation',
+      regionIds: ['chaobai'],
+      needIds: ['K5-001'],
+      unit: null,
+      processingVersion: 'p1',
+      reviewStatus: 'pending',
+      positions: [],
+      missingReasons: [],
+      time: {
+        start: '2023-04',
+        end: '2023-04',
+        precision: 'month',
+        role: 'publication',
+      },
       evidence: [{ locator: 'table:1/row:14', text: 'Original passage' }],
     },
   ],
+  schemaVersion: 1,
+  generatedAt: '2026-10-04',
+  processingVersion: 'fixture-only',
+  regions: [
+    {
+      id: 'bth',
+      name: 'BTH',
+      aliases: [],
+      type: 'region',
+      bounds: [113, 36, 120, 43],
+    },
+    {
+      id: 'chaobai',
+      name: 'Chaobai',
+      aliases: [],
+      type: 'region',
+      bounds: [115, 39, 118, 42],
+    },
+  ],
+  topicPackages: [],
+  rasterReports: [],
 } as unknown as WorkspacePack;
+const fixedSource = {
+  source: 'report',
+  version: 'v1',
+  sourceHash: 'a'.repeat(64),
+  sourceRule: 'p1',
+};
 beforeEach(() => load.mockReset());
 it('keeps a missing or invalid local batch explicit and never fills it from a fixture', async () => {
   for (const state of ['disabled', 'unavailable', 'invalid'] as const) {
@@ -69,7 +128,11 @@ it('forwards the requested record only after the local pack passes the boundary'
     renderToStaticMarkup(
       await Page({
         params: Promise.resolve({ locale: 'en' }),
-        searchParams: Promise.resolve({ record: 'r1' }),
+        searchParams: Promise.resolve({
+          ...fixedSource,
+          record: 'r1',
+          recordRule: 'p1',
+        }),
       }),
     ),
   ).toContain('r1');
@@ -85,19 +148,21 @@ it('opens the exact source version and returns to the selected record without di
   const html = renderToStaticMarkup(
     await Source({
       params: Promise.resolve({ locale: 'en' }),
-      searchParams: Promise.resolve({ source: 'report', version: 'v1' }),
+      searchParams: Promise.resolve(fixedSource),
     }),
   );
   expect(html).toContain('table:1/row:14');
   expect(html).toContain('Original passage');
   expect(html).toContain('record=r1');
   expect(html).not.toContain('/Users/');
-  await expect(
-    Source({
+  const rejected = renderToStaticMarkup(
+    await Source({
       params: Promise.resolve({ locale: 'en' }),
-      searchParams: Promise.resolve({ source: 'report', version: 'wrong' }),
+      searchParams: Promise.resolve({ ...fixedSource, version: 'wrong' }),
     }),
-  ).rejects.toThrow('NOT_FOUND');
+  );
+  expect(rejected).toContain('role="alert"');
+  expect(rejected).not.toContain('Original passage');
 });
 it('identifies the retained raster hash scope and labels its license as a license', async () => {
   const raster = structuredClone(pack);
@@ -109,7 +174,7 @@ it('identifies the retained raster hash scope and labels its license as a licens
   const html = renderToStaticMarkup(
     await Source({
       params: Promise.resolve({ locale: 'en' }),
-      searchParams: Promise.resolve({ source: 'report', version: 'v1' }),
+      searchParams: Promise.resolve(fixedSource),
     }),
   );
   expect(html).toContain('Retained original hash (TCI crop)');

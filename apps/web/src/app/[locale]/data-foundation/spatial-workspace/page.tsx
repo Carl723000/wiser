@@ -2,6 +2,8 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getDictionary, isLocale } from '@/lib/i18n';
 import { loadLocalSpatialWorkspace } from '@/lib/spatial-workspace-local';
+import { decodeWorkspaceReadingUrl } from '@/lib/spatial-workspace-url-state';
+import { defaultWorkspaceReadingState } from '@/lib/spatial-workspace-reading-view';
 import { SpatialWorkspaceShell } from '@/components/spatial-workspace-shell';
 import styles from '@/components/spatial-workspace-shell.module.css';
 
@@ -10,7 +12,7 @@ export default async function SpatialWorkspacePage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ record?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [{ locale }, search, requestHeaders] = await Promise.all([
     params,
@@ -33,11 +35,26 @@ export default async function SpatialWorkspacePage({
         <a href={`/${locale}/data-foundation/explore`}>{copy.openExplore}</a>
       </main>
     );
+  const reading = decodeWorkspaceReadingUrl(search, { pack: input.pack });
+  if (reading.status === 'invalid')
+    return (
+      <main id="main-content" className={styles.workspace}>
+        <h1>{copy.readingLinkInvalid}</h1>
+        <p role="alert">{copy.readingLinkInvalidText}</p>
+        <a href={`/${locale}/data-foundation/spatial-workspace`}>
+          {copy.returnWorkspace}
+        </a>
+      </main>
+    );
   return (
     <SpatialWorkspaceShell
       pack={input.pack}
       locale={locale}
-      initialRecordId={search.record ?? null}
+      initialReadingState={
+        reading.status === 'valid'
+          ? reading.state
+          : defaultWorkspaceReadingState()
+      }
       readinessFacts={input.readinessFacts ?? null}
       readinessState={input.readinessState ?? 'absent'}
       publicReferences={input.publicReferences ?? null}

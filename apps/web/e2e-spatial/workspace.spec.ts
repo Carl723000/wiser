@@ -6,6 +6,232 @@ const output = process.env.WISER_SPATIAL_ACCEPTANCE_DIRECTORY;
 const browserErrors = new WeakMap<BrowserContext, string[]>();
 const browserWarnings = new WeakMap<BrowserContext, string[]>();
 
+/** Select the actual permitted record first; the product supplies its fixed pins. */
+async function openFixedRecord(
+  page: Page,
+  locale: 'zh-CN' | 'en',
+  recordId: string,
+) {
+  await page.goto(`/${locale}/data-foundation/spatial-workspace`);
+  const workspace = page.getByTestId('spatial-workspace');
+  const labels =
+    locale === 'zh-CN'
+      ? { filters: '资料筛选', search: '查找对象或来源', results: '结果' }
+      : {
+          filters: 'Filter materials',
+          search: 'Find object or source',
+          results: 'Results',
+        };
+  const results = workspace.getByRole('tab', {
+    name: labels.results,
+    exact: true,
+  });
+  const viewport = page.viewportSize();
+  if (viewport && (viewport.width <= 1100 || viewport.height <= 500)) {
+    await expect(results).toBeVisible();
+    await results.click();
+    await expect(results).toHaveAttribute('aria-selected', 'true');
+  }
+  const filters = workspace
+    .locator('details')
+    .filter({ has: page.locator('summary', { hasText: labels.filters }) })
+    .first();
+  if ((await filters.getAttribute('open')) === null)
+    await filters.locator('summary').click();
+  await workspace.getByLabel(labels.search, { exact: true }).fill(recordId);
+  const row = workspace
+    .getByRole('table')
+    .getByRole('row')
+    .filter({ has: page.locator('th[scope="row"]') });
+  await expect(row).toHaveCount(1);
+  await row.getByRole('button').click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('record'))
+    .toBe(recordId);
+  const fixed = new URL(page.url());
+  for (const name of [
+    'source',
+    'version',
+    'sourceHash',
+    'sourceRule',
+    'recordRule',
+  ])
+    expect(fixed.searchParams.get(name)).toBeTruthy();
+  // Reloading the product-generated link removes only the temporary search;
+  // record, location, scope and active pane must come from the URL again.
+  await page.goto(fixed.href);
+  // The mobile pane tabs appear after the responsive layout settles. Wait for
+  // that real control before checking whether the filters are collapsed.
+  if (viewport && (viewport.width <= 1100 || viewport.height <= 500))
+    await expect(
+      workspace.getByRole('tab', { name: labels.results, exact: true }),
+    ).toBeVisible();
+}
+
+test('fixed reading links retain exact days, pane and position through refresh, source return and explicit matrix scope changes', async ({
+  page,
+}) => {
+  for (const [locale, labels] of [
+    [
+      'zh-CN',
+      {
+        filters: '资料筛选',
+        start: '起始日期',
+        end: '结束日期',
+        evidence: '证据',
+        dossier: '对象证据档案',
+        return: '返回空间工作台',
+        readiness: '资料就绪与复核',
+        chooseMonth: '选择月份窗口',
+        spatial: '空间与证据',
+        invalid: '阅读链接不可用',
+      },
+    ],
+    [
+      'en',
+      {
+        filters: 'Filter materials',
+        start: 'Start date',
+        end: 'End date',
+        evidence: 'Evidence',
+        dossier: 'Object evidence dossier',
+        return: 'Return to spatial workspace',
+        readiness: 'Readiness and review',
+        chooseMonth: 'Choose month window',
+        spatial: 'Space and evidence',
+        invalid: 'Reading link unavailable',
+      },
+    ],
+  ] as const) {
+    await page.setViewportSize({
+      width: locale === 'zh-CN' ? 390 : 1440,
+      height: 1000,
+    });
+    await openFixedRecord(page, locale, 'monthly-2023-04:t1:r14');
+    const workspace = page.getByTestId('spatial-workspace');
+    const filters = workspace
+      .locator('details')
+      .filter({ has: page.locator('summary', { hasText: labels.filters }) })
+      .first();
+    if ((await filters.getAttribute('open')) === null)
+      await filters.locator('summary').click();
+    await workspace
+      .getByLabel(labels.start, { exact: true })
+      .fill('2023-04-01');
+    await workspace.getByLabel(labels.end, { exact: true }).fill('2023-04-17');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('dayEnd'))
+      .toBe('2023-04-17');
+    const pinned = new URL(page.url());
+    expect(pinned.searchParams.get('monthEnd')).toBeNull();
+    expect(pinned.searchParams.get('position')).toBeTruthy();
+    const position = pinned.searchParams.get('position');
+    await page.reload();
+    await expect(
+      workspace.getByLabel(labels.start, { exact: true }),
+    ).toHaveValue('2023-04-01');
+    await expect(workspace.getByLabel(labels.end, { exact: true })).toHaveValue(
+      '2023-04-17',
+    );
+    // Click the real global language control in both directions. Opening two
+    // locale URLs independently does not exercise query preservation.
+    const themeToggle = page.locator('button[data-theme]');
+    await expect(themeToggle).toBeVisible();
+    await themeToggle.click();
+    const theme = await themeToggle.getAttribute('data-theme');
+    expect(theme).toMatch(/^(light|dark)$/);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme!);
+    const otherLocale = locale === 'zh-CN' ? 'en' : 'zh-CN';
+    const languageLink = page.locator(`a[hreflang="${otherLocale}"]`);
+    await expect(languageLink).toBeVisible();
+    const languageDestination = new URL(
+      (await languageLink.getAttribute('href'))!,
+      page.url(),
+    );
+    for (const [key, value] of pinned.searchParams)
+      expect(languageDestination.searchParams.get(key)).toBe(value);
+    await languageLink.click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`/${otherLocale}/data-foundation/spatial-workspace`);
+    await expect(page.locator('html')).toHaveAttribute('lang', otherLocale);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme!);
+    for (const [key, value] of pinned.searchParams)
+      expect(new URL(page.url()).searchParams.get(key)).toBe(value);
+    await page.locator(`a[hreflang="${locale}"]`).click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`/${locale}/data-foundation/spatial-workspace`);
+    await expect(page.locator('html')).toHaveAttribute('lang', locale);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme!);
+    for (const [key, value] of pinned.searchParams)
+      expect(new URL(page.url()).searchParams.get(key)).toBe(value);
+    const dossier = workspace.getByRole('region', { name: labels.dossier });
+    const source = await dossier.getByRole('link').first().getAttribute('href');
+    expect(new URL(source!, page.url()).searchParams.get('dayEnd')).toBe(
+      '2023-04-17',
+    );
+    await page.goto(source!);
+    await page.getByRole('link', { name: labels.return, exact: true }).click();
+    await expect(
+      page
+        .getByTestId('spatial-workspace')
+        .getByLabel(labels.end, { exact: true }),
+    ).toHaveValue('2023-04-17');
+    expect(new URL(page.url()).searchParams.get('position')).toBe(position);
+    await page
+      .getByRole('tab', { name: labels.readiness, exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: labels.chooseMonth, exact: true }),
+    ).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('dayEnd')).toBe('2023-04-17');
+    await expect(page.locator('[data-matrix-region]')).toHaveCount(0);
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: labels.chooseMonth, exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: labels.chooseMonth, exact: true })
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('dayEnd'))
+      .toBe(false);
+    const cell = page.locator(
+      '[data-matrix-region="beiyun"][data-matrix-need="K5-002"]',
+    );
+    await cell.click();
+    await expect(cell).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('tab', { name: labels.spatial, exact: true }).click();
+    await page.goBack();
+    await expect(
+      page.getByRole('tab', { name: labels.readiness, exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await expect(cell).toHaveAttribute('aria-pressed', 'true');
+    await page.goForward();
+    await expect(
+      page.getByRole('tab', { name: labels.spatial, exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(new URL(page.url()).searchParams.get('region')).toBe('beiyun');
+    await page.goBack();
+    await expect(cell).toHaveAttribute('aria-pressed', 'true');
+    await page.reload();
+    await expect(cell).toHaveAttribute('aria-pressed', 'true');
+    expect(new URL(page.url()).searchParams.get('region')).toBe('beiyun');
+    expect(new URL(page.url()).searchParams.get('need')).toBe('K5-002');
+    const invalid = new URL(pinned.href);
+    invalid.searchParams.append('record', 'monthly-2023-04:t1:r38');
+    await page.goto(invalid.href);
+    await expect(
+      page.getByRole('heading', { name: labels.invalid, exact: true }),
+    ).toBeVisible();
+    await expect(page.getByTestId('spatial-workspace')).toHaveCount(0);
+    await expect(
+      page.getByRole('region', { name: labels.dossier }),
+    ).toHaveCount(0);
+  }
+});
+
 test('map role legend and selected reference remain readable across locales, mobile panes and fullscreen', async ({
   page,
 }) => {
@@ -35,9 +261,7 @@ test('map role legend and selected reference remain readable across locales, mob
   ] as const) {
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
-      await page.goto(
-        `/${locale}/data-foundation/spatial-workspace?record=monthly-2023-04%3At1%3Ar14`,
-      );
+      await openFixedRecord(page, locale, 'monthly-2023-04:t1:r14');
       if (width === 390)
         await page.getByRole('tab', { name: labels.map, exact: true }).click();
       await expect(
@@ -98,9 +322,7 @@ test('business evidence stays readable while exact technical references remain a
   ] as const) {
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      await page.goto(
-        `/${locale}/data-foundation/spatial-workspace?record=monthly-2023-04%3At1%3Ar14`,
-      );
+      await openFixedRecord(page, locale, 'monthly-2023-04:t1:r14');
       const dossier = page.getByRole('region', { name: labels.dossier });
       await expect(
         dossier.getByText(labels.status, { exact: true }),
@@ -398,6 +620,35 @@ test('actual regional matrix, fixed evidence, map camera, linked comparison, sav
     'table',
   );
   await page.getByRole('tab', { name: '遥感检查' }).click();
+  await expect(page.locator('#spatial-panel-raster img')).toHaveCount(0);
+  await expect(page.locator('#spatial-panel-raster')).toContainText(
+    '当前可见筛选范围内没有适用的影像检查结果。',
+  );
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('region'))
+    .toBe('chaobai');
+  await page.getByRole('tab', { name: '资料就绪与复核' }).click();
+  await page
+    .getByRole('combobox', { name: '浏览范围', exact: true })
+    .selectOption('yongding');
+  await page.getByLabel('需求', { exact: true }).selectOption('K5-005');
+  await page.getByRole('tab', { name: '遥感检查' }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('region'))
+    .toBe('yongding');
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('need'))
+    .toBe('K5-005');
+  await expect(page.locator('#spatial-panel-raster article')).toHaveCount(1);
+  await expect(
+    page.locator('#spatial-panel-raster').getByRole('heading', { level: 3 }),
+  ).toHaveText('官厅水库 Sentinel-2 保留影像检查（2026-08-24）');
+  await expect(page.locator('#spatial-panel-raster')).toContainText(
+    'S2B_MSIL2A_20260824T030519_N0512_R075_T50TLK_20260824T065641.SAFE',
+  );
+  await expect(
+    page.locator('#spatial-panel-raster').getByRole('heading', { level: 4 }),
+  ).toHaveText(['B03', 'B8A', 'SCL', 'TCI']);
   await expect(page.locator('#spatial-panel-raster img')).toHaveCount(4);
   await page.getByLabel('预检像元').selectOption('native-r323-c270');
   await expect(page.getByTestId('pixel-values')).toContainText('1857');
@@ -428,7 +679,7 @@ test('two non-Yongding record/reference/source chains, time and spatial countere
     ['monthly-2023-04:t1:r14', '潮白河上段', '密云'],
     ['monthly-2023-04:t1:r38', '北运河', '通州'],
   ]) {
-    await page.goto(`${route}?record=${encodeURIComponent(id)}`);
+    await openFixedRecord(page, 'zh-CN', id);
     const dossier = page.getByRole('region', { name: '对象证据档案' });
     await expect(dossier).toContainText(object);
     await expect(dossier).toContainText('table:1/row:');
@@ -443,8 +694,15 @@ test('two non-Yongding record/reference/source chains, time and spatial countere
     const fixed = await dossier.getByRole('link').first().getAttribute('href');
     const wrong = new URL(fixed!, page.url());
     wrong.searchParams.set('version', 'missing-fixed-version');
-    const response = await page.request.get(wrong.href);
-    expect(response.status()).toBe(404);
+    const invalidSource = await page.context().newPage();
+    await invalidSource.goto(wrong.href);
+    await expect(invalidSource.getByRole('alert')).toContainText(
+      '链接信息不完整，或所选资料与范围已失效',
+    );
+    await expect(
+      invalidSource.getByRole('heading', { name: object, exact: true }),
+    ).toHaveCount(0);
+    await invalidSource.close();
   }
   await page.getByLabel('起始日期', { exact: true }).fill('2023-04-01');
   await page.getByLabel('结束日期', { exact: true }).fill('2023-04-30');
@@ -592,9 +850,7 @@ test.describe('narrow spatial reading', () => {
         } as typeof original;
       });
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(
-        `/${locale}/data-foundation/spatial-workspace?record=monthly-2023-04%3At1%3Ar14`,
-      );
+      await openFixedRecord(page, locale, 'monthly-2023-04:t1:r14');
       const workspace = page.getByTestId('spatial-workspace');
       const tabs = workspace.getByRole('tablist', { name: labels.panes });
       const evidence = tabs.getByRole('tab', {
@@ -657,16 +913,28 @@ test.describe('narrow spatial reading', () => {
       await expect(evidence).toHaveAttribute('aria-selected', 'true');
       await expect(workspace.getByRole('tabpanel')).toBeFocused();
       await expect(dossier).toContainText('monthly-2023-04:t1:r14');
-      await expect(dossier.getByRole('link').first()).toHaveAttribute(
-        'href',
-        sourceHref!,
+      const filteredSourceHref = await dossier
+        .getByRole('link')
+        .first()
+        .getAttribute('href');
+      const expectedSource = new URL(sourceHref!, page.url());
+      expectedSource.searchParams.set('includeUndated', 'true');
+      expectedSource.searchParams.set('dayStart', '2023-04-01');
+      expectedSource.searchParams.set('dayEnd', '2023-04-30');
+      const filteredSource = new URL(filteredSourceHref!, page.url());
+      expect(filteredSource.origin).toBe(expectedSource.origin);
+      expect(filteredSource.pathname).toBe(expectedSource.pathname);
+      // Every original identity and location pin remains fixed; only the
+      // explicitly changed date scope is added to the source round trip.
+      expect([...filteredSource.searchParams.entries()].sort()).toEqual(
+        [...expectedSource.searchParams.entries()].sort(),
       );
       await expect(workspace.getByTestId('spatial-record-count')).toHaveText(
         count!,
       );
       await expect(map).toHaveAttribute('data-camera', camera!);
       const sourcePage = await page.context().newPage();
-      await sourcePage.goto(new URL(sourceHref!, page.url()).href);
+      await sourcePage.goto(filteredSource.href);
       await expect(
         sourcePage.getByRole('heading', { name: labels.sourceHeading }),
       ).toBeVisible();
@@ -711,7 +979,7 @@ test.describe('narrow spatial reading', () => {
       await expect(dossier).toBeVisible();
       await expect(dossier.getByRole('link').first()).toHaveAttribute(
         'href',
-        sourceHref!,
+        filteredSourceHref!,
       );
       expect(
         await map.evaluate((node, original) => node === original, originalMap),

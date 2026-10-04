@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 96c7c6831a84975e4e4069d27c7449a50d44d06f
+lastReviewedCommit: 669ef4d205ab5916aad30bc6579842d4b236ca50
 ---
 
 ## What this guide governs
@@ -57,6 +57,7 @@ Rules:
 - Portal and sign-in show no system-context navigation.
 - Context navigation appears only inside its system. Object-local tabs never become platform navigation.
 - A new system joins primary navigation and never creates a parallel header, identity entry, or theme control.
+- Switching language preserves the current route query, including a fixed reading choice. The shell does not offer a language link with an outdated query while the page becomes interactive. Language changes use a full document navigation so the document language and initial theme are established together; other shell links keep their existing client navigation.
 
 ## Product naming
 
@@ -158,6 +159,14 @@ An empty list names the current scope and gives an available action. A failure s
 The specialist behavior and exact versioned query contracts live in [Data Foundation architecture](/en/architecture/data-foundation/) and the [Data REST reference](/en/protocols/data-rest/). Route structure, session-bound data reads, and browser verification live in [Frontend development](/en/development/frontend/). These technical references may use protocol vocabulary; the ordinary workspace follows the writing rules above.
 
 The local spatial workbench starts with region/time, then shows real sources, original locators and readiness. Dossiers explain location roles and content before exact-version evidence; administrative references are never precise river reaches. Candidate exercises have distinct status and exit controls, and exercise decisions never appear as professional approval. Matrix need slots are planned uses, not received datasets.
+
+Reading links restore the selected material and scope on refresh and browser return. Invalid or inaccessible fixed references have an explicit return-to-workspace action; navigation never silently substitutes an overview or another source. Native date conditions are filtering boundaries, not inferred sampling precision. A day-filtered monthly matrix shows a visible not-applicable state and an explicit month-window action rather than presenting all-month results as current coverage. Acquisition or unknown date roles require an explicit supported role choice for monthly inspection. Synthetic exercises stay separate from real reading URLs.
+
+Browser back and forward restore the current fixed reading state. An earlier local write cannot prevent a later explicit history restoration.
+
+Current-track reading excludes opposite-track business copies and topics with no current members. Shared topics retain common metadata and only current-track source/record membership. Permitted reference geometry and measurement sources remain available as dependencies; they do not become business copies through a matching work identity.
+
+On narrow screens, keyboard and programmatic matrix focus keep selected counts and availability labels beside the frozen requirement column. Focus scrolling changes no region, condition, record or count.
 
 Numeric comparison checks both the original values and the computed result. Non-numeric inputs or an out-of-range difference retain side-by-side evidence and original values, with a null difference and a blocking reason. Valid zero values and zero differences are not missing data.
 

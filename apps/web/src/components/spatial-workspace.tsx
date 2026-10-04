@@ -8,6 +8,11 @@ import type {
 } from '@/lib/spatial-workspace-contract';
 import type { SpatialWorkspaceCopy } from '@/lib/spatial-workspace-copy';
 import type { PublicReferences } from '@/lib/spatial-public-reference';
+import type { WorkspaceReadingUrlState } from '@/lib/spatial-workspace-url-state';
+import {
+  workspaceViewForReadingState,
+  workspaceReadingStateForView,
+} from '@/lib/spatial-workspace-reading-view';
 import {
   captureSpatialWorkspaceView,
   createSpatialWorkspaceView,
@@ -83,25 +88,37 @@ export interface SpatialWorkspaceProps {
   storageKey?: string;
   publicReferences?: PublicReferences | null;
   publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
+  readingState?: WorkspaceReadingUrlState;
+  onReadingStateChange?: (state: WorkspaceReadingUrlState) => void;
 }
 export function SpatialWorkspace({
   pack,
   locale,
   copy,
   regionId,
-  onRegionChange,
+  onRegionChange: legacyOnRegionChange,
   selectedRecordId,
-  onSelectRecord,
+  onSelectRecord: legacyOnSelectRecord,
   invalidations = noInvalidations,
   sourceHref,
   storageKey = defaultStorageKey,
   publicReferences = null,
   publicReferenceState = 'absent',
+  readingState,
+  onReadingStateChange,
 }: SpatialWorkspaceProps) {
+  // Controlled navigation has one atomic callback. Separate legacy callbacks
+  // must not race a matrix selection through a mounted hidden map.
+  const onRegionChange = readingState ? undefined : legacyOnRegionChange;
+  const onSelectRecord = readingState ? undefined : legacyOnSelectRecord;
+  const userChangedReading = useRef(false);
+  const emittedReadingKey = useRef<string | null>(null);
+  const readingKey = JSON.stringify(readingState);
+  const appliedReadingKey = useRef(readingKey);
   const readingId = useId();
   const [narrow, setNarrow] = useState(false);
   const [readingPane, setReadingPane] = useState<ReadingPane>(
-    selectedRecordId ? 'evidence' : 'map',
+    readingState?.pane ?? (selectedRecordId ? 'evidence' : 'map'),
   );
   const readingTabs = useRef<HTMLDivElement>(null);
   const paneElements = useRef<Partial<Record<ReadingPane, HTMLDivElement>>>({});
@@ -110,6 +127,7 @@ export function SpatialWorkspace({
   );
   const focusPane = useRef(false);
   const showPane = (pane: ReadingPane, focusContent = false) => {
+    userChangedReading.current = true;
     focusPane.current = focusContent && narrow;
     setReadingPane(pane);
   };
@@ -135,12 +153,18 @@ export function SpatialWorkspace({
     focusPane.current = false;
     paneElements.current[readingPane]?.focus();
   });
-  const [view, setView] = useState(() =>
-      createSpatialWorkspaceView(pack, regionId),
+  const [view, setInternalView] = useState(() =>
+      readingState
+        ? workspaceViewForReadingState(pack, readingState)
+        : createSpatialWorkspaceView(pack, regionId),
     ),
     [boundsText, setBoundsText] = useState(''),
     [boundsInvalid, setBoundsInvalid] = useState(false),
     [drawBounds, setDrawBounds] = useState(false);
+  const setView: typeof setInternalView = (next) => {
+    userChangedReading.current = true;
+    setInternalView(next);
+  };
   const [scenes, setScenes] = useState<SavedScene[]>([]),
     [sceneName, setSceneName] = useState(''),
     [message, setMessage] = useState(''),
@@ -192,6 +216,29 @@ export function SpatialWorkspace({
   // can overwrite each other's queued state when a matrix updates both props.
   const invalidationKey = JSON.stringify(invalidations);
   useEffect(() => {
+    if (!readingState || readingKey === appliedReadingKey.current) return;
+    appliedReadingKey.current = readingKey;
+    if (readingKey === emittedReadingKey.current) {
+      // Consume only the acknowledgement of this local write. A later browser
+      // forward to the same URL is an external restoration, not another ack.
+      emittedReadingKey.current = null;
+      return;
+    }
+    emittedReadingKey.current = null;
+    userChangedReading.current = false;
+    const next = workspaceViewForReadingState(
+      pack,
+      readingState,
+      current.current,
+    );
+    setInternalView(next);
+    setReadingPane(readingState.pane ?? 'map');
+    setBoundsText('');
+    setBoundsInvalid(false);
+    setDrawBounds(false);
+  }, [readingKey, pack]);
+  useEffect(() => {
+    if (readingState) return;
     const previous = current.current;
     const meaningfulInvalidations = JSON.parse(
       invalidationKey,
@@ -246,8 +293,15 @@ export function SpatialWorkspace({
       setBoundsInvalid(false);
       setDrawBounds(false);
     }
-  }, [regionId, selectedRecordId, pack, invalidationKey]);
+  }, [
+    regionId,
+    selectedRecordId,
+    pack,
+    invalidationKey,
+    Boolean(readingState),
+  ]);
   useEffect(() => {
+    if (readingState) return;
     if (
       (regionId && regionId !== view.regionId) ||
       (selectedRecordId !== undefined &&
@@ -268,7 +322,31 @@ export function SpatialWorkspace({
       view.selection.positionId !== selection.positionId
     )
       setView((previous) => ({ ...previous, selection }));
-  }, [view.selection, selection, view.regionId, regionId, selectedRecordId]);
+  }, [
+    view.selection,
+    selection,
+    view.regionId,
+    regionId,
+    selectedRecordId,
+    Boolean(readingState),
+  ]);
+  useEffect(() => {
+    if (!readingState || !onReadingStateChange || !userChangedReading.current)
+      return;
+    userChangedReading.current = false;
+    const next = workspaceReadingStateForView(
+      pack,
+      readingState,
+      view,
+      selection,
+      readingPane,
+    );
+    if (!next) return;
+    const key = JSON.stringify(next);
+    if (key === readingKey) return;
+    emittedReadingKey.current = key;
+    onReadingStateChange(next);
+  }, [view, selection, readingPane, readingKey, pack, onReadingStateChange]);
   useEffect(() => {
     const load = () => {
       try {

@@ -259,6 +259,8 @@
 }
 .matrixScroll {
   overflow: auto;
+  scroll-padding-inline-start: 170px;
+  scroll-padding-inline-end: 8px;
   max-block-size: 34rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -304,6 +306,7 @@
   min-block-size: 44px;
   text-align: left;
   font-size: 12px;
+  scroll-margin-inline: 5px;
 }
 .matrix td button[aria-pressed='true'] {
   border-color: var(--accent);
@@ -319,10 +322,12 @@
 }
 .matrixAxes {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
 }
 .matrixAxes span {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   font-size: 11px;
   padding: 3px;
   background: var(--surface-tint);

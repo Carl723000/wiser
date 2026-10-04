@@ -2,6 +2,14 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getDictionary, isLocale } from '@/lib/i18n';
 import { loadLocalSpatialWorkspace } from '@/lib/spatial-workspace-local';
+import {
+  decodeWorkspaceReadingUrl,
+  encodeWorkspaceReadingUrl,
+} from '@/lib/spatial-workspace-url-state';
+import {
+  workspaceReadingRecords,
+  withWorkspaceReadingRecord,
+} from '@/lib/spatial-workspace-reading-view';
 import styles from '@/components/spatial-workspace-shell.module.css';
 
 export default async function SpatialSourcePage({
@@ -9,7 +17,7 @@ export default async function SpatialSourcePage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ source?: string; version?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [{ locale }, search, requestHeaders] = await Promise.all([
     params,
@@ -22,14 +30,39 @@ export default async function SpatialSourcePage({
     process.env,
     requestHeaders.get('host'),
   );
-  const source = input.pack?.sources.find(
-    (item) => item.id === search.source && item.versionId === search.version,
-  );
-  if (!source || !input.pack) notFound();
-  const records = input.pack.records.filter(
+  if (input.state !== 'ready' || !input.pack)
+    return (
+      <main id="main-content" className={styles.workspace}>
+        <h1>{copy.title}</h1>
+        <p role="status">
+          {copy[input.state === 'ready' ? 'invalid' : input.state]}
+        </p>
+        <a href={`/${locale}/data-foundation/explore`}>{copy.openExplore}</a>
+      </main>
+    );
+  const pack = input.pack;
+  const reading = decodeWorkspaceReadingUrl(search, { pack });
+  if (reading.status !== 'valid' || !reading.state.source)
+    return (
+      <main id="main-content" className={styles.workspace}>
+        <h1>{copy.readingLinkInvalid}</h1>
+        <p role="alert">{copy.readingLinkInvalidText}</p>
+        <a href={`/${locale}/data-foundation/spatial-workspace`}>
+          {copy.returnWorkspace}
+        </a>
+      </main>
+    );
+  const state = reading.state;
+  const source = pack.sources.find(
+    (item) =>
+      item.id === state.source!.sourceId &&
+      item.versionId === state.source!.versionId,
+  )!;
+  const records = workspaceReadingRecords(pack, state).filter(
     (item) =>
       item.sourceId === source.id && item.versionId === source.versionId,
   );
+  const returnLink = encodeWorkspaceReadingUrl(locale, state, { pack });
   return (
     <main id="main-content" className={styles.workspace}>
       <h1>{source.title}</h1>
@@ -57,30 +90,44 @@ export default async function SpatialSourcePage({
       )}
       <p>{source.rights.note}</p>
       <h2>{copy.sourceRecords}</h2>
-      {records.map((record) => (
-        <article className={styles.card} key={record.id}>
-          <h3>{record.objectLabel}</h3>
-          <p>
-            {record.metric} · {record.value ?? copy.unknown} ·{' '}
-            {record.time.start ?? copy.unknown}
-          </p>
-          {record.evidence.map((evidence, index) => (
-            <div key={`${record.id}:${index}`}>
-              <code>{evidence.locator}</code>
-              <blockquote>{evidence.text}</blockquote>
-            </div>
-          ))}
-          <a
-            href={`/${locale}/data-foundation/spatial-workspace?record=${encodeURIComponent(record.id)}`}
-          >
-            {copy.returnToRecord}
-          </a>
-        </article>
-      ))}
+      {records.map((record) => {
+        const next = withWorkspaceReadingRecord(
+          pack,
+          { ...state, tab: 'spatial', pane: 'evidence' },
+          {
+            recordId: record.id,
+            positionId:
+              state.selection?.recordId === record.id
+                ? (state.selection.position?.positionId ?? null)
+                : null,
+          },
+        );
+        const href = next
+          ? encodeWorkspaceReadingUrl(locale, next, { pack })
+          : null;
+        return (
+          <article className={styles.card} key={record.id}>
+            <h3>{record.objectLabel}</h3>
+            <p>
+              {record.metric} · {record.value ?? copy.unknown} ·{' '}
+              {record.time.start ?? copy.unknown}
+            </p>
+            {record.evidence.map((evidence, index) => (
+              <div key={`${record.id}:${index}`}>
+                <code>{evidence.locator}</code>
+                <blockquote>{evidence.text}</blockquote>
+              </div>
+            ))}
+            {href?.status === 'valid' && (
+              <a href={href.href}>{copy.returnToRecord}</a>
+            )}
+          </article>
+        );
+      })}
       {!records.length && <p>{copy.noSourceRecords}</p>}
-      <a href={`/${locale}/data-foundation/spatial-workspace`}>
-        {copy.returnWorkspace}
-      </a>
+      {returnLink.status === 'valid' && (
+        <a href={returnLink.href}>{copy.returnWorkspace}</a>
+      )}
     </main>
   );
 }

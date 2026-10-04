@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   readinessRecordKey,
   type ProjectReadinessInput,
@@ -107,6 +107,9 @@ export interface SpatialReadinessPanelProps {
   facts?: ProjectReadinessInput | null;
   onSelectRecord?: (id: string) => void;
   onSelectRegion?: (id: RegionId) => void;
+  selection?: ReadinessSelection;
+  onSelectionChange?: (selection: ReadinessSelection) => void;
+  onSelectScope?: (regionId: RegionId, selection: ReadinessSelection) => void;
   sourceHref?: (sourceId: string, versionId: string) => string;
   copy: ReadinessCopy;
 }
@@ -120,10 +123,14 @@ export function SpatialReadinessPanel({
   facts = null,
   onSelectRecord,
   onSelectRegion,
+  selection,
+  onSelectionChange,
+  onSelectScope,
   sourceHref,
   copy,
 }: SpatialReadinessPanelProps) {
-  const [needId, setNeedId] = useState('K5-001');
+  const [localNeedId, setNeedId] = useState('K5-001');
+  const needId = selection?.needId ?? localNeedId;
   const [matrixUse, setMatrixUse] = useState<UseId>('archive');
   const [matrixSelection, setMatrixSelection] = useState<{
     base: RegionId;
@@ -134,12 +141,29 @@ export function SpatialReadinessPanel({
     : matrixSelection?.base === regionId
       ? matrixSelection.selected
       : regionId;
-  const [window, setWindow] = useState(facts?.requirement.window ?? null);
+  const [localWindow, setWindow] = useState(facts?.requirement.window ?? null);
+  const window = selection ? selection.window : localWindow;
   const [startMonth, setStartMonth] = useState(window?.start ?? '');
   const [endMonth, setEndMonth] = useState(window?.end ?? '');
-  const [dateRole, setDateRole] = useState<ReadinessSelection['dateRole']>(
+  const [localDateRole, setDateRole] = useState<ReadinessSelection['dateRole']>(
     facts?.requirement.dateRole ?? 'PUBLICATION',
   );
+  const dateRole = selection?.dateRole ?? localDateRole;
+  const track = selection?.track ?? 'REAL';
+  useEffect(() => {
+    if (!selection) return;
+    setStartMonth(selection.window?.start ?? '');
+    setEndMonth(selection.window?.end ?? '');
+    setWindowError(false);
+  }, [selection?.window?.start, selection?.window?.end]);
+  function changeSelection(next: ReadinessSelection) {
+    if (selection && onSelectionChange) onSelectionChange(next);
+    else {
+      setNeedId(next.needId);
+      setDateRole(next.dateRole);
+      setWindow(next.window);
+    }
+  }
   const [windowError, setWindowError] = useState(false);
   const [opened, setOpened] = useState<{
     id: ReadinessQuestionId;
@@ -158,19 +182,34 @@ export function SpatialReadinessPanel({
         needId,
         window,
         dateRole,
+        track,
       }),
-    [pack, activeRegion, staleRecordIds, facts, needId, window, dateRole],
+    [
+      pack,
+      activeRegion,
+      staleRecordIds,
+      facts,
+      needId,
+      window,
+      dateRole,
+      track,
+    ],
   );
   const matrix = useMemo(
     () =>
-      buildReadinessMatrix(pack, staleRecordIds, facts, { window, dateRole }),
-    [pack, staleRecordIds, facts, window, dateRole],
+      buildReadinessMatrix(pack, staleRecordIds, facts, {
+        window,
+        dateRole,
+        track,
+      }),
+    [pack, staleRecordIds, facts, window, dateRole, track],
   );
   const label = (code: string) => copy.detailLabels[code] ?? copy.unknown;
   // A detail list cannot survive a changed source/version/readability or fact set.
   const scope = JSON.stringify([
     window,
     dateRole,
+    track,
     facts?.requirement.version,
     pack.processingVersion,
     pack.sources.map((source) => [
@@ -215,7 +254,12 @@ export function SpatialReadinessPanel({
       return;
     }
     setWindowError(false);
-    setWindow({ start: startMonth, end: endMonth });
+    changeSelection({
+      track,
+      needId,
+      dateRole,
+      window: { start: startMonth, end: endMonth },
+    });
   }
   function recordButton(id: string) {
     const record = result.records.find((item) => item.id === id);
@@ -313,13 +357,51 @@ export function SpatialReadinessPanel({
                             activeRegion === region && needId === id
                           }
                           aria-label={`${copy.matrixRegions[region]} · ${id} · ${copy.needLabels[id] ?? copy.unknown} · ${copy.recordsLabel}: ${cell.counts.records} · ${copy.factStates[use.state] ?? copy.unknown}`}
+                          onFocus={(event) => {
+                            const button = event.currentTarget;
+                            const scroller =
+                              button.closest('table')?.parentElement;
+                            const header = button
+                              .closest('tr')
+                              ?.querySelector('th[scope="row"]');
+                            if (!scroller || !header) return;
+                            const container = scroller.getBoundingClientRect();
+                            const left = Math.max(
+                              container.left + scroller.clientLeft,
+                              header.getBoundingClientRect().right,
+                            );
+                            const right =
+                              container.left +
+                              scroller.clientLeft +
+                              scroller.clientWidth;
+                            const target = button.getBoundingClientRect();
+                            if (target.left < left + 4)
+                              scroller.scrollLeft += target.left - left - 4;
+                            else if (target.right > right - 4)
+                              scroller.scrollLeft += target.right - right + 4;
+                          }}
                           onClick={() => {
+                            if (onSelectScope) {
+                              onSelectScope(region, {
+                                track,
+                                needId: id,
+                                window,
+                                dateRole,
+                              });
+                              setOpened(null);
+                              return;
+                            }
                             if (!onSelectRegion)
                               setMatrixSelection({
                                 base: regionId,
                                 selected: region,
                               });
-                            setNeedId(id);
+                            changeSelection({
+                              track,
+                              needId: id,
+                              window,
+                              dateRole,
+                            });
                             setOpened(null);
                             onSelectRegion?.(region);
                           }}
@@ -375,7 +457,14 @@ export function SpatialReadinessPanel({
           <select
             aria-label={copy.needLabel}
             value={needId}
-            onChange={(event) => setNeedId(event.target.value)}
+            onChange={(event) =>
+              changeSelection({
+                track,
+                needId: event.target.value,
+                window,
+                dateRole,
+              })
+            }
           >
             {NEED_IDS.map((id) => (
               <option key={id} value={id}>
@@ -406,7 +495,12 @@ export function SpatialReadinessPanel({
             aria-label={copy.dateRole}
             value={dateRole}
             onChange={(event) =>
-              setDateRole(event.target.value as ReadinessSelection['dateRole'])
+              changeSelection({
+                track,
+                needId,
+                window,
+                dateRole: event.target.value as ReadinessSelection['dateRole'],
+              })
             }
           >
             {Object.entries(copy.dateRoles).map(([id, title]) => (
@@ -422,7 +516,7 @@ export function SpatialReadinessPanel({
         <button
           type="button"
           onClick={() => {
-            setWindow(null);
+            changeSelection({ track, needId, dateRole, window: null });
             setStartMonth('');
             setEndMonth('');
             setWindowError(false);

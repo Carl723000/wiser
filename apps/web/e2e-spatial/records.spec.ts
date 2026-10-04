@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getDictionary } from '../src/lib/i18n';
+import type { WorkspacePack } from '../src/lib/spatial-workspace-contract';
 
 const output = process.env.WISER_SPATIAL_ACCEPTANCE_DIRECTORY;
 const errors = new WeakMap<Page, string[]>();
@@ -23,6 +25,17 @@ test.afterEach(({ page }) => expect(errors.get(page)).toEqual([]));
 test('bounded original-field tables preserve later-page evidence, map camera and fullscreen across locales, themes and viewport sizes', async ({
   page,
 }) => {
+  const inputManifest = process.env.WISER_SPATIAL_INPUT_MANIFEST;
+  if (!inputManifest)
+    throw new Error(
+      'WISER_SPATIAL_INPUT_MANIFEST is required for the fixed-source oracle',
+    );
+  const frozenPack = JSON.parse(
+    await readFile(inputManifest, 'utf8'),
+  ) as WorkspacePack;
+  expect(frozenPack.schemaVersion).toBe(1);
+  expect(Array.isArray(frozenPack.records)).toBe(true);
+  expect(Array.isArray(frozenPack.sources)).toBe(true);
   for (const locale of ['zh-CN', 'en'] as const) {
     const copy = getDictionary(locale).dataFoundation.spatialWorkspace;
     const fullscreen = locale === 'zh-CN' ? '全屏工作区' : 'Expand workspace';
@@ -93,12 +106,49 @@ test('bounded original-field tables preserve later-page evidence, map camera and
         await expect(
           dossier.getByRole('heading', { name, level: 3, exact: true }),
         ).toBeVisible();
-        await expect(
-          dossier.getByRole('link', { name: copy.openOriginal }),
-        ).toHaveAttribute(
-          'href',
-          /\/spatial-workspace\/source\?source=.+&version=.+/,
+        await expect
+          .poll(() => new URL(page.url()).searchParams.getAll('record').length)
+          .toBe(1);
+        const selectedUrl = new URL(page.url());
+        const selectedRecordId = selectedUrl.searchParams.get('record');
+        expect(selectedRecordId).toBeTruthy();
+        const matchingRecords = frozenPack.records.filter(
+          (record) => record.id === selectedRecordId,
         );
+        expect(matchingRecords).toHaveLength(1);
+        const expectedRecord = matchingRecords[0];
+        expect(expectedRecord.objectLabel).toBe(name);
+        const matchingSources = frozenPack.sources.filter(
+          (source) =>
+            source.id === expectedRecord.sourceId &&
+            source.versionId === expectedRecord.versionId,
+        );
+        expect(matchingSources).toHaveLength(1);
+        const expectedSource = matchingSources[0];
+        const href = await dossier
+          .getByRole('link', { name: copy.openOriginal })
+          .getAttribute('href');
+        expect(href).toBeTruthy();
+        const sourceUrl = new URL(href!, selectedUrl);
+        expect(sourceUrl.origin).toBe(selectedUrl.origin);
+        expect(sourceUrl.pathname).toBe(
+          `/${locale}/data-foundation/spatial-workspace/source`,
+        );
+        // Parameter order is not identity. Bind both URLs independently to the
+        // frozen record/source, including their separate processing rules.
+        const expectedPins = {
+          source: expectedSource.id,
+          version: expectedSource.versionId,
+          sourceHash: expectedSource.originalSha256,
+          sourceRule: expectedSource.processingVersion,
+          record: expectedRecord.id,
+          recordRule: expectedRecord.processingVersion,
+        };
+        for (const [key, value] of Object.entries(expectedPins)) {
+          expect(value).toBeTruthy();
+          expect(selectedUrl.searchParams.getAll(key)).toEqual([value]);
+          expect(sourceUrl.searchParams.getAll(key)).toEqual([value]);
+        }
         await expect(map).toHaveAttribute('data-camera', camera!);
         if (width === 390)
           await page

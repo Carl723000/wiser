@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: c1264e29e1e5510fa30c44a40e84df4529cee97e
+lastReviewedCommit: 669ef4d205ab5916aad30bc6579842d4b236ca50
 ---
 
 ## What runs today
@@ -470,6 +470,8 @@ Category, category interval, dry, unmonitored, null, empty and numeric zero rema
 The nine question entries point to their actual work/version/object/record, check, field, coverage cell, task or use-check facts. `KNOWN` describes fact availability, not quality approval; absent checks, owners and observation denominators are not fabricated. These internal types do not add a public HTTP DTO, persistence authority, permission grant, professional decision, candidate read path or UI. Service and Web integration require their own governed acceptance; pure-rule tests are not end-to-end project readiness.
 
 The spatial workbench `WorkspacePack` is a narrow frontend/local-processor interchange, not a new public query protocol or authority identity store. It preserves originals, extracted rows, textual places, reference geometries, method evidence and pending professional review separately. Same-name source-local objects are not merged. Original paths never reach the browser, and derived graphics cannot expose sources lacking display rights.
+
+Its private reading URLs pin an already displayable source by ID, version, original hash and source processing rule, then an optional record by its own processing rule and an optional exact position by its geometry-source pin. These are frontend reading references, not published IDs, public queries, authorizations or saved-view identities. Current display rights and fixed references are checked again when opening a link; missing, ambiguous, changed or denied references do not choose a replacement. REAL is the explicit legacy default; SYNTHETIC must be selected and match both source and record. A reference geometry keeps its actual role and may not become a sampling location through navigation.
 
 The optional public-reference background is a separate, path-free map input, not a `WorkspacePack` record or a Data API fallback. The fixed OSM derivative comprises four administrative reference areas and one native Yongding watercourse; the separate endpoint follow-up has five geographic reference reaches, zero confirmed monthly boundary bindings and pending professional review. The local loader checks each complete GeoJSON SHA-256 and WGS84 coordinates before forwarding only safe labels, fixed source/original hashes, limitations and ODbL attribution. Administrative, watercourse and reference-reach layers have independent controls in planar and WebGL maps. An identical geometry is visually suppressed only when its complete coordinates and fixed original source match a displayed record; no record, source count, location identity or relation changes. The same independent map input may later be supplied from an authorized source, but signed-in reads never fall back to these local files.
 

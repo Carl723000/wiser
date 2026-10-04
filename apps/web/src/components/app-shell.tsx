@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense, type ReactNode } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 
 import { getDictionary, switchLocaleHref, type Locale } from '@/lib/i18n';
 import {
@@ -37,15 +37,25 @@ function LocaleSwitch({
   readonly text: string;
 }) {
   const search = useSearchParams();
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+  // A child can update the query before this shell boundary hydrates. Do not
+  // expose a stale locale link until the client can read the current query.
+  if (!hydrated)
+    return (
+      <span className={styles.language} aria-hidden="true">
+        {text}
+      </span>
+    );
   return (
-    <Link
+    <a
       className={styles.language}
       href={switchLocaleHref(pathname, search.toString(), locale)}
       hrefLang={locale}
       aria-label={label}
     >
       {text}
-    </Link>
+    </a>
   );
 }
 

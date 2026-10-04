@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 96c7c6831a84975e4e4069d27c7449a50d44d06f
+lastReviewedCommit: 669ef4d205ab5916aad30bc6579842d4b236ca50
 ---
 
 ## Design direction
@@ -66,6 +66,7 @@ Light and dark are two mappings of the same information hierarchy, not separate 
 - Information hierarchy is `Portal → business system → system workspace → domain object`; object-local tabs never become platform navigation.
 - The WISER logo returns to the locale Portal. Portal is not a third system, and Data Foundation precedes Agent EXCON.
 - The global shell, system switcher, Project context, theme, and language remain in the same location everywhere. System workspace navigation appears only after entering that system.
+- The language control becomes a link only when the current route query is available after hydration; its destination retains the active filters and fixed reading reference. Language changes use a full document navigation so the document language and initial theme are established together; other shell links keep their existing client navigation.
 - A page identifies the user's object and its authoritative state before metrics or technical detail.
 - Lists, catalogs, and runtime views share card, table, filter, pagination, empty, and failure primitives.
 - Technical diagnostics may be denser but never dominate the first visual layer of management and business pages.
@@ -123,6 +124,14 @@ The local spatial workbench reuses shared themes, fullscreen and contextual help
 Planar fallback and WebGL maps identify a selected geometry by both record and position. Other positions of the same record retain their ordinary style; a record-only or unavailable position selection does not highlight a geometry. Keyboard selection preserves the exact pair and clearing the selection restores ordinary styling without modifying source geometry.
 
 At widths up to 1100 px or heights up to 500 px, the local spatial workbench exposes one named Map, Results or Evidence reading pane. Hidden panes remain mounted to retain map state and reading position, while their controls leave keyboard navigation. Tabs support arrows, Home and End. Selecting a result opens its evidence, and locating an evidenced position returns to the same map. Resizing keeps a focused reading control visible; desktop retains its concurrent layout.
+
+Region, requirement, date role, active workspace tab and narrow reading pane share one controlled reading state. Selecting a matrix cell cannot be overwritten by a still-mounted hidden map. Links preserve fixed source, record and exact position independently; a record-only selection never chooses the first position during restoration. Incomplete or stale navigation shows a visible recovery action and clears the mounted drawing and evidence. Exact day filters remain visible on matrix entry; monthly coverage appears only after an explicit month-window choice.
+
+Local-write acknowledgement markers are consumed once. Returning and then moving forward to that same fixed URL reapplies the exact position and period instead of retaining the previous drawing.
+
+Current-track reading excludes opposite-track business copies and topics with no current members. Shared topics retain common metadata and only current-track source/record membership. Permitted reference geometry and measurement sources remain available as dependencies; they do not become business copies through a matching work identity.
+
+Matrix focus scrolls within the table so that the frozen requirement column cannot cover the selected cell. Counts and all four availability states remain readable, with the same 114 cells and original values.
 
 Evidence dossiers show source/provider, native time, original values, review state, conditions of use and location limits before technical references. Full fixed-version IDs, original hashes, processing IDs, location coordinate systems and mapped missing-reason codes remain exact in closed technical disclosures. Result cards show source/provider and review status. Identity explanations use pointer-, keyboard- and touch-accessible help; limitations never depend on that help.
 

@@ -704,23 +704,28 @@ describe('private fixed workspace reading links', () => {
   });
 });
 
-
 describe('exact native day reading state', () => {
   const exact = {
     ...state,
     monthWindow: null,
     dayWindow: { start: '2023-04-01', end: '2023-04-17' },
-  } as WorkspaceReadingUrlState & { dayWindow: { start: string | null; end: string | null } };
+  } as WorkspaceReadingUrlState & {
+    dayWindow: { start: string | null; end: string | null };
+  };
   it('round-trips exact days without expanding the end to a month or changing original time', () => {
     const context = fixture();
     const before = JSON.stringify(context.pack);
     const encoded = encodeWorkspaceReadingUrl('en', exact, context);
     expect(encoded.status).toBe('valid');
     if (encoded.status !== 'valid') throw new Error('Day state rejected');
-    const params = new URL(encoded.href, 'https://example.invalid').searchParams;
+    const params = new URL(encoded.href, 'https://example.invalid')
+      .searchParams;
     expect(params.get('dayEnd')).toBe('2023-04-17');
     expect(params.has('monthEnd')).toBe(false);
-    expect(decodeWorkspaceReadingUrl(params, context)).toEqual({ status: 'valid', state: exact });
+    expect(decodeWorkspaceReadingUrl(params, context)).toEqual({
+      status: 'valid',
+      state: exact,
+    });
     expect(JSON.stringify(context.pack)).toBe(before);
   });
   it.each([
@@ -731,11 +736,33 @@ describe('exact native day reading state', () => {
     const encoded = encodeWorkspaceReadingUrl('en', input, fixture());
     expect(encoded.status).toBe('valid');
     if (encoded.status !== 'valid') throw new Error('Open day state rejected');
-    expect(decodeWorkspaceReadingUrl(new URL(encoded.href, 'https://example.invalid').searchParams, fixture())).toEqual({ status: 'valid', state: input });
+    expect(
+      decodeWorkspaceReadingUrl(
+        new URL(encoded.href, 'https://example.invalid').searchParams,
+        fixture(),
+      ),
+    ).toEqual({ status: 'valid', state: input });
   });
   it('accepts a leap day as an actual calendar day', () => {
-    const params = new URLSearchParams({ dayStart: '2024-02-29', dayEnd: '2024-02-29', region: 'chaobai' });
-    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({ status: 'valid', state: { regionId:'chaobai', needId:null, dateRole:null, monthWindow:null, dayWindow:{start:'2024-02-29',end:'2024-02-29'},tab:null,pane:null,source:null,selection:null } });
+    const params = new URLSearchParams({
+      dayStart: '2024-02-29',
+      dayEnd: '2024-02-29',
+      region: 'chaobai',
+    });
+    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({
+      status: 'valid',
+      state: {
+        regionId: 'chaobai',
+        needId: null,
+        dateRole: null,
+        monthWindow: null,
+        dayWindow: { start: '2024-02-29', end: '2024-02-29' },
+        tab: null,
+        pane: null,
+        source: null,
+        selection: null,
+      },
+    });
   });
   it.each([
     { dayStart: '2023-02-29' },
@@ -745,46 +772,119 @@ describe('exact native day reading state', () => {
     { dayStart: '2023-4-01' },
     { dayStart: '2023-04' },
     { dayStart: '2023-05-01', dayEnd: '2023-04-30' },
-    { dayStart: '2023-04-01', monthStart: '2023-04', monthEnd: '2023-04', dateRole: 'PUBLICATION' },
+    {
+      dayStart: '2023-04-01',
+      monthStart: '2023-04',
+      monthEnd: '2023-04',
+      dateRole: 'PUBLICATION',
+    },
   ])('rejects invalid or ambiguous calendar boundaries %j', (fields) => {
-    const params = new URLSearchParams(Object.entries(fields) as [string,string][]);
-    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({ status:'invalid', reason:'day-window' });
+    const params = new URLSearchParams(
+      Object.entries(fields) as [string, string][],
+    );
+    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({
+      status: 'invalid',
+      reason: 'day-window',
+    });
   });
   it('rejects duplicate day inputs and a supplied empty day window without choosing a first value', () => {
-    const params = new URLSearchParams('dayStart=2023-04-01&dayStart=2023-04-02');
-    expect(decodeWorkspaceReadingUrl(params,fixture())).toEqual({status:'invalid',reason:'duplicate'});
-    expect(encodeWorkspaceReadingUrl('en',{...exact,dayWindow:{start:null,end:null}},fixture())).toEqual({status:'invalid',reason:'day-window'});
+    const params = new URLSearchParams(
+      'dayStart=2023-04-01&dayStart=2023-04-02',
+    );
+    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({
+      status: 'invalid',
+      reason: 'duplicate',
+    });
+    expect(
+      encodeWorkspaceReadingUrl(
+        'en',
+        { ...exact, dayWindow: { start: null, end: null } },
+        fixture(),
+      ),
+    ).toEqual({ status: 'invalid', reason: 'day-window' });
   });
 });
 
-describe('actual map date roles',()=>{
-  it.each(['ACQUISITION','UNKNOWN'])('preserves the existing explicit %s map filter without claiming month readiness',(dateRole)=>{
-    const input=new URLSearchParams({track:'REAL',region:'chaobai',dateRole,tab:'spatial',pane:'map'});
-    expect(decodeWorkspaceReadingUrl(input,fixture())).toMatchObject({status:'valid',state:{dateRole,selection:null,monthWindow:null}});
-  });
-  it('still refuses a selected record whose native date role does not match acquisition',()=>{
-    const input=parameters();input.set('dateRole','ACQUISITION');
-    expect(decodeWorkspaceReadingUrl(input,fixture())).toEqual({status:'invalid',reason:'scope'});
+describe('actual map date roles', () => {
+  it.each(['ACQUISITION', 'UNKNOWN'])(
+    'preserves the existing explicit %s map filter without claiming month readiness',
+    (dateRole) => {
+      const input = new URLSearchParams({
+        track: 'REAL',
+        region: 'chaobai',
+        dateRole,
+        tab: 'spatial',
+        pane: 'map',
+      });
+      expect(decodeWorkspaceReadingUrl(input, fixture())).toMatchObject({
+        status: 'valid',
+        state: { dateRole, selection: null, monthWindow: null },
+      });
+    },
+  );
+  it('still refuses a selected record whose native date role does not match acquisition', () => {
+    const input = parameters();
+    input.set('dateRole', 'ACQUISITION');
+    expect(decodeWorkspaceReadingUrl(input, fixture())).toEqual({
+      status: 'invalid',
+      reason: 'scope',
+    });
   });
 });
 
-describe('explicit undated reading inclusion',()=>{
-  it('round-trips the actual time-unknown inclusion control without changing original times',()=>{
-    const context=fixture();context.pack.records[0].time={start:null,end:null,precision:'unknown',role:'unknown'};
-    const input={...state,monthWindow:null,dayWindow:{start:'2023-04-01',end:'2023-04-17'},includeUndated:true} as WorkspaceReadingUrlState & {dayWindow:{start:string;end:string};includeUndated:boolean};
-    const encoded=encodeWorkspaceReadingUrl('en',input,context);
+describe('explicit undated reading inclusion', () => {
+  it('round-trips the actual time-unknown inclusion control without changing original times', () => {
+    const context = fixture();
+    context.pack.records[0].time = {
+      start: null,
+      end: null,
+      precision: 'unknown',
+      role: 'unknown',
+    };
+    const input = {
+      ...state,
+      monthWindow: null,
+      dayWindow: { start: '2023-04-01', end: '2023-04-17' },
+      includeUndated: true,
+    } as WorkspaceReadingUrlState & {
+      dayWindow: { start: string; end: string };
+      includeUndated: boolean;
+    };
+    const encoded = encodeWorkspaceReadingUrl('en', input, context);
     expect(encoded.status).toBe('valid');
-    if(encoded.status!=='valid') throw new Error('Undated inclusion was dropped');
-    expect(decodeWorkspaceReadingUrl(new URL(encoded.href,'https://example.invalid').searchParams,context)).toEqual({status:'valid',state:input});
+    if (encoded.status !== 'valid')
+      throw new Error('Undated inclusion was dropped');
+    expect(
+      decodeWorkspaceReadingUrl(
+        new URL(encoded.href, 'https://example.invalid').searchParams,
+        context,
+      ),
+    ).toEqual({ status: 'valid', state: input });
     expect(context.pack.records[0].time.start).toBeNull();
   });
-  it('rejects an unknown original time when inclusion is explicitly false',()=>{
-    const context=fixture();context.pack.records[0].time={start:null,end:null,precision:'unknown',role:'unknown'};
-    const params=parameters();params.set('includeUndated','false');
-    expect(decodeWorkspaceReadingUrl(params,context)).toEqual({status:'invalid',reason:'scope'});
+  it('rejects an unknown original time when inclusion is explicitly false', () => {
+    const context = fixture();
+    context.pack.records[0].time = {
+      start: null,
+      end: null,
+      precision: 'unknown',
+      role: 'unknown',
+    };
+    const params = parameters();
+    params.set('includeUndated', 'false');
+    expect(decodeWorkspaceReadingUrl(params, context)).toEqual({
+      status: 'invalid',
+      reason: 'scope',
+    });
   });
-  it.each(['1','yes','unknown'])('rejects invalid includeUndated %s instead of coercing it',value=>{
-    const params=new URLSearchParams({includeUndated:value});
-    expect(decodeWorkspaceReadingUrl(params,fixture())).toEqual({status:'invalid',reason:'scope'});
-  });
+  it.each(['1', 'yes', 'unknown'])(
+    'rejects invalid includeUndated %s instead of coercing it',
+    (value) => {
+      const params = new URLSearchParams({ includeUndated: value });
+      expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({
+        status: 'invalid',
+        reason: 'scope',
+      });
+    },
+  );
 });

@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: d6d21c480d30e7e027be7aebe26e0ae2ec3f39cf
+lastReviewedCommit: 669ef4d205ab5916aad30bc6579842d4b236ca50
 ---
 
 ## Two frontend applications
@@ -287,6 +287,10 @@ For an optional offline public geographic background, set `WISER_SPATIAL_REGIONA
 The server validates source and geometry versions, hash shape and display rights, strips original paths and unknown fields, and removes undisplayable sources and related records. Derived PNGs use a bounded loopback-only `spatial-workspace-media` route, disabled in production. Existing Auth, Data API, RLS, intake and professional approval remain separate acceptance paths.
 
 ### Workbench reading and exercises
+
+`spatial-workspace-url-state` encodes a private, bounded reading state for the existing workspace/source routes. It restores track, region, requirement, date role, inclusive month or exact day bounds, explicit undated inclusion, active tab/pane and optional fixed source/record/position references. Month and day fields are mutually exclusive; days use real calendar validation and retain open ends. Repeated, unknown, partial or mismatched parameters fail closed. The source processing rule and record processing rule remain distinct, and position references include their own fixed geometry source.
+
+The server pages await route parameters, validate them against the current permitted pack and render a localized recovery state on invalid input. The shell controls map and matrix scope atomically and uses native history with a popstate recheck; child effects cannot restore an obsolete region or default position. Existing source and record links use the same encoder. A bare workspace link explicitly opens the REAL overview; incomplete old source/record links require selection again. A source-only pin retains a source reading trail, rather than silently filtering the whole map to that source. Exact day bounds restore in map and source reading, while the month-only matrix requires explicit month-window selection; acquisition/unknown date roles need an explicit supported-role choice. These URLs do not persist content or every scene setting, replace existing scene/comparison behavior, change standard saved/query contracts, or grant access. Browser tests use product-generated fixed links rather than fabricated source pins. Actual browser and authenticated acceptance remain separate.
 
 The workspace combines spatial evidence, readiness/review and raster inspection tabs. Matrix, list, map and dossier share selection; exact-version source links reject unknown versions. Region/time comparison, legally retained offline geometry, category layers, unlocated records and saved scenes preserve source identity. Bird's-eye category height is neither terrain nor depth. Unavailable WebGL has an explicit planar fallback.
 

@@ -100,7 +100,35 @@ const pack: WorkspacePack = {
   schemaVersion: 1,
   generatedAt: '2026-10-02T00:00:00Z',
   processingVersion: 'p1',
-  sources: [],
+  sources: [
+    {
+      id: 's1',
+      versionId: 'v1',
+      title: 'Synthetic navigation fixture',
+      provider: 'Fixture publisher',
+      kind: 'report',
+      originalSha256: 'a'.repeat(64),
+      processingVersion: 'p1',
+      regionIds: ['chaobai'],
+      needIds: ['K5-001'],
+      evidenceUrl: null,
+      duplicateOf: null,
+      rights: {
+        public: false,
+        displayAllowed: true,
+        redistributionAllowed: false,
+        note: 'Synthetic test only',
+      },
+      status: {
+        original: 'saved',
+        parsed: 'ready',
+        checked: 'unknown',
+        professionalReview: 'pending',
+        space: 'reference',
+        use: 'unknown',
+      },
+    },
+  ],
   records: [JSON.parse(JSON.stringify(record)) as WorkspaceRecord],
   regions: [
     {

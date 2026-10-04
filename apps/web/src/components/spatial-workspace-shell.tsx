@@ -1,11 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProjectReadinessInput } from '@wiser/data-core';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import type { RegionId, WorkspacePack } from '@/lib/spatial-workspace-contract';
 import { versionImpact } from '@/lib/spatial-version-impact';
 import type { WorkspaceInvalidation } from '@/lib/spatial-workspace-view';
+import {
+  decodeWorkspaceReadingUrl,
+  encodeWorkspaceReadingUrl,
+  type WorkspaceReadingUrlState,
+} from '@/lib/spatial-workspace-url-state';
+import {
+  defaultWorkspaceReadingState,
+  scopeWorkspaceReadingPack,
+  withWorkspaceReadingRecord,
+  workspaceReadingSourcePin,
+} from '@/lib/spatial-workspace-reading-view';
+import type { ReadinessSelection } from '@/lib/spatial-readiness-facts';
 import type { PublicReferences } from '@/lib/spatial-public-reference';
 import { ContextHelp } from './context-help';
 import { ExplorationWorkspace } from './exploration-workspace';
@@ -24,6 +36,7 @@ export function SpatialWorkspaceShell({
   pack,
   locale,
   initialRecordId = null,
+  initialReadingState,
   readinessFacts = null,
   readinessState = 'absent',
   publicReferences = null,
@@ -32,6 +45,7 @@ export function SpatialWorkspaceShell({
   pack: WorkspacePack;
   locale: Locale;
   initialRecordId?: string | null;
+  initialReadingState?: WorkspaceReadingUrlState;
   readinessFacts?: ProjectReadinessInput | null;
   readinessState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
   publicReferences?: PublicReferences | null;
@@ -39,16 +53,94 @@ export function SpatialWorkspaceShell({
 }) {
   const dictionary = getDictionary(locale).dataFoundation;
   const copy = dictionary.spatialManagement;
-  const initialRecord = pack.records.find(
-    (item) => item.id === initialRecordId,
-  );
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
-    initialRecord?.id ?? null,
-  );
-  const [regionId, setRegionId] = useState<RegionId>(
-    initialRecord?.regionIds.find((id) => id !== 'bth') ?? 'bth',
-  );
-  const [tab, setTab] = useState('spatial');
+  const [reading, setReading] = useState<WorkspaceReadingUrlState>(() => {
+    if (initialReadingState) return initialReadingState;
+    const base = defaultWorkspaceReadingState();
+    const record = pack.records.find((item) => item.id === initialRecordId);
+    return record
+      ? (withWorkspaceReadingRecord(
+          pack,
+          {
+            ...base,
+            regionId: record.regionIds.find((id) => id !== 'bth') ?? 'bth',
+            pane: 'evidence',
+          },
+          { recordId: record.id, positionId: null },
+        ) ?? base)
+      : base;
+  });
+  const [invalidNavigation, setInvalidNavigation] = useState(false);
+  const readingRef = useRef(reading);
+  readingRef.current = reading;
+  const regionId = reading.regionId ?? 'bth';
+  const selectedRecordId = reading.selection?.recordId ?? null;
+  const [exerciseTab, setExerciseTab] =
+    useState<WorkspaceReadingUrlState['tab']>('spatial');
+  const initialKey = JSON.stringify(initialReadingState);
+  useEffect(() => {
+    if (initialReadingState) setReading(initialReadingState);
+    setInvalidNavigation(false);
+  }, [initialKey]);
+  useEffect(() => {
+    const restore = () => {
+      const decoded = decodeWorkspaceReadingUrl(
+        new URLSearchParams(window.location.search),
+        { pack },
+      );
+      if (decoded.status === 'invalid') setInvalidNavigation(true);
+      else {
+        setReading(
+          decoded.status === 'valid'
+            ? decoded.state
+            : defaultWorkspaceReadingState(),
+        );
+        setInvalidNavigation(false);
+      }
+      setExerciseTarget(null);
+    };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, [pack]);
+  function commitReading(next: WorkspaceReadingUrlState) {
+    const encoded = encodeWorkspaceReadingUrl(locale, next, { pack });
+    if (encoded.status !== 'valid') {
+      setInvalidNavigation(true);
+      return;
+    }
+    readingRef.current = next;
+    setReading(next);
+    setInvalidNavigation(false);
+    const path = `/${locale}/data-foundation/spatial-workspace`;
+    if (
+      window.location.pathname === path &&
+      `${window.location.pathname}${window.location.search}` !== encoded.href
+    )
+      window.history.pushState(null, '', encoded.href);
+  }
+  function changeRegion(id: RegionId) {
+    commitReading({
+      ...readingRef.current,
+      regionId: id,
+      source: null,
+      selection: null,
+    });
+  }
+  function changeReadiness(
+    selection: ReadinessSelection,
+    region: RegionId = readingRef.current.regionId ?? 'bth',
+  ) {
+    const { dayWindow: _days, ...current } = readingRef.current;
+    commitReading({
+      ...current,
+      track: selection.track ?? current.track ?? 'REAL',
+      regionId: region,
+      needId: selection.needId,
+      dateRole: selection.dateRole,
+      monthWindow: selection.window,
+      source: null,
+      selection: null,
+    });
+  }
   const [exerciseTarget, setExerciseTarget] = useState<string | null>(null);
   const [exerciseRegionId, setExerciseRegionId] = useState<RegionId>('bth');
   const [exerciseSelectedId, setExerciseSelectedId] = useState<string | null>(
@@ -94,16 +186,70 @@ export function SpatialWorkspaceShell({
         : [],
     [target, impact, copy.regenerated],
   );
+  const tab = impact ? (exerciseTab ?? 'spatial') : (reading.tab ?? 'spatial');
+  const visiblePack = useMemo(
+    () => scopeWorkspaceReadingPack(pack, reading),
+    [pack, reading.track, reading.needId, reading.regionId],
+  );
+  const readinessDateRole =
+    reading.dateRole === null ||
+    reading.dateRole === 'PUBLICATION' ||
+    reading.dateRole === 'OBSERVATION' ||
+    reading.dateRole === 'EVENT'
+      ? (reading.dateRole ?? 'PUBLICATION')
+      : null;
   function selectRecord(id: string) {
     const item = pack.records.find((record) => record.id === id);
     if (!item) return;
-    const changeSelection = impact
-      ? setExerciseSelectedId
-      : setSelectedRecordId;
-    const changeRegion = impact ? setExerciseRegionId : setRegionId;
-    changeSelection(id);
-    changeRegion(item.regionIds.find((region) => region !== 'bth') ?? 'bth');
-    setTab('spatial');
+    if (impact) {
+      setExerciseSelectedId(id);
+      setExerciseRegionId(
+        item.regionIds.find((region) => region !== 'bth') ?? 'bth',
+      );
+      setExerciseTab('spatial');
+      return;
+    }
+    const current = readingRef.current;
+    const localRegions = item.regionIds.filter((value) => value !== 'bth');
+    const region =
+      current.regionId === 'bth' && localRegions.length === 1
+        ? localRegions[0]
+        : current.regionId === null ||
+            current.regionId === 'bth' ||
+            item.regionIds.includes(current.regionId)
+          ? current.regionId
+          : localRegions.length === 1
+            ? localRegions[0]
+            : current.regionId;
+    const next = withWorkspaceReadingRecord(
+      pack,
+      { ...current, regionId: region, tab: 'spatial', pane: 'evidence' },
+      { recordId: item.id, positionId: null },
+    );
+    if (next) commitReading(next);
+    else setInvalidNavigation(true);
+  }
+  function sourceHref(sourceId: string, versionId: string) {
+    const source = workspaceReadingSourcePin(pack, sourceId, versionId);
+    if (!source) return `/${locale}/data-foundation/spatial-workspace/source`;
+    const current = readingRef.current;
+    const material = pack.sources.find(
+      (item) => item.id === sourceId && item.versionId === versionId,
+    )!;
+    const keepSelection =
+      current.source?.sourceId === sourceId &&
+      current.source.versionId === versionId;
+    const next = {
+      ...current,
+      track: material.track ?? 'REAL',
+      source,
+      selection: keepSelection ? current.selection : null,
+    };
+    const encoded = encodeWorkspaceReadingUrl(locale, next, { pack }, 'source');
+    // An invalid target opens an explicit unavailable-link state; never choose a different source.
+    return encoded.status === 'valid'
+      ? encoded.href
+      : `/${locale}/data-foundation/spatial-workspace/source`;
   }
   function regenerate(
     _record: unknown,
@@ -118,6 +264,7 @@ export function SpatialWorkspaceShell({
     );
     setExerciseRegionId(regionId);
     setExerciseSelectedId(selectedRecordId);
+    setExerciseTab(reading.tab ?? 'spatial');
     setExerciseTarget(item?.id ?? null);
   }
   const tabs = [
@@ -125,6 +272,17 @@ export function SpatialWorkspaceShell({
     ['readiness', copy.readiness],
     ['raster', copy.raster],
   ];
+  const currentLink = encodeWorkspaceReadingUrl(locale, reading, { pack });
+  if (invalidNavigation || currentLink.status === 'invalid')
+    return (
+      <main id="main-content" className={styles.workspace}>
+        <h1>{copy.readingLinkInvalid}</h1>
+        <p role="alert">{copy.readingLinkInvalidText}</p>
+        <a href={`/${locale}/data-foundation/spatial-workspace`}>
+          {copy.returnWorkspace}
+        </a>
+      </main>
+    );
   return (
     <ExplorationWorkspace
       locale={locale}
@@ -171,7 +329,14 @@ export function SpatialWorkspaceShell({
             aria-selected={tab === id}
             aria-controls={`spatial-panel-${id}`}
             tabIndex={tab === id ? 0 : -1}
-            onClick={() => setTab(id)}
+            onClick={() => {
+              if (impact) setExerciseTab(id as WorkspaceReadingUrlState['tab']);
+              else
+                commitReading({
+                  ...readingRef.current,
+                  tab: id as WorkspaceReadingUrlState['tab'],
+                });
+            }}
           >
             {label}
           </button>
@@ -199,20 +364,28 @@ export function SpatialWorkspaceShell({
       >
         <div hidden={Boolean(impact)} data-testid="real-workspace-view">
           <SpatialWorkspace
-            pack={pack}
+            pack={visiblePack}
             locale={locale}
             copy={dictionary.spatialWorkspace}
             publicReferences={publicReferences}
             publicReferenceState={publicReferenceState}
             regionId={regionId}
-            onRegionChange={setRegionId}
+            onRegionChange={changeRegion}
             selectedRecordId={selectedRecordId}
-            onSelectRecord={setSelectedRecordId}
+            onSelectRecord={(id) => {
+              if (id) selectRecord(id);
+              else
+                commitReading({
+                  ...readingRef.current,
+                  source: null,
+                  selection: null,
+                });
+            }}
+            readingState={reading}
+            onReadingStateChange={commitReading}
             invalidations={noInvalidations}
             storageKey="wiser:goal100:spatial-scene:v1"
-            sourceHref={(sourceId, versionId) =>
-              `/${locale}/data-foundation/spatial-workspace/source?source=${encodeURIComponent(sourceId)}&version=${encodeURIComponent(versionId)}`
-            }
+            sourceHref={sourceHref}
           />
         </div>
         {impact && (
@@ -230,9 +403,7 @@ export function SpatialWorkspaceShell({
               onSelectRecord={setExerciseSelectedId}
               invalidations={invalidations}
               storageKey={`wiser:goal100:synthetic-spatial-scene:v1:${exerciseTarget}`}
-              sourceHref={(sourceId, versionId) =>
-                `/${locale}/data-foundation/spatial-workspace/source?source=${encodeURIComponent(sourceId)}&version=${encodeURIComponent(versionId)}`
-              }
+              sourceHref={sourceHref}
             />
           </div>
         )}
@@ -252,8 +423,7 @@ export function SpatialWorkspaceShell({
                 setExerciseRegionId(event.target.value as RegionId);
                 setExerciseSelectedId(null);
               } else {
-                setRegionId(event.target.value as RegionId);
-                setSelectedRecordId(null);
+                changeRegion(event.target.value as RegionId);
               }
             }}
           >
@@ -267,21 +437,81 @@ export function SpatialWorkspaceShell({
         {(readinessState === 'invalid' || readinessState === 'unavailable') && (
           <p role="status">{dictionary.spatialReadiness.factsUnavailable}</p>
         )}
-        <SpatialReadinessPanel
-          pack={pack}
-          regionId={impact ? exerciseRegionId : regionId}
-          copy={dictionary.spatialReadiness}
-          staleRecordIds={impact?.recordIds}
-          facts={readinessFacts}
-          sourceHref={(sourceId, versionId) =>
-            `/${locale}/data-foundation/spatial-workspace/source?source=${encodeURIComponent(sourceId)}&version=${encodeURIComponent(versionId)}`
-          }
-          onSelectRegion={(id) => {
-            if (impact) setExerciseRegionId(id);
-            else setRegionId(id);
-          }}
-          onSelectRecord={selectRecord}
-        />
+        {(reading.dayWindow || readinessDateRole === null) && !impact ? (
+          <div className={styles.alert} role="status">
+            <p>
+              {reading.dayWindow ? copy.dayWindowMatrix : copy.dateRoleMatrix}
+            </p>
+            {readinessDateRole !== null ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const { dayWindow: _days, ...current } = readingRef.current;
+                  commitReading({ ...current, monthWindow: null });
+                }}
+              >
+                {copy.chooseMonthWindow}
+              </button>
+            ) : (
+              <label>
+                {dictionary.spatialReadiness.dateRole}
+                <select
+                  value=""
+                  onChange={(event) =>
+                    changeReadiness({
+                      track: reading.track,
+                      needId: reading.needId ?? 'K5-001',
+                      window: reading.monthWindow,
+                      dateRole: event.target
+                        .value as ReadinessSelection['dateRole'],
+                    })
+                  }
+                >
+                  <option value="">{copy.chooseDateRole}</option>
+                  {Object.entries(dictionary.spatialReadiness.dateRoles).map(
+                    ([role, label]) => (
+                      <option key={role} value={role}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+            )}
+          </div>
+        ) : (
+          <SpatialReadinessPanel
+            pack={pack}
+            regionId={impact ? exerciseRegionId : regionId}
+            copy={dictionary.spatialReadiness}
+            staleRecordIds={impact?.recordIds}
+            facts={readinessFacts}
+            sourceHref={sourceHref}
+            selection={
+              !impact
+                ? {
+                    track: reading.track ?? 'REAL',
+                    needId: reading.needId ?? 'K5-001',
+                    dateRole: readinessDateRole ?? 'PUBLICATION',
+                    window: reading.monthWindow,
+                  }
+                : undefined
+            }
+            onSelectionChange={
+              !impact ? (selection) => changeReadiness(selection) : undefined
+            }
+            onSelectScope={
+              !impact
+                ? (id, selection) => changeReadiness(selection, id)
+                : undefined
+            }
+            onSelectRegion={(id) => {
+              if (impact) setExerciseRegionId(id);
+              else changeRegion(id);
+            }}
+            onSelectRecord={selectRecord}
+          />
+        )}
       </section>
       <section
         id="spatial-panel-raster"
@@ -289,7 +519,7 @@ export function SpatialWorkspaceShell({
         aria-labelledby="spatial-tab-raster"
         hidden={tab !== 'raster'}
       >
-        <SpatialRasterInspection pack={pack} copy={copy} />
+        <SpatialRasterInspection pack={visiblePack} copy={copy} />
       </section>
       <section className={styles.practice}>
         <SpatialCandidateReview

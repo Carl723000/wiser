@@ -736,6 +736,7 @@ export function workspaceObjectDossier(
   const copies = pack.sources.filter(
     (copy) =>
       copy.id !== source.id &&
+      (copy.track ?? 'REAL') === (source.track ?? 'REAL') &&
       workRoot(pack, copy.id) === work &&
       withinPins(
         readableSource(pack, copy.id, copy.versionId, invalidations),

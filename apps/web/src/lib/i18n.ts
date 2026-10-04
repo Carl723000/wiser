@@ -1541,6 +1541,15 @@ const zhCN = {
       },
     },
     spatialManagement: {
+      readingLinkInvalid: '阅读链接不可用',
+      readingLinkInvalidText:
+        '链接信息不完整，或所选资料与范围已失效。请返回工作台重新选择。',
+      dayWindowMatrix:
+        '当前按精确日期查阅地图与原文。月覆盖核对需另行选择月份窗口。',
+      chooseMonthWindow: '选择月份窗口',
+      dateRoleMatrix:
+        '当前时间角色用于地图筛选。月覆盖核对需明确选择公布期、观测期或事件期。',
+      chooseDateRole: '选择月覆盖时间角色',
       rasterOriginalHash: '保留原件哈希（TCI裁剪产品）',
       sourceLicense: '查看来源许可',
       pixelProbe: '预检像元',
@@ -1587,7 +1596,7 @@ const zhCN = {
       rasterHelpText:
         'B03、B8A、SCL、TCI来自同一景。B8A是窄近红外，不能替代B08；SCL为场景分类，不是现场真值。原生像元检查不等于空间控制点核验或水质反演。',
       oneScene: '一景影像 · 四类产品 · 控制点待核',
-      noRaster: '本批未取得该检查结果。',
+      noRaster: '当前可见筛选范围内没有适用的影像检查结果。',
       acquired: '成像时间',
       scene: '景标识',
       unknown: '未知',
@@ -5322,6 +5331,15 @@ const en: typeof zhCN = {
       },
     },
     spatialManagement: {
+      readingLinkInvalid: 'Reading link unavailable',
+      readingLinkInvalidText:
+        'The link is incomplete, or its material and scope are no longer valid. Return to the workspace and choose again.',
+      dayWindowMatrix:
+        'The map and originals use exact day boundaries. Choose a month window for monthly coverage inspection.',
+      chooseMonthWindow: 'Choose month window',
+      dateRoleMatrix:
+        'The current date role filters the map. Choose publication, observation or event time for monthly coverage inspection.',
+      chooseDateRole: 'Choose monthly coverage date role',
       rasterOriginalHash: 'Retained original hash (TCI crop)',
       sourceLicense: 'Read source license',
       pixelProbe: 'Checked pixel',
@@ -5372,7 +5390,8 @@ const en: typeof zhCN = {
       rasterHelpText:
         'B03, B8A, SCL and TCI belong to one scene. B8A is narrow near infrared, not B08. SCL is a scene classification, not field truth. Pixel inspection does not verify control points or water-quality inversion.',
       oneScene: 'One scene · Four products · Control points unverified',
-      noRaster: 'This batch has no inspection report.',
+      noRaster:
+        'No applicable imagery inspection results in the current visible scope.',
       acquired: 'Acquired',
       scene: 'Scene identity',
       unknown: 'Unknown',

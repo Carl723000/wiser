@@ -100,6 +100,10 @@ it('keeps unavailable reports and products explicit without creating a scene', (
       copy={getDictionary('en').dataFoundation.spatialManagement}
     />,
   );
-  expect(screen.getByText('This batch has no inspection report.')).toBeTruthy();
+  expect(
+    screen.getByText(
+      'No applicable imagery inspection results in the current visible scope.',
+    ),
+  ).toBeTruthy();
   expect(screen.queryByRole('img')).toBeNull();
 });

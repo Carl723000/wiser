@@ -82,7 +82,11 @@ function fixture(): WorkspacePack {
     reviewStatus: 'pending' as const,
     missingReasons: [],
     evidence: [
-      { locator: 'fixture-table:1/row:1', text: 'Private April evidence', url: null },
+      {
+        locator: 'fixture-table:1/row:1',
+        text: 'Private April evidence',
+        url: null,
+      },
     ],
     positions: [],
   };
@@ -99,7 +103,13 @@ function fixture(): WorkspacePack {
         objectId: 'fixture-object-2',
         objectLabel: 'Private June object',
         time: { ...record.time, start: '2023-06', end: '2023-06' },
-        evidence: [{ locator: 'fixture-table:1/row:2', text: 'Private June evidence', url: null }],
+        evidence: [
+          {
+            locator: 'fixture-table:1/row:2',
+            text: 'Private June evidence',
+            url: null,
+          },
+        ],
       },
     ],
     regions: ['bth', 'chaobai', 'beiyun'].map((id) => ({
@@ -147,16 +157,22 @@ function search(params: URLSearchParams): Record<string, string | string[]> {
   return value;
 }
 async function pageHtml(params: URLSearchParams) {
-  return renderToStaticMarkup(await Page({
-    params: Promise.resolve({ locale: 'en' }),
-    searchParams: Promise.resolve(search(params) as { record?: string }),
-  }));
+  return renderToStaticMarkup(
+    await Page({
+      params: Promise.resolve({ locale: 'en' }),
+      searchParams: Promise.resolve(search(params) as { record?: string }),
+    }),
+  );
 }
 async function sourceHtml(params: URLSearchParams) {
-  return renderToStaticMarkup(await SourcePage({
-    params: Promise.resolve({ locale: 'en' }),
-    searchParams: Promise.resolve(search(params) as { source?: string; version?: string }),
-  }));
+  return renderToStaticMarkup(
+    await SourcePage({
+      params: Promise.resolve({ locale: 'en' }),
+      searchParams: Promise.resolve(
+        search(params) as { source?: string; version?: string },
+      ),
+    }),
+  );
 }
 beforeEach(() => {
   load.mockReset();
@@ -180,14 +196,17 @@ it.each([
   ['sourceHash', 'b'.repeat(64)],
   ['monthStart', '2023-05'],
   ['token', 'not-a-valid-parameter'],
-])('keeps invalid %s closed rather than restoring a default or the record', async (key, value) => {
-  const params = query();
-  params.set(key, value);
-  const html = await pageHtml(params);
-  expect(html).toContain('role="alert"');
-  expect(html).not.toContain('fixture-r1');
-  expect(html).not.toContain(value);
-});
+])(
+  'keeps invalid %s closed rather than restoring a default or the record',
+  async (key, value) => {
+    const params = query();
+    params.set(key, value);
+    const html = await pageHtml(params);
+    expect(html).toContain('role="alert"');
+    expect(html).not.toContain('fixture-r1');
+    expect(html).not.toContain(value);
+  },
+);
 it('rejects repeated query choices from Next search parameters', async () => {
   const params = query();
   params.append('region', 'chaobai');
@@ -196,7 +215,9 @@ it('rejects repeated query choices from Next search parameters', async () => {
   expect(html).not.toContain('fixture-r1');
 });
 it('keeps an old bare record link incomplete while preserving a truly bare default entry', async () => {
-  expect(await pageHtml(new URLSearchParams('record=fixture-r1'))).toContain('role="alert"');
+  expect(await pageHtml(new URLSearchParams('record=fixture-r1'))).toContain(
+    'role="alert"',
+  );
   expect(await pageHtml(new URLSearchParams())).not.toContain('role="alert"');
 });
 it('lists only records in the fixed source reading scope and returns with the same pin', async () => {
@@ -205,10 +226,15 @@ it('lists only records in the fixed source reading scope and returns with the sa
   expect(html).not.toContain('Private June evidence');
   expect(html).toContain('sourceHash=');
   expect(html).toContain('recordRule=fixture-row-1');
-  const links = [...html.matchAll(/href="([^"]+)"/g)].map((match) => match[1].replaceAll('&amp;', '&'));
+  const links = [...html.matchAll(/href="([^"]+)"/g)].map((match) =>
+    match[1].replaceAll('&amp;', '&'),
+  );
   const recordLink = links.find((href) => href.includes('record=fixture-r1'));
   expect(recordLink).toBeTruthy();
-  const decoded = decodeWorkspaceReadingUrl(new URL(recordLink!, 'https://wiser.example.test').searchParams, { pack: fixture() });
+  const decoded = decodeWorkspaceReadingUrl(
+    new URL(recordLink!, 'https://wiser.example.test').searchParams,
+    { pack: fixture() },
+  );
   expect(decoded.status).toBe('valid');
   if (decoded.status !== 'valid') throw new Error('Invalid return link');
   expect(decoded.state.regionId).toBe('chaobai');
@@ -218,18 +244,25 @@ it('lists only records in the fixed source reading scope and returns with the sa
   expect(decoded.state.source).toEqual(state.source);
   expect(decoded.state.selection).toEqual(state.selection);
 });
-it.each(['withdrawn', 'unavailable', 'ambiguous', 'legacy'])('does not display a %s source or its original text', async (condition) => {
-  const pack = fixture();
-  const params = query();
-  if (condition === 'withdrawn') pack.sources[0].rights.displayAllowed = false;
-  if (condition === 'ambiguous') pack.sources.push({ ...pack.sources[0] });
-  if (condition === 'legacy') {
-    params.delete('sourceHash');
-    params.delete('sourceRule');
-  }
-  load.mockResolvedValue({ state: condition === 'unavailable' ? 'disabled' : 'ready', pack });
-  const html = await sourceHtml(params);
-  expect(html).toMatch(/role="(?:alert|status)"/);
-  expect(html).not.toContain('Private fixture source');
-  expect(html).not.toContain('Private April evidence');
-});
+it.each(['withdrawn', 'unavailable', 'ambiguous', 'legacy'])(
+  'does not display a %s source or its original text',
+  async (condition) => {
+    const pack = fixture();
+    const params = query();
+    if (condition === 'withdrawn')
+      pack.sources[0].rights.displayAllowed = false;
+    if (condition === 'ambiguous') pack.sources.push({ ...pack.sources[0] });
+    if (condition === 'legacy') {
+      params.delete('sourceHash');
+      params.delete('sourceRule');
+    }
+    load.mockResolvedValue({
+      state: condition === 'unavailable' ? 'disabled' : 'ready',
+      pack,
+    });
+    const html = await sourceHtml(params);
+    expect(html).toMatch(/role="(?:alert|status)"/);
+    expect(html).not.toContain('Private fixture source');
+    expect(html).not.toContain('Private April evidence');
+  },
+);
