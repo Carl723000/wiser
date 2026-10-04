@@ -495,7 +495,7 @@ it('shows explicit SCL selection, fixed-mask basis, joint counts and projected g
   await openInspector();
   formWindow(650, 535, 2, 2);
   fireEvent.change(
-    screen.getByRole('combobox', { name: 'Quality selection' }),
+    screen.getByRole('combobox', { name: 'Pixel filter mode' }),
     {
       target: { value: 'scl-classes' },
     },
@@ -507,7 +507,7 @@ it('shows explicit SCL selection, fixed-mask basis, joint counts and projected g
     { target: { value: '0,4' } },
   );
   fireEvent.change(
-    screen.getByRole('textbox', { name: 'Quality rule version' }),
+    screen.getByRole('textbox', { name: 'Filter identifier (user-entered)' }),
     { target: { value: 'scl-user-v1' } },
   );
   fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
@@ -520,7 +520,7 @@ it('shows explicit SCL selection, fixed-mask basis, joint counts and projected g
   const values = await screen.findByTestId('candidate-raster-window-values');
   expect(values.textContent).toContain('Rasterio');
   expect(values.textContent).toContain('all_valid');
-  expect(values.textContent).toContain('Original-mask valid cells: 4');
+  expect(values.textContent).toContain('Input-file mask-valid cells: 4');
   expect(values.textContent).toContain('Joint included cells: 2');
   expect(values.textContent).toContain('Excluded cells: 2');
   expect(values.textContent).toContain('400 m²');
@@ -532,7 +532,7 @@ it('rejects an unversioned or duplicated SCL class selection before reading orig
   render(<IngestionCandidateReader reference={reference} locale="en" />);
   await openInspector();
   fireEvent.change(
-    screen.getByRole('combobox', { name: 'Quality selection' }),
+    screen.getByRole('combobox', { name: 'Pixel filter mode' }),
     {
       target: { value: 'scl-classes' },
     },

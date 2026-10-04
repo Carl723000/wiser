@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: f00c7932
+lastReviewedCommit: 9594690b
 ---
 
 # WISER Web / 产品界面
@@ -96,5 +96,7 @@ pnpm --filter @wiser/web test:e2e
 候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态。受支持的二维中心和缩放可恢复并以当前阅读位置另存新视图；不支持的相机、图层及时段配置原样保留，明确未应用，时段不筛选原记录。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state. Supported planar center/zoom can be restored and current reading position saved as a new view; unsupported camera, layer and period settings remain intact and visibly unapplied, with no period filtering of raw records.
 
 真实账号、候选持久保存、原件读取和浏览器验证需在获准运行环境另行完成，不以合成回归代替。 / Real accounts, persisted candidates, originals and browser behavior require their authorized runtime checks, not synthetic substitutes.
+
+原生栅格面板区分固定派生TIFF与上游源产品，转换血缘尚未核验保持可见。B03／B8A标为编码值，比例与偏移未核验前不称物理反射率；自填SCL筛选标识不表示专业质量规则版本。来源、掩膜和面积依据复用问号帮助，读取及筛选行为不变。 / The native raster panel distinguishes fixed derived TIFFs from upstream source products and visibly retains unverified conversion lineage. B03/B8A remain encoded values, not physical reflectance before scale/offset verification; a user-entered SCL filter identifier is not a professional quality-rule version. Contextual help explains source, mask and area semantics without changing reading or filtering.
 
 就绪总览提供六范围×19需求矩阵；当前展示许可、取得、解析与专业核验分别显示，点选进入相同区域与需求的九问明细。全局按集合去重，时窗记录与历史资料分列；真实待审资料不能由技术检查升级为专业批准。 / The readonly six-range by19-demand matrix separates display permission, original receipt, parsing and independent review. Cell selection shares the existing question scope; overlapping totals use a set union and current-window rows stay separate from historical inventory. Technical checks do not approve real pending materials.

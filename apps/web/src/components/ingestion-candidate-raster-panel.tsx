@@ -17,6 +17,7 @@ import { discoverCandidateRasterAssets } from '@/lib/candidate-raster-ui-assets'
 import { readCandidateRasterWindow } from '@/lib/candidate-raster-original-reader';
 import { CandidateReaderError } from '@/lib/ingestion-candidate-reader';
 import { getDictionary, type Locale } from '@/lib/i18n';
+import { ContextHelp } from './context-help';
 import styles from './ingestion-candidate-raster-panel.module.css';
 
 const RESULT_PAGE_SIZE = 64;
@@ -203,7 +204,12 @@ export function IngestionCandidateRasterPanel({
       </button>
       {open ? (
         <div className={styles.content}>
-          <h4>{copy.title}</h4>
+          <h4>
+            {copy.title}{' '}
+            <ContextHelp label={copy.scopeHelpLabel}>
+              {copy.scopeHelp}
+            </ContextHelp>
+          </h4>
           <p>{copy.scope}</p>
           <form
             className={styles.form}
@@ -277,6 +283,9 @@ export function IngestionCandidateRasterPanel({
                     }}
                   />
                 </label>
+                <ContextHelp label={copy.filterHelpLabel}>
+                  {copy.filterHelp}
+                </ContextHelp>
               </>
             ) : null}
             <button type="submit" disabled={parentBusy || busy}>
@@ -331,16 +340,25 @@ export function IngestionCandidateRasterPanel({
                 {copy.projectedCellArea}: {projectedCellArea} m² ·{' '}
                 {copy.includedGridArea}: {jointIncluded * projectedCellArea} m²
               </p>
-              <p>{copy.maskBasis}</p>
-              <p>{copy.areaLimit}</p>
+              <p>
+                {copy.maskBasisLabel}{' '}
+                <ContextHelp label={copy.maskBasisLabel}>
+                  {copy.maskBasis}
+                </ContextHelp>
+                {' · '}
+                {copy.areaLimitLabel}{' '}
+                <ContextHelp label={copy.areaLimitLabel}>
+                  {copy.areaLimit}
+                </ContextHelp>
+              </p>
               <div className={styles.tableWrap} tabIndex={0}>
                 <table>
                   <thead>
                     <tr>
                       <th>{copy.row}</th>
                       <th>{copy.column}</th>
-                      <th>B03</th>
-                      <th>B8A</th>
+                      <th>{copy.b03Value}</th>
+                      <th>{copy.b8aValue}</th>
                       <th>SCL</th>
                       <th>TCI</th>
                       <th>{copy.validMask}</th>
