@@ -2928,8 +2928,11 @@ const zhCN = {
       savedLink: '固定视图链接',
       fixedReferences: '固定候选数量',
       retainedDisplay: '已保存的地图与时段配置',
+      cameraRestored: '已恢复地图中心和缩放级别。',
+      cameraNotApplied:
+        '地图位置尚未应用；仅支持地图页的二维视角和 1—21 级缩放。',
       displayNotApplied:
-        '已保存的地图和时段配置尚未在此原始资料页应用；原配置保持不变。',
+        '图层和时段配置仅保留，尚未应用；当前记录未按该时段过滤。',
       saveTitle: '固定查阅视图',
       viewName: '视图名称',
       visibility: '可见范围',
@@ -6842,8 +6845,11 @@ const en: typeof zhCN = {
       savedLink: 'Fixed view link',
       fixedReferences: 'Fixed candidates',
       retainedDisplay: 'Saved map and period settings',
+      cameraRestored: 'Map center and zoom restored.',
+      cameraNotApplied:
+        'Map position is not applied; the map supports planar views at zoom levels 1–21.',
       displayNotApplied:
-        'Saved map and period settings are not yet applied in this raw-material reader; the original settings remain intact.',
+        'Layer and period settings are retained but not applied; this period does not filter the current records.',
       saveTitle: 'Fixed reading view',
       viewName: 'View name',
       visibility: 'Visibility',

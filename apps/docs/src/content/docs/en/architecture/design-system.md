@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 1446a19abf9c082b2ab8456324e031d6a4a7ae89
+lastReviewedCommit: ae30342d
 ---
 
 ## Design direction
@@ -149,7 +149,7 @@ The existing map accepts a private display collection without published-version 
 
 Original links from a reopened saved view retain its canonical `savedViewId` on both asset cards and selected records, alongside the fixed candidate and asset, so the server can check the full manifest. Direct candidate reading keeps its single-original link without a saved-view identity.
 
-Candidate tabs have stable labelled panels. The inactive map stays mounted but hidden, and its controls stay outside keyboard navigation. Returning to the same fixed candidate, asset, CRS and native drawing preserves the current map instance and reading camera even when a newly authorized response has a new cursor. Changed candidate identity, asset or drawing and denied access remove the previous drawing. Only this bounded in-memory display source is retained; fresh server reads and full saved-manifest checks remain mandatory. This tab recovery does not apply a persisted saved camera or period, and actual browser layout/camera acceptance is separate.
+Candidate tabs have stable labelled panels. The inactive map stays mounted but hidden, and its controls stay outside keyboard navigation. Returning to the same fixed candidate, asset, CRS and native drawing preserves the current map instance and reading camera even when a newly authorized response has a new cursor. Changed candidate identity, asset or drawing and denied access remove the previous drawing. Only this bounded in-memory display source is retained; fresh server reads and full saved-manifest checks remain mandatory. A reopened fixed view restores its supported planar center and zoom without an initial fit overriding them; saving creates a new immutable view using the current reading camera. Another asset or drawing does not inherit the previous camera when saved without its own reading position; the earlier immutable view stays intact. Unsupported bearing, pitch or zoom of the same asset remains unchanged and visibly unapplied. Stored layer flags and periods remain unapplied, with an explicit no-period-filter label. Actual browser layout/camera acceptance is separate.
 
 The readiness matrix uses sticky row/column labels inside a bounded scroll area. All114 geographic-demand cells retain text for four independent information axes and their use verdict, with semantic color as a supplementary cue. Unknown visible coverage is not a global absence claim. Cell selection is keyboard-operable and pressed state names the exact region/demand. Context help explains overlap, current display scope and professional-review limits; ordinary labels remain concise.
 

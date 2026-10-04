@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: a714f1b7162106b864d23abeba70ff840159cb49
+lastReviewedCommit: f00c7932
 ---
 
 # WISER Web / 产品界面
@@ -93,7 +93,7 @@ pnpm --filter @wiser/web test:e2e
 
 已完成待审候选的接收详情以原件、记录和地图标签查阅实际固定批次，保留原值、原文定位、解析缺项及待审核状态。通过正式保存视图入口创建、读取、重开及撤回固定配置，重开和恢复重新核全部成员当前权限；拒绝清除内容。 / Intake detail reads a real fixed pending batch through Originals, Records and Map, retaining raw values, locators, incomplete parsing and review state. Service-backed fixed views support create/list/open/revoke and reauthorize all members on reopening/recovery; denied access clears content.
 
-候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态；未应用的既有地图／时段配置明确提示。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state; retained map/period settings not applied here are explicitly identified.
+候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态。受支持的二维中心和缩放可恢复并以当前阅读位置另存新视图；不支持的相机、图层及时段配置原样保留，明确未应用，时段不筛选原记录。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state. Supported planar center/zoom can be restored and current reading position saved as a new view; unsupported camera, layer and period settings remain intact and visibly unapplied, with no period filtering of raw records.
 
 真实账号、候选持久保存、原件读取和浏览器验证需在获准运行环境另行完成，不以合成回归代替。 / Real accounts, persisted candidates, originals and browser behavior require their authorized runtime checks, not synthetic substitutes.
 

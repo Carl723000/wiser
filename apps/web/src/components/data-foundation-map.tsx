@@ -30,6 +30,12 @@ import { getDictionary, type Locale } from '@/lib/i18n';
 import { registerAmapRaster } from '@/lib/amap-raster-protocol';
 import { mapDisplayBounds } from '@/lib/data-foundation-map-bounds';
 import type { CandidateDisplayFeatures } from '@/lib/ingestion-candidate-reader';
+import {
+  authorityCamera,
+  displayCamera,
+  supportedReadingCamera,
+  type MapCamera,
+} from '@/lib/amap-camera';
 
 setWorkerUrl('/vendor/maplibre/6.11.2/maplibre-gl-worker.mjs');
 
@@ -179,6 +185,8 @@ export function DataFoundationMap({
   vectorTileUrl,
   onSelectRecord,
   selectedRecordId,
+  initialReadingCamera,
+  onReadingCamera,
 }: {
   readonly locale: Locale;
   readonly ariaLabel: string;
@@ -195,6 +203,9 @@ export function DataFoundationMap({
   readonly onSelectRecord?: (recordId: string) => void;
   /** Optional drawing focus, restricted to a record in the current collection. */
   readonly selectedRecordId?: string | null;
+  /** Authority-coordinate reading state, independent of source geometries. */
+  readonly initialReadingCamera?: MapCamera;
+  readonly onReadingCamera?: (camera: MapCamera) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -213,6 +224,10 @@ export function DataFoundationMap({
   const integerZoomRef = useRef(false);
   const selectRecordRef = useRef(onSelectRecord);
   selectRecordRef.current = onSelectRecord;
+  const readingCameraRef = useRef(initialReadingCamera);
+  readingCameraRef.current = initialReadingCamera;
+  const reportReadingCameraRef = useRef(onReadingCamera);
+  reportReadingCameraRef.current = onReadingCamera;
   const drawingFocusUsed = useRef(false);
   function applyDisplay(display: RasterDisplay | null) {
     displayRef.current = display;
@@ -456,11 +471,15 @@ export function DataFoundationMap({
       },
     );
     const style: StyleSpecification = { version: 8, sources, layers };
+    const restoredCamera = supportedReadingCamera(readingCameraRef.current);
+    const restoredDisplay = restoredCamera && displayCamera(restoredCamera);
     const map = new MapLibreMap({
       container: container.current,
       style,
-      center: [105, 35],
-      zoom: 2.3,
+      center: restoredDisplay
+        ? [restoredDisplay.longitude, restoredDisplay.latitude]
+        : [105, 35],
+      zoom: restoredDisplay?.zoom ?? 2.3,
       minZoom: 1,
       maxZoom: 21,
       dragRotate: false,
@@ -530,7 +549,21 @@ export function DataFoundationMap({
     map.on('move', sync);
     map.on('resize', sync);
     map.on('load', sync);
+    map.on('moveend', () => {
+      if (mapRef.current !== map) return;
+      const center = map.getCenter();
+      reportReadingCameraRef.current?.(
+        authorityCamera({
+          longitude: center.lng,
+          latitude: center.lat,
+          zoom: map.getZoom(),
+          bearing: 0,
+          pitch: 0,
+        }),
+      );
+    });
     map.once('load', () => {
+      if (restoredCamera) return;
       const bounds = mapDisplayBounds(
         features.features.map((feature) => feature.geometry.coordinates),
         stacExtents.map((extent) => extent.bbox),

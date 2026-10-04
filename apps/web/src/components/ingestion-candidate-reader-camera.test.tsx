@@ -444,6 +444,37 @@ const period = {
   unit: 'month',
   includeUndated: false,
 };
+
+it('does not claim a restored camera when the saved geometry page has no drawable records', async () => {
+  const opened = savedCameraReply();
+  fetch.mockImplementation((url, init) =>
+    Promise.resolve(
+      requestUrl(url).endsWith('/open')
+        ? Response.json(opened)
+        : requestUrl(url).endsWith('/geometry')
+          ? Response.json({
+              reference: ref,
+              assetId,
+              crs: 'EPSG:4326',
+              features: [],
+              nextCursor: null,
+            })
+          : fixtureReply(url, init),
+    ),
+  );
+  render(
+    <IngestionCandidateReader
+      reference={ref}
+      savedViewId={savedId}
+      locale="en"
+    />,
+  );
+  await screen.findByDisplayValue('Synthetic saved camera');
+  await settle();
+  expect(probe.instances).toHaveLength(0);
+  expect(screen.queryByText(copy.cameraRestored)).toBeNull();
+  expect(screen.getByText(copy.cameraNotApplied)).toBeDefined();
+});
 function savedCameraReply(camera = savedCamera) {
   const savedView = {
     kind: 'ingestion-candidate-view',
@@ -493,6 +524,267 @@ async function openPersistedCamera(camera = savedCamera) {
   await settle();
   return opened;
 }
+
+it.each([
+  { ...savedCamera, bearing: 15 },
+  { ...savedCamera, pitch: 30 },
+  { ...savedCamera, zoom: 0 },
+  { ...savedCamera, zoom: 24 },
+])(
+  'retains unsupported map settings unchanged and does not claim restoration: %j',
+  async (camera) => {
+    const opened = await openPersistedCamera(camera);
+    const engine = probe.instances[0];
+    act(() => engine.events.get('load')?.(undefined));
+    expect(engine.fitted).toBe(true);
+    expect(screen.queryByText(copy.cameraRestored)).toBeNull();
+    expect(screen.getByText(copy.cameraNotApplied)).toBeDefined();
+    engine.camera = { center: [117.2, 40.3], zoom: 10 };
+    act(() => engine.events.get('moveend')?.(undefined));
+    fireEvent.click(screen.getByRole('button', { name: copy.save }));
+    await settle();
+    const create = fetch.mock.calls.find(([url]) =>
+      requestUrl(url).endsWith('/create'),
+    );
+    expect(create).toBeDefined();
+    expect(requestInput(create?.[1]).viewSpec).toMatchObject({
+      map: opened.viewSpec.map,
+      period,
+    });
+  },
+);
+
+it('captures an ordinary candidate reading camera without adding a period or changing native geometry', async () => {
+  fetch.mockImplementation((url, init) =>
+    Promise.resolve(
+      requestUrl(url).endsWith('/create')
+        ? Response.json({ savedView: savedCameraReply().savedView })
+        : fixtureReply(url, init),
+    ),
+  );
+  await openMap();
+  const engine = probe.instances[0];
+  engine.camera = { center: [117.2, 40.3], zoom: 10 };
+  act(() => engine.events.get('moveend')?.(undefined));
+  fireEvent.change(screen.getByRole('textbox', { name: copy.viewName }), {
+    target: { value: 'New candidate map view' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: copy.save }));
+  await settle();
+  expect(screen.getByText(copy.saveSuccess)).toBeDefined();
+  const create = fetch.mock.calls.find(([url]) =>
+    requestUrl(url).endsWith('/create'),
+  );
+  expect(create).toBeDefined();
+  const input = requestInput(create?.[1]);
+  expect(input.references).toEqual([ref]);
+  expect(input.viewSpec).toMatchObject({
+    map: {
+      camera: authorityCamera({
+        longitude: 117.2,
+        latitude: 40.3,
+        zoom: 10,
+        bearing: 0,
+        pitch: 0,
+      }),
+    },
+  });
+  expect(input.viewSpec).not.toHaveProperty('period');
+  expect(nativeReply).toEqual(native);
+});
+
+it('explicitly restores another saved view camera even when its fixed native drawing is identical', async () => {
+  const firstView = await openPersistedCamera();
+  const previous = probe.instances[0];
+  previous.camera = { center: [118, 41], zoom: 10 };
+  act(() => previous.events.get('moveend')?.(undefined));
+  const secondCamera = { ...savedCamera, longitude: 115.5, zoom: 8 };
+  const secondView = {
+    ...savedCameraReply(secondCamera),
+    savedView: {
+      ...firstView.savedView,
+      viewId: otherRecordId,
+      title: 'Second saved camera',
+    },
+  };
+  fetch.mockImplementation((url, init) =>
+    Promise.resolve(
+      requestUrl(url).endsWith('/list')
+        ? Response.json({ items: [secondView.savedView], nextCursor: null })
+        : requestUrl(url).endsWith('/open')
+          ? Response.json(
+              requestInput(init).viewId === otherRecordId
+                ? secondView
+                : firstView,
+            )
+          : fixtureReply(url, init),
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: copy.loadSaved }));
+  await screen.findByText('Second saved camera');
+  fireEvent.click(screen.getByRole('button', { name: copy.openSaved }));
+  await screen.findByDisplayValue('Second saved camera');
+  await settle();
+  expect(previous.removed).toBe(true);
+  const engine = probe.instances.at(-1)!;
+  act(() => engine.events.get('load')?.(undefined));
+  const display = displayCamera(secondCamera);
+  expect(engine.camera).toEqual({
+    center: [display.longitude, display.latitude],
+    zoom: display.zoom,
+  });
+  expect(engine.fitted).toBe(false);
+});
+
+it('does not assign asset A camera to asset B when saving B records before opening its map', async () => {
+  const original = await openPersistedCamera();
+  let created: ReturnType<typeof savedCameraReply> | undefined;
+  fetch.mockImplementation((url, init) => {
+    const path = requestUrl(url);
+    if (path.endsWith('/create')) {
+      const input = requestInput(init);
+      created = {
+        ...original,
+        savedView: {
+          ...original.savedView,
+          viewId: otherRecordId,
+          title: 'Asset B records',
+        },
+        viewSpec: input.viewSpec as typeof original.viewSpec,
+        request: {
+          capabilityId: 'data.ingestion.candidate.records',
+          input: { ...ref, assetId: otherAssetId, first: 50 },
+        },
+      };
+      return Promise.resolve(Response.json({ savedView: created.savedView }));
+    }
+    return Promise.resolve(
+      path.endsWith('/open')
+        ? Response.json(
+            requestInput(init).viewId === otherRecordId ? created : original,
+          )
+        : path.endsWith('/list')
+          ? Response.json({ items: [created?.savedView], nextCursor: null })
+          : fixtureReply(url, init),
+    );
+  });
+  fireEvent.click(screen.getByRole('tab', { name: copy.originals }));
+  fireEvent.click(screen.getAllByRole('button', { name: copy.readRecords })[1]);
+  await screen.findByText('Synthetic camera fixture');
+  await settle();
+  fireEvent.change(screen.getByRole('textbox', { name: copy.viewName }), {
+    target: { value: 'Asset B records' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: copy.save }));
+  await screen.findByText(copy.saveSuccess);
+  const create = fetch.mock.calls.find(([url]) =>
+    requestUrl(url).endsWith('/create'),
+  );
+  const input = requestInput(create?.[1]);
+  expect(input.viewSpec).toMatchObject({
+    page: { kind: 'records', reference: ref, assetId: otherAssetId, first: 50 },
+    map: { layers: original.viewSpec.map.layers },
+    period,
+  });
+  expect(input.viewSpec).not.toHaveProperty('map.camera');
+  expect(original.viewSpec.map.camera).toEqual(savedCamera);
+  fireEvent.click(screen.getByRole('button', { name: copy.loadSaved }));
+  await screen.findByText('Asset B records', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: copy.openSaved }));
+  await settle();
+  fireEvent.click(screen.getByRole('tab', { name: copy.map }));
+  await screen.findByRole('region', { name: copy.map });
+  await settle();
+  const engine = probe.instances.at(-1)!;
+  act(() => engine.events.get('load')?.(undefined));
+  expect(engine.fitted).toBe(true);
+  expect(screen.queryByText(copy.cameraRestored)).toBeNull();
+});
+
+it('saves asset B own reading camera after leaving asset A with unsupported settings', async () => {
+  const original = await openPersistedCamera({ ...savedCamera, pitch: 30 });
+  fireEvent.click(screen.getByRole('tab', { name: copy.originals }));
+  fireEvent.click(
+    screen.getAllByRole('button', { name: copy.readGeometry })[1],
+  );
+  await screen.findByRole('region', { name: copy.map });
+  await settle();
+  const engine = probe.instances.at(-1)!;
+  engine.camera = { center: [117.2, 40.3], zoom: 10 };
+  act(() => engine.events.get('moveend')?.(undefined));
+  fireEvent.click(screen.getByRole('button', { name: copy.save }));
+  await screen.findByText(copy.saveSuccess);
+  const create = fetch.mock.calls.find(([url]) =>
+    requestUrl(url).endsWith('/create'),
+  );
+  expect(requestInput(create?.[1]).viewSpec).toMatchObject({
+    page: { assetId: otherAssetId },
+    map: {
+      camera: authorityCamera({
+        longitude: 117.2,
+        latitude: 40.3,
+        zoom: 10,
+        bearing: 0,
+        pitch: 0,
+      }),
+      layers: original.viewSpec.map.layers,
+    },
+    period,
+  });
+  expect(original.viewSpec.map.camera.pitch).toBe(30);
+});
+
+it('restores a retained camera when a saved records page first opens its own map, without applying the period to candidate reads', async () => {
+  const original = savedCameraReply();
+  const opened = {
+    ...original,
+    viewSpec: {
+      ...original.viewSpec,
+      page: { ...original.viewSpec.page, kind: 'records' as const },
+    },
+    request: {
+      ...original.request,
+      capabilityId: 'data.ingestion.candidate.records' as const,
+    },
+  };
+  fetch.mockImplementation((url, init) =>
+    Promise.resolve(
+      requestUrl(url).endsWith('/open')
+        ? Response.json(opened)
+        : fixtureReply(url, init),
+    ),
+  );
+  render(
+    <IngestionCandidateReader
+      reference={ref}
+      savedViewId={savedId}
+      locale="en"
+    />,
+  );
+  await screen.findByDisplayValue('Synthetic saved camera');
+  await settle();
+  expect(probe.instances).toHaveLength(0);
+  expect(screen.queryByText(copy.cameraRestored)).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: copy.map }));
+  await screen.findByRole('region', { name: copy.map });
+  await settle();
+  const engine = probe.instances[0];
+  act(() => engine.events.get('load')?.(undefined));
+  const display = displayCamera(savedCamera);
+  expect(engine.camera).toEqual({
+    center: [display.longitude, display.latitude],
+    zoom: display.zoom,
+  });
+  expect(engine.fitted).toBe(false);
+  expect(screen.getByText(copy.displayNotApplied)).toBeDefined();
+  for (const [url, init] of fetch.mock.calls.filter(([url]) =>
+    requestUrl(url).includes('/candidates/'),
+  )) {
+    expect(requestInput(init)).not.toHaveProperty('period');
+    expect(requestInput(init)).not.toHaveProperty('from');
+    expect(requestUrl(url)).not.toContain('2023-12');
+  }
+});
 
 it('restores the server-fixed two-dimensional camera on reopening without the load fit overwriting it', async () => {
   await openPersistedCamera();

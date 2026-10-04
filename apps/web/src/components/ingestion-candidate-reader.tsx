@@ -29,6 +29,7 @@ import {
 } from '@/lib/ingestion-candidate-reader';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
+import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
 import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-panel';
 import styles from './ingestion-candidate-reader.module.css';
 
@@ -201,6 +202,17 @@ function CandidateSession({
     useState<IngestionCandidateGeometryPage | null>(null);
   const [mapGeometry, setMapGeometry] =
     useState<IngestionCandidateGeometryPage | null>(null);
+  const liveCamera = useRef<{ drawingKey: string; camera: MapCamera } | null>(
+    null,
+  );
+  const [cameraRestore, setCameraRestore] = useState<{
+    referenceKey: string;
+    assetId: string;
+    drawingKey: string | null;
+    camera: MapCamera;
+    epoch: number;
+  } | null>(null);
+  const cameraEpoch = useRef(0);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('originals');
@@ -241,6 +253,18 @@ function CandidateSession({
     // Every read still obtains current authorization and a new cursor. Only an
     // identical fixed drawing retains its map instance and reading camera.
     setGeometryPage(value);
+    const drawingKey = geometryDrawingKey(value);
+    if (liveCamera.current?.drawingKey !== drawingKey)
+      liveCamera.current = null;
+    if (value)
+      setCameraRestore((previous) =>
+        previous &&
+        previous.drawingKey === null &&
+        previous.referenceKey === candidateSavedReferenceKey(value.reference) &&
+        previous.assetId === value.assetId.toLowerCase()
+          ? { ...previous, drawingKey }
+          : previous,
+      );
     setMapGeometry((previous) =>
       geometryDrawingKey(previous) === geometryDrawingKey(value)
         ? previous
@@ -261,6 +285,8 @@ function CandidateSession({
     setSaved(null);
     setSavedNav(firstPosition());
     setOpenedView(null);
+    setCameraRestore(null);
+    liveCamera.current = null;
     setManifest([reference]);
     setFixed(reference);
     setPageSize(first);
@@ -499,6 +525,33 @@ function CandidateSession({
         ...(nav.anchor ? { afterRecordId: nav.anchor } : {}),
       };
     }
+    const storedMap = openedView?.viewSpec.map;
+    const storedPage = openedView?.viewSpec.page;
+    const sameCameraOwner =
+      page.kind !== 'assets' &&
+      storedPage &&
+      storedPage.kind !== 'assets' &&
+      candidateSavedReferenceKey(page.reference) ===
+        candidateSavedReferenceKey(storedPage.reference) &&
+      page.assetId.toLowerCase() === storedPage.assetId.toLowerCase();
+    const sameDrawing =
+      !mapGeometry ||
+      !cameraRestore?.drawingKey ||
+      cameraRestore.drawingKey === geometryDrawingKey(mapGeometry);
+    // An immutable old view is preserved, but its camera must not acquire the
+    // identity of another asset merely because the new page has no camera yet.
+    const retainedMap =
+      storedMap?.camera && (!sameCameraOwner || !sameDrawing)
+        ? storedMap.layers
+          ? { layers: storedMap.layers }
+          : undefined
+        : storedMap;
+    const captured =
+      liveCamera.current?.drawingKey === geometryDrawingKey(mapGeometry) &&
+      (!retainedMap?.camera || supportedReadingCamera(retainedMap.camera))
+        ? supportedReadingCamera(liveCamera.current?.camera)
+        : undefined;
+    const map = captured ? { ...retainedMap, camera: captured } : retainedMap;
     const value = {
       title: viewName.trim(),
       visibility,
@@ -508,7 +561,7 @@ function CandidateSession({
         ...(assetId && selected
           ? { focus: { reference: fixed, assetId, recordId: selected } }
           : {}),
-        ...(openedView?.viewSpec.map ? { map: openedView.viewSpec.map } : {}),
+        ...(map ? { map } : {}),
         ...(openedView?.viewSpec.period
           ? { period: openedView.viewSpec.period }
           : {}),
@@ -585,6 +638,20 @@ function CandidateSession({
       setAssets(originalPage);
       setRecords('records' in material ? material : null);
       setGeometry('features' in material ? material : null);
+      liveCamera.current = null;
+      const camera = supportedReadingCamera(value.viewSpec.map?.camera);
+      setCameraRestore(
+        camera && value.viewSpec.page.kind !== 'assets'
+          ? {
+              referenceKey: candidateSavedReferenceKey(ref),
+              assetId: value.viewSpec.page.assetId.toLowerCase(),
+              drawingKey:
+                'features' in material ? geometryDrawingKey(material) : null,
+              camera,
+              epoch: ++cameraEpoch.current,
+            }
+          : null,
+      );
       setAssetId('assetId' in material ? material.assetId : null);
       setSelected(
         value.viewSpec.focus &&
@@ -1109,6 +1176,12 @@ function CandidateSession({
                   <p className={styles.notice}>{copy.geometryPending}</p>
                   {geometry.features.length ? (
                     <DataFoundationMap
+                      key={
+                        cameraRestore?.drawingKey ===
+                        geometryDrawingKey(mapGeometry)
+                          ? cameraRestore?.epoch
+                          : 0
+                      }
                       locale={locale}
                       ariaLabel={copy.map}
                       displayCrs="EPSG:4326"
@@ -1117,6 +1190,17 @@ function CandidateSession({
                       labels={labels}
                       onSelectRecord={selectRecord}
                       selectedRecordId={selected}
+                      initialReadingCamera={
+                        cameraRestore?.drawingKey ===
+                        geometryDrawingKey(mapGeometry)
+                          ? cameraRestore?.camera
+                          : undefined
+                      }
+                      onReadingCamera={(camera) => {
+                        const drawingKey = geometryDrawingKey(mapGeometry);
+                        if (drawingKey)
+                          liveCamera.current = { drawingKey, camera };
+                      }}
                     />
                   ) : (
                     <p>{copy.noGeometry}</p>
@@ -1219,7 +1303,19 @@ function CandidateSession({
             ) : null}
             {openedView?.viewSpec.map || openedView?.viewSpec.period ? (
               <>
-                <p className={styles.notice}>{copy.displayNotApplied}</p>
+                {openedView.viewSpec.map?.camera ? (
+                  <p className={styles.notice}>
+                    {mapGeometry?.features.length &&
+                    cameraRestore?.drawingKey &&
+                    cameraRestore.drawingKey === geometryDrawingKey(mapGeometry)
+                      ? copy.cameraRestored
+                      : copy.cameraNotApplied}
+                  </p>
+                ) : null}
+                {openedView.viewSpec.map?.layers ||
+                openedView.viewSpec.period ? (
+                  <p className={styles.notice}>{copy.displayNotApplied}</p>
+                ) : null}
                 <details>
                   <summary>{copy.retainedDisplay}</summary>
                   <pre>
