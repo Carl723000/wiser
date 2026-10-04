@@ -51,6 +51,10 @@ export interface ReadinessCopy {
   selectNeed: string;
   factsUnavailable: string;
   usesHeading: string;
+  useReasons: string;
+  unknownUseReason: string;
+  useRuleVersion: string;
+  useReasonCodes: string;
   useLabels: Record<UseId, string>;
   useEligible: string;
   useBlocked: string;
@@ -205,6 +209,39 @@ export function SpatialReadinessPanel({
     [pack, staleRecordIds, facts, window, dateRole, track],
   );
   const label = (code: string) => copy.detailLabels[code] ?? copy.unknown;
+  const reasonList = (reasons: readonly string[]) =>
+    reasons.length ? (
+      <div role="list" aria-label={copy.useReasons}>
+        {reasons.map((code, index) => (
+          <p role="listitem" key={`${index}:${code}`}>
+            {Object.hasOwn(copy.detailLabels, code)
+              ? copy.detailLabels[code]
+              : copy.unknownUseReason}
+          </p>
+        ))}
+      </div>
+    ) : null;
+  const useTechnicalDetails = (
+    reasons: readonly string[],
+    ruleVersion: string,
+  ) => (
+    <dl>
+      <dt>{copy.useRuleVersion}</dt>
+      <dd>
+        <code>{ruleVersion}</code>
+      </dd>
+      <dt>{copy.useReasonCodes}</dt>
+      <dd>
+        {reasons.length
+          ? reasons.map((code, index) => (
+              <p key={`${index}:${code}`}>
+                <code>{code}</code>
+              </p>
+            ))
+          : copy.none}
+      </dd>
+    </dl>
+  );
   // A detail list cannot survive a changed source/version/readability or fact set.
   const scope = JSON.stringify([
     window,
@@ -791,7 +828,7 @@ export function SpatialReadinessPanel({
                                   <p>
                                     {copy.factStates[use.state] ?? copy.unknown}
                                   </p>
-                                  <p>{use.reasons.map(label).join(' · ')}</p>
+                                  {reasonList(use.reasons)}
                                 </>
                               )}
                               {correspondence && (
@@ -868,6 +905,11 @@ export function SpatialReadinessPanel({
                               <details>
                                 <summary>{copy.technicalDetails}</summary>
                                 <code>{entry.key}</code>
+                                {use &&
+                                  useTechnicalDetails(
+                                    use.reasons,
+                                    result.project.ruleVersion,
+                                  )}
                               </details>
                             </>
                           )}
@@ -950,7 +992,11 @@ export function SpatialReadinessPanel({
               ) : use.state === 'CHECKS_PASSED' ? (
                 <span>{copy.usePendingReview}</span>
               ) : null}
-              <p>{use.reasons.map(label).join(' · ')}</p>
+              {reasonList(use.reasons)}
+              <details>
+                <summary>{copy.technicalDetails}</summary>
+                {useTechnicalDetails(use.reasons, use.ruleVersion)}
+              </details>
             </li>
           ))}
         </ul>

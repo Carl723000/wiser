@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-10-04
-lastReviewedCommit: 8ff42502
+lastReviewedAt: 2026-10-05
+lastReviewedCommit: 1e8347da
 ---
 
 ## Two frontend applications
@@ -311,6 +311,8 @@ Local split-pane comparison uses optional fixed measurement-definition reference
 An optional absolute `WISER_SPATIAL_READINESS_INPUT_MANIFEST` JSON file requires its exact `WISER_SPATIAL_READINESS_INPUT_SHA256` and the same loopback-only gate as the source pack. It is bounded to 12 MiB, parsed against a whitelist of existing internal fact fields and trimmed to the validated pack’s readable fixed sources and matching original records before serialization. Absent facts stay absent; invalid facts show a localized unavailable status while original reading remains available. Owners, processors, quality checks and use conclusions are never filled from fixture defaults. Coverage dates define an expected inclusive window of at most 1,200 months and do not remove original records. Lists render in batches of 40; changing requirement, date role, source version, readability or facts invalidates an opened result set. Fixed-version links and keyboard focus remain available.
 
 Unrelated object selection reuses the current readiness calculation. An absent stale-record scope uses a stable empty value; actual source, requirement, window, date-role and stale-fact changes still recalculate. The browser performance check retains its existing latency thresholds and records the fixed input and renderer separately from physical-device acceptance.
+
+Use summaries and use-check drilldowns show each existing rule reason in both locales. Unverified conditions retain Unknown; passed technical checks with related records still lacking professional approval explicitly remain unavailable for business computation without implying rejection. Initially closed Technical details retain the original reason codes and rule version. Unregistered reasons use a neutral explanation with the original code available for lookup. State, calculation eligibility, fixed record scope and withdrawn-source filtering follow the existing result.
 
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
 

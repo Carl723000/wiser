@@ -121,7 +121,7 @@ function ruleExamples(): ProjectReadinessInput[] {
   const original = fixture();
   const thirdRecords = [
     ...original.records,
-    { ...original.records[1]!, id: 'second-flow' },
+    { ...original.records[1], id: 'second-flow' },
   ];
   const third = {
     ...original,
@@ -222,8 +222,8 @@ function packFor(input: ProjectReadinessInput): WorkspacePack {
     processingVersion: 'synthetic-v1',
     sources: [
       {
-        id: input.sources[0]!.workId,
-        workId: input.sources[0]!.workId,
+        id: input.sources[0].workId,
+        workId: input.sources[0].workId,
         versionId: 'fixed-v1',
         track: input.track,
         title: 'Synthetic fixed source',
@@ -308,7 +308,7 @@ function mount(input: ProjectReadinessInput, locale: 'zh-CN' | 'en') {
   const usesSection = screen.getByText(copy.usesHeading).closest('details')!;
   fireEvent.click(within(usesSection).getByText(copy.usesHeading));
   const useId =
-    input.useChecks![0]!.computation === 'FLUX'
+    input.useChecks![0].computation === 'FLUX'
       ? 'pollution-load'
       : 'concentration-trend';
   const item = within(usesSection)

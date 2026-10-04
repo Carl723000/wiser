@@ -1299,6 +1299,26 @@ const zhCN = {
         computations: '计算条件',
       },
       detailLabels: {
+        EVIDENCE_UNKNOWN: '用途检查或相关记录的原文依据尚不完整',
+        NON_NUMERIC_INPUT: '原值不是数值，不能参与此项计算',
+        CONCENTRATION_AND_FLOW_REQUIRED: '此项计算需要浓度与流量记录',
+        PAIRING_SCOPE_UNKNOWN: '尚未确定唯一的一组浓度与流量配对',
+        NEGATIVE_CONCENTRATION: '浓度原值为负数，不满足此项计算条件',
+        FLOW_DIRECTION_UNKNOWN: '流量原值为负数，流向及符号含义尚待核实',
+        PARSING_INCOMPLETE: '相关记录尚未完整解析',
+        OBJECT_IDENTITY_UNKNOWN: '相关记录是否属于同一对象尚待核实',
+        OBJECT_MISMATCH: '相关记录的对象不一致，且没有已批准的对应关系',
+        NUMERIC_CONTEXT_UNKNOWN: '单位、方法或观测时间信息尚不完整',
+        UNIT_UNKNOWN: '单位尚未明确，或当前规则无法识别',
+        UNIT_DIMENSION_INCOMPATIBLE: '单位量纲与指标类型不相容',
+        METHOD_UNKNOWN: '当前规则尚不能确认此测量方法的适用性',
+        TIME_PAIRING_UNKNOWN: '尚不能依据当前时间角色与观测日期确认同日配对',
+        INVALID_DATE: '观测日期无效',
+        TIME_PAIRING_MISMATCH: '相关记录的观测日期不一致',
+        REQUIREMENT_WINDOW_UNKNOWN: '此用途的观测时窗尚未明确',
+        OUTSIDE_REQUIREMENT_WINDOW: '相关记录的观测日期超出所选时窗',
+        CONCENTRATION_REQUIRED: '此项计算要求相关记录均为浓度指标',
+        NUMERIC_CONTEXT_MISMATCH: '指标、单位或方法不一致，可比性尚待核实',
         'task-record-not-present': '未登记任务、处理程序或责任人',
         'use-check-not-present': '未登记此用途的检查结论',
         'category-range-not-single-value': '原表为类别区间，不能折成单一类别',
@@ -1382,6 +1402,10 @@ const zhCN = {
       },
       inspect: '查看明细',
       usesHeading: '用途与条件',
+      useReasons: '用途条件说明',
+      unknownUseReason: '此项理由的说明尚未登记，可展开技术详情回查',
+      useRuleVersion: '规则版本',
+      useReasonCodes: '原始理由码',
       useLabels: {
         archive: '资料归档与回查',
         'monthly-category': '月度水质类别查看',
@@ -1450,7 +1474,7 @@ const zhCN = {
       nextAction: '下一动作',
       fieldType: '字段类型',
       unit: '单位',
-      technicalDetails: '固定标识',
+      technicalDetails: '技术详情',
       evidence: '原文依据',
       coverageModes: {
         raw: '原名覆盖',
@@ -1481,7 +1505,7 @@ const zhCN = {
         'daqing-baiyangdian': '大清河—白洋淀',
         bohai: '渤海湾',
       },
-      usePendingReview: '专业审核未通过，尚不可进行业务计算',
+      usePendingReview: '相关记录尚未全部获得专业批准，暂不可进行业务计算',
       factStates: {
         OPEN: '待处理',
         PENDING_REVIEW: '待专业核验',
@@ -5118,6 +5142,43 @@ const en: typeof zhCN = {
         computations: 'Supported uses',
       },
       detailLabels: {
+        EVIDENCE_UNKNOWN:
+          'Original evidence for the check or its records is incomplete',
+        NON_NUMERIC_INPUT:
+          'The original value is not numeric and cannot enter this calculation',
+        CONCENTRATION_AND_FLOW_REQUIRED:
+          'This calculation requires concentration and flow records',
+        PAIRING_SCOPE_UNKNOWN:
+          'A unique concentration and flow pair has not been established',
+        NEGATIVE_CONCENTRATION:
+          'A negative concentration does not meet this calculation requirement',
+        FLOW_DIRECTION_UNKNOWN:
+          'Flow is negative; direction and sign meaning need verification',
+        PARSING_INCOMPLETE: 'The related records have not been fully parsed',
+        OBJECT_IDENTITY_UNKNOWN:
+          'Whether the records refer to the same object needs verification',
+        OBJECT_MISMATCH:
+          'The records refer to different objects without an approved correspondence',
+        NUMERIC_CONTEXT_UNKNOWN:
+          'Unit, method or observation time information is incomplete',
+        UNIT_UNKNOWN:
+          'The unit is unspecified or unrecognized by the current rule',
+        UNIT_DIMENSION_INCOMPATIBLE:
+          'The unit dimension is incompatible with the metric type',
+        METHOD_UNKNOWN:
+          'The current rule cannot yet confirm that this measurement method applies',
+        TIME_PAIRING_UNKNOWN:
+          'The current time role and observation dates do not yet establish same-day pairing',
+        INVALID_DATE: 'The observation date is invalid',
+        TIME_PAIRING_MISMATCH: 'The records have different observation dates',
+        REQUIREMENT_WINDOW_UNKNOWN:
+          'The observation window for this use is unspecified',
+        OUTSIDE_REQUIREMENT_WINDOW:
+          'An observation date falls outside the selected window',
+        CONCENTRATION_REQUIRED:
+          'This calculation requires all related records to be concentration metrics',
+        NUMERIC_CONTEXT_MISMATCH:
+          'Metrics, units or methods differ; comparability needs verification',
         'task-record-not-present': 'Task, processor and owner not recorded',
         'use-check-not-present': 'No check recorded for this purpose',
         'category-range-not-single-value':
@@ -5219,6 +5280,11 @@ const en: typeof zhCN = {
       },
       inspect: 'Inspect details',
       usesHeading: 'Uses and conditions',
+      useReasons: 'Use condition explanations',
+      unknownUseReason:
+        'Explanation not recorded for this reason; inspect technical details',
+      useRuleVersion: 'Rule version',
+      useReasonCodes: 'Original reason codes',
       useLabels: {
         archive: 'Archive and evidence lookup',
         'monthly-category': 'Monthly category inspection',
@@ -5292,7 +5358,7 @@ const en: typeof zhCN = {
       nextAction: 'Next action',
       fieldType: 'Field type',
       unit: 'Unit',
-      technicalDetails: 'Fixed identifiers',
+      technicalDetails: 'Technical details',
       evidence: 'Original evidence',
       coverageModes: {
         raw: 'Printed-name coverage',
@@ -5327,7 +5393,7 @@ const en: typeof zhCN = {
         bohai: 'Bohai Bay',
       },
       usePendingReview:
-        'Professional approval remains required for business computation',
+        'Not all related records have professional approval; business computation is unavailable',
       factStates: {
         OPEN: 'Open',
         PENDING_REVIEW: 'Pending professional verification',
