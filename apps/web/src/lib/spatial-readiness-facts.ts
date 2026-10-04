@@ -189,7 +189,7 @@ export function projectReadinessFromPack(
         .filter(
           (record) =>
             sourceFor(record) &&
-            (record.track === undefined || record.track === track) &&
+            (record.track ?? 'REAL') === track &&
             (record.reviewStatus !== 'synthetic-reviewed' ||
               (track === 'SYNTHETIC' && record.track === 'SYNTHETIC')),
         )
