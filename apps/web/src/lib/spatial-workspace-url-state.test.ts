@@ -703,3 +703,56 @@ describe('private fixed workspace reading links', () => {
     ).toEqual({ status: 'invalid', reason: 'parameters' });
   });
 });
+
+
+describe('exact native day reading state', () => {
+  const exact = {
+    ...state,
+    monthWindow: null,
+    dayWindow: { start: '2023-04-01', end: '2023-04-17' },
+  } as WorkspaceReadingUrlState & { dayWindow: { start: string | null; end: string | null } };
+  it('round-trips exact days without expanding the end to a month or changing original time', () => {
+    const context = fixture();
+    const before = JSON.stringify(context.pack);
+    const encoded = encodeWorkspaceReadingUrl('en', exact, context);
+    expect(encoded.status).toBe('valid');
+    if (encoded.status !== 'valid') throw new Error('Day state rejected');
+    const params = new URL(encoded.href, 'https://example.invalid').searchParams;
+    expect(params.get('dayEnd')).toBe('2023-04-17');
+    expect(params.has('monthEnd')).toBe(false);
+    expect(decodeWorkspaceReadingUrl(params, context)).toEqual({ status: 'valid', state: exact });
+    expect(JSON.stringify(context.pack)).toBe(before);
+  });
+  it.each([
+    { start: '2023-04-01', end: null },
+    { start: null, end: '2023-04-30' },
+  ])('preserves an existing open native day boundary %j', (dayWindow) => {
+    const input = { ...exact, dateRole: null, dayWindow };
+    const encoded = encodeWorkspaceReadingUrl('en', input, fixture());
+    expect(encoded.status).toBe('valid');
+    if (encoded.status !== 'valid') throw new Error('Open day state rejected');
+    expect(decodeWorkspaceReadingUrl(new URL(encoded.href, 'https://example.invalid').searchParams, fixture())).toEqual({ status: 'valid', state: input });
+  });
+  it('accepts a leap day as an actual calendar day', () => {
+    const params = new URLSearchParams({ dayStart: '2024-02-29', dayEnd: '2024-02-29', region: 'chaobai' });
+    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({ status: 'valid', state: { regionId:'chaobai', needId:null, dateRole:null, monthWindow:null, dayWindow:{start:'2024-02-29',end:'2024-02-29'},tab:null,pane:null,source:null,selection:null } });
+  });
+  it.each([
+    { dayStart: '2023-02-29' },
+    { dayStart: '1900-02-29' },
+    { dayStart: '2023-04-31' },
+    { dayStart: '0000-01-01' },
+    { dayStart: '2023-4-01' },
+    { dayStart: '2023-04' },
+    { dayStart: '2023-05-01', dayEnd: '2023-04-30' },
+    { dayStart: '2023-04-01', monthStart: '2023-04', monthEnd: '2023-04', dateRole: 'PUBLICATION' },
+  ])('rejects invalid or ambiguous calendar boundaries %j', (fields) => {
+    const params = new URLSearchParams(Object.entries(fields) as [string,string][]);
+    expect(decodeWorkspaceReadingUrl(params, fixture())).toEqual({ status:'invalid', reason:'day-window' });
+  });
+  it('rejects duplicate day inputs and a supplied empty day window without choosing a first value', () => {
+    const params = new URLSearchParams('dayStart=2023-04-01&dayStart=2023-04-02');
+    expect(decodeWorkspaceReadingUrl(params,fixture())).toEqual({status:'invalid',reason:'duplicate'});
+    expect(encodeWorkspaceReadingUrl('en',{...exact,dayWindow:{start:null,end:null}},fixture())).toEqual({status:'invalid',reason:'day-window'});
+  });
+});
