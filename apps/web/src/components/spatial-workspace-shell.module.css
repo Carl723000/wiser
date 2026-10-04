@@ -121,3 +121,65 @@
     padding: 0.75rem;
   }
 }
+
+.workspace {
+  position: relative;
+}
+.workspaceToolbar {
+  position: absolute;
+  inset: 1.5rem 1.5rem auto auto;
+}
+.heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.heading > div {
+  padding-right: 12rem;
+}
+.heading h1 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+}
+.tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin-block: 0.5rem;
+}
+.tabs button {
+  flex: 0 0 auto;
+  font-size: 0.88rem;
+  padding: 0.45rem 0.7rem;
+}
+.workspace[aria-modal='true'] > .workspaceToolbar {
+  position: sticky;
+  inset: 0 auto auto;
+}
+@media (max-width: 600px) {
+  .workspaceToolbar {
+    inset: 0.75rem 0.75rem auto auto;
+    font-size: 0.75rem;
+  }
+  .heading > div {
+    padding-right: 8.5rem;
+  }
+  .heading h1 {
+    font-size: 1rem;
+  }
+  .tabs button {
+    font-size: 0.8rem;
+  }
+  .workspace [data-testid='spatial-workspace'] {
+    gap: 0.5rem;
+  }
+}

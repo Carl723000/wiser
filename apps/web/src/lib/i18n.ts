@@ -1652,6 +1652,7 @@ const zhCN = {
       to: '结束日期',
       timeRole: '时间角色',
       allTimeRoles: '全部时间角色',
+      allPeriods: '全部时期',
       timeHint: '筛选相交的原生时间范围；年报不拆成月值，缺月不插值。',
       includeUndated: '保留时间未知资料',
       layers: '资料图层',
@@ -5496,6 +5497,7 @@ const en: typeof zhCN = {
       to: 'End date',
       timeRole: 'Time role',
       allTimeRoles: 'All time roles',
+      allPeriods: 'All periods',
       timeHint:
         'Filter overlapping native periods. Annual values are not split into months, and missing months are not interpolated.',
       includeUndated: 'Keep records with unknown time',

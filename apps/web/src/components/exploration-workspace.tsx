@@ -31,10 +31,12 @@ export function ExplorationWorkspace({
   children,
   locale,
   className,
+  toolbarClassName,
   ...attributes
 }: HTMLAttributes<HTMLElement> & {
   children: ReactNode;
   locale: Locale;
+  toolbarClassName?: string;
 }) {
   const copy = getDictionary(locale).dataFoundation.explorer;
   const [expanded, setExpanded] = useState(false);
@@ -122,7 +124,7 @@ export function ExplorationWorkspace({
         }
       }}
     >
-      <div className={styles.toolbar}>
+      <div className={`${styles.toolbar} ${toolbarClassName ?? ''}`}>
         <button
           ref={toggle}
           aria-expanded={expanded}

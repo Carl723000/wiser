@@ -288,15 +288,18 @@ export function SpatialWorkspaceShell({
       locale={locale}
       id="main-content"
       className={styles.workspace}
+      toolbarClassName={styles.workspaceToolbar}
     >
       <header className={styles.heading}>
         <div>
           <h1>{copy.title}</h1>
-          <p>{copy.description}</p>
         </div>
         <span className={styles.status}>
           {copy.localStatus}{' '}
-          <ContextHelp label={copy.help}>{copy.helpText}</ContextHelp>
+          <ContextHelp label={copy.help}>
+            <p>{copy.description}</p>
+            <p>{copy.helpText}</p>
+          </ContextHelp>
         </span>
       </header>
       <nav
@@ -364,6 +367,7 @@ export function SpatialWorkspaceShell({
       >
         <div hidden={Boolean(impact)} data-testid="real-workspace-view">
           <SpatialWorkspace
+            embedded
             pack={visiblePack}
             locale={locale}
             copy={dictionary.spatialWorkspace}
@@ -391,6 +395,7 @@ export function SpatialWorkspaceShell({
         {impact && (
           <div data-testid="exercise-workspace-view">
             <SpatialWorkspace
+              embedded
               key={exerciseTarget}
               pack={pack}
               locale={locale}

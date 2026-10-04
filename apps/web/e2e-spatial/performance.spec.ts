@@ -39,6 +39,12 @@ test('fixed real pack warm filtering, selection and camera latency', async ({
       version: String(gl.getParameter(gl.VERSION)),
     };
   });
+  await page
+    .getByTestId('spatial-workspace')
+    .locator('summary')
+    .filter({ hasText: '资料筛选' })
+    .first()
+    .click();
   const filter = page.getByRole('checkbox', { name: '监测', exact: true });
   const selection = page
     .getByRole('region', { name: '区域资料清单' })

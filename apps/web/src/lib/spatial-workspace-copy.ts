@@ -12,6 +12,7 @@ export interface SpatialWorkspaceCopy {
   to: string;
   timeRole: string;
   allTimeRoles: string;
+  allPeriods: string;
   timeHint: string;
   includeUndated: string;
   layers: string;

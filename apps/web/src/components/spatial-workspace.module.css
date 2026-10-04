@@ -632,3 +632,76 @@
     animation: none;
   }
 }
+
+/* Keep the map first in both visual and document order; controls stay mounted. */
+.scopeBar {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.scopeBar .regionNavigation {
+  flex: 1 1 36rem;
+  border: 0;
+  padding: 0;
+}
+.scopeBar .regionNavigation button {
+  font-size: 0.8rem;
+}
+.scopeBar .filters {
+  flex: 1 1 17rem;
+  padding: 0.35rem 0.65rem;
+}
+.scopeBar .filters[open] {
+  flex-basis: 100%;
+}
+.filterScope {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.mapZoom {
+  position: absolute;
+  inset: 0.5rem 0.5rem auto;
+  z-index: 3;
+  width: fit-content;
+  max-width: calc(100% - 1rem);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  padding: 0.25rem;
+}
+@media (max-width: 1100px) {
+  .scopeBar {
+    flex-wrap: nowrap;
+  }
+  .scopeBar .regionNavigation {
+    flex: 1 1 45%;
+  }
+  .scopeBar .regionNavigation label {
+    width: 100%;
+    font-size: 0.75rem;
+  }
+  .scopeBar .filters {
+    flex: 1 1 55%;
+    font-size: 0.8rem;
+  }
+  .scopeBar:has(.filters[open]) {
+    flex-wrap: wrap;
+  }
+  .scopeBar .filters[open] {
+    flex-basis: 100%;
+  }
+}
+
+.mapZoom {
+  display: flex;
+  gap: 0.35rem;
+}
+.mapZoom button {
+  font-size: 0.75rem;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.45rem;
+}

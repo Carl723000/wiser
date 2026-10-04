@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: fc702011c832942776425598ae7a94d719ce033b
+lastReviewedCommit: a714f1b7162106b864d23abeba70ff840159cb49
 ---
 
 ## What this guide governs
@@ -181,6 +181,8 @@ Local saved scenes include referenced definition sources in their existing fixed
 The local version-impact calculation includes records that reference a geometry source and its fixed version when the geometry processing rule changes. The dependent record's own parser version does not identify that geometry rule. All matching references require rechecking; unrelated source/version references remain excluded. This calculation does not update records, recompute results, or constitute durable dependency or browser acceptance.
 
 Map selection retains the specific position within a record. Other positions of that record do not become selected together; a record without a selected position remains readable in its dossier.
+
+Spatial work pages put the map before the full record tables, counts and secondary controls in document and keyboard order. The shell provides one title and current review status; its contextual help contains the introduction. Region and the active native period/time role remain visible above the map while the full filters start closed on desktop and mobile. Zoom controls stay on the canvas; remaining camera controls, location evidence, layer switches and licensing details follow it without unmounting the map. A fixed reading link still restores its requested pane, selection and camera rather than forcing a map-first selection.
 
 Narrow spatial reading uses Map, Results and Evidence labels instead of shrinking the desktop columns. Region selection uses a compact select and filters start collapsed. Pane changes preserve scope, exact record/position, source version, camera and loaded results; evidence selection and location actions name their destination. Withdrawn evidence is removed from mounted hidden panes as well as the visible pane. This local reading behavior does not establish authenticated intake, review or publication.
 

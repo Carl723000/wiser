@@ -90,6 +90,7 @@ export interface SpatialWorkspaceProps {
   publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
   readingState?: WorkspaceReadingUrlState;
   onReadingStateChange?: (state: WorkspaceReadingUrlState) => void;
+  embedded?: boolean;
 }
 export function SpatialWorkspace({
   pack,
@@ -106,6 +107,7 @@ export function SpatialWorkspace({
   publicReferenceState = 'absent',
   readingState,
   onReadingStateChange,
+  embedded = false,
 }: SpatialWorkspaceProps) {
   // Controlled navigation has one atomic callback. Separate legacy callbacks
   // must not race a matrix selection through a mounted hidden map.
@@ -582,306 +584,212 @@ export function SpatialWorkspace({
       lang={locale}
       data-testid="spatial-workspace"
     >
-      <header className={styles.heading}>
-        <div>
-          <h1>{copy.title}</h1>
-          <p>{copy.description}</p>
-        </div>
-        <span className={styles.status}>{copy.localOnly}</span>
-      </header>
-      <nav className={styles.regionNavigation} aria-label={copy.region}>
-        {narrow ? (
-          <label>
-            {copy.region}
-            <select
-              value={view.regionId}
-              onChange={(event) => changeRegion(event.target.value as RegionId)}
+      {!embedded ? (
+        <header className={styles.heading}>
+          <div>
+            <h1>{copy.title}</h1>
+            <p>{copy.description}</p>
+          </div>
+          <span className={styles.status}>{copy.localOnly}</span>
+        </header>
+      ) : null}
+      <div className={styles.scopeBar}>
+        <nav className={styles.regionNavigation} aria-label={copy.region}>
+          {narrow ? (
+            <label>
+              {copy.region}
+              <select
+                value={view.regionId}
+                onChange={(event) =>
+                  changeRegion(event.target.value as RegionId)
+                }
+              >
+                {workspaceRegionIds.map((id) => (
+                  <option key={id} value={id}>
+                    {copy.regions[id]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            workspaceRegionIds.map((id) => (
+              <button
+                type="button"
+                key={id}
+                aria-current={view.regionId === id ? 'page' : undefined}
+                onClick={() => changeRegion(id)}
+              >
+                {copy.regions[id]}
+              </button>
+            ))
+          )}
+        </nav>
+        <details className={styles.filters}>
+          <summary>
+            <span>{copy.filters}</span>
+            <span
+              data-testid="workspace-current-period"
+              className={styles.filterScope}
             >
-              {workspaceRegionIds.map((id) => (
-                <option key={id} value={id}>
-                  {copy.regions[id]}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          workspaceRegionIds.map((id) => (
-            <button
-              type="button"
-              key={id}
-              aria-current={view.regionId === id ? 'page' : undefined}
-              onClick={() => changeRegion(id)}
-            >
-              {copy.regions[id]}
-            </button>
-          ))
-        )}
-      </nav>
-      <div className={styles.breadcrumb}>
-        <button type="button" onClick={() => changeRegion('bth')}>
-          {copy.backToOverview}
-        </button>
-        <span>
-          › {copy.regions[view.regionId]} · {regionType}
-        </span>
-        {selection ? (
-          <>
-            <span>
-              ›{' '}
-              {
-                pack.records.find((record) => record.id === selection.recordId)
-                  ?.objectLabel
-              }
+              {view.start || view.end
+                ? `${view.start ?? copy.allPeriods} — ${view.end ?? copy.allPeriods}`
+                : copy.allPeriods}
+              {' · '}
+              {view.timeRole === 'all'
+                ? copy.allTimeRoles
+                : copy.timeRoles[view.timeRole]}
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                setView({ ...view, selection: null });
-                onSelectRecord?.(null);
-              }}
-            >
-              {copy.backToRegion}
-            </button>
-          </>
-        ) : null}
-      </div>
-      <details className={styles.filters} open={!narrow}>
-        <summary>{copy.filters}</summary>
-        <div className={styles.filterGrid}>
-          <label>
-            {copy.recordSearch}
-            <input
-              type="search"
-              value={view.search}
-              onChange={(event) =>
-                setView({ ...view, search: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            {copy.from}
-            <input
-              type="date"
-              value={view.start ?? ''}
-              onChange={(event) =>
-                setView({ ...view, start: event.target.value || null })
-              }
-            />
-          </label>
-          <label>
-            {copy.to}
-            <input
-              type="date"
-              value={view.end ?? ''}
-              onChange={(event) =>
-                setView({ ...view, end: event.target.value || null })
-              }
-            />
-          </label>
-          <label>
-            {copy.timeRole}
-            <select
-              value={view.timeRole}
-              onChange={(event) =>
-                setView({
-                  ...view,
-                  timeRole: event.target
-                    .value as SpatialWorkspaceView['timeRole'],
-                })
-              }
-            >
-              <option value="all">{copy.allTimeRoles}</option>
-              {Object.entries(copy.timeRoles).map(([role, label]) => (
-                <option key={role} value={role}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {!validWorkspaceTimeFilter(view.start, view.end) ? (
-          <p role="alert">{copy.timeInvalid ?? copy.timeHint}</p>
-        ) : null}
-        <label className={styles.checkbox}>
-          <input
-            type="checkbox"
-            checked={view.includeUndated}
-            onChange={(event) =>
-              setView({ ...view, includeUndated: event.target.checked })
-            }
-          />
-          {copy.includeUndated}
-        </label>
-        <p className={styles.hint}>{copy.timeHint}</p>
-        <fieldset className={styles.layerFilters}>
-          <legend>{copy.layers}</legend>
-          {workspaceRecordKinds.map((kind) => (
-            <label key={kind}>
+          </summary>
+          <div className={styles.filterGrid}>
+            <label>
+              {copy.recordSearch}
               <input
-                type="checkbox"
-                checked={view.kinds.includes(kind)}
+                type="search"
+                value={view.search}
+                onChange={(event) =>
+                  setView({ ...view, search: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              {copy.from}
+              <input
+                type="date"
+                value={view.start ?? ''}
+                onChange={(event) =>
+                  setView({ ...view, start: event.target.value || null })
+                }
+              />
+            </label>
+            <label>
+              {copy.to}
+              <input
+                type="date"
+                value={view.end ?? ''}
+                onChange={(event) =>
+                  setView({ ...view, end: event.target.value || null })
+                }
+              />
+            </label>
+            <label>
+              {copy.timeRole}
+              <select
+                value={view.timeRole}
                 onChange={(event) =>
                   setView({
                     ...view,
-                    kinds: event.target.checked
-                      ? [...view.kinds, kind]
-                      : view.kinds.filter((item) => item !== kind),
+                    timeRole: event.target
+                      .value as SpatialWorkspaceView['timeRole'],
                   })
                 }
-              />
-              {copy.kinds[kind]}
+              >
+                <option value="all">{copy.allTimeRoles}</option>
+                {Object.entries(copy.timeRoles).map(([role, label]) => (
+                  <option key={role} value={role}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </label>
-          ))}
-        </fieldset>
-        <div className={styles.boundsControls}>
-          <label>
-            {copy.bbox}
+          </div>
+          {!validWorkspaceTimeFilter(view.start, view.end) ? (
+            <p role="alert">{copy.timeInvalid ?? copy.timeHint}</p>
+          ) : null}
+          <label className={styles.checkbox}>
             <input
-              value={boundsText}
-              inputMode="decimal"
-              onChange={(event) => {
-                setBoundsText(event.target.value);
+              type="checkbox"
+              checked={view.includeUndated}
+              onChange={(event) =>
+                setView({ ...view, includeUndated: event.target.checked })
+              }
+            />
+            {copy.includeUndated}
+          </label>
+          <p className={styles.hint}>{copy.timeHint}</p>
+          <fieldset className={styles.layerFilters}>
+            <legend>{copy.layers}</legend>
+            {workspaceRecordKinds.map((kind) => (
+              <label key={kind}>
+                <input
+                  type="checkbox"
+                  checked={view.kinds.includes(kind)}
+                  onChange={(event) =>
+                    setView({
+                      ...view,
+                      kinds: event.target.checked
+                        ? [...view.kinds, kind]
+                        : view.kinds.filter((item) => item !== kind),
+                    })
+                  }
+                />
+                {copy.kinds[kind]}
+              </label>
+            ))}
+          </fieldset>
+          <div className={styles.boundsControls}>
+            <label>
+              {copy.bbox}
+              <input
+                value={boundsText}
+                inputMode="decimal"
+                onChange={(event) => {
+                  setBoundsText(event.target.value);
+                  setBoundsInvalid(false);
+                }}
+                aria-invalid={boundsInvalid}
+                placeholder="116,39,117,40"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                const bounds = parseWorkspaceBounds(boundsText);
+                if (!bounds) {
+                  setBoundsInvalid(true);
+                  return;
+                }
+                setView({ ...view, bounds });
                 setBoundsInvalid(false);
               }}
-              aria-invalid={boundsInvalid}
-              placeholder="116,39,117,40"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              const bounds = parseWorkspaceBounds(boundsText);
-              if (!bounds) {
-                setBoundsInvalid(true);
-                return;
-              }
-              setView({ ...view, bounds });
-              setBoundsInvalid(false);
-            }}
-          >
-            {copy.applyBounds}
-          </button>
-          <button
-            type="button"
-            disabled={!view.bounds && !boundsText}
-            onClick={() => {
-              setBoundsText('');
-              setBoundsInvalid(false);
-              setView({ ...view, bounds: null });
-            }}
-          >
-            {copy.clearBounds}
-          </button>
-          <button
-            type="button"
-            aria-pressed={drawBounds}
-            disabled={view.comparison.enabled}
-            onClick={() => {
-              setDrawBounds(!drawBounds);
-              if (!drawBounds)
-                setView({
-                  ...view,
-                  mode: '2d',
-                  camera: { ...view.camera, pitch: 0, bearing: 0 },
-                });
-            }}
-          >
-            {drawBounds ? copy.stopDrawing : copy.drawBounds}
-          </button>
-          <button type="button" onClick={resetFilters}>
-            {copy.clearFilters}
-          </button>
-        </div>
-        {boundsInvalid ? <p role="alert">{copy.bboxInvalid}</p> : null}
-        <p className={styles.hint}>
-          {drawBounds ? copy.drawBoundsHint : copy.bboxHint}
-        </p>
-      </details>
-      <div className={styles.counts} aria-live="polite">
-        <span data-testid="spatial-source-count">
-          {copy.sourceCount.replace('{count}', String(filtered.sourceCount))}
-        </span>
-        <span data-testid="spatial-record-count">
-          {copy.recordCount.replace('{count}', String(filtered.recordCount))}
-        </span>
-        <span data-testid="spatial-geometry-count">
-          {copy.geometryCount.replace(
-            '{count}',
-            String(filtered.geometryCount),
-          )}
-        </span>
-        <span>
-          {copy.unlocatedCount.replace(
-            '{count}',
-            String(filtered.unlocatedRecords.length),
-          )}
-        </span>
-      </div>
-      <div className={styles.actions}>
-        <button
-          type="button"
-          aria-pressed={view.mode === '2d'}
-          onClick={() =>
-            setView({
-              ...view,
-              mode: '2d',
-              camera: { ...view.camera, pitch: 0 },
-            })
-          }
-        >
-          {copy.flatView}
-        </button>
-        <button
-          type="button"
-          aria-pressed={view.mode === '3d'}
-          onClick={() => {
-            setDrawBounds(false);
-            setView({
-              ...view,
-              mode: '3d',
-              camera: { ...view.camera, pitch: 50 },
-            });
-          }}
-        >
-          {copy.spaceView}
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            setView({
-              ...view,
-              camera: {
-                ...workspaceRegionCamera(pack, view.regionId),
-                pitch: view.mode === '3d' ? 50 : 0,
-              },
-            })
-          }
-        >
-          {copy.resetCamera}
-        </button>
-        <label className={styles.checkbox}>
-          <input
-            type="checkbox"
-            aria-label={copy.comparisonTitle}
-            checked={view.comparison.enabled}
-            onChange={(event) => {
-              setDrawBounds(false);
-              setView({
-                ...view,
-                comparison: {
-                  ...view.comparison,
-                  enabled: event.target.checked,
-                  left: {
-                    regionId: view.regionId,
-                    start: view.start,
-                    end: view.end,
-                  },
-                },
-              });
-            }}
-          />
-          {copy.enableComparison ?? copy.comparisonTitle}
-        </label>
+            >
+              {copy.applyBounds}
+            </button>
+            <button
+              type="button"
+              disabled={!view.bounds && !boundsText}
+              onClick={() => {
+                setBoundsText('');
+                setBoundsInvalid(false);
+                setView({ ...view, bounds: null });
+              }}
+            >
+              {copy.clearBounds}
+            </button>
+            <button
+              type="button"
+              aria-pressed={drawBounds}
+              disabled={view.comparison.enabled}
+              onClick={() => {
+                setDrawBounds(!drawBounds);
+                if (!drawBounds)
+                  setView({
+                    ...view,
+                    mode: '2d',
+                    camera: { ...view.camera, pitch: 0, bearing: 0 },
+                  });
+              }}
+            >
+              {drawBounds ? copy.stopDrawing : copy.drawBounds}
+            </button>
+            <button type="button" onClick={resetFilters}>
+              {copy.clearFilters}
+            </button>
+          </div>
+          {boundsInvalid ? <p role="alert">{copy.bboxInvalid}</p> : null}
+          <p className={styles.hint}>
+            {drawBounds ? copy.drawBoundsHint : copy.bboxHint}
+          </p>
+        </details>
       </div>
       {narrow ? (
         <div
@@ -1132,6 +1040,120 @@ export function SpatialWorkspace({
             sourceHref={sourceHref}
           />
         </div>
+      </div>
+      <div className={styles.breadcrumb}>
+        <button type="button" onClick={() => changeRegion('bth')}>
+          {copy.backToOverview}
+        </button>
+        <span>
+          › {copy.regions[view.regionId]} · {regionType}
+        </span>
+        {selection ? (
+          <>
+            <span>
+              ›{' '}
+              {
+                pack.records.find((record) => record.id === selection.recordId)
+                  ?.objectLabel
+              }
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setView({ ...view, selection: null });
+                onSelectRecord?.(null);
+              }}
+            >
+              {copy.backToRegion}
+            </button>
+          </>
+        ) : null}
+      </div>
+      <div className={styles.counts} aria-live="polite">
+        <span data-testid="spatial-source-count">
+          {copy.sourceCount.replace('{count}', String(filtered.sourceCount))}
+        </span>
+        <span data-testid="spatial-record-count">
+          {copy.recordCount.replace('{count}', String(filtered.recordCount))}
+        </span>
+        <span data-testid="spatial-geometry-count">
+          {copy.geometryCount.replace(
+            '{count}',
+            String(filtered.geometryCount),
+          )}
+        </span>
+        <span>
+          {copy.unlocatedCount.replace(
+            '{count}',
+            String(filtered.unlocatedRecords.length),
+          )}
+        </span>
+      </div>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          aria-pressed={view.mode === '2d'}
+          onClick={() =>
+            setView({
+              ...view,
+              mode: '2d',
+              camera: { ...view.camera, pitch: 0 },
+            })
+          }
+        >
+          {copy.flatView}
+        </button>
+        <button
+          type="button"
+          aria-pressed={view.mode === '3d'}
+          onClick={() => {
+            setDrawBounds(false);
+            setView({
+              ...view,
+              mode: '3d',
+              camera: { ...view.camera, pitch: 50 },
+            });
+          }}
+        >
+          {copy.spaceView}
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            setView({
+              ...view,
+              camera: {
+                ...workspaceRegionCamera(pack, view.regionId),
+                pitch: view.mode === '3d' ? 50 : 0,
+              },
+            })
+          }
+        >
+          {copy.resetCamera}
+        </button>
+        <label className={styles.checkbox}>
+          <input
+            type="checkbox"
+            aria-label={copy.comparisonTitle}
+            checked={view.comparison.enabled}
+            onChange={(event) => {
+              setDrawBounds(false);
+              setView({
+                ...view,
+                comparison: {
+                  ...view.comparison,
+                  enabled: event.target.checked,
+                  left: {
+                    regionId: view.regionId,
+                    start: view.start,
+                    end: view.end,
+                  },
+                },
+              });
+            }}
+          />
+          {copy.enableComparison ?? copy.comparisonTitle}
+        </label>
       </div>
       <div className={styles.bottomLayout}>
         <section className={styles.saved} aria-label={copy.saveTitle}>
