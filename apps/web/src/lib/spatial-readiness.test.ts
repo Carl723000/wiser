@@ -77,6 +77,18 @@ const pack = (sources = [material], records = [record]): WorkspacePack => ({
   topicPackages: [],
   rasterReports: [],
 });
+it('does not promote an undeclared record into an explicitly synthetic source track', () => {
+  const input = pack([{ ...material, track: 'SYNTHETIC' }], [record]);
+  const result = buildReadiness(input, 'chaobai', [], null, {
+    track: 'SYNTHETIC',
+    needId: 'K5-001',
+    window: null,
+    dateRole: 'OBSERVATION',
+  });
+  expect(result.records).toEqual([]);
+  expect(result.project.records).toEqual([]);
+  expect(result.counts.records).toBe(0);
+});
 function publicationFacts(input: WorkspacePack): ProjectReadinessInput {
   const sources = input.sources.map((source) => ({
     ...materialReference(source),
