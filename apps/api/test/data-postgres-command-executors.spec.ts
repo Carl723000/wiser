@@ -3129,8 +3129,199 @@ const managedIngestionInput = {
   requestedSecurityLevel: 'L1_INTERNAL',
   ownerProjectId: PROJECT_ID,
 };
+const managedResumeInput = { ingestionId: INGESTION_ID, expectedVersion: 2 };
 
 describe('managed pending intake ownership and fresh authority', () => {
+  it('managed resume preserves the owned expired job and checks the same owner on replay', async () => {
+    const value = runtime();
+    value.pool.client.submittedActorId = ACTOR_ID;
+    const resume = executor(value.runtime, 'data.ingestion.resume');
+    const actor = managedIntakeContext();
+    await expect(
+      resume.execute(managedResumeInput, actor),
+    ).resolves.toMatchObject({
+      operation: { operationId: OPERATION_ID, version: 3 },
+    });
+    await expect(
+      resume.execute(managedResumeInput, actor),
+    ).resolves.toMatchObject({
+      operation: { operationId: OPERATION_ID, version: 3 },
+    });
+    expect(
+      value.pool.client.calls.filter(({ text }) =>
+        text.includes('data.ingestion.resume.job.update'),
+      ),
+    ).toHaveLength(1);
+    value.pool.client.submittedActorId = null;
+    await expect(
+      resume.execute(managedResumeInput, actor),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+    });
+  });
+
+  it.each(['foreign-actor', 'changed-delegator', 'unknown-owner'] as const)(
+    'managed resume rejects %s before changing the original job',
+    async (kind) => {
+      const value = runtime();
+      let actor: DataCapabilityExecutionContext = managedIntakeContext();
+      if (kind === 'changed-delegator') {
+        value.pool.client.submittedActorId = ACTOR_ID;
+        value.pool.client.submittedActorType = 'agent';
+        value.pool.client.submittedDelegatorId =
+          'd2000000-0000-4000-8000-000000000090';
+        actor = {
+          ...actor,
+          principal: {
+            actorId: ACTOR_ID,
+            actorType: 'agent',
+            authenticationMethod: 'delegated_credential',
+            credentialId: SESSION_ID,
+            delegationId: INGESTION_ID,
+            delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+          },
+        };
+      } else if (kind === 'unknown-owner') {
+        value.pool.client.submittedActorId = null;
+      }
+      await expect(
+        executor(value.runtime, 'data.ingestion.resume').execute(
+          managedResumeInput,
+          actor,
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(
+        value.pool.client.calls.some(({ text }) =>
+          text.includes('data.ingestion.resume.job.update'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it('managed resume binds purpose and delegation to the same-key receipt', async () => {
+    const value = runtime();
+    value.pool.client.submittedActorId = ACTOR_ID;
+    const resume = executor(value.runtime, 'data.ingestion.resume');
+    const actor = managedIntakeContext();
+    await resume.execute(managedResumeInput, actor);
+    await expect(
+      resume.execute(managedResumeInput, {
+        ...actor,
+        authorization: { ...actor.authorization, purpose: 'other-purpose' },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    await expect(
+      resume.execute(managedResumeInput, {
+        ...actor,
+        principal: {
+          ...actor.principal,
+          actorId: PROJECT_ID,
+          authUserId: PROJECT_ID,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  });
+
+  it('managed resume preserves delegated responsibility and rejects a changed same-key delegator', async () => {
+    const value = runtime();
+    value.pool.client.submittedActorId = ACTOR_ID;
+    value.pool.client.submittedActorType = 'agent';
+    value.pool.client.submittedDelegatorId =
+      'd2000000-0000-4000-8000-000000000090';
+    const actor: DataCapabilityExecutionContext = {
+      ...managedIntakeContext(),
+      principal: {
+        actorId: ACTOR_ID.toUpperCase(),
+        actorType: 'agent',
+        authenticationMethod: 'delegated_credential',
+        credentialId: SESSION_ID,
+        delegationId: INGESTION_ID,
+        delegatedBy: 'd2000000-0000-4000-8000-000000000090'.toUpperCase(),
+      },
+    };
+    const resume = executor(value.runtime, 'data.ingestion.resume');
+    await expect(
+      resume.execute(managedResumeInput, actor),
+    ).resolves.toHaveProperty('operation');
+    await expect(
+      resume.execute(managedResumeInput, {
+        ...actor,
+        principal: {
+          ...actor.principal,
+          delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+
+    const responsibleHuman = runtime();
+    responsibleHuman.pool.client.submittedActorId = ACTOR_ID;
+    responsibleHuman.pool.client.submittedActorType = 'agent';
+    responsibleHuman.pool.client.submittedDelegatorId =
+      'd2000000-0000-4000-8000-000000000090';
+    await expect(
+      executor(responsibleHuman.runtime, 'data.ingestion.resume').execute(
+        managedResumeInput,
+        {
+          ...managedIntakeContext(),
+          principal: {
+            ...context.principal,
+            actorId: 'd2000000-0000-4000-8000-000000000090',
+            authUserId: 'd2000000-0000-4000-8000-000000000090',
+          },
+        },
+      ),
+    ).resolves.toHaveProperty('operation');
+  });
+
+  it.each(['revoked-write', 'expired-scope', 'expired-principal'] as const)(
+    'managed resume refuses %s before returning a cached receipt',
+    async (kind) => {
+      const value = runtime();
+      value.pool.client.submittedActorId = ACTOR_ID;
+      const resume = executor(value.runtime, 'data.ingestion.resume');
+      const actor = managedIntakeContext();
+      await resume.execute(managedResumeInput, actor);
+      const managedScope = actor.authorization.resourceAccess?.scope;
+      if (managedScope?.mode !== 'managed')
+        throw new Error('managed test setup');
+      const changed: DataCapabilityExecutionContext =
+        kind === 'revoked-write'
+          ? {
+              ...actor,
+              authorization: {
+                ...actor.authorization,
+                scopes: ['data.operation.read'],
+              },
+            }
+          : kind === 'expired-principal'
+            ? {
+                ...actor,
+                principal: {
+                  ...actor.principal,
+                  expiresAt: '2026-01-01T00:00:00Z',
+                },
+              }
+            : {
+                ...actor,
+                authorization: {
+                  ...actor.authorization,
+                  resourceAccess: {
+                    ...actor.authorization.resourceAccess!,
+                    scope: {
+                      ...managedScope,
+                      validUntil: '2026-01-01T00:00:00Z',
+                    },
+                  },
+                },
+              };
+      await expect(
+        resume.execute(managedResumeInput, changed),
+      ).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    },
+  );
+
   it('stores canonical immutable upload responsibility for the existing SQL UUID text guard', async () => {
     const actor = {
       ...managedIntakeContext(),
