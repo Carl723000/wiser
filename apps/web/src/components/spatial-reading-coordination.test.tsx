@@ -16,9 +16,9 @@ vi.mock('./spatial-raster-inspection',()=>({SpatialRasterInspection:()=> <div>Ra
 vi.mock('./spatial-candidate-review',()=>({SpatialCandidateReview:()=> <div>Candidate exercise</div>}));
 function fixture(): WorkspacePack {
   const source = {id:'report',versionId:'v1',title:'Private report',provider:'Test publisher',kind:'report' as const,originalSha256:'a'.repeat(64),processingVersion:'source-rule',evidenceUrl:null,regionIds:['chaobai','beiyun'] as const,needIds:['K5-001','K5-002'],rights:{public:false,displayAllowed:true,redistributionAllowed:false,note:'Fixture only'},status:{original:'saved',parsed:'ready',checked:'unknown',professionalReview:'pending',space:'reference',use:'unknown'},duplicateOf:null};
-  const position = {id:'area-a',expression:'Reference A',role:'reference' as const,match:'bound' as const,geometry:{type:'Point' as const,coordinates:[116,40]},crs:'EPSG:4326',geometrySourceId:'report',geometryVersionId:'v1',locator:'fixture-feature:1',scaleNote:'Reference only',evidence:{locator:'table:1/row:1',text:'Reference place'}};
+  const position = {id:'area-a',expression:'Reference A',role:'reference' as const,match:'bound' as const,geometry:{type:'Point' as const,coordinates:[116,40]},crs:'EPSG:4326' as const,geometrySourceId:'report',geometryVersionId:'v1',locator:'fixture-feature:1',scaleNote:'Reference only',evidence:{locator:'table:1/row:1',text:'Reference place'}};
   const record = {id:'r1',sourceId:'report',versionId:'v1',objectId:'object-r1',objectLabel:'Private April object',kind:'observation' as const,regionIds:['chaobai'] as const,needIds:['K5-001'],time:{start:'2023-04',end:'2023-04',precision:'month' as const,role:'publication' as const},metric:'grade',value:'Ⅲ',unit:null,positions:[position,{...position,id:'area-b',expression:'Reference B',geometry:{type:'Point' as const,coordinates:[117,41]}}],evidence:[{locator:'table:1/row:1',text:'Private April evidence'}],processingVersion:'record-rule',reviewStatus:'pending' as const,missingReasons:[]};
-  return {schemaVersion:1,generatedAt:'2026-10-04',processingVersion:'fixture-only',sources:[{...source,regionIds:[...source.regionIds]}],records:[{...record,regionIds:[...record.regionIds]}, {...record,id:'r2',objectId:'object-r2',objectLabel:'Private May object',positions:[],time:{...record.time,start:'2023-05',end:'2023-05'}}],regions:['bth','chaobai','beiyun'].map(id=>({id:id as 'bth'|'chaobai'|'beiyun',name:id,aliases:[],type:'region',bounds:[113,36,120,43]})),topicPackages:[],rasterReports:[]};
+  return {schemaVersion:1,generatedAt:'2026-10-04',processingVersion:'fixture-only',sources:[{...source,regionIds:[...source.regionIds]}],records:[{...record,regionIds:[...record.regionIds]}, {...record,regionIds:[...record.regionIds],id:'r2',objectId:'object-r2',objectLabel:'Private May object',positions:[],time:{...record.time,start:'2023-05',end:'2023-05'}}],regions:['bth','chaobai','beiyun'].map(id=>({id:id as 'bth'|'chaobai'|'beiyun',name:id,aliases:[],type:'region',bounds:[113,36,120,43]})),topicPackages:[],rasterReports:[]};
 }
 const initial: WorkspaceReadingUrlState = {track:'REAL',regionId:'chaobai',needId:'K5-001',dateRole:'PUBLICATION',monthWindow:{start:'2023-04',end:'2023-04'},tab:'spatial',pane:'evidence',source:{sourceId:'report',versionId:'v1',sha256:'a'.repeat(64),processingVersion:'source-rule'},selection:{recordId:'r1',processingVersion:'record-rule',position:{positionId:'area-b',geometrySource:{sourceId:'report',versionId:'v1',sha256:'a'.repeat(64),processingVersion:'source-rule'}}}};
 function show(pack=fixture(),state=initial) {
@@ -93,4 +93,35 @@ it('clears selected private contents when the current fixed source loses display
   expect(screen.getByRole('alert')).toBeTruthy();
   expect(screen.queryByTestId('reading-map')).toBeNull();
   expect(screen.queryByText('Private April evidence')).toBeNull();
+});
+
+it('keeps day conditions visible and unchanged on matrix entry until explicit month-window selection',()=>{
+  const day={...initial,dateRole:null,monthWindow:null,dayWindow:{start:'2023-04-01',end:'2023-04-17'}};
+  show(fixture(),day);
+  fireEvent.click(screen.getByRole('tab',{name:'Readiness and review'}));
+  expect(screen.getByText('The map and originals use exact day boundaries. Choose a month window for monthly coverage inspection.')).toBeTruthy();
+  expect(screen.queryByRole('region',{name:'Six-range material readiness matrix'})).toBeNull();
+  expect(readUrl()).toMatchObject({status:'valid',state:{dateRole:null,dayWindow:day.dayWindow,tab:'readiness'}});
+  fireEvent.click(screen.getByRole('button',{name:'Choose month window'}));
+  const decoded=readUrl();
+  expect(decoded).toMatchObject({status:'valid',state:{dateRole:null,monthWindow:null,tab:'readiness'}});
+  if(decoded.status==='valid') expect(decoded.state).not.toHaveProperty('dayWindow');
+  expect(screen.getByRole('region',{name:'Six-range material readiness matrix'})).toBeTruthy();
+});
+it('uses keyboard workspace tabs to update reading state without changing exact selection',()=>{
+  show();
+  const tab=screen.getByRole('tab',{name:'Space and evidence'});tab.focus();
+  fireEvent.keyDown(tab,{key:'ArrowRight'});
+  expect(screen.getByRole('tab',{name:'Readiness and review'}).getAttribute('aria-selected')).toBe('true');
+  expect(readUrl()).toMatchObject({status:'valid',state:{tab:'readiness',selection:initial.selection,monthWindow:initial.monthWindow}});
+});
+it('keeps explicit SYNTHETIC records separate from legacy REAL records during URL reading',()=>{
+  const pack=fixture();const source={...pack.sources[0],id:'synthetic-report',versionId:'synthetic-v1',track:'SYNTHETIC' as const,title:'Synthetic material'};
+  pack.sources.push(source);
+  pack.records.push({...pack.records[0],id:'synthetic-r1',sourceId:source.id,versionId:source.versionId,track:'SYNTHETIC',reviewStatus:'synthetic-reviewed',objectLabel:'Synthetic April object',positions:[]});
+  const state={...initial,track:'SYNTHETIC' as const,source:{...initial.source!,sourceId:source.id,versionId:source.versionId},selection:{recordId:'synthetic-r1',processingVersion:'record-rule',position:null}};
+  show(pack,state);
+  expect(screen.getByRole('region',{name:'Object evidence dossier'}).textContent).toContain('Synthetic April object');
+  expect(screen.queryByText('Private April object')).toBeNull();
+  expect(screen.queryByText('Private May object')).toBeNull();
 });

@@ -756,3 +756,35 @@ describe('exact native day reading state', () => {
     expect(encodeWorkspaceReadingUrl('en',{...exact,dayWindow:{start:null,end:null}},fixture())).toEqual({status:'invalid',reason:'day-window'});
   });
 });
+
+describe('actual map date roles',()=>{
+  it.each(['ACQUISITION','UNKNOWN'])('preserves the existing explicit %s map filter without claiming month readiness',(dateRole)=>{
+    const input=new URLSearchParams({track:'REAL',region:'chaobai',dateRole,tab:'spatial',pane:'map'});
+    expect(decodeWorkspaceReadingUrl(input,fixture())).toMatchObject({status:'valid',state:{dateRole,selection:null,monthWindow:null}});
+  });
+  it('still refuses a selected record whose native date role does not match acquisition',()=>{
+    const input=parameters();input.set('dateRole','ACQUISITION');
+    expect(decodeWorkspaceReadingUrl(input,fixture())).toEqual({status:'invalid',reason:'scope'});
+  });
+});
+
+describe('explicit undated reading inclusion',()=>{
+  it('round-trips the actual time-unknown inclusion control without changing original times',()=>{
+    const context=fixture();context.pack.records[0].time={start:null,end:null,precision:'unknown',role:'unknown'};
+    const input={...state,monthWindow:null,dayWindow:{start:'2023-04-01',end:'2023-04-17'},includeUndated:true} as WorkspaceReadingUrlState & {dayWindow:{start:string;end:string};includeUndated:boolean};
+    const encoded=encodeWorkspaceReadingUrl('en',input,context);
+    expect(encoded.status).toBe('valid');
+    if(encoded.status!=='valid') throw new Error('Undated inclusion was dropped');
+    expect(decodeWorkspaceReadingUrl(new URL(encoded.href,'https://example.invalid').searchParams,context)).toEqual({status:'valid',state:input});
+    expect(context.pack.records[0].time.start).toBeNull();
+  });
+  it('rejects an unknown original time when inclusion is explicitly false',()=>{
+    const context=fixture();context.pack.records[0].time={start:null,end:null,precision:'unknown',role:'unknown'};
+    const params=parameters();params.set('includeUndated','false');
+    expect(decodeWorkspaceReadingUrl(params,context)).toEqual({status:'invalid',reason:'scope'});
+  });
+  it.each(['1','yes','unknown'])('rejects invalid includeUndated %s instead of coercing it',value=>{
+    const params=new URLSearchParams({includeUndated:value});
+    expect(decodeWorkspaceReadingUrl(params,fixture())).toEqual({status:'invalid',reason:'scope'});
+  });
+});
