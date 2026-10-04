@@ -6,6 +6,14 @@ import type {
 } from './spatial-workspace-contract';
 import { buildReadiness, NEED_IDS } from './spatial-readiness';
 import { materialReference } from './spatial-readiness-facts';
+import {
+  calculateProjectReadiness,
+  readinessRecordKey,
+} from '@wiser/data-core/project-readiness';
+import {
+  parseLocalReadinessFacts,
+  readableLocalReadinessFacts,
+} from './spatial-readiness-input';
 import type { ProjectReadinessInput } from '@wiser/data-core';
 
 const material: Material = {
@@ -374,5 +382,443 @@ describe('multi-region readiness', () => {
     );
     expect(result.density.missingReportWindows).toEqual(['2023-05']);
     expect(result.density.reportWindows).not.toContain('2026-06-04');
+  });
+});
+
+describe('readiness visibility and use-check provenance', () => {
+  it('does not expose unreadable material identities in need summaries', () => {
+    const hidden = {
+      ...material,
+      id: 'private-source',
+      rights: { ...material.rights, displayAllowed: false },
+    };
+    const result = buildReadiness(
+      pack([hidden], [{ ...record, sourceId: hidden.id }]),
+      'chaobai',
+    );
+    expect(result.needs[0].sourceIds).toEqual([]);
+    expect(result.needs[0].recordIds).toEqual([]);
+    expect(result.counts.sources).toBe(0);
+    expect(JSON.stringify(result)).not.toContain('private-source');
+  });
+  it('keeps missing computation checks unknown rather than returning a constant negative verdict', () => {
+    const result = buildReadiness(pack(), 'chaobai');
+    expect(result.uses.find((use) => use.id === 'pollution-load')?.state).toBe(
+      'UNKNOWN',
+    );
+    expect(
+      result.uses.find((use) => use.id === 'concentration-trend')?.state,
+    ).toBe('UNKNOWN');
+  });
+  it('retains explicitly synthetic reviewed records only in a separately selected synthetic track', () => {
+    const source = { ...material, track: 'SYNTHETIC' as const };
+    const row = {
+      ...record,
+      track: 'SYNTHETIC' as const,
+      reviewStatus: 'synthetic-reviewed' as const,
+    };
+    const input = pack([source], [row]);
+    const facts = {
+      ...publicationFacts(input),
+      track: 'SYNTHETIC' as const,
+      sources: publicationFacts(input).sources.map((value) => ({
+        ...value,
+        track: 'SYNTHETIC' as const,
+      })),
+      records: publicationFacts(input).records.map((value) => ({
+        ...value,
+        professionalState: 'APPROVED' as const,
+      })),
+    };
+    expect(buildReadiness(input, 'chaobai', [], facts).counts.records).toBe(0);
+    const selected = buildReadiness(input, 'chaobai', [], facts, {
+      needId: 'K5-001',
+      window: facts.requirement.window,
+      dateRole: 'PUBLICATION',
+      track: 'SYNTHETIC',
+    });
+    expect(selected.counts.records).toBe(1);
+    expect(selected.project.track).toBe('SYNTHETIC');
+    expect(selected.counts.professionallyReviewed).toBe(1);
+    expect(selected.records[0].id).toBe(row.id);
+  });
+  it('reads a scoped core use-check while keeping technical sufficiency separate from real professional approval', () => {
+    const input = pack();
+    const facts = publicationFacts(input);
+    const key = JSON.stringify([
+      JSON.stringify([
+        facts.sources[0].workId,
+        facts.sources[0].versionId,
+        facts.sources[0].assetId,
+      ]),
+      record.id,
+    ]);
+    const withChecks = {
+      ...facts,
+      useChecks: [
+        {
+          id: 'load-check-v1',
+          purpose: 'nitrogen-load',
+          computation: 'FLUX' as const,
+          state: 'CHECKS_PASSED' as const,
+          recordIds: [key],
+          reasons: ['paired-synthetic-input-test'],
+          evidence: facts.records[0].evidence,
+        },
+      ],
+    };
+    const result = buildReadiness(input, 'chaobai', [], withChecks);
+    const use = result.uses.find((item) => item.id === 'pollution-load');
+    expect(use?.state).toBe('CHECKS_PASSED');
+    expect(use?.checkIds).toEqual(['load-check-v1']);
+    expect(use?.eligible).toBe(false);
+    expect(use?.ruleVersion).toBe(result.project.ruleVersion);
+    expect(result.counts.professionallyReviewed).toBe(0);
+  });
+});
+
+describe('readiness rechecks current evidence bindings', () => {
+  const privateExcerpt = 'WITHDRAWN_PRIVATE_EXCERPT';
+  const currentExcerpt = 'CURRENT_A_ORIGINAL_EXCERPT';
+  function evidenceFixture() {
+    const other: Material = {
+      ...material,
+      id: 'withdrawn-source-B',
+      title: 'B original',
+      originalSha256: 'b'.repeat(64),
+    };
+    const input = pack([material, other]);
+    const facts = publicationFacts(input);
+    const a = { ...facts.records[0].evidence[0], excerpt: currentExcerpt };
+    const b = {
+      source: materialReference(other),
+      locator: 'page:1',
+      excerpt: privateExcerpt,
+    };
+    const valid = {
+      id: 'current-A-check',
+      kind: 'INTEGRITY' as const,
+      state: 'PASSED' as const,
+      recordIds: [],
+      sources: [materialReference(material)],
+      findings: [],
+      evidence: [a],
+    };
+    return { input, facts, other, a, b, valid };
+  }
+  it('removes an initially readable B check after withdrawal while keeping the valid A check and original', () => {
+    const { input, facts, other, a, b, valid } = evidenceFixture();
+    const initiallyReadable = readableLocalReadinessFacts(
+      input,
+      parseLocalReadinessFacts({
+        ...facts,
+        checks: [
+          valid,
+          { ...valid, id: 'B-dependent-check', evidence: [a, b] },
+        ],
+      }),
+    );
+    expect(
+      buildReadiness(input, 'chaobai', [], initiallyReadable).project.checks,
+    ).toHaveLength(2);
+    const withdrawn = pack([
+      material,
+      { ...other, rights: { ...other.rights, displayAllowed: false } },
+    ]);
+    const snapshot = JSON.stringify(withdrawn);
+    const result = buildReadiness(withdrawn, 'chaobai', [], initiallyReadable);
+    expect(result.project.checks).toEqual([valid]);
+    expect(result.project.records[0].rawValue).toBe(record.value);
+    expect(result.project.records[0].evidence).toEqual(
+      facts.records[0].evidence,
+    );
+    expect(JSON.stringify(result)).not.toContain(other.id);
+    expect(JSON.stringify(result)).not.toContain(privateExcerpt);
+    expect(JSON.stringify(withdrawn)).toBe(snapshot);
+  });
+  it.each([
+    'record-evidence',
+    'object-footnotes',
+    'field',
+    'task',
+    'use-check',
+  ] as const)(
+    'rechecks the complete %s evidence binding when B is withdrawn',
+    (carrier) => {
+      const { input, facts, other, a, b } = evidenceFixture();
+      const key = readinessRecordKey(facts.records[0]);
+      const value: ProjectReadinessInput = {
+        ...facts,
+        records: facts.records.map((item) => ({
+          ...item,
+          evidence: carrier === 'record-evidence' ? [a, b] : item.evidence,
+          object: {
+            ...item.object!,
+            footnotes: carrier === 'object-footnotes' ? [b] : [],
+          },
+        })),
+        fields:
+          carrier === 'field'
+            ? [
+                {
+                  id: 'B-dependent-field',
+                  source: facts.sources[0],
+                  name: 'B-only field',
+                  type: 'text',
+                  unit: null,
+                  timeRole: null,
+                  positionRole: null,
+                  primaryKey: null,
+                  formatVersion: null,
+                  evidence: [a, b],
+                },
+              ]
+            : [],
+        tasks:
+          carrier === 'task'
+            ? [
+                {
+                  id: 'B-dependent-task',
+                  kind: 'CLEANING',
+                  state: 'OPEN',
+                  recordIds: [key],
+                  sources: [],
+                  processor: null,
+                  owner: 'B-only owner',
+                  nextAction: 'B-only action',
+                  evidence: [a, b],
+                },
+              ]
+            : [],
+        useChecks:
+          carrier === 'use-check'
+            ? [
+                {
+                  id: 'B-dependent-use',
+                  purpose: facts.requirement.purpose,
+                  computation: 'CATEGORY_REVIEW',
+                  state: 'CHECKS_PASSED',
+                  recordIds: [key],
+                  reasons: ['B-only reason'],
+                  evidence: [a, b],
+                },
+              ]
+            : [],
+      };
+      const admitted = readableLocalReadinessFacts(
+        input,
+        parseLocalReadinessFacts(value),
+      );
+      expect(
+        JSON.stringify(buildReadiness(input, 'chaobai', [], admitted)),
+      ).toContain(privateExcerpt);
+      const withdrawn = pack([
+        material,
+        { ...other, rights: { ...other.rights, displayAllowed: false } },
+      ]);
+      const result = buildReadiness(withdrawn, 'chaobai', [], admitted);
+      expect(JSON.stringify(result)).not.toContain(privateExcerpt);
+      expect(JSON.stringify(result)).not.toContain(other.id);
+      expect(result.records.map((item) => item.id)).toEqual([record.id]);
+      expect(result.project.records[0].rawValue).toBe(record.value);
+      if (carrier === 'record-evidence' || carrier === 'object-footnotes') {
+        expect(result.project.records[0].evidence[0].excerpt).toBe(
+          record.evidence[0].text,
+        );
+        expect(result.project.records[0].object?.footnotes).toEqual([]);
+      }
+    },
+  );
+  it.each(['version', 'hash'] as const)(
+    'rejects old evidence after B changes its fixed %s',
+    (changed) => {
+      const { input, facts, other, b, valid } = evidenceFixture();
+      const admitted = readableLocalReadinessFacts(
+        input,
+        parseLocalReadinessFacts({
+          ...facts,
+          checks: [valid, { ...valid, id: 'old-B-check', evidence: [b] }],
+        }),
+      );
+      const current = pack([
+        material,
+        {
+          ...other,
+          ...(changed === 'version'
+            ? { versionId: 'v2' }
+            : { originalSha256: 'c'.repeat(64) }),
+        },
+      ]);
+      const result = buildReadiness(current, 'chaobai', [], admitted);
+      expect(result.project.checks).toEqual([valid]);
+      expect(JSON.stringify(result)).not.toContain(privateExcerpt);
+    },
+  );
+  it('clears a stale series binding rather than returning its withdrawn declaration identifier', () => {
+    const { input, facts, other, b } = evidenceFixture();
+    const seriesId = 'WITHDRAWN_PRIVATE_SERIES';
+    const admitted = readableLocalReadinessFacts(
+      input,
+      parseLocalReadinessFacts({
+        ...facts,
+        series: [{ ...facts.series[0], id: seriesId, evidence: [b] }],
+        records: facts.records.map((item) => ({
+          ...item,
+          series: { id: seriesId, version: facts.series[0].version },
+        })),
+      }),
+    );
+    expect(
+      buildReadiness(input, 'chaobai', [], admitted).project.monthly.raw,
+    ).toHaveLength(1);
+    const result = buildReadiness(
+      pack([
+        material,
+        { ...other, rights: { ...other.rights, displayAllowed: false } },
+      ]),
+      'chaobai',
+      [],
+      admitted,
+    );
+    expect(result.project.records[0].series).toBeNull();
+    expect(JSON.stringify(result)).not.toContain(seriesId);
+    expect(result.project.records[0].rawValue).toBe(record.value);
+  });
+  it('keeps history but removes density authority when its evidence source is withdrawn', () => {
+    const { input, facts, other, b } = evidenceFixture();
+    const key = readinessRecordKey(facts.records[0]);
+    const admitted = readableLocalReadinessFacts(
+      input,
+      parseLocalReadinessFacts({
+        ...facts,
+        reconciliations: [
+          {
+            id: 'B-reconciliation',
+            status: 'VERIFIED',
+            recordIds: [key],
+            independentObservationCount: 3,
+            evidence: [b],
+          },
+        ],
+        selectedReconciliationId: 'B-reconciliation',
+        areaDenominator: { recordIds: [key], areaKm2: 2, evidence: [b] },
+      }),
+    );
+    const prior = buildReadiness(input, 'chaobai', [], admitted);
+    expect(prior.counts.validObservations).toBe(3);
+    expect(prior.project.density.observationsPerKm2).toBe(1.5);
+    const result = buildReadiness(
+      pack([
+        material,
+        { ...other, rights: { ...other.rights, displayAllowed: false } },
+      ]),
+      'chaobai',
+      [],
+      admitted,
+    );
+    expect(result.counts.validObservations).toBeNull();
+    expect(result.project.density.areaKm2).toBeNull();
+    expect(result.records.map((item) => item.id)).toEqual([record.id]);
+    expect(result.project.records[0].rawValue).toBe(record.value);
+    expect(JSON.stringify(result)).not.toContain(other.id);
+  });
+  it('does not let a later readable relationship with the same ID revive an earlier withdrawn evidence lookup', () => {
+    const { other, a, b } = evidenceFixture();
+    const input = pack(
+      [material, other],
+      [
+        record,
+        {
+          ...record,
+          id: 'r2',
+          objectId: 'source-object-2',
+          objectLabel: 'Another reported reach',
+        },
+      ],
+    );
+    const facts = publicationFacts(input);
+    const relationship = {
+      id: 'ambiguous-B-relationship',
+      memberRecordIds: facts.records.map(readinessRecordKey),
+      status: 'PENDING_REVIEW',
+      evidence: [b],
+    };
+    const admitted = readableLocalReadinessFacts(
+      input,
+      parseLocalReadinessFacts({
+        ...facts,
+        correspondences: [
+          relationship,
+          { ...relationship, evidence: [a] },
+          { ...relationship, id: 'safe-A-relationship', evidence: [a] },
+        ],
+      }),
+    );
+    expect(
+      buildReadiness(input, 'chaobai', [], admitted).project.monthly
+        .appliedHypothesisIds,
+    ).toContain(relationship.id);
+    const result = buildReadiness(
+      {
+        ...input,
+        sources: [
+          material,
+          { ...other, rights: { ...other.rights, displayAllowed: false } },
+        ],
+      },
+      'chaobai',
+      [],
+      admitted,
+    );
+    expect(result.project.monthly.appliedHypothesisIds).toEqual([
+      'safe-A-relationship',
+    ]);
+    expect(
+      result.questions
+        .find((item) => item.id === 'structure')
+        ?.details.map((item) => item.factId),
+    ).not.toContain(relationship.id);
+  });
+  it('retains currently readable cross-scope evidence as UNKNOWN without extending A calculation scope', () => {
+    const { other, b, valid } = evidenceFixture();
+    const current = pack([
+      material,
+      { ...other, regionIds: ['beiyun'], needIds: ['K5-002'] },
+    ]);
+    const facts = publicationFacts(current);
+    const check = { ...valid, evidence: [b] };
+    const admitted = readableLocalReadinessFacts(
+      current,
+      parseLocalReadinessFacts({ ...facts, checks: [check] }),
+    );
+    const core = calculateProjectReadiness(admitted);
+    expect(core.checks).toEqual([{ ...check, state: 'UNKNOWN' }]);
+    expect(core.counts.works).toBe(1);
+    const result = buildReadiness(current, 'chaobai', [], admitted);
+    expect(result.project.checks).toEqual([{ ...check, state: 'UNKNOWN' }]);
+    expect(result.project.checks[0].evidence[0].excerpt).toBe(privateExcerpt);
+    expect(result.sources.map((item) => item.id)).toEqual([material.id]);
+    expect(result.counts.sources).toBe(1);
+    expect(result.records.map((item) => item.id)).toEqual([record.id]);
+    const withoutB = buildReadiness(pack(), 'chaobai', [], admitted);
+    expect(withoutB.project.checks).toEqual([]);
+    expect(JSON.stringify(withoutB)).not.toContain(privateExcerpt);
+  });
+  it('preserves currently permitted nonpublic evidence instead of adding a public-only rule', () => {
+    const { facts, other, b, valid } = evidenceFixture();
+    const current = pack([
+      material,
+      { ...other, rights: { ...other.rights, public: false } },
+    ]);
+    const result = buildReadiness(current, 'chaobai', [], {
+      ...facts,
+      checks: [
+        valid,
+        { ...valid, id: 'current-nonpublic-B-check', evidence: [b] },
+      ],
+    });
+    expect(result.project.checks).toHaveLength(2);
+    expect(result.project.checks[1].state).toBe('PASSED');
+    expect(JSON.stringify(result.project.checks[1])).toContain(privateExcerpt);
   });
 });

@@ -7,6 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { getDictionary } from '../lib/i18n';
 import { syntheticReviewRecord } from '../lib/spatial-candidate-review';
 import {
@@ -15,6 +16,7 @@ import {
 } from './spatial-readiness-panel';
 import type {
   Material,
+  RegionId,
   WorkspacePack,
 } from '../lib/spatial-workspace-contract';
 import type { ProjectReadinessInput } from '@wiser/data-core/project-readiness';
@@ -137,6 +139,31 @@ function inspectionPack(): WorkspacePack {
     topicPackages: [],
     rasterReports: [],
   };
+}
+function ControlledPanel({
+  pack,
+  onSelectRegion,
+}: {
+  pack: WorkspacePack;
+  onSelectRegion?: (id: RegionId) => void;
+}) {
+  const [regionId, setRegionId] = useState<RegionId>('bth');
+  return (
+    <>
+      <button type="button" onClick={() => setRegionId('bth')}>
+        Return to overview
+      </button>
+      <SpatialReadinessPanel
+        pack={pack}
+        regionId={regionId}
+        copy={copy}
+        onSelectRegion={(id) => {
+          onSelectRegion?.(id);
+          setRegionId(id);
+        }}
+      />
+    </>
+  );
 }
 it('reuses readiness calculation during unrelated rerenders and recalculates changed stale facts', () => {
   const calculation = vi.spyOn(readiness, 'buildReadiness');
@@ -398,4 +425,92 @@ it('shows all nine questions and 19 needs and passes an explicitly selected evid
     ).getByRole('button'),
   );
   expect(select).toHaveBeenCalledWith(record.id);
+});
+
+it('places the six-range matrix first and selects the matching need and regional detail', () => {
+  const onSelectRegion = vi.fn();
+  render(
+    <ControlledPanel pack={inspectionPack()} onSelectRegion={onSelectRegion} />,
+  );
+  const matrix = screen.getByRole('region', { name: copy.matrixTitle });
+  expect(matrix.querySelectorAll('button[data-matrix-region]')).toHaveLength(
+    114,
+  );
+  const cell = matrix.querySelector<HTMLButtonElement>(
+    'button[data-matrix-region="chaobai"][data-matrix-need="K5-001"]',
+  )!;
+  fireEvent.click(cell);
+  expect(onSelectRegion).toHaveBeenCalledWith('chaobai');
+  expect(screen.getByTestId('readiness-active-scope').textContent).toContain(
+    copy.matrixRegions.chaobai,
+  );
+  expect(
+    (
+      screen.getByRole('combobox', {
+        name: copy.needLabel,
+      }) as HTMLSelectElement
+    ).value,
+  ).toBe('K5-001');
+  expect(cell.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('follows the controlled parent when returning to the region before a matrix selection', () => {
+  render(<ControlledPanel pack={inspectionPack()} />);
+  const matrix = screen.getByRole('region', { name: copy.matrixTitle });
+  const regionalCell = matrix.querySelector<HTMLButtonElement>(
+    'button[data-matrix-region="chaobai"][data-matrix-need="K5-001"]',
+  );
+  const overviewCell = matrix.querySelector<HTMLButtonElement>(
+    'button[data-matrix-region="bth"][data-matrix-need="K5-001"]',
+  );
+  if (!regionalCell || !overviewCell) throw new Error('Matrix fixture missing');
+  fireEvent.click(regionalCell);
+  expect(screen.getByTestId('readiness-active-scope').textContent).toContain(
+    copy.matrixRegions.chaobai,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Return to overview' }));
+  expect(screen.getByTestId('readiness-active-scope').textContent).toContain(
+    copy.matrixRegions.bth,
+  );
+  expect(overviewCell.getAttribute('aria-pressed')).toBe('true');
+  expect(regionalCell.getAttribute('aria-pressed')).toBe('false');
+});
+
+it('retains standalone matrix selection without a controlled parent callback', () => {
+  render(
+    <SpatialReadinessPanel
+      pack={inspectionPack()}
+      regionId="bth"
+      copy={copy}
+    />,
+  );
+  const matrix = screen.getByRole('region', { name: copy.matrixTitle });
+  const cell = matrix.querySelector<HTMLButtonElement>(
+    'button[data-matrix-region="chaobai"][data-matrix-need="K5-001"]',
+  );
+  if (!cell) throw new Error('Matrix fixture missing');
+  fireEvent.click(cell);
+  expect(screen.getByTestId('readiness-active-scope').textContent).toContain(
+    copy.matrixRegions.chaobai,
+  );
+  expect(cell.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('shows unknown computation information separately from an unmet-condition verdict', () => {
+  render(
+    <SpatialReadinessPanel
+      pack={inspectionPack()}
+      regionId="chaobai"
+      copy={copy}
+    />,
+  );
+  const uses = screen.getByText(copy.usesHeading).parentElement!;
+  const load = within(uses)
+    .getByText(copy.useLabels['pollution-load'])
+    .closest('li')!;
+  expect(
+    within(load)
+      .getByText(copy.factStates.UNKNOWN)
+      .getAttribute('data-use-state'),
+  ).toBe('UNKNOWN');
 });
