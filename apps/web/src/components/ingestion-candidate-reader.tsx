@@ -58,15 +58,17 @@ export function IngestionCandidateReader({
   locale,
   savedViewId,
   ingestionId,
+  readOnly = false,
 }: {
   readonly reference: IngestionCandidateReference | null;
   readonly locale: Locale;
   readonly savedViewId?: string;
   readonly ingestionId?: string;
+  readonly readOnly?: boolean;
 }) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const routeIntake = ingestionId ?? reference?.ingestionId;
-  if (savedViewId && routeIntake)
+  if (savedViewId && routeIntake && !readOnly)
     return (
       <SavedCandidateBootstrap
         key={`${routeIntake}:${savedViewId}`}
@@ -84,10 +86,11 @@ export function IngestionCandidateReader({
     );
   return (
     <CandidateSession
-      key={`${candidateSavedReferenceKey(reference)}:${savedViewId ?? ''}`}
+      key={`${candidateSavedReferenceKey(reference)}:${readOnly ? 'read' : (savedViewId ?? 'managed')}`}
       reference={reference}
       locale={locale}
-      savedViewId={savedViewId}
+      savedViewId={readOnly ? undefined : savedViewId}
+      readOnly={readOnly}
     />
   );
 }
@@ -165,10 +168,12 @@ function CandidateSession({
   reference,
   locale,
   savedViewId,
+  readOnly = false,
 }: {
   reference: IngestionCandidateReference;
   locale: Locale;
   savedViewId?: string;
+  readOnly?: boolean;
 }) {
   // The keyed owner fixes a complete candidate identity; replacements unmount and cancel it.
   const [fixed, setFixed] = useState(reference);
@@ -905,28 +910,84 @@ function CandidateSession({
       {otherLink ? <a href={otherLink}>{copy.openSaved}</a> : null}
       {assets ? (
         <>
-          <div className={styles.summaryHeader}>
-            <strong className={styles.status} data-state={assets.status}>
-              {copy.statuses[assets.status]}
-            </strong>
-            <ContextHelp label={copy.countHelp}>
-              {copy.countExplanation}
-            </ContextHelp>
-          </div>
-          <dl className={styles.metrics}>
-            {[
-              [copy.totalAssets, assets.totalAssetCount],
-              [copy.knownRecords, assets.knownRecordCount],
-              [copy.knownFeatures, assets.knownFeatureCount],
-              [copy.unknownAssets, assets.unknownAssetCount],
-              [copy.independentObservations, copy.notEstablished],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
+          <section
+            className={styles.savedSection}
+            aria-label={copy.facts.title}
+          >
+            <h3>{copy.facts.title}</h3>
+            <div className={styles.summaryHeader}>
+              <span>{copy.parseStatus}</span>
+              <strong className={styles.status} data-state={assets.status}>
+                {copy.statuses[assets.status]}
+              </strong>
+              <ContextHelp label={copy.countHelp}>
+                {copy.countExplanation}
+              </ContextHelp>
+            </div>
+            <dl className={styles.metrics}>
+              {[
+                [copy.totalAssets, assets.totalAssetCount],
+                [copy.knownRecords, assets.knownRecordCount],
+                [copy.knownFeatures, assets.knownFeatureCount],
+                [copy.unknownAssets, assets.unknownAssetCount],
+                [copy.independentObservations, copy.notEstablished],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <dl className={styles.metrics}>
+              {[
+                [copy.facts.loadedAssets, assets.assets.length],
+                [
+                  copy.facts.loadedRecords,
+                  records === null
+                    ? copy.facts.notLoaded
+                    : records.records.length,
+                ],
+                [
+                  copy.facts.loadedGeometry,
+                  geometry === null
+                    ? copy.facts.notLoaded
+                    : geometry.features.length,
+                ],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className={styles.supporting}>{copy.facts.scope}</p>
+            <p>{copy.facts.cleaningUnknown}</p>
+            <p>{copy.facts.qualityUnknown}</p>
+            <p>{copy.facts.densityUnknown}</p>
+            <p>{copy.facts.useUnknown}</p>
+            <details>
+              <summary>{copy.facts.parserDetails}</summary>
+              <dl className={styles.technical}>
+                <dt>{copy.parserVersion}</dt>
+                <dd>{assets.parserVersion}</dd>
+              </dl>
+              <h3>{copy.facts.columns}</h3>
+              {records === null ? (
+                <p>{copy.facts.notLoaded}</p>
+              ) : records.columns.length === 0 ? (
+                <p>{copy.facts.noColumns}</p>
+              ) : (
+                <ul className={styles.assetList}>
+                  {records.columns.map((column) => (
+                    <li key={column.key}>
+                      <span>{column.label}</span>
+                      <code>{column.key}</code>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          </section>
           <div
             className={styles.tabs}
             role="tablist"
@@ -1282,147 +1343,153 @@ function CandidateSession({
               </aside>
             ) : null}
           </div>
-          <section className={styles.savedSection} aria-label={copy.saveTitle}>
-            <div className={styles.summaryHeader}>
-              <h3>{copy.saveTitle}</h3>
-              <ContextHelp label={copy.saveHelp}>
-                {copy.saveExplanation}
-              </ContextHelp>
-            </div>
-            {openedView ? (
-              <div className={styles.actions}>
-                <span>
-                  {copy.fixedReferences}: {manifest.length}
-                </span>
-                <a
-                  href={`/${locale}/data-foundation/ingestions/${fixed.ingestionId.toLowerCase()}?candidateView=${openedView.savedView.viewId.toLowerCase()}`}
-                >
-                  {copy.savedLink}
-                </a>
-              </div>
-            ) : null}
-            {openedView?.viewSpec.map || openedView?.viewSpec.period ? (
-              <>
-                {openedView.viewSpec.map?.camera ? (
-                  <p className={styles.notice}>
-                    {mapGeometry?.features.length &&
-                    cameraRestore?.drawingKey &&
-                    cameraRestore.drawingKey === geometryDrawingKey(mapGeometry)
-                      ? copy.cameraRestored
-                      : copy.cameraNotApplied}
-                  </p>
-                ) : null}
-                {openedView.viewSpec.map?.layers ||
-                openedView.viewSpec.period ? (
-                  <p className={styles.notice}>{copy.displayNotApplied}</p>
-                ) : null}
-                <details>
-                  <summary>{copy.retainedDisplay}</summary>
-                  <pre>
-                    {JSON.stringify(
-                      {
-                        map: openedView.viewSpec.map,
-                        period: openedView.viewSpec.period,
-                      },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </details>
-              </>
-            ) : null}
-            <form
-              className={styles.saveForm}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void saveCurrent();
-              }}
+          {readOnly ? null : (
+            <section
+              className={styles.savedSection}
+              aria-label={copy.saveTitle}
             >
-              <label>
-                {copy.viewName}
-                <input
-                  type="text"
-                  value={viewName}
-                  maxLength={160}
-                  onChange={(event) => setViewName(event.target.value)}
-                />
-              </label>
-              <label>
-                {copy.visibility}
-                <select
-                  value={visibility}
-                  onChange={(event) =>
-                    setVisibility(event.target.value as 'private' | 'project')
+              <div className={styles.summaryHeader}>
+                <h3>{copy.saveTitle}</h3>
+                <ContextHelp label={copy.saveHelp}>
+                  {copy.saveExplanation}
+                </ContextHelp>
+              </div>
+              {openedView ? (
+                <div className={styles.actions}>
+                  <span>
+                    {copy.fixedReferences}: {manifest.length}
+                  </span>
+                  <a
+                    href={`/${locale}/data-foundation/ingestions/${fixed.ingestionId.toLowerCase()}?candidateView=${openedView.savedView.viewId.toLowerCase()}`}
+                  >
+                    {copy.savedLink}
+                  </a>
+                </div>
+              ) : null}
+              {openedView?.viewSpec.map || openedView?.viewSpec.period ? (
+                <>
+                  {openedView.viewSpec.map?.camera ? (
+                    <p className={styles.notice}>
+                      {mapGeometry?.features.length &&
+                      cameraRestore?.drawingKey &&
+                      cameraRestore.drawingKey ===
+                        geometryDrawingKey(mapGeometry)
+                        ? copy.cameraRestored
+                        : copy.cameraNotApplied}
+                    </p>
+                  ) : null}
+                  {openedView.viewSpec.map?.layers ||
+                  openedView.viewSpec.period ? (
+                    <p className={styles.notice}>{copy.displayNotApplied}</p>
+                  ) : null}
+                  <details>
+                    <summary>{copy.retainedDisplay}</summary>
+                    <pre>
+                      {JSON.stringify(
+                        {
+                          map: openedView.viewSpec.map,
+                          period: openedView.viewSpec.period,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </details>
+                </>
+              ) : null}
+              <form
+                className={styles.saveForm}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveCurrent();
+                }}
+              >
+                <label>
+                  {copy.viewName}
+                  <input
+                    type="text"
+                    value={viewName}
+                    maxLength={160}
+                    onChange={(event) => setViewName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  {copy.visibility}
+                  <select
+                    value={visibility}
+                    onChange={(event) =>
+                      setVisibility(event.target.value as 'private' | 'project')
+                    }
+                  >
+                    <option value="private">{copy.private}</option>
+                    <option value="project">{copy.project}</option>
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  disabled={
+                    busy ||
+                    !viewName.trim() ||
+                    (tab !== 'originals' &&
+                      (!assetId || (tab === 'records' ? !records : !geometry)))
                   }
                 >
-                  <option value="private">{copy.private}</option>
-                  <option value="project">{copy.project}</option>
-                </select>
-              </label>
-              <button
-                type="submit"
-                disabled={
-                  busy ||
-                  !viewName.trim() ||
-                  (tab !== 'originals' &&
-                    (!assetId || (tab === 'records' ? !records : !geometry)))
-                }
-              >
-                {copy.save}
-              </button>
-            </form>
-            {savedMessage ? <p role="status">{savedMessage}</p> : null}
-            <div className={styles.summaryHeader}>
-              <h3>{copy.savedList}</h3>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void loadSaved()}
-              >
-                {copy.loadSaved}
-              </button>
-            </div>
-            {saved ? (
-              <>
-                <ul className={styles.assetList}>
-                  {saved.items.map((view) => (
-                    <li key={view.viewId}>
-                      <strong>{view.title}</strong>
-                      <span>{copy[view.visibility]}</span>
-                      <div className={styles.actions}>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void openSaved(view.viewId)}
-                        >
-                          {copy.openSaved}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void revokeSaved(view.viewId)}
-                        >
-                          {copy.revokeSaved}
-                        </button>
-                        <ContextHelp label={copy.revokeHelp}>
-                          {copy.revokeExplanation}
-                        </ContextHelp>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                {saved.items.length === 0 ? <p>{copy.savedEmpty}</p> : null}
-                {pager(
-                  savedNav,
-                  saved.nextCursor,
-                  undefined,
-                  copy.previousSaved,
-                  copy.nextSaved,
-                  loadSaved,
-                )}
-              </>
-            ) : null}
-          </section>
+                  {copy.save}
+                </button>
+              </form>
+              {savedMessage ? <p role="status">{savedMessage}</p> : null}
+              <div className={styles.summaryHeader}>
+                <h3>{copy.savedList}</h3>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void loadSaved()}
+                >
+                  {copy.loadSaved}
+                </button>
+              </div>
+              {saved ? (
+                <>
+                  <ul className={styles.assetList}>
+                    {saved.items.map((view) => (
+                      <li key={view.viewId}>
+                        <strong>{view.title}</strong>
+                        <span>{copy[view.visibility]}</span>
+                        <div className={styles.actions}>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void openSaved(view.viewId)}
+                          >
+                            {copy.openSaved}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void revokeSaved(view.viewId)}
+                          >
+                            {copy.revokeSaved}
+                          </button>
+                          <ContextHelp label={copy.revokeHelp}>
+                            {copy.revokeExplanation}
+                          </ContextHelp>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {saved.items.length === 0 ? <p>{copy.savedEmpty}</p> : null}
+                  {pager(
+                    savedNav,
+                    saved.nextCursor,
+                    undefined,
+                    copy.previousSaved,
+                    copy.nextSaved,
+                    loadSaved,
+                  )}
+                </>
+              ) : null}
+            </section>
+          )}
           <details>
             <summary>{copy.technical}</summary>
             <dl className={styles.technical}>

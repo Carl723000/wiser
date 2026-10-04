@@ -1472,3 +1472,166 @@ describe('narrow spatial reading panes', () => {
     );
   });
 });
+
+describe('first-screen effective scope', () => {
+  it.each([
+    ['zh-CN', zh, '当前筛选条件', '检索：潮白', '排除时间未知', '资料图层：'],
+    [
+      'en',
+      en,
+      'Active filters',
+      'Search: 潮白',
+      'Unknown time excluded',
+      'Material layers:',
+    ],
+  ] as const)(
+    'keeps applied search, layers, undated exclusion and rectangle readable with filters closed in %s',
+    (locale, copy, summaryLabel, searchLabel, undatedLabel, layerLabel) => {
+      render(<SpatialWorkspace pack={pack} locale={locale} copy={copy} />);
+      const disclosure = screen.getByText(copy.filters).closest('details');
+      if (!disclosure) throw new Error('Missing filter disclosure');
+      disclosure.open = true;
+      fireEvent.change(screen.getByLabelText(copy.recordSearch), {
+        target: { value: '  潮白  ' },
+      });
+      fireEvent.click(screen.getByLabelText(copy.includeUndated));
+      fireEvent.click(screen.getByLabelText(copy.kinds.policy));
+      fireEvent.change(screen.getByLabelText(copy.bbox), {
+        target: { value: '116,39,117,40' },
+      });
+      expect(
+        screen.queryByRole('group', { name: summaryLabel })?.textContent ?? '',
+      ).not.toContain('116, 39, 117, 40');
+      fireEvent.click(screen.getByRole('button', { name: copy.applyBounds }));
+      disclosure.open = false;
+      const summary = screen.getByRole('group', { name: summaryLabel });
+      expect(summary.closest('details')).toBeNull();
+      for (const label of [
+        searchLabel,
+        undatedLabel,
+        layerLabel,
+        copy.bbox,
+        '116, 39, 117, 40',
+      ])
+        expect(summary.textContent).toContain(label);
+      expect(summary.textContent).not.toContain(copy.kinds.policy);
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+        '1',
+      );
+      disclosure.open = true;
+      const layerChecks = within(disclosure).getByRole('group', {
+        name: copy.layers,
+      });
+      for (const checkbox of within(layerChecks).getAllByRole('checkbox')) {
+        if (checkbox instanceof HTMLInputElement && checkbox.checked)
+          fireEvent.click(checkbox);
+      }
+      disclosure.open = false;
+      expect(summary.textContent).toContain(
+        locale === 'zh-CN' ? '未选择资料图层' : 'No material layers selected',
+      );
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+        '0',
+      );
+      fireEvent.change(screen.getByLabelText(copy.recordSearch), {
+        target: { value: '   ' },
+      });
+      expect(summary.textContent).not.toContain(searchLabel);
+      disclosure.open = true;
+      fireEvent.click(screen.getByRole('button', { name: copy.clearFilters }));
+      disclosure.open = false;
+      expect(screen.queryByRole('group', { name: summaryLabel })).toBeNull();
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+        '2',
+      );
+    },
+  );
+
+  it.each([
+    ['zh-CN', zh, '月份窗口', '日期窗口'],
+    ['en', en, 'Month window', 'Date window'],
+  ] as const)(
+    'distinguishes existing month and exact day reading windows with identical filter boundaries in %s',
+    (locale, copy, monthLabel, dayLabel) => {
+      const monthlyRecord = {
+        ...sampleRecord,
+        time: {
+          start: '2023-04',
+          end: '2023-04',
+          precision: 'month' as const,
+          role: 'observation' as const,
+        },
+      };
+      const data = { ...pack, records: [monthlyRecord] };
+      const common = {
+        regionId: 'bth' as const,
+        needId: null,
+        dateRole: 'OBSERVATION' as const,
+        tab: 'spatial' as const,
+        pane: 'map' as const,
+        source: null,
+        selection: null,
+      };
+      const { rerender } = render(
+        <SpatialWorkspace
+          pack={data}
+          locale={locale}
+          copy={copy}
+          readingState={{
+            ...common,
+            monthWindow: { start: '2023-04', end: '2023-04' },
+          }}
+        />,
+      );
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).toContain(monthLabel);
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).toContain('2023-04 — 2023-04');
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+        '1',
+      );
+      expect(screen.getByLabelText<HTMLInputElement>(copy.from).value).toBe(
+        '2023-04-01',
+      );
+      expect(screen.getByLabelText<HTMLInputElement>(copy.to).value).toBe(
+        '2023-04-30',
+      );
+      fireEvent.change(screen.getByLabelText(copy.from), {
+        target: { value: '2023-04-02' },
+      });
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).toContain(dayLabel);
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).not.toContain(monthLabel);
+      rerender(
+        <SpatialWorkspace
+          pack={data}
+          locale={locale}
+          copy={copy}
+          readingState={{
+            ...common,
+            monthWindow: null,
+            dayWindow: { start: '2023-04-01', end: '2023-04-30' },
+          }}
+        />,
+      );
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).toContain(dayLabel);
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).toContain('2023-04-01 — 2023-04-30');
+      expect(
+        screen.getByTestId('workspace-current-period').textContent,
+      ).not.toContain(monthLabel);
+      expect(screen.getByTestId('spatial-record-count').textContent).toContain(
+        '1',
+      );
+      expect(data.records[0].time.precision).toBe('month');
+    },
+  );
+});

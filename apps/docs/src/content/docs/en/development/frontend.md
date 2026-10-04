@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 1e8347da
+lastReviewedCommit: 82f7440e9519043fb5ffe2ed4c93e6165726b487
 ---
 
 ## Two frontend applications
@@ -278,7 +278,7 @@ The account control links to `/[locale]/account/agents` for the current user’s
 
 ## Local multi-region material workspace
 
-`/{locale}/data-foundation/spatial-workspace` is a local processing and reading workbench, never fallback data for a failed Data API read. It reuses the WISER shell, locales, themes and map components and consumes validated local source versions, evidence locators, times and location candidates. It does not change managed material identity, approval or publication.
+Without candidate navigation, `/{locale}/data-foundation/spatial-workspace` is a local processing and reading workbench, never fallback data for a failed Data API read. It reuses the WISER shell, locales, themes and map components and consumes validated local source versions, evidence locators, times and location candidates. It does not change managed material identity, approval or publication.
 
 Enabling requires non-production, `WISER_AUTH_MODE=off`, `WISER_SPATIAL_WORKSPACE_MODE=local` and a loopback Host. `WISER_SPATIAL_INPUT_MANIFEST` names an absolute JSON path. Missing input, malformed input and inconsistent versions have separate closed states; no fixture fallback is permitted. This configuration is for a scoped development preview, not target deployment.
 
@@ -320,6 +320,10 @@ The candidate-original Web route `/api/data-foundation/candidate-assets/:ingesti
 
 ### Intake candidate reader
 
+Current intake detail links its complete candidate to the existing `spatial-workspace` route using only `candidateIngestionId`, `candidateProcessingBatchId` and `candidateReviewHash`. The server accepts a single complete tuple, rejects mixed local/saved query state, then calls the authenticated, Project-scoped `ingestionDetail`. It mounts the same keyed candidate reader in readonly mode only if the returned current tuple and intake match exactly. Missing/replaced candidates and denied access never call the local pack loader; sign-in preserves the validated complete destination. This entry reads existing get/records/geometry/original paths, offers no saved-view actions and does not manufacture a published version, enumerate a Project, or supply matrix/month/topic projections.
+
+The shared reader groups processing facts from its current authorized owner: exact batch-known totals, loaded originals/records/geometry counts, parser status/version and current record-page declared columns. Unread pages remain unread, not zero. Cleaning and human quality-control responsibility, sampling density and professional fitness for use remain unestablished because these read contracts do not provide their evidence. Reference replacements, late replies, denial and stale reads clear these facts together with existing content. Isolated page/component tests do not establish a live HTTP chain, authenticated originals or browser layout acceptance.
+
 `ingestions/[ingestionId]` uses strict `ingestionDetail` 1.2; it forwards the nullable complete candidate reference, never a fabricated published version. The optional `candidateView` query accepts one UUID and remains in the validated login destination. The client reader calls only same-origin candidate get/records/geometry and saved-view create/list/open/revoke BFFs. Strict shared schemas, full-reference/asset/page checks, streamed fatal-UTF-8 JSON budgets (3 MiB material, 128 KiB save), cancellation and safe errors guard replies. Changes of reference remount/cancel the previous owner; current denial clears content and titles.
 
 The existing `project` visibility is labelled “Me and authorized independent reviewers”, not all project members. The saved-scope help explains that every candidate still requires current access and sharing grants no material permission; enum values, service authorization and saved-query contracts are unchanged.
@@ -331,3 +335,7 @@ Reopen uses the service's fresh request, verifies the whole saved manifest again
 The native raster panel names the four exact retained TIFFs as derived input imagery and visibly retains their unverified conversion lineage. B03/B8A columns show encoded file values, not physical reflectance: product scale and offset have not been verified. The SCL filter identifier is user-entered, not a professionally reviewed quality-rule version. Shared contextual help explains source/value semantics, the fixed-input `all_valid` mask basis and projected-area limits without changing hashes, values, filters or reading authority.
 
 The local readiness panel presents a keyboard-operable six-range by19-demand matrix and a declared-use selector. Selecting one cell changes the existing region/demand scope and closes stale details. Shared memoized rule results retain visible record identities, real/synthetic separation and withdrawn-source filtering. The existing question cards and bounded detail pages remain available. Original inventory and current-window row counts are separate; source registration outside the chosen month does not falsely become missing material. This UI changes no public query or persistence contract. Real session, database and browser acceptance remain separate.
+
+The pure `spatial-monthly-readout.ts` adapter consumes only the already filtered `ProjectReadinessResult` monthly rows, records and classified values. Joins use `readinessRecordKey`, never a source-local record ID. UI navigation checks `materialReference` work/version/original-asset references against the current record source/version, and requires a unique current ID before calling the existing record-selection callback. Initial month/value lists are bounded and reveal exact shown/full counts. Unknown time entries stay outside month cells. No core time, authority, saved-view, public query or permission contract changes are introduced. Focused component/type checks remain separate from full verification and real browser acceptance.
+
+The local spatial scope strip reads non-default filter chips from the active view, not the rectangle input draft. Month-window labelling reuses the existing reading state only while its expanded bounds still match; changed exact dates use a date-window label. No URL or time-role contract changes. Displayed public references derive deduplicated attribution links from their existing metadata on both renderers. Zoom and camera controls expose named groups without introducing toolbar arrow semantics. Focused component regressions cover these states; actual browser acceptance remains a separate step.

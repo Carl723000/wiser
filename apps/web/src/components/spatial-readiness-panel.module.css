@@ -341,3 +341,111 @@
 .uses [data-use-state='BLOCKED'] {
   color: var(--warning);
 }
+
+.monthlyReadout {
+  min-inline-size: 0;
+  margin-block: 18px;
+}
+.monthlyReadout h4 {
+  margin-block: 0 10px;
+}
+.monthlyReadoutScroll {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: 36rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.monthlyReadoutScroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.monthlyReadoutScroll table {
+  border-collapse: separate;
+  border-spacing: 0;
+  inline-size: 100%;
+}
+.monthlyReadoutScroll thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--surface-raised);
+}
+.monthlyReadoutScroll tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  min-inline-size: 8rem;
+  max-inline-size: 11rem;
+  background: var(--surface-raised);
+}
+.monthlyReadoutScroll td {
+  vertical-align: top;
+}
+.monthlyCells {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.monthlyCells > div {
+  flex: 0 0 14rem;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+.monthlyCells h5 {
+  margin-block: 0 8px;
+  font-size: 16px;
+}
+.monthlyCells p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.monthlyCells [data-readout-state='MISSING'] {
+  border-inline-start: 3px solid var(--warning);
+}
+.monthlyCells [data-readout-state='UNKNOWN'] {
+  border-inline-start: 3px solid var(--border-strong);
+}
+.monthlyValues {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.monthlyValues > li {
+  min-inline-size: 0;
+  padding-block-end: 8px;
+  border-block-end: 1px solid var(--border);
+}
+.monthlyValues button {
+  inline-size: 100%;
+  min-block-size: 44px;
+  scroll-margin-inline: 12rem;
+}
+.monthlyValues li > div span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.monthlyValues a {
+  display: inline-block;
+  margin-block-start: 6px;
+}
+.monthlyValues dl {
+  margin-block: 6px;
+  font-size: 13px;
+}
+.monthlyValues dd {
+  margin-inline-start: 0;
+}
+.monthlyValues dl p {
+  margin-block: 4px;
+}
+.monthlyReadout > button {
+  min-block-size: 44px;
+  margin-block-start: 10px;
+  margin-inline-end: 8px;
+}

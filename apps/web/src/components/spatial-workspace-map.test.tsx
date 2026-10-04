@@ -765,3 +765,57 @@ it('places retained imagery at its four WGS84 corners without loading a public i
   );
   expect(probe.images).toHaveLength(0);
 });
+
+it.each([true, false])(
+  'keeps actual reference attribution visible on the %s WebGL surface while licensing details are closed',
+  (webGLAvailable) => {
+    render(
+      <SpatialWorkspaceMap
+        {...props}
+        webGLAvailable={webGLAvailable}
+        publicReferences={publicReferences}
+      />,
+    );
+    const canvas = screen.getByTestId('spatial-geographic-map');
+    const attribution = within(canvas).getByRole('link', {
+      name: '© OpenStreetMap contributors · ODbL 1.0',
+    });
+    expect(attribution.getAttribute('href')).toBe(
+      'https://www.openstreetmap.org/copyright',
+    );
+    expect(
+      within(canvas).getAllByRole('link', {
+        name: '© OpenStreetMap contributors · ODbL 1.0',
+      }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(copy.publicReferenceEvidence).closest('details')?.open,
+    ).toBe(false);
+    for (const label of Object.values(copy.publicReferenceKinds))
+      fireEvent.click(screen.getByLabelText(label));
+    expect(
+      within(canvas).queryByRole('link', {
+        name: '© OpenStreetMap contributors · ODbL 1.0',
+      }),
+    ).toBeNull();
+    expect(webGLAvailable ? probe.source : null).toEqual(
+      webGLAvailable ? features : null,
+    );
+  },
+);
+
+it('does not attribute absent reference geometry or turn camera controls into an unsupported toolbar', () => {
+  render(<SpatialWorkspaceMap {...props} publicReferences={null} />);
+  expect(
+    within(screen.getByTestId('spatial-geographic-map')).queryByRole('link'),
+  ).toBeNull();
+  const groups = screen.getAllByRole('group', { name: copy.mapTitle });
+  expect(groups).toHaveLength(2);
+  expect(
+    within(groups[0]).getByRole('button', { name: copy.zoomIn }),
+  ).toBeTruthy();
+  expect(
+    within(groups[1]).getByRole('button', { name: copy.panWest }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('toolbar', { name: copy.mapTitle })).toBeNull();
+});

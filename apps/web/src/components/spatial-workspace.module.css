@@ -354,6 +354,8 @@
   z-index: 1;
 }
 .mapReference {
+  max-width: calc(100% - 1rem);
+  overflow-wrap: anywhere;
   position: absolute;
   bottom: 0.5rem;
   left: 0.5rem;
@@ -364,6 +366,15 @@
   border: 1px solid var(--border);
   border-radius: 0.3rem;
   pointer-events: none;
+}
+.mapReference a {
+  display: block;
+  color: var(--accent-strong);
+  pointer-events: auto;
+}
+.mapReference a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .overlapPicker {
   display: grid;
@@ -655,6 +666,23 @@
 }
 .scopeBar .filters[open] {
   flex-basis: 100%;
+}
+.activeFilters {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.filterChip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  padding: 0.25rem 0.45rem;
+  font-size: 0.8rem;
 }
 .filterScope {
   display: block;

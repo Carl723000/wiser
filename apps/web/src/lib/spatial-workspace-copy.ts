@@ -8,6 +8,13 @@ export interface SpatialWorkspaceCopy {
   backToRegion: string;
   navigationOnly: string;
   filters: string;
+  activeFilters: string;
+  searchFilter: string;
+  layerFilter: string;
+  noLayers: string;
+  excludeUndated: string;
+  monthWindow: string;
+  dayWindow: string;
   from: string;
   to: string;
   timeRole: string;

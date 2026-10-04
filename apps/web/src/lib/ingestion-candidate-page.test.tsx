@@ -72,10 +72,23 @@ it('uses ingestion detail 1.2 and passes the complete candidate without changing
     ingestionId,
   });
   expect(markup).toContain('Review required');
+  const document = new URL(
+    markup
+      .match(/href="([^"]*spatial-workspace[^"]*)"/)?.[1]
+      ?.replaceAll('&amp;', '&') ?? '',
+    'https://example.invalid',
+  );
+  expect(document.searchParams.get('candidateIngestionId')).toBe(ingestionId);
+  expect(document.searchParams.get('candidateProcessingBatchId')).toBe(
+    reference.processingBatchId,
+  );
+  expect(document.searchParams.get('candidateReviewHash')).toBe(
+    reference.reviewHash,
+  );
 });
 it('keeps a null candidate reference and forwards only a valid persisted view identifier', async () => {
   mocks.detail.mockResolvedValue({ ingestion, candidateReference: null });
-  renderToStaticMarkup(
+  const markup = renderToStaticMarkup(
     await Page({
       params,
       searchParams: Promise.resolve({ candidateView: viewId }),
@@ -87,6 +100,7 @@ it('keeps a null candidate reference and forwards only a valid persisted view id
     savedViewId: viewId,
     ingestionId,
   });
+  expect(markup).not.toContain('Open current candidate workspace');
 });
 it.each(['not-a-uuid', [viewId, viewId]])(
   'rejects invalid or duplicate saved-view parameters before reading intake',

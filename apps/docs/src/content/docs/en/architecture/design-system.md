@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 1e8347da
+lastReviewedCommit: 82f7440e9519043fb5ffe2ed4c93e6165726b487
 ---
 
 ## Design direction
@@ -154,3 +154,7 @@ Candidate tabs have stable labelled panels. The inactive map stays mounted but h
 The readiness matrix uses sticky row/column labels inside a bounded scroll area. All114 geographic-demand cells retain text for four independent information axes and their use verdict, with semantic color as a supplementary cue. Unknown visible coverage is not a global absence claim. Cell selection is keyboard-operable and pressed state names the exact region/demand. Context help explains overlap, current display scope and professional-review limits; ordinary labels remain concise.
 
 The matrix reuses the question details' current fixed-copy canonicalization, including multiple copy links verified by the same version and original hash. Source copies count once without merging objects or original record identities. A parent-controlled region always follows the current parent selection, including a return to the previous overview; a standalone panel can still select a cell locally. Positive month-window counts require the selected date role, declared month/day precision and a valid complete native date; unknown or unsupported dates remain in historical evidence without changing their values. These local regression checks do not establish real Auth or browser acceptance.
+
+Monthly original-value reading uses named, keyboard-focusable internal scrolling with a fixed object column. Text identifies the existing category, range, dry, unmonitored, null, empty, numeric and other-text kinds; color is supplementary. Original source values and valid zero remain unchanged. The initial view mounts at most12 months and40 values per cell or unknown-month list for each of the current40 object rows. Local reveal controls state shown/full counts; the original coverage table also bounds its collapsed record content. Full technical references remain in named disclosures.
+
+Applied non-default spatial filters remain readable as wrapping text chips above the map when full controls are closed. Search, selected material layers (including an empty selection), unknown-time exclusion and the applied rectangle use the actual view state; unsubmitted rectangle text is not an active condition. Existing month and exact-date windows have distinct labels without changing native dates. Displayed public reference geometry retains a deduplicated source attribution link on both WebGL and planar canvases; absent or hidden references receive no fabricated attribution. Camera controls use named groups, with their existing individual keyboard actions unchanged.

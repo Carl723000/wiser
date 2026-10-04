@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   readinessRecordKey,
   type ProjectReadinessInput,
+  type ReadinessValueKind,
 } from '@wiser/data-core/project-readiness';
 import {
   buildReadiness,
@@ -23,6 +24,7 @@ import type {
   Material,
   RegionId,
   WorkspacePack,
+  WorkspaceRecord,
 } from '../lib/spatial-workspace-contract';
 import {
   buildReadinessMatrix,
@@ -30,6 +32,10 @@ import {
   type MatrixAxis,
 } from '../lib/spatial-readiness-matrix';
 import { ContextHelp } from './context-help';
+import {
+  buildMonthlyReadout,
+  type MonthlyReadoutEntry,
+} from '../lib/spatial-monthly-readout';
 import styles from './spatial-readiness-panel.module.css';
 
 export interface ReadinessCopy {
@@ -94,6 +100,22 @@ export interface ReadinessCopy {
   hypotheticalNote: string;
   presentMonth: string;
   missingMonth: string;
+  monthlyValuesTitle: string;
+  monthlyValuesScroll: string;
+  monthlyNull: string;
+  monthlyMissingReason: string;
+  monthlyCoverageUnknown: string;
+  monthlyUnknownTime: string;
+  monthlyBindingUnavailable: string;
+  monthlyReferenceUnavailable: string;
+  monthlyOutsideWindow: string;
+  monthlyMoreMonths: string;
+  monthlyMoreValues: string;
+  monthlyMonthsCount: string;
+  monthlyValuesCount: string;
+  monthlyNumericNumber: string;
+  monthlyNumericText: string;
+  monthlyValueKinds: Record<ReadinessValueKind, string>;
   taskKinds: Record<'CLEANING' | 'QUALITY_CONTROL', string>;
   factStates: Record<string, string>;
   matrixTitle: string;
@@ -176,6 +198,8 @@ export function SpatialReadinessPanel({
     scope: string;
   } | null>(null);
   const [limit, setLimit] = useState(pageSize);
+  const [monthLimit, setMonthLimit] = useState(12);
+  const [valueLimit, setValueLimit] = useState(pageSize);
   const [coverageMode, setCoverageMode] = useState<
     'raw' | 'approved' | 'hypothetical'
   >('raw');
@@ -269,9 +293,47 @@ export function SpatialReadinessPanel({
       ? result.questions.find((question) => question.id === opened.id)
       : null;
   const rows = result.project.monthly[coverageMode];
+  const currentRecordById = useMemo(() => {
+    const records = new Map<string, WorkspaceRecord | null>();
+    for (const record of result.records) {
+      records.set(record.id, records.has(record.id) ? null : record);
+    }
+    return records;
+  }, [result.records]);
+  const currentSourceByVersion = useMemo(() => {
+    const sources = new Map<string, Material | null>();
+    for (const source of pack.sources) {
+      if (!source.rights.displayAllowed) continue;
+      const key = JSON.stringify([source.id, source.versionId]);
+      sources.set(key, sources.has(key) ? null : source);
+    }
+    return sources;
+  }, [pack.sources]);
+  const monthlyRows = useMemo(
+    () => buildMonthlyReadout(result.project, coverageMode),
+    [result.project, coverageMode],
+  );
+  const maximumMonths = monthlyRows.reduce(
+    (count, row) => Math.max(count, row.cells.length),
+    0,
+  );
+  const maximumValues = monthlyRows.reduce(
+    (count, row) =>
+      Math.max(
+        count,
+        row.unknownTimeEntries.length,
+        row.unresolvedRecordKeys.length +
+          row.unknownTimeEntries.length +
+          row.cells.reduce((count, cell) => count + cell.entries.length, 0),
+        ...row.cells.map((cell) => cell.entries.length),
+      ),
+    0,
+  );
   function open(id: ReadinessQuestionId) {
     setOpened({ id, needId, regionId: activeRegion, scope });
     setLimit(pageSize);
+    setMonthLimit(12);
+    setValueLimit(pageSize);
     setCoverageMode('raw');
     // The section remains in the document; keyboard users can continue at its heading.
     if (typeof requestAnimationFrame === 'function')
@@ -298,16 +360,19 @@ export function SpatialReadinessPanel({
       window: { start: startMonth, end: endMonth },
     });
   }
-  function recordButton(id: string) {
-    const record = result.records.find((item) => item.id === id);
+  function recordButton(id: string, expectedRecordKey?: string) {
+    const record = currentRecordById.get(id);
     if (!record) return null;
-    const source = pack.sources.find(
-      (item) =>
-        item.id === record.sourceId &&
-        item.versionId === record.versionId &&
-        item.rights.displayAllowed,
+    const source = currentSourceByVersion.get(
+      JSON.stringify([record.sourceId, record.versionId]),
     );
-    if (!source) return null;
+    if (
+      !source ||
+      (expectedRecordKey !== undefined &&
+        readinessRecordKey({ id, source: materialReference(source) }) !==
+          expectedRecordKey)
+    )
+      return null;
     const fact = result.project.records.find((item) => item.id === id);
     return (
       <button
@@ -327,6 +392,97 @@ export function SpatialReadinessPanel({
               : record.value}
         </span>
       </button>
+    );
+  }
+  function shownCount(template: string, shown: number, total: number) {
+    return template
+      .replace('{shown}', String(shown))
+      .replace('{total}', String(total));
+  }
+  function monthlyValue(entry: MonthlyReadoutEntry) {
+    // The existing callback accepts one workspace ID. Never choose a first
+    // match when that ID or its original-source binding is ambiguous.
+    const record = currentRecordById.get(entry.record.id);
+    const source = record
+      ? currentSourceByVersion.get(
+          JSON.stringify([record.sourceId, record.versionId]),
+        )
+      : undefined;
+    const resolved =
+      record &&
+      source &&
+      readinessRecordKey({
+        id: record.id,
+        source: materialReference(source),
+      }) === entry.recordKey &&
+      readinessRecordKey(entry.record) === entry.recordKey;
+    const content = (
+      <>
+        <strong>
+          {entry.value.raw === null
+            ? copy.monthlyNull
+            : entry.value.raw === ''
+              ? copy.emptyValue
+              : entry.value.raw}
+        </strong>
+        <span>
+          {copy.monthlyValueKinds[entry.value.kind]}
+          {entry.value.kind === 'NUMERIC' && (
+            <>
+              {' '}
+              ·{' '}
+              {typeof entry.value.raw === 'number'
+                ? copy.monthlyNumericNumber
+                : copy.monthlyNumericText}
+            </>
+          )}
+        </span>
+        {resolved && <span>{source.title}</span>}
+      </>
+    );
+    return (
+      <li key={entry.recordKey} data-readout-value-kind={entry.value.kind}>
+        {resolved ? (
+          <button
+            type="button"
+            onClick={() => onSelectRecord?.(record.id)}
+            disabled={!onSelectRecord}
+          >
+            {content}
+          </button>
+        ) : (
+          <div>
+            {content}
+            <p data-testid="readiness-monthly-unresolved-selection">
+              {copy.monthlyBindingUnavailable}
+            </p>
+          </div>
+        )}
+        {resolved && sourceHref && (
+          <a href={sourceHref(source.id, source.versionId)}>{copy.evidence}</a>
+        )}
+        <details>
+          <summary>{copy.technicalDetails}</summary>
+          <dl>
+            <dt>{copy.grains.WORK}</dt>
+            <dd>{entry.record.source.workId}</dd>
+            <dt>{copy.grains.VERSION}</dt>
+            <dd>{entry.record.source.versionId}</dd>
+            <dt>{copy.grains.ASSET}</dt>
+            <dd>{entry.record.source.assetId}</dd>
+            <dt>{copy.grains.RECORD}</dt>
+            <dd>{entry.record.id}</dd>
+            <dt>{copy.evidence}</dt>
+            <dd>
+              {entry.record.evidence.map((evidence, index) => (
+                <p key={`${index}:${evidence.locator}`}>
+                  {evidence.locator} · {evidence.excerpt}
+                </p>
+              ))}
+            </dd>
+          </dl>
+        </details>
+      </li>
     );
   }
   return (
@@ -653,6 +809,8 @@ export function SpatialReadinessPanel({
                         onClick={() => {
                           setCoverageMode(mode);
                           setLimit(pageSize);
+                          setMonthLimit(12);
+                          setValueLimit(pageSize);
                         }}
                       >
                         {copy.coverageModes[mode]}
@@ -662,6 +820,133 @@ export function SpatialReadinessPanel({
                 {coverageMode === 'hypothetical' && (
                   <p role="status">{copy.hypotheticalNote}</p>
                 )}
+                <section
+                  className={styles.monthlyReadout}
+                  aria-label={copy.monthlyValuesTitle}
+                  data-testid="readiness-monthly-values"
+                >
+                  <h4>{copy.monthlyValuesTitle}</h4>
+                  <div
+                    className={styles.monthlyReadoutScroll}
+                    role="region"
+                    tabIndex={0}
+                    aria-label={copy.monthlyValuesScroll}
+                  >
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>{copy.grains.SOURCE_OBJECT}</th>
+                          <th>{copy.monthlyValuesTitle}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyRows.slice(0, limit).map((row) => (
+                          <tr key={JSON.stringify(row.objectKeys)}>
+                            <th scope="row">{row.originalNames.join(' ↔ ')}</th>
+                            <td>
+                              {!row.coverageKnown && (
+                                <p>{copy.monthlyCoverageUnknown}</p>
+                              )}
+                              {row.cells.length > monthLimit && (
+                                <p>
+                                  {shownCount(
+                                    copy.monthlyMonthsCount,
+                                    monthLimit,
+                                    row.cells.length,
+                                  )}
+                                </p>
+                              )}
+                              <div className={styles.monthlyCells}>
+                                {row.cells.slice(0, monthLimit).map((cell) => (
+                                  <div
+                                    key={cell.month}
+                                    data-readout-month={cell.month}
+                                    data-readout-state={cell.state}
+                                  >
+                                    <h5>{cell.month}</h5>
+                                    {cell.state === 'PRESENT' && (
+                                      <p>{copy.presentMonth}</p>
+                                    )}
+                                    {!cell.required &&
+                                      result.project.monthly.requiredMonths !==
+                                        null && (
+                                        <p>{copy.monthlyOutsideWindow}</p>
+                                      )}
+                                    {cell.state === 'PRESENT' ? (
+                                      <>
+                                        {cell.entries.length > valueLimit && (
+                                          <p>
+                                            {shownCount(
+                                              copy.monthlyValuesCount,
+                                              valueLimit,
+                                              cell.entries.length,
+                                            )}
+                                          </p>
+                                        )}
+                                        <ul className={styles.monthlyValues}>
+                                          {cell.entries
+                                            .slice(0, valueLimit)
+                                            .map(monthlyValue)}
+                                        </ul>
+                                      </>
+                                    ) : (
+                                      <p>
+                                        {cell.state === 'MISSING'
+                                          ? copy.monthlyMissingReason
+                                          : copy.monthlyCoverageUnknown}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {row.unknownTimeEntries.length > 0 && (
+                                <div data-testid="readiness-unknown-month-values">
+                                  <h5>{copy.monthlyUnknownTime}</h5>
+                                  {row.unknownTimeEntries.length >
+                                    valueLimit && (
+                                    <p>
+                                      {shownCount(
+                                        copy.monthlyValuesCount,
+                                        valueLimit,
+                                        row.unknownTimeEntries.length,
+                                      )}
+                                    </p>
+                                  )}
+                                  <ul className={styles.monthlyValues}>
+                                    {row.unknownTimeEntries
+                                      .slice(0, valueLimit)
+                                      .map(monthlyValue)}
+                                  </ul>
+                                </div>
+                              )}
+                              {row.unresolvedRecordKeys.length > 0 && (
+                                <p role="status">
+                                  {copy.monthlyReferenceUnavailable}
+                                </p>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {maximumMonths > monthLimit && (
+                    <button
+                      type="button"
+                      onClick={() => setMonthLimit(monthLimit + 12)}
+                    >
+                      {copy.monthlyMoreMonths} ({monthLimit}/{maximumMonths})
+                    </button>
+                  )}
+                  {maximumValues > valueLimit && (
+                    <button
+                      type="button"
+                      onClick={() => setValueLimit(valueLimit + pageSize)}
+                    >
+                      {copy.monthlyMoreValues} ({valueLimit}/{maximumValues})
+                    </button>
+                  )}
+                </section>
                 <div className={styles.tableScroll}>
                   <table aria-label={copy.reportWindowsLabel}>
                     <thead>
@@ -687,13 +972,28 @@ export function SpatialReadinessPanel({
                           <td>
                             <details>
                               <summary>{row.recordIds.length}</summary>
+                              {row.recordIds.length > valueLimit && (
+                                <p>
+                                  {shownCount(
+                                    copy.monthlyValuesCount,
+                                    valueLimit,
+                                    row.recordIds.length,
+                                  )}
+                                </p>
+                              )}
                               {result.project.records
                                 .filter((record) =>
                                   row.recordIds.includes(
                                     readinessRecordKey(record),
                                   ),
                                 )
-                                .map((record) => recordButton(record.id))}
+                                .slice(0, valueLimit)
+                                .map((record) =>
+                                  recordButton(
+                                    record.id,
+                                    readinessRecordKey(record),
+                                  ),
+                                )}
                             </details>
                           </td>
                         </tr>
@@ -868,7 +1168,7 @@ export function SpatialReadinessPanel({
                                   </summary>
                                   {entry.recordIds
                                     .slice(0, limit)
-                                    .map(recordButton)}
+                                    .map((id) => recordButton(id))}
                                   {entry.recordIds.length > limit && (
                                     <button
                                       type="button"

@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { WorkspacePack } from '@/lib/spatial-workspace-contract';
 import { loadLocalSpatialWorkspace } from '@/lib/spatial-workspace-local';
 import {
@@ -9,6 +9,20 @@ import {
 } from '@/lib/spatial-workspace-url-state';
 import Page from './[locale]/data-foundation/spatial-workspace/page';
 import SourcePage from './[locale]/data-foundation/spatial-workspace/source/page';
+
+const candidate = vi.hoisted(() => ({ dal: vi.fn(), detail: vi.fn() }));
+vi.mock('server-only', () => ({}));
+vi.mock('@/lib/data-foundation-dal.server', () => ({
+  DataFoundationApiError: class extends Error {
+    constructor(
+      readonly kind: string,
+      readonly status: number,
+    ) {
+      super('Safe data service error');
+    }
+  },
+  getDataFoundationDal: candidate.dal,
+}));
 
 vi.mock('next/headers', () => ({
   headers: () => Promise.resolve(new Headers({ host: '127.0.0.1:3421' })),
@@ -175,8 +189,15 @@ async function sourceHtml(params: URLSearchParams) {
   );
 }
 beforeEach(() => {
+  candidate.dal.mockReset();
+  candidate.detail.mockReset();
+  candidate.dal.mockResolvedValue({ ingestionDetail: candidate.detail });
   load.mockReset();
   load.mockResolvedValue({ state: 'ready', pack: fixture() });
+});
+afterEach(() => {
+  expect(candidate.dal).not.toHaveBeenCalled();
+  expect(candidate.detail).not.toHaveBeenCalled();
 });
 
 it('passes all fixed reading choices together instead of only a record ID', async () => {

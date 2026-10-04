@@ -578,6 +578,36 @@ export function SpatialWorkspace({
     invalidations,
     sourcePins: view.sourcePins,
   };
+  const declaredWindowView = readingState
+    ? workspaceViewForReadingState(pack, readingState)
+    : null;
+  const activeMonthWindow =
+    readingState?.monthWindow &&
+    !readingState.dayWindow &&
+    view.start === declaredWindowView?.start &&
+    view.end === declaredWindowView?.end
+      ? readingState.monthWindow
+      : null;
+  const activeFilterChips = [
+    ...(view.search.trim()
+      ? [copy.searchFilter.replace('{value}', view.search.trim())]
+      : []),
+    ...(workspaceRecordKinds.some((kind) => !view.kinds.includes(kind))
+      ? [
+          view.kinds.length
+            ? copy.layerFilter.replace(
+                '{value}',
+                workspaceRecordKinds
+                  .filter((kind) => view.kinds.includes(kind))
+                  .map((kind) => copy.kinds[kind])
+                  .join(' · '),
+              )
+            : copy.noLayers,
+        ]
+      : []),
+    ...(!view.includeUndated ? [copy.excludeUndated] : []),
+    ...(view.bounds ? [`${copy.bbox}: ${view.bounds.join(', ')}`] : []),
+  ];
   return (
     <div
       className={styles.workspace}
@@ -631,9 +661,11 @@ export function SpatialWorkspace({
               data-testid="workspace-current-period"
               className={styles.filterScope}
             >
-              {view.start || view.end
-                ? `${view.start ?? copy.allPeriods} — ${view.end ?? copy.allPeriods}`
-                : copy.allPeriods}
+              {activeMonthWindow
+                ? `${copy.monthWindow} · ${activeMonthWindow.start} — ${activeMonthWindow.end}`
+                : view.start || view.end
+                  ? `${copy.dayWindow} · ${view.start ?? copy.allPeriods} — ${view.end ?? copy.allPeriods}`
+                  : copy.allPeriods}
               {' · '}
               {view.timeRole === 'all'
                 ? copy.allTimeRoles
@@ -790,6 +822,19 @@ export function SpatialWorkspace({
             {drawBounds ? copy.drawBoundsHint : copy.bboxHint}
           </p>
         </details>
+        {activeFilterChips.length ? (
+          <div
+            role="group"
+            aria-label={copy.activeFilters}
+            className={styles.activeFilters}
+          >
+            {activeFilterChips.map((label) => (
+              <span key={label} className={styles.filterChip}>
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
       {narrow ? (
         <div

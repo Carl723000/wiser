@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-04
-lastReviewedCommit: 392fca26
+lastReviewedCommit: 82f7440e9519043fb5ffe2ed4c93e6165726b487
 ---
 
 ## What runs today
@@ -566,6 +566,8 @@ The saved-view bridge also bounds request-body reading by 30 seconds before acqu
 The candidate-original Web route `/api/data-foundation/candidate-assets/:ingestionId/:processingBatchId/:assetId` accepts a fixed `reviewHash`, optional locale and optional `savedViewId`; the browser cannot inject tenant, project, purpose or storage location. It verifies the existing session before dispatch and after the response, then streams the candidate API result without a second full-original buffer. Strict 1-byte through 32-MiB lengths and single ranges, backpressure, cancellation and a 120-second deadline cover delivery; truncated or excess content terminates rather than becoming a successful original. Delivery is attachment-only and sandboxed, with empty HEAD/416 bodies. Published-original behavior is unchanged. This Web wiring is not live Auth, storage or full material-chain acceptance. Partial responses must match the requested byte interval exactly, including suffixes and clamped ends; an unsatisfiable response is accepted only when that same request is outside the declared original. Cancellation releases the upstream reader without awaiting a stalled cancellation promise.
 
 ### Candidate reading product surface
+
+The current candidate can also enter the existing spatial-workspace route without a WorkspacePack conversion. A strict complete candidate query is checked against authenticated Project-scoped `ingestionDetail` and its current advertised tuple before the shared reader mounts. This readonly entry uses existing candidate/original reads and contains no saved actions; rejected or replaced current candidates never fall back to local files or widen to historical candidates. Processing facts use only the same reader owner and separate exact known totals from loaded pages, declared fields and parser metadata. Missing human cleaning/QC responsibility, sampling density and professional-use evidence remain unknown. This adds no public DTO, permission, persistence, migration or temporal rule; monthly trusted-conversion gates and matrix/topic domain requirements remain unchanged. Synthetic tests do not demonstrate live HTTP/Auth/original-storage acceptance.
 
 The intake detail now consumes the authoritative nullable 1.2 candidate reference and the existing three reads through the Web BFF. Raw values, source order, locators, unknown counts and native geometries remain distinct from approved versions. A private display-only map collection carries actual candidate record/asset/source identifiers; collection drawing parts add no spatial roles or observations.
 

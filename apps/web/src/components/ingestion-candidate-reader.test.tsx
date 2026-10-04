@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CreateIngestionCandidateViewInputSchema } from '@wiser/data-contracts';
@@ -108,6 +109,74 @@ function requestBody(init?: RequestInit): Record<string, unknown> {
 const respondJson = (value: unknown): Promise<Response> =>
   Promise.resolve(Response.json(value));
 const fetch = vi.fn<typeof globalThis.fetch>();
+
+it.each([403, 409])(
+  'derives processing facts only from this authorized owner and clears facts with content on %s',
+  async (status) => {
+    render(<IngestionCandidateReader reference={ref} locale="en" />);
+    await screen.findByRole('button', { name: 'Read records' });
+    fireEvent.click(screen.getByRole('button', { name: 'Read records' }));
+    await screen.findByText('Synthetic river');
+    const facts = within(
+      screen.getByRole('region', { name: 'Processing facts' }),
+    );
+    expect(
+      facts.getByText('Records on this page').nextElementSibling?.textContent,
+    ).toBe('2');
+    expect(facts.getByText('Known parsed records')).toBeDefined();
+    expect(facts.getByText('3')).toBeDefined();
+    expect(facts.getByText('Water body')).toBeDefined();
+    expect(facts.getByText('Original value')).toBeDefined();
+    expect(facts.getByText('synthetic-fixture-v1')).toBeDefined();
+    expect(
+      facts.getByText(
+        'Cleaning responsibility is not recorded in this reading scope.',
+      ),
+    ).toBeDefined();
+    expect(
+      facts.getByText(
+        'Human quality-control responsibility is not recorded in this reading scope.',
+      ),
+    ).toBeDefined();
+    expect(
+      facts.getByText('Spatial records on this page').nextElementSibling
+        ?.textContent,
+    ).toBe('Not read yet');
+    fetch.mockResolvedValueOnce(
+      new Response('private denied body', { status }),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+    await screen.findByRole('alert');
+    expect(
+      screen.queryByRole('region', { name: 'Processing facts' }),
+    ).toBeNull();
+    expect(screen.queryByText('synthetic-fixture-v1')).toBeNull();
+  },
+);
+it('uses the same reader for current workspace reading without saved-view actions or reads', async () => {
+  render(<IngestionCandidateReader reference={ref} locale="en" readOnly />);
+  await screen.findByRole('button', { name: 'Read records' });
+  expect(
+    screen.queryByRole('region', { name: 'Fixed reading view' }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Load saved views' })).toBeNull();
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch.mock.calls[0]?.[0]).toBe('/api/data-foundation/candidates/get');
+});
+it('cannot enter saved reading through a readonly owner even when a saved identifier is supplied', async () => {
+  render(
+    <IngestionCandidateReader
+      reference={ref}
+      locale="en"
+      readOnly
+      savedViewId="10000000-0000-4000-8000-000000000009"
+    />,
+  );
+  await screen.findByRole('button', { name: 'Read records' });
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch.mock.calls[0]?.[0]).toBe('/api/data-foundation/candidates/get');
+  expect(requestBody(fetch.mock.calls[0]?.[1])).toMatchObject(ref);
+});
 vi.mock('./data-foundation-map', () => ({
   DataFoundationMap: ({
     onSelectRecord,
@@ -229,12 +298,18 @@ it('aborts and ignores an earlier reference reply after the intake reference cha
       status: 'READY',
       unknownAssetCount: 0,
       knownRecordCount: 8,
+      parserVersion: 'current-owner-parser',
     }),
   );
   rerender(<IngestionCandidateReader reference={updated} locale="en" />);
   await screen.findByText('8');
   await act(() => Promise.resolve(reply(Response.json(assets))));
   expect(screen.queryByText('Partially parsed')).toBeNull();
+  const facts = within(
+    screen.getByRole('region', { name: 'Processing facts' }),
+  );
+  expect(facts.getByText('current-owner-parser')).toBeDefined();
+  expect(facts.queryByText('synthetic-fixture-v1')).toBeNull();
   expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
 });
 it('returns from a selected native geometry to its actual parsed record without creating a published identity', async () => {

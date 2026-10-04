@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 1e8347da
+lastReviewedCommit: 82f7440e9519043fb5ffe2ed4c93e6165726b487
 ---
 
 ## What this guide governs
@@ -211,3 +211,7 @@ Map-to-record and record-to-map reading within the same fixed drawing retains ma
 The readiness overview presents six ranges against19 needs before the existing question drilldowns. Obtained, parsed, professionally reviewed and displayable information remain separate. Selecting a region/demand cell opens that same inspection scope; permissions and record identity are unchanged. Overlapping regional counts are never added into the global total. Historical inventory and selected-window rows have distinct labels, and technical use-check success is still separate from professional approval and executable eligibility.
 
 The matrix reuses the question details' current fixed-copy canonicalization, including multiple copy links verified by the same version and original hash. Source copies count once without merging objects or original record identities. A parent-controlled region always follows the current parent selection, including a return to the previous overview; a standalone panel can still select a cell locally. Positive month-window counts require the selected date role, declared month/day precision and a valid complete native date; unknown or unsupported dates remain in historical evidence without changing their values. These local regression checks do not establish real Auth or browser acceptance.
+
+Monthly coverage details now include the exact original values with source titles and evidence for each eligible month, retaining multiple values from the same month. Printed-name, approved-correspondence and hypothesis views reuse their existing grouping. An absent month, an unknown month, a null value, empty text, dry, unmonitored and valid zero remain distinct; no missing cause, concentration or trend is inferred. A value selects the existing record only when its complete fixed source reference matches and the current record ID is unique. Unresolved references remain readable with an explicit unavailable-selection state. Withdrawal invalidates the open detail scope. The existing coverage counts, date roles and window controls stay intact; local reveal actions do not change statistical denominators.
+
+Closing spatial filter controls does not conceal applied search, material-layer choices, unknown-time exclusion or a rectangle extent. Empty layer selection is explicit. The current period distinguishes an existing month window from an exact-date window even when calendar boundaries match; it does not infer source precision. Public-map source attribution stays visible on the displayed canvas, with detailed source evidence still available on demand.

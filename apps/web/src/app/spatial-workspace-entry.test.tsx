@@ -1,9 +1,22 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { WorkspacePack } from '@/lib/spatial-workspace-contract';
 import { loadLocalSpatialWorkspace } from '@/lib/spatial-workspace-local';
 import Page from './[locale]/data-foundation/spatial-workspace/page';
 import Source from './[locale]/data-foundation/spatial-workspace/source/page';
+const candidate = vi.hoisted(() => ({ dal: vi.fn(), detail: vi.fn() }));
+vi.mock('server-only', () => ({}));
+vi.mock('@/lib/data-foundation-dal.server', () => ({
+  DataFoundationApiError: class extends Error {
+    constructor(
+      readonly kind: string,
+      readonly status: number,
+    ) {
+      super('Safe data service error');
+    }
+  },
+  getDataFoundationDal: candidate.dal,
+}));
 vi.mock('next/headers', () => ({
   headers: () => Promise.resolve(new Headers({ host: '127.0.0.1:3410' })),
 }));
@@ -107,7 +120,16 @@ const fixedSource = {
   sourceHash: 'a'.repeat(64),
   sourceRule: 'p1',
 };
-beforeEach(() => load.mockReset());
+beforeEach(() => {
+  load.mockReset();
+  candidate.dal.mockReset();
+  candidate.detail.mockReset();
+  candidate.dal.mockResolvedValue({ ingestionDetail: candidate.detail });
+});
+afterEach(() => {
+  expect(candidate.dal).not.toHaveBeenCalled();
+  expect(candidate.detail).not.toHaveBeenCalled();
+});
 it('keeps a missing or invalid local batch explicit and never fills it from a fixture', async () => {
   for (const state of ['disabled', 'unavailable', 'invalid'] as const) {
     load.mockResolvedValue({ state, pack: null });

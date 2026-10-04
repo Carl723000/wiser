@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 1e8347da
+lastReviewedCommit: 82f7440e9519043fb5ffe2ed4c93e6165726b487
 ---
 
 # WISER Web / 产品界面
@@ -75,7 +75,7 @@ pnpm --filter @wiser/web test:e2e
 
 ## 本机空间资料工作台 / Local spatial workbench
 
-`/{locale}/data-foundation/spatial-workspace` 仅在显式本机开发模式下读取已核对的资料包，不作为正式Data API失败时的替代。空间证据、就绪／合成复核和遥感检查在同一界面，复用固定版本回查、双窗、场景恢复和全屏。 / This explicitly enabled local-only workspace reads a validated pack, never substitutes fixtures for failed production Data reads, and shares exact-source, comparison, saved-scene and fullscreen interactions.
+`/{locale}/data-foundation/spatial-workspace` 未携带候选查询时，仅在显式本机开发模式下读取已核对的资料包，不作为正式Data API失败时的替代。空间证据、就绪／合成复核和遥感检查在同一界面，复用固定版本回查、双窗、场景恢复和全屏。 / Without candidate navigation, this explicitly enabled local-only workspace reads a validated pack, never substitutes fixtures for failed production Data reads, and shares exact-source, comparison, saved-scene and fullscreen interactions.
 
 阅读链接保留轨道、区域、需求、日期角色、月／日范围、页签及固定来源／记录／具体位置，刷新与返回时复核当前可显示输入；不完整或失效的链接显示恢复操作。地图与矩阵共用受控范围，精确日条件须明确切换后才核对月覆盖；合成演练不写入真实阅读链接。旧裸工作台入口仍打开真实总览，旧不完整记录／来源链接需重新选择。 / Private reading URLs restore track, region, need, date role, month/day scope, tabs and exact source/record/position pins against current displayable input. Invalid links show recovery actions; controlled map/matrix state prevents hidden-pane rewrites. Day-filtered coverage requires an explicit month-window choice. Exercises remain separate, bare workspace links retain the REAL overview, and incomplete old source/record links require selection again.
 
@@ -91,6 +91,8 @@ pnpm --filter @wiser/web test:e2e
 
 ## 候选资料查阅 / Candidate material reading
 
+当前接收详情可将完整候选链接到同一空间工作台。服务端核当前会话、项目范围和仍一致的候选四元，复用同一只读阅读器及现有候选／原件读取；候选已替换或拒权时不回落本地资料包。程序事实区分固定批次已知总数与当前已加载分页，显示解析规则／状态和声明字段；人工清洗、质控、密度及专业用途缺证保持未知。入口不提供保存动作，不新增已发布版本、矩阵／月份／专题投影或核心契约。 / Current intake detail links its complete candidate into the same spatial workspace. The server checks the current session, Project and matching current tuple, then reuses the readonly reader and existing candidate/original reads; denial or replacement never falls back to a local pack. Processing facts separate fixed-batch known totals from loaded pages and show parser metadata/declared fields; missing cleaning, QC, density and professional-use evidence remains unknown. This entry adds no save action, published version, matrix/month/topic projection or core contract.
+
 已完成待审候选的接收详情以原件、记录和地图标签查阅实际固定批次，保留原值、原文定位、解析缺项及待审核状态。通过正式保存视图入口创建、读取、重开及撤回固定配置，重开和恢复重新核全部成员当前权限；拒绝清除内容。 / Intake detail reads a real fixed pending batch through Originals, Records and Map, retaining raw values, locators, incomplete parsing and review state. Service-backed fixed views support create/list/open/revoke and reauthorize all members on reopening/recovery; denied access clears content.
 
 候选固定视图的共享范围标为“本人及获权独立审核人”；保存范围帮助说明分享不授予资料访问权限。现有`project`枚举及全部候选权限核验保持不变。 / Candidate fixed-view sharing is labelled “Me and authorized independent reviewers”; contextual help explains that sharing grants no material access. The existing `project` enum and all-member authorization remain unchanged.
@@ -102,3 +104,7 @@ pnpm --filter @wiser/web test:e2e
 原生栅格面板区分固定派生TIFF与上游源产品，转换血缘尚未核验保持可见。B03／B8A标为编码值，比例与偏移未核验前不称物理反射率；自填SCL筛选标识不表示专业质量规则版本。来源、掩膜和面积依据复用问号帮助，读取及筛选行为不变。 / The native raster panel distinguishes fixed derived TIFFs from upstream source products and visibly retains unverified conversion lineage. B03/B8A remain encoded values, not physical reflectance before scale/offset verification; a user-entered SCL filter identifier is not a professional quality-rule version. Contextual help explains source, mask and area semantics without changing reading or filtering.
 
 就绪总览提供六范围×19需求矩阵；当前展示许可、取得、解析与专业核验分别显示，点选进入相同区域与需求的九问明细。全局按集合去重，时窗记录与历史资料分列；真实待审资料不能由技术检查升级为专业批准。 / The readonly six-range by19-demand matrix separates display permission, original receipt, parsing and independent review. Cell selection shares the existing question scope; overlapping totals use a set union and current-window rows stay separate from historical inventory. Technical checks do not approve real pending materials.
+
+月度覆盖明细新增逐月原值，复用既有分类、分组与固定引用。同月多值、未知月份、缺月、null、空文本、无水、未监测和有效零值分别保留；不推断浓度或趋势。首屏有界并支持本地展开，显示／总数不改计数口径。点选核对固定作品／版本／原件和唯一当前记录ID，引用冲突时不跳到另一来源。 / Monthly coverage details now read exact original values using existing kinds, grouping and fixed references. Multiple same-month values, unknown or missing months, null, empty text, dry, unmonitored and valid zero remain distinct. Bounded local reveal retains full counts. Selection requires a complete fixed reference and unique current record ID; ambiguity never navigates to another source. No concentration or trend is inferred.
+
+本机空间首屏保留生效检索、图层、时间未知资料排除及矩形标签，月份与日期窗口明确区分。已显示公共参照署名在WebGL和平面画布可见，完整许可依据按需展开；查询、时间及保存契约不变。 / The local spatial first screen retains active search, layers, unknown-time exclusion and rectangle chips, distinguishes month/date windows, and keeps displayed public-reference attribution visible in both renderers. Detailed evidence remains disclosed on demand; query, time and saving contracts are unchanged.

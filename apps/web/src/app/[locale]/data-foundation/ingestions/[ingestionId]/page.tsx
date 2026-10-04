@@ -25,6 +25,7 @@ import {
 import { getDictionary, isLocale } from '@/lib/i18n';
 import { IngestionCandidateReader } from '@/components/ingestion-candidate-reader';
 import type { IngestionCandidateReference } from '@wiser/data-contracts';
+import { candidateWorkspaceHref } from '@/lib/candidate-workspace-route';
 
 interface IngestionPageProps {
   readonly params: Promise<{ locale: string; ingestionId: string }>;
@@ -85,6 +86,13 @@ export default async function IngestionPage({
       )}
       {ingestion === undefined ? null : (
         <>
+          {candidateReference === null || savedViewId !== undefined ? null : (
+            <p>
+              <Link href={candidateWorkspaceHref(locale, candidateReference)}>
+                {copy.candidateReader.openWorkspace}
+              </Link>
+            </p>
+          )}
           <IngestionCandidateReader
             locale={locale}
             reference={candidateReference}

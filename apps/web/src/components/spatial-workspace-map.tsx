@@ -326,6 +326,14 @@ export function SpatialWorkspaceMap({
         : { type: 'FeatureCollection' as const, features: [] },
     [publicReferences, features, publicReferenceVisibility],
   );
+  const referenceAttributions = Array.from(
+    new globalThis.Map(
+      shownPublicReferences.features.map(({ properties }) => [
+        `${properties.licenseUrl}\u0000${properties.attribution}`,
+        { label: properties.attribution, href: properties.licenseUrl },
+      ]),
+    ).values(),
+  );
   const verifiedRaster = rasterReports.filter(
     (report) =>
       report.rights.displayAllowed &&
@@ -592,7 +600,7 @@ export function SpatialWorkspaceMap({
         data-camera={JSON.stringify(camera)}
         data-renderer={flat ? 'planar' : 'maplibre'}
       >
-        <div className={styles.mapZoom} aria-label={copy.mapTitle}>
+        <div className={styles.mapZoom} role="group" aria-label={copy.mapTitle}>
           <button
             type="button"
             onClick={() =>
@@ -1103,9 +1111,18 @@ export function SpatialWorkspaceMap({
           {copy.offlineReference} · WGS84
           <br />
           {camera.longitude.toFixed(3)}° E · {camera.latitude.toFixed(3)}° N
+          {referenceAttributions.map(({ label, href }) => (
+            <a key={`${href}\u0000${label}`} href={href}>
+              {label}
+            </a>
+          ))}
         </span>
       </div>
-      <div className={styles.mapToolbar} aria-label={copy.mapTitle}>
+      <div
+        className={styles.mapToolbar}
+        role="group"
+        aria-label={copy.mapTitle}
+      >
         {(
           [
             [
