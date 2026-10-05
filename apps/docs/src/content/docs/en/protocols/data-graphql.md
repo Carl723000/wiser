@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-10-04
-lastReviewedCommit: db1e2345
+lastReviewedAt: 2026-10-05
+lastReviewedCommit: acde00ea
 ---
 
 ## Endpoint and authority contract

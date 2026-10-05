@@ -3388,6 +3388,8 @@ describe('managed resume UUID receipt compatibility', () => {
         },
       };
     } else if (kind === 'expired-scope') {
+      const scope = retry.authorization.resourceAccess!.scope;
+      if (scope.mode !== 'managed') throw new Error('managed test setup');
       retry = {
         ...retry,
         authorization: {
@@ -3395,7 +3397,7 @@ describe('managed resume UUID receipt compatibility', () => {
           resourceAccess: {
             ...retry.authorization.resourceAccess!,
             scope: {
-              ...retry.authorization.resourceAccess!.scope,
+              ...scope,
               validUntil: '2026-01-01T00:00:00Z',
             },
           },

@@ -1258,7 +1258,7 @@ export class CommandTransactions {
     if (managedIntake && !intakeAuthority?.maintainer)
       throw commandError('INTAKE_FORBIDDEN');
     const idempotencyKey = commandKey(context);
-    const hash = requestHash(capabilityId, input, context);
+    const rawHash = requestHash(capabilityId, input, context);
     const timestamp = now(this.clock);
     assertActive(context);
     const actorId = trustedCommandUuid(context.principal.actorId);
@@ -1266,6 +1266,20 @@ export class CommandTransactions {
       context.principal.delegatedBy === undefined
         ? ''
         : trustedCommandUuid(context.principal.delegatedBy);
+    const managedResume =
+      managedIntake && capabilityId === 'data.ingestion.resume';
+    const hash = managedResume
+      ? requestHash(capabilityId, input, {
+          ...context,
+          principal: {
+            ...context.principal,
+            actorId,
+            ...(context.principal.delegatedBy === undefined
+              ? {}
+              : { delegatedBy }),
+          },
+        })
+      : rawHash;
     const client = await this.pool.connect();
     let began = false;
     let commitAttempted = false;
@@ -1312,15 +1326,23 @@ export class CommandTransactions {
       const previousRow = singleRow(previous);
       if (previousRow !== undefined) {
         const payload = parseStoredPayload(previousRow['payload']);
+        // Old managed resume receipts retain their complete raw request digest.
+        // Never omit bindings or infer an arbitrary digest's identity casing.
+        const matchedHash =
+          payload['requestHash'] === hash
+            ? hash
+            : managedResume && payload['requestHash'] === rawHash
+              ? rawHash
+              : undefined;
         if (
-          payload['requestHash'] !== hash ||
+          matchedHash === undefined ||
           payload['capabilityId'] !== capabilityId
         ) {
           throw commandError('IDEMPOTENCY_CONFLICT');
         }
         const ledger: StoredCommandLedger = {
           capabilityId,
-          requestHash: hash,
+          requestHash: matchedHash,
           result: payload['result'],
         };
         if (managedIntake && replay === undefined) {

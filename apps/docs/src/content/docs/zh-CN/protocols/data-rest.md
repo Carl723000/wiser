@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-04
-lastReviewedCommit: db1e2345
+lastReviewedAt: 2026-10-05
+lastReviewedCommit: acde00ea
 ---
 
 ## 协议边界
