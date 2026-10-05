@@ -276,6 +276,7 @@ export function SpatialWorkspaceMap({
     drawStart = useRef<number[] | null>(null);
   const id = useId().replaceAll(':', '');
   const lastGestureCamera = useRef<string | null>(null);
+  const wheelQualified = useRef(true);
   const [, settleCamera] = useState(0);
   const effectiveCamera = {
     longitude: camera.longitude,
@@ -296,12 +297,14 @@ export function SpatialWorkspaceMap({
     const native = map.current?.getMap();
     if (!native) return;
     if (!active) {
+      wheelQualified.current = false;
       native.stop();
       return;
     }
     if (lastGestureCamera.current !== cameraKey) {
       // The binding skips controlled updates during inertia. External locate,
       // reset and restore actions take precedence over that earlier gesture.
+      wheelQualified.current = false;
       native.stop();
       native.jumpTo(JSON.parse(cameraKey) as WorkspaceCamera);
     }
@@ -641,6 +644,14 @@ export function SpatialWorkspaceMap({
             renderWorldCopies={false}
             interactiveLayerIds={interactiveLayers}
             onLoad={() => setReady(true)}
+            onWheel={({ originalEvent, target }) => {
+              if (
+                active &&
+                target === map.current?.getMap() &&
+                originalEvent instanceof WheelEvent
+              )
+                wheelQualified.current = true;
+            }}
             onError={() => {
               setFailed(true);
               setReady(false);
@@ -650,10 +661,12 @@ export function SpatialWorkspaceMap({
               // Hidden/show resize events may carry an old proposed camera.
               // They are not user navigation and must not change owned state.
               // Delayed native wheel classification may omit its DOM event.
-              // Limit that exception to this map while its scroll handler zooms.
+              // After an external stop, only a new DOM wheel can requalify it.
               const native = map.current?.getMap();
               const nativeScroll =
-                target === native && native?.scrollZoom?.isZooming?.() === true;
+                wheelQualified.current &&
+                target === native &&
+                native?.scrollZoom?.isZooming?.() === true;
               if (
                 !active ||
                 ((!originalEvent || originalEvent.type === 'wheel') &&

@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: a29510b639527f8e444c9a558ecb63ef1f7ef4c6
+lastReviewedCommit: c587b2ac14e7c46c05b60590913eb6ea3a8e7b51
 ---
 
 ## Design direction
@@ -162,3 +162,5 @@ Monthly original-value reading uses named, keyboard-focusable internal scrolling
 Applied non-default spatial filters remain readable as wrapping text chips above the map when full controls are closed. Search, selected material layers (including an empty selection), unknown-time exclusion and the applied rectangle use the actual view state; unsubmitted rectangle text is not an active condition. Existing month and exact-date windows have distinct labels without changing native dates. Displayed public reference geometry retains a deduplicated source attribution link on both WebGL and planar canvases; absent or hidden references receive no fabricated attribution. Camera controls use named groups, with their existing individual keyboard actions unchanged.
 
 The local spatial workbench merges a camera proposal only while its rendered region remains current. A delayed proposal from the previous region cannot replace the new region camera; same-region month/evidence changes and comparison-scope changes retain camera control. Both comparison windows continue to share the current workspace camera. Component regression checks remain separate from native gesture and browser timing acceptance.
+
+After an external camera application or hiding stops the map, an earlier wheel input cannot requalify its delayed scroll frames. Only a new DOM wheel from that active map allows wheel or sourceless zoom frames to update reading state again. Existing native-target and zooming checks, mouse/keyboard input and controlled-camera synchronization at move end remain in force; no engine timer or clock comparison is changed.

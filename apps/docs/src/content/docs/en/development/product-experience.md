@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: a29510b639527f8e444c9a558ecb63ef1f7ef4c6
+lastReviewedCommit: c587b2ac14e7c46c05b60590913eb6ea3a8e7b51
 ---
 
 ## What this guide governs
@@ -221,3 +221,5 @@ Closing spatial filter controls does not conceal applied search, material-layer 
 Wheel zoom and paused drag gestures settle to the same camera in the rendered local map and its reading state, including when reduced motion disables inertia. Hidden panes and resize events do not replace that state. Existing locate, reset, fixed-scene restoration and comparison scopes retain their established behavior.
 
 The local spatial workbench merges a camera proposal only while its rendered region remains current. A delayed proposal from the previous region cannot replace the new region camera; same-region month/evidence changes and comparison-scope changes retain camera control. Both comparison windows continue to share the current workspace camera. Component regression checks remain separate from native gesture and browser timing acceptance.
+
+After an external camera application or hiding stops the map, an earlier wheel input cannot requalify its delayed scroll frames. Only a new DOM wheel from that active map allows wheel or sourceless zoom frames to update reading state again. Existing native-target and zooming checks, mouse/keyboard input and controlled-camera synchronization at move end remain in force; no engine timer or clock comparison is changed.
