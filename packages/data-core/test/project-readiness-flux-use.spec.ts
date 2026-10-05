@@ -363,6 +363,97 @@ describe('flux conditions are a deterministic upper bound on supplied states', (
     });
   });
 
+  it.each(['workId', 'versionId', 'assetId'] as const)(
+    'rejects an original supported only by another in-scope source $0',
+    (part) => {
+      const input = fixture();
+      const otherSource: ProjectReadinessSource = {
+        ...input.sources[0]!,
+        [part]: `SYNTHETIC-other-${part}`,
+      };
+      const records = input.records.map((r, i) =>
+        i === 0
+          ? {
+              ...r,
+              evidence: r.evidence.map((e) => ({
+                ...e,
+                source: otherSource,
+                excerpt: 'SYNTHETIC unrelated material, not this original.',
+              })),
+            }
+          : r,
+      );
+      const result = calculateProjectReadiness({
+        ...input,
+        sources: [...input.sources, otherSource],
+        records,
+      });
+      expect(result.useChecks[0]).toMatchObject({
+        state: 'UNKNOWN',
+        reasons: ['EVIDENCE_UNKNOWN'],
+      });
+      expect(result.records).toEqual(records);
+      expect(result.records.map(readinessRecordKey)).toEqual(
+        input.records.map(readinessRecordKey),
+      );
+      expect(result).not.toHaveProperty('flux');
+    },
+  );
+
+  it('accepts a separate method source when both originals retain their own evidence', () => {
+    const input = crossSourceFixture();
+    const check = input.useChecks![0]!;
+    const result = calculateProjectReadiness({
+      ...input,
+      useChecks: [
+        {
+          ...check,
+          evidence: check.evidence.map((e) => ({
+            ...e,
+            source: input.sources[2]!,
+          })),
+        },
+      ],
+    });
+    expect(result.useChecks[0]).toMatchObject({
+      state: 'CHECKS_PASSED',
+      reasons: [],
+    });
+    expect(result.records).toEqual(input.records);
+    expect(result).not.toHaveProperty('flux');
+  });
+
+  it('does not use approved correspondence proof as the numeric original evidence', () => {
+    const input = crossSourceFixture();
+    const records = input.records.map((r, i) =>
+      i === 0 ? { ...r, evidence: input.correspondences[0]!.evidence } : r,
+    );
+    const result = calculateProjectReadiness({ ...input, records });
+    expect(result.useChecks[0]).toMatchObject({
+      state: 'UNKNOWN',
+      reasons: ['EVIDENCE_UNKNOWN'],
+    });
+    expect(result.records).toEqual(records);
+    expect(result).not.toHaveProperty('flux');
+  });
+
+  it('keeps REAL methods unknown while detecting a numeric original from another source', () => {
+    const input = crossSourceFixture();
+    const result = calculateProjectReadiness({
+      ...input,
+      track: 'REAL',
+      sources: input.sources.map((source) => ({ ...source, track: 'REAL' })),
+      records: input.records.map((r, i) =>
+        i === 0 ? { ...r, evidence: input.correspondences[0]!.evidence } : r,
+      ),
+    });
+    expect(result.useChecks[0]).toMatchObject({
+      state: 'UNKNOWN',
+      reasons: ['EVIDENCE_UNKNOWN', 'METHOD_UNKNOWN'],
+    });
+    expect(result).not.toHaveProperty('flux');
+  });
+
   it('keeps fixture method strings UNKNOWN on REAL even with professional approval', () => {
     const input = fixture();
     const result = calculateProjectReadiness({
