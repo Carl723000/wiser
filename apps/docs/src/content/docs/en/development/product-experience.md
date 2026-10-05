@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 8534d3878a96eeca886c953fa832c24250e6efa6
+lastReviewedCommit: c054d3f218397bc994e2e01614f2c0b98e45726f
 ---
 
 ## What this guide governs
@@ -219,3 +219,5 @@ Monthly coverage details now include the exact original values with source title
 Closing spatial filter controls does not conceal applied search, material-layer choices, unknown-time exclusion or a rectangle extent. Empty layer selection is explicit. The current period distinguishes an existing month window from an exact-date window even when calendar boundaries match; it does not infer source precision. Public-map source attribution stays visible on the displayed canvas, with detailed source evidence still available on demand.
 
 Wheel zoom and paused drag gestures settle to the same camera in the rendered local map and its reading state, including when reduced motion disables inertia. Hidden panes and resize events do not replace that state. Existing locate, reset, fixed-scene restoration and comparison scopes retain their established behavior.
+
+The local spatial workbench merges a camera proposal only while its rendered region remains current. A delayed proposal from the previous region cannot replace the new region camera; same-region month/evidence changes and comparison-scope changes retain camera control. Both comparison windows continue to share the current workspace camera. Component regression checks remain separate from native gesture and browser timing acceptance.

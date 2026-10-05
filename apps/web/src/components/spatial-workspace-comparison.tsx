@@ -234,7 +234,11 @@ export function SpatialWorkspaceComparison({
                 selection={view.selection}
                 copy={copy}
                 onCamera={(camera) =>
-                  onChange((previous) => ({ ...previous, camera }))
+                  onChange((previous) =>
+                    previous.regionId === view.regionId
+                      ? { ...previous, camera }
+                      : previous,
+                  )
                 }
                 onSelect={onSelect}
               />

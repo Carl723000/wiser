@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 8534d3878a96eeca886c953fa832c24250e6efa6
+lastReviewedCommit: c054d3f218397bc994e2e01614f2c0b98e45726f
 ---
 
 ## Design direction
@@ -160,3 +160,5 @@ The matrix reuses the question details' current fixed-copy canonicalization, inc
 Monthly original-value reading uses named, keyboard-focusable internal scrolling with a fixed object column. Text identifies the existing category, range, dry, unmonitored, null, empty, numeric and other-text kinds; color is supplementary. Original source values and valid zero remain unchanged. The initial view mounts at most12 months and40 values per cell or unknown-month list for each of the current40 object rows. Local reveal controls state shown/full counts; the original coverage table also bounds its collapsed record content. Full technical references remain in named disclosures.
 
 Applied non-default spatial filters remain readable as wrapping text chips above the map when full controls are closed. Search, selected material layers (including an empty selection), unknown-time exclusion and the applied rectangle use the actual view state; unsubmitted rectangle text is not an active condition. Existing month and exact-date windows have distinct labels without changing native dates. Displayed public reference geometry retains a deduplicated source attribution link on both WebGL and planar canvases; absent or hidden references receive no fabricated attribution. Camera controls use named groups, with their existing individual keyboard actions unchanged.
+
+The local spatial workbench merges a camera proposal only while its rendered region remains current. A delayed proposal from the previous region cannot replace the new region camera; same-region month/evidence changes and comparison-scope changes retain camera control. Both comparison windows continue to share the current workspace camera. Component regression checks remain separate from native gesture and browser timing acceptance.

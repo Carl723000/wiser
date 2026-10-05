@@ -931,7 +931,11 @@ export function SpatialWorkspace({
                   selection={selection}
                   copy={copy}
                   onCamera={(camera) =>
-                    setView((previous) => ({ ...previous, camera }))
+                    setView((previous) =>
+                      previous.regionId === view.regionId
+                        ? { ...previous, camera }
+                        : previous,
+                    )
                   }
                   onSelect={selectRecord}
                   bounds={view.bounds}

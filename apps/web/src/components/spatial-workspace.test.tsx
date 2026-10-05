@@ -274,7 +274,7 @@ describe('camera proposal region ownership', () => {
   const cameras = () =>
     screen
       .getAllByTestId('workspace-map')
-      .map((map) => JSON.parse(map.getAttribute('data-camera')!));
+      .map((map) => JSON.parse(map.getAttribute('data-camera')!) as unknown);
 
   it.each(['reading state', 'legacy region'] as const)(
     'rejects a previous region camera after a %s replacement without emitting a reading change',
