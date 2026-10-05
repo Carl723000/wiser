@@ -56,16 +56,14 @@ export function versionImpact(
     // Exact record/position corrections are local dependency hints. Shared
     // originals, processing rules, geometry versions and access changes still
     // concern every matching fixed dependent; a hint cannot narrow them.
+    // Missing or mismatched local hints retain the complete fixed-input check.
     const scope =
-      change.reason === 'record-corrected' ||
-      change.reason === 'position-corrected'
+      (change.reason === 'record-corrected' &&
+        change.scope?.kind === 'records') ||
+      (change.reason === 'position-corrected' &&
+        change.scope?.kind === 'positions')
         ? change.scope
         : undefined;
-    if (
-      (change.reason === 'record-corrected' && scope?.kind !== 'records') ||
-      (change.reason === 'position-corrected' && scope?.kind !== 'positions')
-    )
-      continue;
     for (const record of records) {
       if (
         (scope?.kind === 'records' && !scope.recordIds.includes(record.id)) ||

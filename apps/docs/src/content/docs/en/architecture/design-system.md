@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: a9d48bd7
+lastReviewedCommit: f691a300
 ---
 
 ## Design direction
@@ -139,7 +139,7 @@ Readiness cards use text-backed fact-availability badges and shared semantic tok
 
 Spatial results use separately paged located, unresolved and outside-extent tables, with up to 40 records per page. Original time range, precision and role, original value and unit, source/provider, review state and displayable location evidence remain distinct. Map, evidence and fullscreen transitions retain the reading page and exact selection; changing result scope resets the page. The bounded, keyboard-focusable table scrolls inside its panel, with a fixed object column on narrow screens. Withdrawn records disappear from mounted results; unknowns and valid zero values are not conflated.
 
-Fixed-input dependency checks distinguish exact record/position corrections from shared version changes. A record correction requires an explicit record set, and a position correction requires an exact record/position set; absent, mismatched or empty scopes never widen impact. Original, processing-rule and geometry-version changes, permission withdrawal and missing fixed sources evaluate every matching dependent in the complete permitted input despite a narrow hint. A known processing version limits own-record matching to that version. The synthetic exercise uses the same complete-input check without editing or persisting real source content. This local dependency result does not establish an authenticated correction workflow.
+Fixed-input dependency checks distinguish exact record/position corrections from shared version changes. A record correction narrows impact only with an explicit record set, and a position correction only with an exact record/position set. Missing or wrong-kind local hints conservatively check every matching fixed source/version dependent, including geometry references used by records from other sources. Valid empty or nonmatching sets retain empty impact. Original, processing-rule and geometry-version changes, permission withdrawal and missing fixed sources evaluate every matching dependent in the complete permitted input despite a narrow hint. A known processing version limits own-record matching to that version. The synthetic exercise uses the same complete-input check without editing or persisting real source content. This local dependency result does not establish an authenticated correction workflow.
 
 ## Candidate material reader
 
