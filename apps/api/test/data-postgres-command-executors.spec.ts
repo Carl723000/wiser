@@ -13,6 +13,7 @@ import {
 } from '@wiser/data-infra';
 
 import type { DataCapabilityExecutionContext } from '../src/data-foundation/capability-handler.js';
+import { pendingIntakeAuthority } from '../src/data-foundation/managed-ingestion-access.js';
 import {
   PostgresDataCommandError,
   createPostgresDataCommandRuntime,
@@ -71,6 +72,7 @@ class FakeClient implements PostgresDataCommandClient {
   ingestionState = 'RECEIVED';
   ingestionVersion = 1;
   operationStatus = 'RUNNING';
+  operationCapabilityId = 'data.ingestion.submit';
   operationVersion = 2;
   uploadVersion = 1;
   uploadStatus = 'WAITING_INPUT';
@@ -255,7 +257,7 @@ class FakeClient implements PostgresDataCommandClient {
         rows: [
           {
             operation_id: OPERATION_ID,
-            capability_id: 'data.ingestion.submit',
+            capability_id: this.operationCapabilityId,
             status: this.operationStatus,
             progress_percent: 30,
             row_version: this.operationVersion,
@@ -1067,6 +1069,15 @@ describe('PostgreSQL Data Foundation command executors', () => {
 
   it('locks and cancels an Operation with optimistic versioning and no deletes', async () => {
     const value = runtime();
+    let lockedSession: Readonly<Record<string, unknown>> | undefined;
+    const query = value.pool.client.query.bind(value.pool.client);
+    value.pool.client.query = async (sql, values = []) => {
+      const result = await query(sql, values);
+      if (sql.includes('data.operation.ingestion.lock')) {
+        lockedSession = result.rows[0];
+      }
+      return result;
+    };
     const output = await executor(
       value.runtime,
       'data.operation.cancel',
@@ -1074,6 +1085,13 @@ describe('PostgreSQL Data Foundation command executors', () => {
       { operationId: OPERATION_ID, expectedVersion: 2, reason: 'superseded' },
       context,
     );
+    expect(Object.keys(lockedSession ?? {}).sort()).toEqual([
+      'ingestion_id',
+      'policy_version',
+      'row_version',
+      'security_level',
+      'state',
+    ]);
     expect(
       DATA_CAPABILITY_REGISTRY['data.operation.cancel'].outputSchema.safeParse(
         output,
@@ -3106,6 +3124,111 @@ function managedIntakeContext(): DataCapabilityExecutionContext {
     },
   };
 }
+
+async function observeManagedCancellation(
+  value: ReturnType<typeof runtime>,
+  actor: DataCapabilityExecutionContext,
+) {
+  let lockedSession: Readonly<Record<string, unknown>> | undefined;
+  const query = value.pool.client.query.bind(value.pool.client);
+  value.pool.client.query = async (sql, values = []) => {
+    const result = await query(sql, values);
+    if (sql.includes('data.operation.ingestion.lock')) {
+      lockedSession = result.rows[0];
+    }
+    return result;
+  };
+  const outcome = await executor(value.runtime, 'data.operation.cancel')
+    .execute({ operationId: OPERATION_ID, expectedVersion: 2 }, actor)
+    .then(
+      (result) => ({ errorCode: null, result }),
+      (error: unknown) => ({
+        errorCode: (error as PostgresDataCommandError).code,
+        result: null,
+      }),
+    );
+  const markers = value.pool.client.calls.flatMap(({ text }) => {
+    const marker = /\/\* (data\.[^*]+) \*\//.exec(text)?.[1];
+    return marker === undefined ? [] : [marker];
+  });
+  const writes = (marker: string) =>
+    markers.filter((entry) => entry === marker);
+  return {
+    lockedSession,
+    observed: {
+      ...outcome,
+      ingestionWrites: writes('data.ingestion.cancel.update'),
+      jobWrites: writes('data.operation.job-cancellation.request'),
+      operationWrites: writes('data.operation.cancel.update'),
+      operationEventWrites: writes('data.command.operation-event.insert'),
+      auditWrites: writes('data.command.audit.insert'),
+      outboxWrites: writes('data.command.outbox.insert'),
+      cachedReceipts: [...value.pool.client.replay.keys()],
+    },
+  };
+}
+
+describe('managed cancellation internal responsibility guard Red', () => {
+  it.each([
+    { name: 'reviewer without intake write scope', maintainer: false },
+    {
+      name: 'maintainer with unprovable locked responsibility',
+      maintainer: true,
+    },
+  ])('refuses $name before lifecycle writes', async ({ maintainer }) => {
+    const value = runtime();
+    // This column is selected by the real Operation lock. Keep its existing
+    // legacy default, and model a standard ingestion.create only in this case.
+    value.pool.client.operationCapabilityId = 'data.ingestion.create';
+    // Creation waits for input without a job; submit keeps RECEIVED while its
+    // Operation/job runs. Both fixtures follow the existing lifecycle.
+    value.pool.client.operationStatus = maintainer
+      ? 'RUNNING'
+      : 'WAITING_INPUT';
+    if (maintainer) value.pool.client.cancellationJobStatus = 'RUNNING';
+    const current = managedIntakeContext();
+    const actor: DataCapabilityExecutionContext = {
+      ...current,
+      authorization: {
+        ...current.authorization,
+        scopes: maintainer
+          ? current.authorization.scopes
+          : ['data.operation.read', 'data.publish'],
+      },
+    };
+    expect(pendingIntakeAuthority(actor)).toEqual({
+      maintainer,
+      reviewer: true,
+    });
+
+    const { lockedSession, observed } = await observeManagedCancellation(
+      value,
+      actor,
+    );
+    // Preserve the five-column result of INGESTION_BY_OPERATION_LOCK_SQL.
+    // Do not supply owner/submission facts that the actual query cannot return.
+    if (lockedSession !== undefined) {
+      expect(Object.keys(lockedSession).sort()).toEqual([
+        'ingestion_id',
+        'policy_version',
+        'row_version',
+        'security_level',
+        'state',
+      ]);
+    }
+    expect.soft(observed).toEqual({
+      errorCode: 'INTAKE_FORBIDDEN',
+      result: null,
+      ingestionWrites: [],
+      jobWrites: [],
+      operationWrites: [],
+      operationEventWrites: [],
+      auditWrites: [],
+      outboxWrites: [],
+      cachedReceipts: [],
+    });
+  });
+});
 
 const managedUploadInput = {
   ownerProjectId: PROJECT_ID,
