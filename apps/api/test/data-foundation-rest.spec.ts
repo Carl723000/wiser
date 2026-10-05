@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FastifyInstance, FastifyServerOptions } from 'fastify';
+import type {
+  FastifyInstance,
+  FastifyRequest,
+  FastifyServerOptions,
+} from 'fastify';
 
 import {
   DATA_CAPABILITY_IDS,
@@ -462,8 +466,7 @@ function appWith(
       }),
     } satisfies DataFoundationRestCapabilityHandler);
   const app = buildApp({
-    // The old composition type narrowed Fastify's existing logger option.
-    logger: logger as boolean,
+    logger,
     modules: [
       createDataFoundationModule({
         readiness: () =>
@@ -544,7 +547,7 @@ describe('Data Foundation REST module', () => {
   );
   it('preserves explicit logger options and request/response fields while copying only the event URL', async () => {
     const lines: string[] = [];
-    const serializer = vi.fn((request: import('fastify').FastifyRequest) => ({
+    const serializer = vi.fn((request: FastifyRequest) => ({
       method: request.method,
       url: request.url,
       rawUrl: request.raw.url,
@@ -573,6 +576,9 @@ describe('Data Foundation REST module', () => {
     expect(lines.join('')).toContain('keep-response');
     expect(lines.join('')).not.toContain('private-cursor');
     expect(logger.serializers.req).toBe(serializer);
+    expect(serializer.mock.contexts[0]).toEqual(
+      expect.objectContaining({ res: logger.serializers.res }),
+    );
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({
         input: {
@@ -583,6 +589,81 @@ describe('Data Foundation REST module', () => {
       }),
     );
   });
+  it.each([false, true])(
+    'keeps originalUrl logs private without mutating the handler request (cached=%s)',
+    async (cached) => {
+      const lines: string[] = [];
+      let serializations = 0;
+      let observed: unknown;
+      const execute = vi.fn(() => Promise.resolve({ items: [] }));
+      const { app } = appWith(
+        context,
+        { execute },
+        {
+          stream: {
+            write: (line) => {
+              lines.push(line);
+            },
+          },
+          serializers: {
+            req: (request) => ({
+              method: request.method,
+              url: request.url,
+              rawUrl: request.raw.url,
+              originalUrl:
+                !cached || serializations++ > 0
+                  ? request.originalUrl
+                  : undefined,
+            }),
+          },
+        },
+      );
+      const url = `/api/data/v1/operations/${OPERATION_ID}/events?after=private-original-cursor&first=100`;
+      app.addHook('onRequest', (request, _reply, done) => {
+        if (cached) {
+          // Existing request getter may already be cached before a later log.
+          expect(request.originalUrl).toBe(url);
+          request.log.info({ req: request }, 'current request');
+        }
+        done();
+      });
+      app.addHook('preHandler', (request, _reply, done) => {
+        observed = {
+          url: request.url,
+          rawUrl: request.raw.url,
+          originalUrl: request.originalUrl,
+          query: request.query,
+        };
+        done();
+      });
+      const response = await app.inject({
+        method: 'GET',
+        url,
+        headers: authHeaders(),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(observed).toEqual({
+        url,
+        rawUrl: url,
+        originalUrl: url,
+        query: { after: 'private-original-cursor', first: '100' },
+      });
+      expect(execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: {
+            operationId: OPERATION_ID,
+            first: 100,
+            after: 'private-original-cursor',
+          },
+        }),
+      );
+      expect(lines.join('')).not.toContain('private-original-cursor');
+      expect(lines.join('')).not.toContain('after=');
+      expect(lines.join('')).toContain(
+        '"originalUrl":"/api/data/v1/operations/',
+      );
+    },
+  );
   it('keeps logger-off operation event reads unchanged', async () => {
     const execute = vi.fn(() => Promise.resolve({ items: [] }));
     const { app } = appWith(context, { execute }, false);

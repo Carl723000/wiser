@@ -5,8 +5,10 @@ import swagger from '@fastify/swagger';
 import fastify, {
   type FastifyError,
   type FastifyInstance,
+  type FastifyLoggerOptions,
   type FastifyReply,
   type FastifyRequest,
+  type FastifyServerOptions,
 } from 'fastify';
 import { DomainError } from '@agent-excon/core';
 import { PlatformDelegationServiceError } from '@wiser/platform-auth';
@@ -51,8 +53,70 @@ export interface BuildAppOptions {
   readonly v2Service?: V2ExerciseService;
   readonly authenticator?: ParticipantAuthenticator;
   readonly corsOrigin?: string | readonly string[];
-  readonly logger?: boolean;
+  readonly logger?: FastifyServerOptions['logger'];
   readonly modules?: readonly WiserApiModule[];
+}
+
+// Preserve the raw request used by authorization and cursor validation. Only the
+// existing operation-event GET URL is copied for request-log serialization.
+function operationEventLogRequest(request: FastifyRequest): FastifyRequest {
+  const queryIndex = request.url.indexOf('?');
+  if (
+    request.method !== 'GET' ||
+    queryIndex < 0 ||
+    !/^\/api\/data\/v1\/operations\/[^/]+\/events$/.test(
+      request.url.slice(0, queryIndex),
+    )
+  ) {
+    return request;
+  }
+  const query = request.url.slice(queryIndex + 1).split('&');
+  const kept = query.filter(
+    (part) => new URLSearchParams(part).keys().next().value !== 'after',
+  );
+  if (kept.length === query.length) return request;
+  const url = `${request.url.slice(0, queryIndex)}${kept.length ? `?${kept.join('&')}` : ''}`;
+  const raw = new Proxy(request.raw, {
+    get(target, property, receiver): unknown {
+      return property === 'url' ? url : Reflect.get(target, property, receiver);
+    },
+  });
+  return new Proxy(request, {
+    get(target, property, receiver): unknown {
+      if (property === 'url') return url;
+      if (property === 'raw') return raw;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+function operationEventLogger(
+  value: FastifyServerOptions['logger'],
+): NonNullable<FastifyServerOptions['logger']> {
+  if (value === false) return false;
+  const options = typeof value === 'object' ? value : {};
+  const serializers: FastifyLoggerOptions['serializers'] = options.serializers;
+  const serialize: (
+    request: FastifyRequest,
+  ) => Readonly<Record<string, unknown>> =
+    serializers?.req ??
+    ((request: FastifyRequest) => ({
+      method: request.method,
+      url: request.url,
+      version: request.headers['accept-version'],
+      host: request.host,
+      remoteAddress: request.ip,
+      remotePort: request.socket.remotePort,
+    }));
+  return {
+    ...options,
+    serializers: {
+      ...options.serializers,
+      req: function (this: unknown, request: FastifyRequest) {
+        return serialize.call(this, operationEventLogRequest(request));
+      },
+    },
+  };
 }
 
 interface ErrorMapping {
@@ -279,7 +343,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       },
     });
   const app = fastify({
-    logger: options.logger ?? true,
+    logger: operationEventLogger(options.logger),
     genReqId: () => randomUUID(),
   });
   app.decorateRequest('participant', null);

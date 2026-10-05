@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 882d285591042e7989b057c213243590df0c36cd
+lastReviewedCommit: 63d0113fd5d023fea5ab4e832e972f1e11ec77fd
 ---
 
 ## What runs today
@@ -600,3 +600,5 @@ Only the trusted download adapter's opaque in-process receipt can append an outc
 Error responses do not wait for audit observation. The existing non-stream cleanup releases an original reservation after the awaited original work settles; an unresolved non-cooperative fetch still retains its reservation. Streaming authorization stops output on either current denial or temporary failure, retaining the offered-byte prefix: forbidden or missing access records `AUTHORITY_CHANGED`, while other failures record `UNAVAILABLE`. Audit SQL retains its own connection until actual settlement. Existing stream-close cleanup is unchanged and does not prove every pending authorization query or generator has completed; neither does the observation deadline prove a global pool shutdown deadline.
 
 The Web Operation page continues the existing authorized event stream in explicit 100-event segments. Its internal POST transport keeps the scope-bound cursor out of browser URLs; each action repeats the existing exact-Operation API authorization. It validates page identity, ordering and continuation headers and hides previous content on failure. No new Operation permission, API contract, SQL or migration is introduced; live authority and database acceptance remain separate.
+
+The shared API host removes the existing event GET `after` parameter only from the request-log URL copy, including encoded/repeated keys and encoded Operation IDs. The real request, authorization, cursor validation and all other query encodings remain unchanged. Default and explicit request serializers receive the safe URL/raw-URL copy, while disabled logging stays disabled. External proxy logs and independent custom logging remain outside this check.

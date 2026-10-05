@@ -17,7 +17,7 @@ checkPaths:
   - packages/excon-scenarios/**
   - skills/agent-excon/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 55d1966c1ec99a5a98adbded79c7a6d7da256ebd
+lastReviewedCommit: 63d0113fd5d023fea5ab4e832e972f1e11ec77fd
 ---
 
 ## 协议边界
