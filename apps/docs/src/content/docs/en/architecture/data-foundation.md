@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 048701d6bde9353c95faea7a7de463e9a15d3ad0
+lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
 ---
 
 ## What runs today
@@ -604,3 +604,5 @@ Error responses do not wait for audit observation. The existing non-stream clean
 The Web Operation page continues the existing authorized event stream in explicit 100-event segments. Its internal POST transport keeps the scope-bound cursor out of browser URLs; each action repeats the existing exact-Operation API authorization. It validates page identity, ordering and continuation headers and hides previous content on failure. No new Operation permission, API contract, SQL or migration is introduced; live authority and database acceptance remain separate.
 
 The shared API host removes the existing event GET `after` parameter only from the request-log URL copy, including encoded/repeated keys and encoded Operation IDs. The real request, authorization, cursor validation and all other query encodings remain unchanged. Default and explicit request serializers receive the safe URL/raw-URL/original-URL copy, while disabled logging stays disabled. External proxy logs and independent custom logging remain outside this check.
+
+Registered `RESUMED` events retain their event type in API and Web reads and display as “Resumed” / “已恢复”. The event does not change the independent Operation status. Internal `PROJECTION_COMPLETED` and `PUBLISHED` milestones still normalize to `PROGRESS_REPORTED`; the Web reader continues to reject unregistered event types.

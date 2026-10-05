@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { DATA_CAPABILITY_REGISTRY } from '@wiser/data-contracts';
+import {
+  DATA_CAPABILITY_REGISTRY,
+  OperationEventPageSchema,
+} from '@wiser/data-contracts';
 
 import type {
   DataCapabilityAuditRecord,
@@ -142,6 +145,7 @@ class FakeClient implements PostgresDataReadClient {
   notFound = false;
   emptyIngestionSummaries = false;
   internalOperationEvent = false;
+  publishedOperationEvent = false;
   resumedOperationEvent = false;
   pointSpatialExtent = false;
   released = false;
@@ -268,7 +272,9 @@ class FakeClient implements PostgresDataReadClient {
               ? 'RESUMED'
               : this.internalOperationEvent
                 ? 'PROJECTION_COMPLETED'
-                : 'SUCCEEDED',
+                : this.publishedOperationEvent
+                  ? 'PUBLISHED'
+                  : 'SUCCEEDED',
             to_status: this.resumedOperationEvent ? 'RUNNING' : 'SUCCEEDED',
             progress_percent: this.resumedOperationEvent ? 37 : 100,
             operation_version: '3',
@@ -700,6 +706,24 @@ describe('data-postgres RLS read executors', () => {
         events,
       ).success,
     ).toBe(true);
+  });
+
+  it('keeps the internal PUBLISHED milestone normalized as a public progress event', async () => {
+    const pool = new FakePool();
+    pool.client.publishedOperationEvent = true;
+    const runtime = createPostgresDataReadRuntime(pool);
+    const events = OperationEventPageSchema.parse(
+      await executor(runtime, 'data.operation.events').execute(
+        { operationId: '77777777-7777-4777-8777-777777777777', first: 10 },
+        context,
+      ),
+    );
+
+    expect(events.items[0]).toMatchObject({
+      eventType: 'PROGRESS_REPORTED',
+      status: 'SUCCEEDED',
+      progressPercent: 100,
+    });
   });
 
   it('returns real empty summary arrays and queries projections by linked data item', async () => {

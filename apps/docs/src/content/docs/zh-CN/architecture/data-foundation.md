@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 048701d6bde9353c95faea7a7de463e9a15d3ad0
+lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
 ---
 
 ## 当前可运行能力
@@ -604,3 +604,5 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 网页任务页通过明确动作，以最多100条事件续读既有获权事件流。内部POST传输使绑定权限范围的游标不进入浏览器地址；每次动作仍由既有确切任务API重新核权。网页核对页面身份、事件顺序与续读头，失败隐藏原内容。未新增任务权限、公共API、SQL或迁移；真实权限和数据库验收继续单列。
 
 共享API宿主仅从既有事件GET的请求日志URL副本移除`after`参数，包含编码／重复键和编码任务编号；真实请求、授权、游标校验与其他查询参数原编码保持不变。默认与显式请求serializer收到安全URL／raw URL／original URL副本，关闭日志仍保持关闭。外部代理日志和独立自定义日志不在本项验收内。
+
+已登记的 `RESUMED` 事件在 API 和网页读取中保留事件类型，显示为“已恢复 / Resumed”；事件标签不改变独立的任务状态。内部 `PROJECTION_COMPLETED` 与 `PUBLISHED` 里程碑仍归一为 `PROGRESS_REPORTED`，网页读取器继续拒收未登记的事件类型。

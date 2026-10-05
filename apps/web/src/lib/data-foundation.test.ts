@@ -96,26 +96,29 @@ describe('Data Foundation browser-safe contracts', () => {
     },
   );
 
-  it('rejects an internal milestone as an unregistered public browser event', () => {
-    const internal = {
-      eventId: OTHER_VERSION_ID,
-      operationId: UUID,
-      sequence: 101,
-      operationVersion: 3,
-      eventType: 'PROJECTION_COMPLETED',
-      status: 'RUNNING',
-      progressPercent: 37,
-      occurredAt: '2026-10-05T16:00:00.000Z',
-    };
-    expect(() =>
-      dataFoundation.parseOperationEventPage({ items: [internal] }, UUID),
-    ).toThrow();
-    expect(() =>
-      dataFoundation.parseOperationEventStream(
-        `data: ${JSON.stringify(internal)}\n\n`,
-      ),
-    ).toThrow();
-  });
+  it.each(['PROJECTION_COMPLETED', 'PUBLISHED'])(
+    'rejects the internal %s milestone as an unregistered public browser event',
+    (eventType) => {
+      const internal = {
+        eventId: OTHER_VERSION_ID,
+        operationId: UUID,
+        sequence: 101,
+        operationVersion: 3,
+        eventType,
+        status: 'RUNNING',
+        progressPercent: 37,
+        occurredAt: '2026-10-05T16:00:00.000Z',
+      };
+      expect(() =>
+        dataFoundation.parseOperationEventPage({ items: [internal] }, UUID),
+      ).toThrow();
+      expect(() =>
+        dataFoundation.parseOperationEventStream(
+          `data: ${JSON.stringify(internal)}\n\n`,
+        ),
+      ).toThrow();
+    },
+  );
 
   it('declares every required localized management route', () => {
     expect(DATA_FOUNDATION_ROUTES.map((route) => route.path)).toEqual([
