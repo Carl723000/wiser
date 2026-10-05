@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 4289cbdd92b3d5509df7c0daeabad1656e2e6c28
+lastReviewedCommit: 372f4e5517807518462bb5e45c6c45cdeace19a1
 ---
 
 ## What this guide governs
@@ -207,6 +207,8 @@ Fixed-view actions persist only the typed candidate list and reading state. Reop
 Original links from a reopened saved view retain its canonical `savedViewId` on both asset cards and selected records, alongside the fixed candidate and asset, so the server can check the full manifest. Direct candidate reading keeps its single-original link without a saved-view identity.
 
 Map-to-record and record-to-map reading within the same fixed drawing retains map camera, selection and layer state. Each return still reads an authorized geometry page and uses its newly issued cursor. Inactive panels are hidden and their controls are excluded from focus; full-workspace expansion keeps the map mounted. A changed reference, asset, drawing or access denial clears the previous map. This recovery remains within the mounted reader and does not claim persisted-camera/period restoration or real browser acceptance from a synthetic engine lifecycle test.
+
+Returning to a visible candidate tab or a persisted browser page checks the current reading page without reopening the saved starting page. Restricted controls are inert immediately; permitted delivered bytes and reading state remain until the check resolves. A saved view checks all members before and after the read. Its starting page uses a fresh server resume cursor, while user-advanced pages retain their current cursor and consume any invalid or expired response without silently resetting. Current tab, selection, page anchor and same-drawing camera survive a valid check and are observable in the next immutable save. Recovery events merge and defer behind an ongoing save/revoke, without resending the mutation. A denial or changed reference clears loaded content and the saved title. These synthetic component/browser checks do not establish real authorization, SQL execution or actual bfcache restoration.
 
 The readiness overview presents six ranges against19 needs before the existing question drilldowns. Obtained, parsed, professionally reviewed and displayable information remain separate. Selecting a region/demand cell opens that same inspection scope; permissions and record identity are unchanged. Overlapping regional counts are never added into the global total. Historical inventory and selected-window rows have distinct labels, and technical use-check success is still separate from professional approval and executable eligibility.
 

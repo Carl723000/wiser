@@ -461,9 +461,7 @@ it.each(['visible', 'persisted pageshow'] as const)(
     fetch.mockImplementation(denied);
     restore(event);
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeNull());
-    await act(async () =>
-      older.resolve(Response.json(records(ref, lateValue))),
-    );
+    act(() => older.resolve(Response.json(records(ref, lateValue))));
     await idle();
     expect.soft(denied).toHaveBeenCalled();
     expect.soft(oldSignals[0]?.aborted).toBe(true);
@@ -660,7 +658,7 @@ it.each(['visible', 'persisted pageshow'] as const)(
       screen.getByRole('button', { name: 'Select record 3 · Line' }),
     );
     const engine = probe.maps.at(-1)!;
-    await act(async () => {
+    act(() => {
       engine.events.get('load')?.(undefined);
       engine.camera = structuredClone(advancedCamera);
       engine.events.get('moveend')?.(undefined);
@@ -700,7 +698,7 @@ it.each(['visible', 'persisted pageshow'] as const)(
       url(value).endsWith('/create'),
     );
     expect(created).toHaveLength(1);
-    expect(input(created[0]![1])).toMatchObject({
+    expect(input(created[0][1])).toMatchObject({
       references: [oldRef, otherMember],
       viewSpec: {
         page: {
@@ -712,8 +710,8 @@ it.each(['visible', 'persisted pageshow'] as const)(
         focus: { reference: oldRef, assetId, recordId: advancedId },
         map: {
           camera: authorityCamera({
-            longitude: advancedCamera.center[0]!,
-            latitude: advancedCamera.center[1]!,
+            longitude: advancedCamera.center[0],
+            latitude: advancedCamera.center[1],
             zoom: advancedCamera.zoom,
             bearing: 0,
             pitch: 0,
@@ -806,7 +804,7 @@ it('merges simultaneous visible and persisted pageshow recovery into one pending
   restore('persisted pageshow');
   await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(before));
   expect(fetch.mock.calls.length - before).toBe(1);
-  await act(async () => held.resolve(Response.json(records())));
+  act(() => held.resolve(Response.json(records())));
   await idle();
   expect(screen.getByText(rawValue)).toBeDefined();
 });
@@ -843,7 +841,7 @@ it('defers recovery until the current save finishes, preserving its signal and d
   expect(
     unguarded(screen.getByRole('link', { name: 'Download original' })),
   ).toBeNull();
-  await act(async () =>
+  act(() =>
     held.resolve(
       Response.json({ savedView: saved('records', 'fresh-start').savedView }),
     ),
@@ -887,7 +885,7 @@ it('does not interrupt current-view revoke or reopen a view after that revoke cl
   const before = fetch.mock.calls.length;
   restore('visible');
   expect(revokeSignal!.aborted).toBe(false);
-  await act(async () => held.resolve(Response.json({ viewId, revoked: true })));
+  act(() => held.resolve(Response.json({ viewId, revoked: true })));
   await screen.findByText('View revoked.');
   await idle();
   expect(fetch.mock.calls.length).toBe(before);

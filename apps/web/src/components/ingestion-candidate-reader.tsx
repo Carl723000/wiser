@@ -34,7 +34,7 @@ import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-pane
 import styles from './ingestion-candidate-reader.module.css';
 
 type Tab = 'originals' | 'records' | 'map';
-type Position = { after?: string; anchor?: string };
+type Position = { after?: string; anchor?: string; savedStart?: boolean };
 interface Navigation extends Position {
   readonly previous: readonly Position[];
 }
@@ -233,6 +233,31 @@ function CandidateSession({
   const rasterCancel = useRef<(() => void) | null>(null);
   const [rasterEpoch, setRasterEpoch] = useState(0);
   const owner = useRef(true);
+  const [recovering, setRecovering] = useState(false);
+  const recoveryGate = useRef(false);
+  const mutationPending = useRef(false);
+  const recoveryQueued = useRef(false);
+  const recoverCurrent = useRef<() => void>(() => {});
+  const contentAvailable = useRef(false);
+  contentAvailable.current = assets !== null;
+  const restricted = useRef<HTMLDivElement>(null);
+  function releaseRecovery() {
+    recoveryGate.current = false;
+    recoveryQueued.current = false;
+    if (contentAvailable.current) restricted.current?.removeAttribute('inert');
+    if (owner.current) setRecovering(false);
+  }
+  function requestRecovery() {
+    if (!owner.current || !contentAvailable.current || recoveryGate.current)
+      return;
+    // Browser events must block new navigation before React commits a render.
+    recoveryGate.current = true;
+    restricted.current?.setAttribute('inert', '');
+    setRecovering(true);
+    rasterCancel.current?.();
+    if (mutationPending.current) recoveryQueued.current = true;
+    else recoverCurrent.current();
+  }
   const [expanded, setExpanded] = useState(false);
   const panel = useRef<HTMLElement>(null);
   const expandButton = useRef<HTMLButtonElement>(null);
@@ -278,6 +303,7 @@ function CandidateSession({
   }
 
   function clearContent() {
+    contentAvailable.current = false;
     rasterCancel.current?.();
     setAssets(null);
     setRecords(null);
@@ -299,7 +325,12 @@ function CandidateSession({
     setSavedMessage(null);
     setOtherLink(null);
   }
-  async function execute(work: (signal: AbortSignal) => Promise<void>) {
+  async function execute(
+    work: (signal: AbortSignal) => Promise<void>,
+    kind: 'read' | 'mutation' | 'recovery' = 'read',
+  ) {
+    if (recoveryGate.current && kind !== 'recovery') return;
+    mutationPending.current = kind === 'mutation';
     rasterCancel.current?.();
     setRasterEpoch((value) => value + 1);
     pending.current?.abort();
@@ -326,8 +357,21 @@ function CandidateSession({
         !controller.signal.aborted &&
         owner.current &&
         pending.current === controller
-      )
+      ) {
+        pending.current = null;
+        mutationPending.current = false;
         setBusy(false);
+        if (kind === 'recovery') releaseRecovery();
+        else if (recoveryQueued.current) {
+          recoveryQueued.current = false;
+          // Retain the mutation result; recovery uses the latest mounted reader.
+          queueMicrotask(() => {
+            if (owner.current && contentAvailable.current)
+              recoverCurrent.current();
+            else releaseRecovery();
+          });
+        }
+      }
     }
   }
   const input = (position: Position, chosenAsset?: string) => ({
@@ -368,6 +412,7 @@ function CandidateSession({
     return result;
   }
   function loadAssets(position = firstPosition()) {
+    if (recoveryGate.current) return Promise.resolve();
     setTab('originals');
     return execute(async (signal) => {
       const value = await readPage('get', input(position), signal);
@@ -377,6 +422,7 @@ function CandidateSession({
     });
   }
   function loadRecords(chosenAsset: string, position = firstPosition()) {
+    if (recoveryGate.current) return Promise.resolve();
     setTab('records');
     if (chosenAsset !== assetId) {
       setRecords(null);
@@ -397,6 +443,7 @@ function CandidateSession({
     });
   }
   function loadGeometry(chosenAsset: string, position = firstPosition()) {
+    if (recoveryGate.current) return Promise.resolve();
     setTab('map');
     if (chosenAsset !== assetId) {
       setRecords(null);
@@ -417,6 +464,7 @@ function CandidateSession({
     });
   }
   function switchTab(next: Tab) {
+    if (recoveryGate.current) return;
     if (next !== 'originals') rasterCancel.current?.();
     setTab(next);
     if (next === 'map' && assetId) void loadGeometry(assetId, geometryNav);
@@ -433,7 +481,7 @@ function CandidateSession({
       ...(anchor ? { anchor } : {}),
       previous: [
         ...nav.previous,
-        { after: nav.after, anchor: nav.anchor },
+        { after: nav.after, anchor: nav.anchor, savedStart: nav.savedStart },
       ].slice(-32),
     };
   }
@@ -441,6 +489,7 @@ function CandidateSession({
     return { ...nav.previous.at(-1), previous: nav.previous.slice(0, -1) };
   }
   function selectRecord(recordId: string) {
+    if (recoveryGate.current) return;
     if (
       geometry?.features.some(
         (record) => record.recordId.toLowerCase() === recordId.toLowerCase(),
@@ -452,6 +501,7 @@ function CandidateSession({
       setSelected(recordId);
   }
   function seek(kind: 'records' | 'geometry') {
+    if (recoveryGate.current) return;
     if (!assetId || !selected) return;
     const chosenAsset = assetId,
       chosenRecord = selected;
@@ -501,6 +551,7 @@ function CandidateSession({
     return fresh;
   }
   function saveCurrent() {
+    if (recoveryGate.current) return;
     if (!assets || !viewName.trim()) return;
     const nav =
       tab === 'originals'
@@ -582,9 +633,10 @@ function CandidateSession({
       );
       await savedAuthority(signal);
       if (!signal.aborted) setSavedMessage(copy.saveSuccess);
-    });
+    }, 'mutation');
   }
   function loadSaved(position = firstPosition()) {
+    if (recoveryGate.current) return Promise.resolve();
     return execute(async (signal) => {
       const result = await readCandidateSavedView(
         'list',
@@ -598,6 +650,7 @@ function CandidateSession({
     });
   }
   function openSaved(viewId: string) {
+    if (recoveryGate.current) return Promise.resolve();
     return execute(async (signal) => {
       const value = await readCandidateSavedView('open', { viewId }, signal);
       const request = value.request;
@@ -671,6 +724,7 @@ function CandidateSession({
           ? savedPage.afterAssetId
           : savedPage.afterRecordId;
       const nav: Navigation = {
+        savedStart: true,
         ...(request.input.after ? { after: request.input.after } : {}),
         ...(anchor ? { anchor } : {}),
         previous: [],
@@ -690,6 +744,7 @@ function CandidateSession({
     });
   }
   function revokeSaved(viewId: string) {
+    if (recoveryGate.current) return Promise.resolve();
     const value = { viewId };
     return execute(async (signal) => {
       await readCandidateSavedView(
@@ -714,8 +769,102 @@ function CandidateSession({
             : null,
         );
       setNotice(copy.revokeSuccess);
-    });
+    }, 'mutation');
   }
+  recoverCurrent.current = () => {
+    if (!assets) {
+      releaseRecovery();
+      return;
+    }
+    const action =
+      tab === 'originals' ? 'get' : tab === 'records' ? 'records' : 'geometry';
+    const position =
+      tab === 'originals'
+        ? assetNav
+        : tab === 'records'
+          ? recordNav
+          : geometryNav;
+    void execute(async (signal) => {
+      let current: CandidateSavedPages['open'] | null = null;
+      if (openedView) {
+        current = await readCandidateSavedView(
+          'open',
+          { viewId: openedView.savedView.viewId },
+          signal,
+        );
+        if (
+          manifestKey(current) !== manifestKey(openedView) ||
+          !current.references.some(
+            (ref) =>
+              candidateSavedReferenceKey(ref) ===
+              candidateSavedReferenceKey(fixed),
+          )
+        )
+          throw new CandidateReaderError('invalid');
+      }
+      const savedPage = current?.viewSpec.page;
+      // Only the saved start can use open's new resume request. A user-advanced
+      // page keeps its own cursor; invalid/expired cursors fail visibly.
+      const savedStart =
+        position.savedStart &&
+        savedPage &&
+        savedPage.kind ===
+          (tab === 'originals'
+            ? 'assets'
+            : tab === 'records'
+              ? 'records'
+              : 'geometry') &&
+        candidateSavedReferenceKey(savedPage.reference) ===
+          candidateSavedReferenceKey(fixed) &&
+        (savedPage.kind === 'assets' ||
+          savedPage.assetId.toLowerCase() === assetId?.toLowerCase());
+      const nextPosition = savedStart
+        ? { ...position, after: current!.request.input.after }
+        : position;
+      const value = await readCandidatePage(
+        action,
+        input(
+          nextPosition,
+          action === 'get' ? undefined : (assetId ?? undefined),
+        ),
+        signal,
+      );
+      if (current) {
+        const confirmation = await readCandidateSavedView(
+          'open',
+          { viewId: current.savedView.viewId },
+          signal,
+        );
+        if (manifestKey(confirmation) !== manifestKey(current))
+          throw new CandidateReaderError('invalid');
+      }
+      if (signal.aborted) return;
+      if ('assets' in value) {
+        setAssets(value);
+        setAssetNav(nextPosition);
+      } else if ('records' in value) {
+        setRecords(value);
+        setRecordNav(nextPosition);
+      } else {
+        setGeometry(value);
+        setGeometryNav(nextPosition);
+      }
+    }, 'recovery');
+  };
+  useEffect(() => {
+    const visible = () => {
+      if (document.visibilityState === 'visible') requestRecovery();
+    };
+    const shown = (event: PageTransitionEvent) => {
+      if (event.persisted) requestRecovery();
+    };
+    document.addEventListener('visibilitychange', visible);
+    window.addEventListener('pageshow', shown);
+    return () => {
+      document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('pageshow', shown);
+    };
+  }, []);
   useEffect(() => {
     owner.current = true;
     if (savedViewId) void openSaved(savedViewId);
@@ -909,7 +1058,24 @@ function CandidateSession({
       ) : null}
       {otherLink ? <a href={otherLink}>{copy.openSaved}</a> : null}
       {assets ? (
-        <>
+        <div
+          ref={restricted}
+          className={styles.content}
+          inert={recovering}
+          aria-busy={recovering}
+          onClickCapture={(event) => {
+            if (recoveryGate.current) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+          onKeyDownCapture={(event) => {
+            if (recoveryGate.current) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+        >
           <section
             className={styles.savedSection}
             aria-label={copy.facts.title}
@@ -1503,7 +1669,7 @@ function CandidateSession({
               <dd>{assets.createdAt}</dd>
             </dl>
           </details>
-        </>
+        </div>
       ) : null}
     </section>
   );
