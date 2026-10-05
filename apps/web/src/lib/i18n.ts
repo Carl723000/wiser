@@ -3106,6 +3106,7 @@ const zhCN = {
       loading: '正在读取进度记录。',
       failed: '本次读取未完成，原有内容已隐藏。',
       restartRequired: '读取位置已失效。请返回首段，重新读取当前可见记录。',
+      positionInvalidTitle: '读取位置已失效',
       restartGuidance: '解决上述问题后，可以返回首段重新读取。',
       refreshNote: '每次读取最多显示100条；刷新页面将返回首段。',
       retryable: '可以重试',
@@ -7197,6 +7198,7 @@ const en: typeof zhCN = {
       failed: 'This read did not complete. Previous content is hidden.',
       restartRequired:
         'The reading position is no longer valid. Return to the first segment to read the currently visible records.',
+      positionInvalidTitle: 'The reading position is no longer valid',
       restartGuidance:
         'After resolving the issue above, return to the first segment to read again.',
       refreshNote:

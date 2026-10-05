@@ -55,22 +55,20 @@ function eventDal(fetch: typeof globalThis.fetch) {
 
 describe('same-operation bounded event continuation', () => {
   it('rejects an operation summary for another task before combining it with events', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({
-          operationId: PROJECT_ID,
-          resource: 'ingestion',
-          tenantId: TENANT_ID,
-          projectId: PROJECT_ID,
-          capabilityId: 'data.ingestion.create',
-          status: 'RUNNING',
-          progressPercent: 10,
-          version: 1,
-          createdAt: '2026-10-05T00:00:00Z',
-          updatedAt: '2026-10-05T00:00:00Z',
-        }),
-      );
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json({
+        operationId: PROJECT_ID,
+        resource: 'ingestion',
+        tenantId: TENANT_ID,
+        projectId: PROJECT_ID,
+        capabilityId: 'data.ingestion.create',
+        status: 'RUNNING',
+        progressPercent: 10,
+        version: 1,
+        createdAt: '2026-10-05T00:00:00Z',
+        updatedAt: '2026-10-05T00:00:00Z',
+      }),
+    );
     await expect(
       eventDal(fetch).operation(GEO_VERSION_ID),
     ).rejects.toMatchObject({ kind: 'contract' });
@@ -89,15 +87,13 @@ describe('same-operation bounded event continuation', () => {
         items: [{ sequence: 1 }],
         nextCursor: cursor,
       });
-      const read = dal.operationEvents as unknown as (
-        id: string,
-        after?: string,
-      ) => Promise<unknown>;
-      expect(await read(GEO_VERSION_ID, cursor)).toMatchObject({
+      expect(await dal.operationEvents(GEO_VERSION_ID, cursor)).toMatchObject({
         items: [{ sequence: 2 }],
       });
       expect(fetch).toHaveBeenCalledTimes(2);
-      const url = new URL(String(fetch.mock.calls[1][0]));
+      const calledUrl = fetch.mock.calls[1]?.[0];
+      if (typeof calledUrl !== 'string') throw Error('Expected server URL');
+      const url = new URL(calledUrl);
       expect(url.pathname).toBe(
         `/api/data/v1/operations/${GEO_VERSION_ID}/events`,
       );
@@ -111,17 +107,17 @@ describe('same-operation bounded event continuation', () => {
   it.each([7, 100])(
     'ends a %i-event page only when the header is absent',
     async (count) => {
-      expect(
-        await eventDal(
-          vi
-            .fn()
-            .mockResolvedValue(
-              eventResponse(
-                Array.from({ length: count }, (_, i) => operationEvent(i + 1)),
-              ),
+      const page = await eventDal(
+        vi
+          .fn()
+          .mockResolvedValue(
+            eventResponse(
+              Array.from({ length: count }, (_, i) => operationEvent(i + 1)),
             ),
-        ).operationEvents(GEO_VERSION_ID),
-      ).toMatchObject({ items: expect.any(Array) });
+          ),
+      ).operationEvents(GEO_VERSION_ID);
+      expect(page.items).toHaveLength(count);
+      expect(page.nextCursor).toBeUndefined();
     },
   );
   it.each(['', 'x'.repeat(2049), 'one,two'])(
@@ -155,13 +151,12 @@ describe('same-operation bounded event continuation', () => {
         vi.fn().mockResolvedValue(eventResponse([], 'next')),
       ).operationEvents(GEO_VERSION_ID),
     ).rejects.toMatchObject({ kind: 'contract' });
-    const read = eventDal(
+    const dal = eventDal(
       vi.fn().mockResolvedValue(eventResponse([operationEvent(2)], 'same')),
-    ).operationEvents as unknown as (
-      id: string,
-      after: string,
-    ) => Promise<unknown>;
-    await expect(read(GEO_VERSION_ID, 'same')).rejects.toMatchObject({
+    );
+    await expect(
+      dal.operationEvents(GEO_VERSION_ID, 'same'),
+    ).rejects.toMatchObject({
       kind: 'contract',
     });
   });
@@ -180,11 +175,9 @@ describe('same-operation bounded event continuation', () => {
         .mockResolvedValue(
           new Response('private upstream text', { status: Number(status) }),
         );
-      const read = eventDal(fetch).operationEvents as unknown as (
-        id: string,
-        after: string,
-      ) => Promise<unknown>;
-      await expect(read(GEO_VERSION_ID, 'cursor')).rejects.toMatchObject({
+      await expect(
+        eventDal(fetch).operationEvents(GEO_VERSION_ID, 'cursor'),
+      ).rejects.toMatchObject({
         kind,
         status,
       });
@@ -192,12 +185,10 @@ describe('same-operation bounded event continuation', () => {
     },
   );
   it('bounds an unresolved continuation request', async () => {
-    const read = eventDal(vi.fn(() => new Promise<Response>(() => {})))
-      .operationEvents as unknown as (
-      id: string,
-      after: string,
-    ) => Promise<unknown>;
-    await expect(read(GEO_VERSION_ID, 'cursor')).rejects.toMatchObject({
+    const dal = eventDal(vi.fn(() => new Promise<Response>(() => {})));
+    await expect(
+      dal.operationEvents(GEO_VERSION_ID, 'cursor'),
+    ).rejects.toMatchObject({
       kind: 'unavailable',
     });
   });

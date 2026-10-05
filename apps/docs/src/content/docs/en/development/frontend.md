@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 328b5a107dafe87cb982b7d50679a35a15e7c768
+lastReviewedCommit: 882d285591042e7989b057c213243590df0c36cd
 ---
 
 ## Two frontend applications
@@ -355,3 +355,5 @@ The task page starts with at most 100 events for the exact Operation. An explici
 The session-verified internal POST endpoint `/api/data-foundation/operation-events` follows the existing same-origin BFF pattern. It accepts only the Operation identifier and optional cursor, caps the request body at 16 KiB and the request at ten seconds, and creates a fresh DAL for every action. Authority-bound cursors remain in component memory and the request/response body; they never enter browser URLs, visible copy or logs. Each server request uses the existing Operation events API with `first=100`. The Web projection retains the existing page shape, rejects malformed or repeated continuation headers, and checks the Operation identifier and increasing sequence order on every page. A continuation also requires increasing sequence order relative to the previous segment.
 
 Authentication, authorization, missing-task, invalid-cursor and unavailable outcomes remain separate. A failed read hides the previous task summary and events; invalid reading positions require an explicit return to the first segment. Aborted or superseded object/initial-state requests cannot publish late content. These Web checks do not prove live Auth, PostgreSQL/RLS, storage or global shutdown behavior, and do not change the public API, permissions, saved-view identity, time rules or migrations.
+
+The summary names the progress snapshot from opening the page; event continuation does not refresh that summary. Invalid continuation positions use the shared failure surface with an Operation-specific restart message, rather than search-condition guidance. The browser caps JSON responses at 1 MiB and ends an unresolved read after fifteen seconds.

@@ -13,6 +13,7 @@ import {
   SectionHeading,
 } from './data-foundation-workspace';
 import styles from './data-foundation-workspace.module.css';
+import { FailureState } from './failure-state';
 
 type FailureKind =
   | 'authentication'
@@ -34,16 +35,22 @@ const failureKind = (status: number): FailureKind =>
             ? 'contract'
             : 'unavailable';
 
+class OperationEventReadError extends Error {
+  constructor(readonly kind: FailureKind) {
+    super('Operation event read failed.');
+  }
+}
+
 async function boundedJson(
   response: Response,
   signal: AbortSignal,
 ): Promise<unknown> {
   if (!response.headers.get('content-type')?.includes('application/json')) {
     void response.body?.cancel().catch(() => {});
-    throw 'contract';
+    throw new OperationEventReadError('contract');
   }
   const reader = response.body?.getReader();
-  if (!reader) throw 'contract';
+  if (!reader) throw new OperationEventReadError('contract');
   const abort = () => {
     void reader.cancel().catch(() => {});
   };
@@ -59,7 +66,7 @@ async function boundedJson(
       size += part.value.byteLength;
       if (size > 1_048_576) {
         abort();
-        throw 'contract';
+        throw new OperationEventReadError('contract');
       }
       chunks.push(part.value);
     }
@@ -74,7 +81,7 @@ async function boundedJson(
         new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       );
     } catch {
-      throw 'contract';
+      throw new OperationEventReadError('contract');
     }
   } finally {
     signal.removeEventListener('abort', abort);
@@ -129,7 +136,7 @@ export function OperationEventReader({
     const timer = setTimeout(() => controller.abort(), 15_000);
     let onAbort: (() => void) | undefined;
     const aborted = new Promise<never>((_, reject) => {
-      onAbort = () => reject('unavailable');
+      onAbort = () => reject(new OperationEventReadError('unavailable'));
       controller.signal.addEventListener('abort', onAbort, { once: true });
     });
     setPending(true);
@@ -150,11 +157,11 @@ export function OperationEventReader({
         });
         if (controller.signal.aborted) {
           void response.body?.cancel().catch(() => {});
-          throw 'unavailable';
+          throw new OperationEventReadError('unavailable');
         }
         if (!response.ok) {
           void response.body?.cancel().catch(() => {});
-          throw failureKind(response.status);
+          throw new OperationEventReadError(failureKind(response.status));
         }
         const value = await boundedJson(response, controller.signal);
         try {
@@ -165,7 +172,7 @@ export function OperationEventReader({
             lastSequence,
           );
         } catch {
-          throw 'contract';
+          throw new OperationEventReadError('contract');
         }
       };
       const next = await Promise.race([work(), aborted]);
@@ -175,17 +182,7 @@ export function OperationEventReader({
       if (turn !== generation.current) return;
       setPage(null);
       setFailure(
-        typeof error === 'string' &&
-          [
-            'authentication',
-            'authorization',
-            'not-found',
-            'invalid-request',
-            'unavailable',
-            'contract',
-          ].includes(error)
-          ? (error as FailureKind)
-          : 'unavailable',
+        error instanceof OperationEventReadError ? error.kind : 'unavailable',
       );
     } finally {
       clearTimeout(timer);
@@ -214,12 +211,23 @@ export function OperationEventReader({
         </p>
         {failure ? (
           <>
-            <DataFailureState locale={locale} error={{ kind: failure }} />
-            <p>
-              {failure === 'invalid-request' || failure === 'contract'
-                ? copy.restartRequired
-                : copy.restartGuidance}
-            </p>
+            {failure === 'invalid-request' ? (
+              <FailureState
+                headingLevel={2}
+                eyebrow={copy.eyebrow}
+                title={copy.positionInvalidTitle}
+                copy={copy.restartRequired}
+              />
+            ) : (
+              <>
+                <DataFailureState
+                  locale={locale}
+                  error={{ kind: failure }}
+                  returnPath={`/${locale}/data-foundation/operations/${operationId}`}
+                />
+                <p>{copy.restartGuidance}</p>
+              </>
+            )}
           </>
         ) : visible ? (
           <>

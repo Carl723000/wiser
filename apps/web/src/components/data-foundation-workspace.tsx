@@ -271,9 +271,11 @@ export function AuthorityFlag({ locale }: { readonly locale: Locale }) {
 export function DataFailureState({
   error,
   locale,
+  returnPath,
 }: {
   readonly error: Pick<DataFoundationApiError, 'kind'>;
   readonly locale: Locale;
+  readonly returnPath?: string;
 }) {
   const copy = getDictionary(locale).dataFoundation;
   const failure = (() => {
@@ -298,7 +300,7 @@ export function DataFailureState({
     switch (error.kind) {
       case 'authentication':
         return {
-          href: `/${locale}/login?next=/${locale}/data-foundation`,
+          href: `/${locale}/login?${new URLSearchParams({ next: returnPath ?? `/${locale}/data-foundation` })}`,
           label: failure.action,
         };
       case 'invalid-request':

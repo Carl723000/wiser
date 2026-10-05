@@ -82,11 +82,7 @@ export async function POST(request: Request): Promise<Response> {
       signal.throwIfAborted();
       const dal = await getDataFoundationDal();
       signal.throwIfAborted();
-      const page = await dal.operationEvents(
-        operationId,
-        row.after as string | undefined,
-        signal,
-      );
+      const page = await dal.operationEvents(operationId, row.after, signal);
       signal.throwIfAborted();
       return Response.json(page, { headers });
     };

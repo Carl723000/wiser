@@ -19,8 +19,8 @@ checkPaths:
   - packages/excon-scenarios/**
   - .env.example
   - compose.yaml
-lastReviewedAt: 2026-08-22
-lastReviewedCommit: ed36c7913b5dd2b2542adf1aa1ce1e5d9a70029f
+lastReviewedAt: 2026-10-05
+lastReviewedCommit: 882d285591042e7989b057c213243590df0c36cd
 ---
 
 # WISER API / WISER 共享 API

@@ -33,6 +33,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+function requestBody(init: RequestInit | undefined): unknown {
+  if (typeof init?.body !== 'string') throw Error('Expected JSON body');
+  return JSON.parse(init.body) as unknown;
+}
 function mount(value = initial) {
   return render(
     <OperationEventReader operationId={id} initialPage={value} locale="en">
@@ -48,18 +52,14 @@ it.each([7, 100])(
     mount(page(count));
     expect(screen.getAllByRole('listitem')).toHaveLength(count);
     expect(
-      (
-        screen.getByRole('button', {
-          name: 'Continue reading',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+      screen.getByRole('button', { name: 'Continue reading' }),
+    ).toHaveProperty('disabled', true);
     expect(fetch).not.toHaveBeenCalled();
   },
 );
 it('replaces 100 with record 101 after exactly one continuation action, and returns to the first segment explicitly', async () => {
   const fetch = vi
-    .fn()
+    .fn<typeof globalThis.fetch>()
     .mockResolvedValueOnce(Response.json({ items: [event(101)] }))
     .mockResolvedValueOnce(Response.json(initial));
   vi.stubGlobal('fetch', fetch);
@@ -76,7 +76,7 @@ it('replaces 100 with record 101 after exactly one continuation action, and retu
   expect(document.activeElement).toBe(screen.getByRole('status'));
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(fetch.mock.calls[0][0]).toBe('/api/data-foundation/operation-events');
-  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+  expect(requestBody(fetch.mock.calls[0]?.[1])).toEqual({
     operationId: id,
     after: 'private-cursor',
   });
@@ -88,7 +88,7 @@ it('replaces 100 with record 101 after exactly one continuation action, and retu
   await waitFor(() =>
     expect(screen.getAllByRole('listitem')).toHaveLength(100),
   );
-  expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ operationId: id });
+  expect(requestBody(fetch.mock.calls[1]?.[1])).toEqual({ operationId: id });
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 it.each([401, 403, 404, 400, 422, 503])(
@@ -114,7 +114,9 @@ it.each([401, 403, 404, 400, 422, 503])(
     );
     if (status === 400 || status === 422)
       expect(
-        screen.getByText(/reading position is no longer valid/),
+        screen.getByText(
+          getDictionary('en').dataFoundation.operationPage.restartRequired,
+        ),
       ).toBeTruthy();
     if (status === 400 || status === 422)
       expect(screen.queryByText('Check the query conditions')).toBeNull();
@@ -192,12 +194,8 @@ it('refreshes to initial props and never reuses the previous continuation cursor
   );
   await screen.findByText('Showing records 1–7.');
   expect(
-    (
-      screen.getByRole('button', {
-        name: 'Continue reading',
-      }) as HTMLButtonElement
-    ).disabled,
-  ).toBe(true);
+    screen.getByRole('button', { name: 'Continue reading' }),
+  ).toHaveProperty('disabled', true);
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 it('bounds an unresolved browser continuation and hides old content', async () => {

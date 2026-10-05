@@ -14,7 +14,7 @@ export function FailureState({
   readonly eyebrow: string;
   readonly guidance?: string;
   readonly headingLevel?: 1 | 2;
-  readonly primaryAction: {
+  readonly primaryAction?: {
     readonly href: string;
     readonly label: string;
   };
@@ -36,10 +36,12 @@ export function FailureState({
         {guidance === undefined ? null : (
           <p className={styles.guidance}>{guidance}</p>
         )}
-        <Link className={styles.action} href={primaryAction.href}>
-          {primaryAction.label}
-          <span aria-hidden="true">→</span>
-        </Link>
+        {primaryAction === undefined ? null : (
+          <Link className={styles.action} href={primaryAction.href}>
+            {primaryAction.label}
+            <span aria-hidden="true">→</span>
+          </Link>
+        )}
       </div>
     </section>
   );

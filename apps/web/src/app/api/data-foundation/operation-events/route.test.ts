@@ -118,6 +118,8 @@ it('propagates cancellation to a started DAL request and ignores its late result
   await vi.waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(1));
   controller.abort();
   expect((await result).status).toBe(499);
-  expect(mocks.events.mock.calls[0][2].aborted).toBe(true);
+  const signal: unknown = mocks.events.mock.calls[0]?.[2];
+  if (!(signal instanceof AbortSignal)) throw Error('Expected request signal');
+  expect(signal.aborted).toBe(true);
   resolve({ items: [] });
 });

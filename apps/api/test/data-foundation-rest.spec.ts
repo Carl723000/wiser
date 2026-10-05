@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyServerOptions } from 'fastify';
 
 import {
   DATA_CAPABILITY_IDS,
@@ -427,6 +427,7 @@ afterEach(async () => {
 function appWith(
   requestContext: PlatformRequestContext | null = context,
   handlerOverride?: DataFoundationRestCapabilityHandler,
+  logger: NonNullable<FastifyServerOptions['logger']> = false,
 ) {
   const resolver = {
     resolve: vi.fn(() => Promise.resolve(requestContext)),
@@ -461,7 +462,8 @@ function appWith(
       }),
     } satisfies DataFoundationRestCapabilityHandler);
   const app = buildApp({
-    logger: false,
+    // The old composition type narrowed Fastify's existing logger option.
+    logger: logger as boolean,
     modules: [
       createDataFoundationModule({
         readiness: () =>
@@ -475,6 +477,125 @@ function appWith(
 }
 
 describe('Data Foundation REST module', () => {
+  it.each([
+    'after=private-cursor%2Bscope',
+    '%61fter=private-cursor%2Bscope',
+    'after=private-cursor&after=other-private-cursor',
+    'after=',
+  ])(
+    'omits only event after values from the default serializer in an isolated memory log: %s',
+    async (query) => {
+      const lines: string[] = [];
+      const execute = vi.fn(() => Promise.resolve({ items: [] }));
+      const { app } = appWith(
+        context,
+        { execute },
+        {
+          stream: {
+            write: (line) => {
+              lines.push(line);
+            },
+          },
+        },
+      );
+      const url = `/api/data/v1/operations/${OPERATION_ID}/events?first=1%30%30&${query}`;
+      const response = await app.inject({
+        method: 'GET',
+        url,
+        headers: authHeaders(),
+      });
+      const logs = lines.join('');
+      expect(logs).toContain('incoming request');
+      expect(logs).toContain(
+        `/api/data/v1/operations/${OPERATION_ID}/events?first=1%30%30`,
+      );
+      expect(logs).not.toContain('private-cursor');
+      expect(logs).not.toContain('after=');
+      expect(logs).not.toContain('%61fter=');
+      expect(logs).toContain('"method":"GET"');
+      expect(logs).toContain('"host":"localhost:80"');
+      expect(logs).toContain('"remoteAddress":"127.0.0.1"');
+      if (!query.includes('&') && !query.endsWith('=')) {
+        expect(response.statusCode).toBe(200);
+        expect(execute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            input: {
+              operationId: OPERATION_ID,
+              first: 100,
+              after: 'private-cursor+scope',
+            },
+          }),
+        );
+      }
+      await app.inject({
+        method: 'GET',
+        url: '/health/live?after=unrelated-visible-query',
+      });
+      expect(lines.join('')).toContain(
+        '/health/live?after=unrelated-visible-query',
+      );
+    },
+  );
+  it('preserves explicit logger options and request/response fields while copying only the event URL', async () => {
+    const lines: string[] = [];
+    const serializer = vi.fn((request: import('fastify').FastifyRequest) => ({
+      method: request.method,
+      url: request.url,
+      rawUrl: request.raw.url,
+      custom: 'keep-me',
+    }));
+    const logger = {
+      level: 'info',
+      stream: {
+        write: (line: string) => {
+          lines.push(line);
+        },
+      },
+      serializers: {
+        req: serializer,
+        res: () => ({ statusCode: 200, customResponse: 'keep-response' }),
+      },
+    };
+    const execute = vi.fn(() => Promise.resolve({ items: [] }));
+    const { app } = appWith(context, { execute }, logger);
+    await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/operations/${OPERATION_ID}/events?after=private-cursor&first=100`,
+      headers: authHeaders(),
+    });
+    expect(lines.join('')).toContain('keep-me');
+    expect(lines.join('')).toContain('keep-response');
+    expect(lines.join('')).not.toContain('private-cursor');
+    expect(logger.serializers.req).toBe(serializer);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          operationId: OPERATION_ID,
+          first: 100,
+          after: 'private-cursor',
+        },
+      }),
+    );
+  });
+  it('keeps logger-off operation event reads unchanged', async () => {
+    const execute = vi.fn(() => Promise.resolve({ items: [] }));
+    const { app } = appWith(context, { execute }, false);
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/data/v1/operations/${OPERATION_ID}/events?after=private-cursor&first=100`,
+      headers: authHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          operationId: OPERATION_ID,
+          first: 100,
+          after: 'private-cursor',
+        },
+      }),
+    );
+  });
   it('preserves get 1.2 frozen candidate reference in the standard ingestion response', async () => {
     const reference = {
       kind: 'ingestion-candidate',
