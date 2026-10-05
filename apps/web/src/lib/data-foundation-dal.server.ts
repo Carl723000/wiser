@@ -20,6 +20,7 @@ import {
   ExplorationResultSchema,
   type ExplorationResult,
   GetIngestionOutputSchema,
+  OperationEventPageSchema,
   type IngestionCandidateAssetPage,
   type IngestionCandidateRecordPage,
   type IngestionCandidateGeometryPage,
@@ -1084,7 +1085,12 @@ export function createDataFoundationDal(
       validateUuid(operationId);
       return parsed(
         () => call(`/api/data/v1/operations/${operationId}`),
-        parseOperation,
+        (value) => {
+          const operation = parseOperation(value);
+          if (!sameUuid(operation.operationId, operationId))
+            throw new DataFoundationApiError('contract', 502);
+          return operation;
+        },
       );
     },
     operationEvents: async (operationId, after, signal) => {
@@ -1107,12 +1113,12 @@ export function createDataFoundationDal(
         )
           throw Error('Invalid event response');
         return parseOperationEventPage(
-          {
+          OperationEventPageSchema.parse({
             items: parseOperationEventStream(value.body),
             ...(value.nextCursor === null
               ? {}
               : { nextCursor: value.nextCursor }),
-          },
+          }),
           operationId,
           after,
         );

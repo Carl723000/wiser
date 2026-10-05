@@ -34,6 +34,54 @@ const failureKind = (status: number): FailureKind =>
             ? 'contract'
             : 'unavailable';
 
+async function boundedJson(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    void response.body?.cancel().catch(() => {});
+    throw 'contract';
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw 'contract';
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal.addEventListener('abort', abort, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      signal.throwIfAborted();
+      const part = await reader.read();
+      signal.throwIfAborted();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 1_048_576) {
+        abort();
+        throw 'contract';
+      }
+      chunks.push(part.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      return JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      );
+    } catch {
+      throw 'contract';
+    }
+  } finally {
+    signal.removeEventListener('abort', abort);
+    reader.releaseLock();
+  }
+}
+
 export function OperationEventReader({
   operationId,
   initialPage,
@@ -79,32 +127,48 @@ export function OperationEventReader({
     request.current = controller;
     const turn = ++generation.current;
     const timer = setTimeout(() => controller.abort(), 15_000);
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject('unavailable');
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+    });
     setPending(true);
     setFailure(null);
     try {
-      const response = await fetch('/api/data-foundation/operation-events', {
-        method: 'POST',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        redirect: 'error',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          operationId,
-          ...(after === undefined ? {} : { after }),
-        }),
-      });
-      if (!response.ok) {
-        void response.body?.cancel().catch(() => {});
-        throw failureKind(response.status);
-      }
-      const value: unknown = await response.json();
-      let next: OperationEventPageDto;
-      try {
-        next = parseOperationEventPage(value, operationId, after, lastSequence);
-      } catch {
-        throw 'contract';
-      }
+      const work = async () => {
+        const response = await fetch('/api/data-foundation/operation-events', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          redirect: 'error',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            operationId,
+            ...(after === undefined ? {} : { after }),
+          }),
+        });
+        if (controller.signal.aborted) {
+          void response.body?.cancel().catch(() => {});
+          throw 'unavailable';
+        }
+        if (!response.ok) {
+          void response.body?.cancel().catch(() => {});
+          throw failureKind(response.status);
+        }
+        const value = await boundedJson(response, controller.signal);
+        try {
+          return parseOperationEventPage(
+            value,
+            operationId,
+            after,
+            lastSequence,
+          );
+        } catch {
+          throw 'contract';
+        }
+      };
+      const next = await Promise.race([work(), aborted]);
       if (turn !== generation.current || controller.signal.aborted) return;
       setPage(next);
     } catch (error) {
@@ -125,6 +189,7 @@ export function OperationEventReader({
       );
     } finally {
       clearTimeout(timer);
+      if (onAbort) controller.signal.removeEventListener('abort', onAbort);
       if (turn === generation.current) {
         request.current = null;
         setPending(false);

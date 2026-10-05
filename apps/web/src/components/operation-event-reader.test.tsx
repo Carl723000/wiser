@@ -57,7 +57,7 @@ it.each([7, 100])(
     expect(fetch).not.toHaveBeenCalled();
   },
 );
-it('replaces 100 with record 101 after exactly one keyboard action, and returns to the first segment explicitly', async () => {
+it('replaces 100 with record 101 after exactly one continuation action, and returns to the first segment explicitly', async () => {
   const fetch = vi
     .fn()
     .mockResolvedValueOnce(Response.json({ items: [event(101)] }))
@@ -116,6 +116,8 @@ it.each([401, 403, 404, 400, 422, 503])(
       expect(
         screen.getByText(/reading position is no longer valid/),
       ).toBeTruthy();
+    if (status === 400 || status === 422)
+      expect(screen.queryByText('Check the query conditions')).toBeNull();
     if (status === 401)
       expect(
         screen
@@ -168,7 +170,7 @@ it('aborts a previous object/session refresh response and never publishes it ove
       locale="en"
     />,
   );
-  expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   resolve(Response.json({ items: [event(101)] }));
   await waitFor(() =>
     expect(screen.getByRole('status').textContent).toBe('Showing records 5–5.'),
