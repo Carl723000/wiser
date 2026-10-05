@@ -374,6 +374,18 @@ it('rejects sourceless frames when native scrolling ends or the map is inactive'
   expect(props.onCamera).not.toHaveBeenCalled();
 });
 
+it('rejects a late wheel-source frame after native scrolling stopped', () => {
+  render(<SpatialWorkspaceMap {...props} />);
+  const move = probe.props.onMove as (event: unknown) => void;
+  const next = { ...camera, zoom: camera.zoom - 0.25 };
+  const originalEvent = new WheelEvent('wheel', { deltaY: 2 });
+  act(() => move({ viewState: next, target: probe.native, originalEvent }));
+  expect(props.onCamera).not.toHaveBeenCalled();
+  probe.zooming.mockReturnValue(true);
+  act(() => move({ viewState: next, target: probe.native, originalEvent }));
+  expect(props.onCamera).toHaveBeenCalledExactlyOnceWith(next);
+});
+
 it('stops a gesture before applying an external camera and ignores its reflected user camera', () => {
   const { rerender } = render(<SpatialWorkspaceMap {...props} />);
   act(() => (probe.props.onLoad as () => void)());
