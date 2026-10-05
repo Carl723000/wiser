@@ -146,17 +146,95 @@ describe('fixed version impact', () => {
       ).recordIds,
     ).toEqual([]);
   });
-  it.each(['record-corrected', 'position-corrected'] as const)(
-    'rejects a %s without its exact matching scope kind',
-    (reason) => {
+  it.each([{ positionIds: [] }, { positionIds: ['absent-position'] }])(
+    'keeps an explicit position scope $positionIds empty when it selects no fixed reference',
+    ({ positionIds }) => {
       const record = syntheticReviewRecord();
+      expect(
+        versionImpact(
+          [record],
+          [
+            {
+              sourceId: record.sourceId,
+              previousVersionId: record.versionId,
+              nextVersionId: 'corrected',
+              reason: 'position-corrected',
+              scope: { kind: 'positions', recordId: record.id, positionIds },
+            },
+          ],
+          [],
+        ).recordIds,
+      ).toEqual([]);
+    },
+  );
+  it.each([
+    { reason: 'record-corrected', hint: 'missing' },
+    { reason: 'record-corrected', hint: 'mismatched' },
+    { reason: 'position-corrected', hint: 'missing' },
+    { reason: 'position-corrected', hint: 'mismatched' },
+  ] as const)(
+    'conservatively checks fixed dependents when $reason has a $hint scope',
+    ({ reason, hint }) => {
+      const record = syntheticReviewRecord();
+      const sibling = {
+        ...record,
+        id: 'same-source-sibling',
+        objectId: 'same-source-other-object',
+        positions: [{ ...record.positions[0], id: 'sibling-position' }],
+      };
+      const geometryDependent = {
+        ...record,
+        id: 'other-source-geometry-dependent',
+        sourceId: 'other-business-source',
+        versionId: 'other-business-version',
+        objectId: 'other-business-object',
+        positions: [
+          {
+            ...record.positions[0],
+            id: 'fixed-geometry-reference',
+            geometrySourceId: record.sourceId,
+            geometryVersionId: record.versionId,
+          },
+          {
+            ...record.positions[0],
+            id: 'unrelated-geometry-reference',
+            geometrySourceId: 'unrelated-geometry-source',
+            geometryVersionId: record.versionId,
+          },
+        ],
+      };
+      const records = [
+        record,
+        sibling,
+        geometryDependent,
+        {
+          ...record,
+          id: 'other-source',
+          sourceId: 'unrelated-source',
+          positions: [],
+        },
+        {
+          ...record,
+          id: 'other-version',
+          versionId: 'unrelated-version',
+          positions: [],
+        },
+      ];
+      const topics = records.map((item) => ({
+        id: `topic-${item.id}`,
+        title: item.objectLabel,
+        regionIds: item.regionIds,
+        sourceIds: [item.sourceId],
+        recordIds: [item.id],
+        question: 'Synthetic fixed dependent',
+        gaps: [],
+      }));
       const change = {
         sourceId: record.sourceId,
         previousVersionId: record.versionId,
         nextVersionId: record.versionId,
         reason,
       };
-      expect(versionImpact([record], [change], []).recordIds).toEqual([]);
       const mismatchedScope =
         reason === 'record-corrected'
           ? {
@@ -165,10 +243,61 @@ describe('fixed version impact', () => {
               positionIds: record.positions.map((position) => position.id),
             }
           : { kind: 'records' as const, recordIds: [record.id] };
-      expect(
-        versionImpact([record], [{ ...change, scope: mismatchedScope }], [])
-          .recordIds,
-      ).toEqual([]);
+      const changes = [
+        hint === 'missing' ? change : { ...change, scope: mismatchedScope },
+      ];
+      const before = JSON.stringify({ records, changes, topics });
+      const result = versionImpact(records, changes, topics);
+      expect(result).toEqual({
+        recordIds: [record.id, sibling.id, geometryDependent.id],
+        objectIds: [
+          record.objectId,
+          sibling.objectId,
+          geometryDependent.objectId,
+        ],
+        positionIds: [
+          record.positions[0].id,
+          'sibling-position',
+          'fixed-geometry-reference',
+        ],
+        needIds: record.needIds,
+        regionIds: record.regionIds,
+        topicIds: [
+          `topic-${record.id}`,
+          `topic-${sibling.id}`,
+          `topic-${geometryDependent.id}`,
+        ],
+        findings: [record, sibling, geometryDependent].map((item) => ({
+          recordId: item.id,
+          sourceId: record.sourceId,
+          reason,
+        })),
+      });
+      expect(JSON.stringify({ records, changes, topics })).toBe(before);
+    },
+  );
+  it.each([
+    { reason: 'new-period', previous: 'existing' },
+    { reason: 'record-corrected', previous: null },
+    { reason: 'position-corrected', previous: null },
+  ] as const)(
+    'keeps $reason without a replaced fixed version outside dependency invalidation',
+    ({ reason, previous }) => {
+      const record = syntheticReviewRecord();
+      const result = versionImpact(
+        [record],
+        [
+          {
+            sourceId: record.sourceId,
+            previousVersionId: previous === null ? null : record.versionId,
+            nextVersionId: 'new-version',
+            reason,
+          },
+        ],
+        [],
+      );
+      expect(result.recordIds).toEqual([]);
+      expect(result.findings).toEqual([]);
     },
   );
   it('keeps a withdrawn source invalidation complete despite a narrow correction hint', () => {
