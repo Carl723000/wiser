@@ -161,6 +161,65 @@ function publicationFacts(input: WorkspacePack): ProjectReadinessInput {
 }
 
 describe('multi-region readiness', () => {
+  it.each([
+    ['partial', 'PARTIAL', record.evidence],
+    ['failed', 'FAILED', record.evidence],
+    ['not-parsed', 'NOT_PARSED', record.evidence],
+    ['unregistered-parser-status', 'NOT_PARSED', record.evidence],
+    ['ready', 'READY', []],
+    ['table-complete', 'READY', []],
+    ['geometry-complete', 'READY', []],
+  ] as const)(
+    'reads source parsing status %s rather than treating an excerpt as completion',
+    (parsed, expected, evidence) => {
+      const input = pack(
+        [{ ...material, status: { ...material.status, parsed } }],
+        [{ ...record, evidence: [...evidence] }],
+      );
+      const before = JSON.stringify(input);
+      const result = buildReadiness(input, 'chaobai');
+      expect(result.project.records[0]?.parsing).toBe(expected);
+      expect(result.records[0]?.evidence).toEqual(evidence);
+      expect(JSON.stringify(input)).toBe(before);
+    },
+  );
+  it('retains fixed matching parsing facts but refuses a mismatched value or source version', () => {
+    const input = pack();
+    const facts = publicationFacts(input);
+    const direct = buildReadiness(input, 'chaobai', [], facts);
+    expect(direct.project.records[0]?.parsing).toBe('READY');
+    for (const mismatch of [
+      { ...facts.records[0], rawValue: 'another value' },
+      {
+        ...facts.records[0],
+        source: { ...facts.records[0].source, versionId: 'other-version' },
+      },
+    ]) {
+      const changed = { ...facts, records: [mismatch] };
+      const result = buildReadiness(input, 'chaobai', [], changed);
+      expect(result.project.records[0]?.parsing).toBe('PARTIAL');
+    }
+    const withdrawn = pack([
+      { ...material, rights: { ...material.rights, displayAllowed: false } },
+    ]);
+    expect(
+      buildReadiness(withdrawn, 'chaobai', [], facts).project.records,
+    ).toEqual([]);
+  });
+  it('does not borrow complete parsing from a canonical copy with different processing facts', () => {
+    const original = {
+      ...material,
+      id: 'original',
+      status: { ...material.status, parsed: 'ready' },
+    };
+    const copy = { ...material, id: 'copy', duplicateOf: 'original' };
+    const input = pack([original, copy], [{ ...record, sourceId: 'copy' }]);
+    const result = buildReadiness(input, 'chaobai');
+    expect(result.project.records[0]?.parsing).toBe('PARTIAL');
+    expect(result.project.records[0]?.source).toEqual(
+      materialReference(original),
+    );
+  });
   it('has 19 demand slots for each of six regions without treating slots as datasets', () => {
     expect(NEED_IDS).toHaveLength(19);
     const result = buildReadiness(pack(), 'chaobai');

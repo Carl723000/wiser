@@ -93,6 +93,54 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+it.each([
+  {
+    locale: 'zh-CN' as const,
+    label: '当前可见范围',
+    boundary: '不表示全部所需资料已获授权',
+  },
+  {
+    locale: 'en' as const,
+    label: 'Current visible scope',
+    boundary: 'does not establish authorization for every required material',
+  },
+])(
+  'labels the matrix as current visible scope in $locale without hidden counts',
+  ({ locale, label, boundary }) => {
+    const localized = {
+      ...copy,
+      ...getDictionary(locale).dataFoundation.spatialReadiness,
+    };
+    const input = inspectionPack();
+    const hidden = {
+      ...input.sources[0],
+      id: 'hidden-source',
+      title: 'Hidden source name',
+      rights: { ...input.sources[0].rights, displayAllowed: false },
+    };
+    render(
+      <SpatialReadinessPanel
+        pack={{
+          ...input,
+          sources: [...input.sources, hidden],
+          records: [
+            ...input.records,
+            { ...input.records[0], id: 'hidden-record', sourceId: hidden.id },
+          ],
+        }}
+        regionId="chaobai"
+        copy={localized}
+      />,
+    );
+    const cell = document.querySelector(
+      'button[data-matrix-region="chaobai"][data-matrix-need="K5-001"]',
+    );
+    expect(cell?.textContent).toContain(label);
+    expect(localized.matrixHelp).toContain(boundary);
+    expect(screen.queryByText('Hidden source name')).toBeNull();
+    expect(document.body.textContent).not.toContain('hidden-record');
+  },
+);
 function inspectionPack(): WorkspacePack {
   const record = {
     ...syntheticReviewRecord(),
