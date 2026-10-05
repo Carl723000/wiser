@@ -330,6 +330,63 @@ describe('candidate original output audit failures', () => {
       selectedBytes: bytes.byteLength,
     });
   });
+  it.each([
+    { code: 'UNAVAILABLE', expected: 'UNAVAILABLE' },
+    { code: undefined, expected: 'UNAVAILABLE' },
+    { code: 'NOT_FOUND', expected: 'AUTHORITY_CHANGED' },
+  ] as const)(
+    'classifies a streaming authorization $code failure without inventing an authority change',
+    async ({ code, expected }) => {
+      const bytes = new Uint8Array(128 * 1024).fill(65);
+      const f = fixture({
+        body: bytes,
+        sizeBytes: bytes.byteLength,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        authorizeCall: (call) =>
+          call === 4
+            ? Promise.reject(
+                Object.assign(new Error('private authorization failure'), {
+                  ...(code ? { code } : {}),
+                }),
+              )
+            : Promise.resolve(),
+      });
+      await expect(
+        f.app.inject({ method: 'GET', url, headers }),
+      ).rejects.toThrow();
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'OUTPUT_INTERRUPTED',
+        errorCode: expected,
+        offeredBytes: 65536,
+        selectedBytes: bytes.byteLength,
+      });
+    },
+  );
+  it('records a temporarily unavailable context resolver separately from changed streaming authority', async () => {
+    const bytes = new Uint8Array(128 * 1024).fill(65);
+    const f = fixture({
+      body: bytes,
+      sizeBytes: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    let resolves = 0;
+    f.resolver.mockImplementation(() =>
+      ++resolves === 5
+        ? Promise.reject(new Error('private resolver unavailable'))
+        : Promise.resolve(context),
+    );
+    await expect(
+      f.app.inject({ method: 'GET', url, headers }),
+    ).rejects.toThrow();
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+    expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+      terminal: 'OUTPUT_INTERRUPTED',
+      errorCode: 'UNAVAILABLE',
+      offeredBytes: 65536,
+      selectedBytes: bytes.byteLength,
+    });
+  });
   it('bounds original-audit shutdown even when the trusted append promise never settles', async () => {
     let settle!: () => void;
     const outcomeTask = new Promise<void>((resolve) => {
@@ -388,6 +445,181 @@ describe('candidate original output audit failures', () => {
       });
     },
   );
+});
+
+describe('candidate original error responses independent of pending audit observation', () => {
+  it.each(['GET', 'HEAD'] as const)(
+    'returns an unsatisfiable %s range before its audit append settles',
+    async (method) => {
+      let settle!: () => void;
+      const outcomeTask = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      const f = fixture({ outcomeTask });
+      let responded = false;
+      const request = f.app
+        .inject({
+          method,
+          url,
+          headers: { ...headers, range: 'bytes=999999-' },
+        })
+        .then((response) => {
+          responded = true;
+          return response;
+        });
+      try {
+        await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(responded).toBe(true);
+        expect((await request).statusCode).toBe(416);
+        expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+          terminal: 'OUTPUT_FAILED',
+          errorCode: 'RANGE_UNSATISFIABLE',
+          offeredBytes: 0,
+        });
+      } finally {
+        settle();
+        await request;
+      }
+    },
+  );
+  it.each(['integrity', 'fetch', 'authorization'] as const)(
+    'returns a verified %s failure before its audit append settles',
+    async (kind) => {
+      let settle!: () => void;
+      const outcomeTask = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      const f = fixture({
+        outcomeTask,
+        ...(kind === 'integrity' ? { sha256: 'b'.repeat(64) } : {}),
+        ...(kind === 'fetch'
+          ? {
+              fetcher: () =>
+                Promise.reject(
+                  Object.assign(new Error('private unavailable upstream'), {
+                    code: 'UNAVAILABLE',
+                  }),
+                ),
+            }
+          : {}),
+        ...(kind === 'authorization'
+          ? {
+              authorizeCall: (call: number) =>
+                call === 2
+                  ? Promise.reject(
+                      Object.assign(
+                        new Error('private unavailable authority'),
+                        {
+                          code: 'UNAVAILABLE',
+                        },
+                      ),
+                    )
+                  : Promise.resolve(),
+            }
+          : {}),
+      });
+      let responded = false;
+      const request = f.app
+        .inject({ method: 'GET', url, headers })
+        .then((response) => {
+          responded = true;
+          return response;
+        });
+      try {
+        await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(responded).toBe(true);
+        expect((await request).statusCode).toBe(503);
+        expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+          terminal: kind === 'integrity' ? 'INTEGRITY_FAILED' : 'OUTPUT_FAILED',
+          errorCode: kind === 'integrity' ? 'HASH_MISMATCH' : 'UNAVAILABLE',
+          offeredBytes: 0,
+        });
+      } finally {
+        settle();
+        await request;
+      }
+    },
+  );
+  it('returns capacity rejection before the audit settles without fetching a third original', async () => {
+    let settle!: () => void;
+    const outcomeTask = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const waiting: Array<(response: Response) => void> = [];
+    const f = fixture({
+      outcomeTask,
+      fetcher: () => new Promise<Response>((resolve) => waiting.push(resolve)),
+    });
+    const first = f.app.inject({ method: 'GET', url, headers }).then((r) => r);
+    const second = f.app
+      .inject({ method: 'HEAD', url, headers })
+      .then((r) => r);
+    await vi.waitFor(() => expect(waiting).toHaveLength(2));
+    let responded = false;
+    const excess = f.app
+      .inject({ method: 'GET', url, headers })
+      .then((response) => {
+        responded = true;
+        return response;
+      });
+    try {
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(responded).toBe(true);
+      const response = await excess;
+      expect(response.statusCode).toBe(503);
+      expect(response.headers['retry-after']).toBe('1');
+      expect(f.fetch).toHaveBeenCalledTimes(2);
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'CAPACITY_REJECTED',
+        errorCode: 'CAPACITY_LIMIT',
+        offeredBytes: 0,
+      });
+    } finally {
+      settle();
+      for (const resolve of waiting) resolve(new Response(original));
+      await Promise.all([first, second, excess]);
+    }
+  });
+  it('releases only the settled original reservation while its audit is still pending', async () => {
+    let settle!: () => void;
+    const outcomeTask = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const waiting: Array<(response: Response) => void> = [];
+    let fetches = 0;
+    const f = fixture({
+      outcomeTask,
+      fetcher: () =>
+        fetches++ === 0
+          ? Promise.resolve(new Response(original))
+          : new Promise<Response>((resolve) => waiting.push(resolve)),
+    });
+    const failed = f.app
+      .inject({
+        method: 'GET',
+        url,
+        headers: { ...headers, range: 'bytes=999999-' },
+      })
+      .then((r) => r);
+    await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+    const first = f.app.inject({ method: 'HEAD', url, headers }).then((r) => r);
+    const second = f.app
+      .inject({ method: 'HEAD', url, headers })
+      .then((r) => r);
+    try {
+      await vi.waitFor(() => expect(f.download).toHaveBeenCalledTimes(3));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(waiting).toHaveLength(2);
+      expect(f.fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      settle();
+      for (const resolve of waiting) resolve(new Response(original));
+      await Promise.all([failed, first, second]);
+    }
+  });
 });
 
 describe('fixed pending original HTTP delivery', () => {
