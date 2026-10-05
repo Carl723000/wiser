@@ -28,7 +28,8 @@ export default async function AgentConnectionsPage({
     redirect(
       `/${locale}/login?next=${encodeURIComponent(`/${locale}/account/agents`)}`,
     );
-  const t = getDictionary(locale).auth.agentConnections;
+  const authCopy = getDictionary(locale).auth;
+  const t = authCopy.agentConnections;
   let items;
   try {
     items = await (await getAgentConnectionAccount()).load();
@@ -78,6 +79,22 @@ export default async function AgentConnectionsPage({
             <dl>
               <dt>{t.project}</dt>
               <dd>{item.projectName?.[locale] ?? t.unknownProject}</dd>
+              <dt>{t.registeredScopes}</dt>
+              <dd>
+                <ul>
+                  {item.scopes.map((scope, index) => (
+                    <li key={`${index}:${scope}`}>
+                      {Object.hasOwn(t.scopeLabels, scope)
+                        ? t.scopeLabels[scope as keyof typeof t.scopeLabels]
+                        : scope}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+              <dt>{t.registeredPurpose}</dt>
+              <dd>{t.purposeLabels[item.purpose]}</dd>
+              <dt>{authCopy.agentConsent.securityLevel}</dt>
+              <dd>{authCopy.agentConsent.levels[item.maxSecurityLevel]}</dd>
               <dt>{t.expires}</dt>
               <dd>
                 {item.expiresAt === null ? (
@@ -97,6 +114,7 @@ export default async function AgentConnectionsPage({
                 )}
               </dd>
             </dl>
+            <p>{t.registeredLimit}</p>
             {item.status !== 'revoked' || item.providerConsent ? (
               <form
                 method="post"

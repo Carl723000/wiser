@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 52b82d3dfe714eb57275702b052ad878761f7aa9
+lastReviewedCommit: cd4817695cfa85a27932bee3803131a6c0bc0229
 ---
 
 ## Two frontend applications
@@ -274,7 +274,7 @@ The resource-enabled project workbench includes a batch-access tab for managers 
 
 Batch member details show frozen differences by action, with an explicit unknown state for older previews. Changed grants prompt a fresh application; current effective access is never inferred from a historical receipt.
 
-The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and either an optional expiry or “Until you disconnect.” Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.
+The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and either an optional expiry or “Until you disconnect.” Each connection also reads its existing registered action scopes, `agent-data` purpose and maximum data level. Known actions use localized labels; unrecognized scope codes remain exact plain text. These registered ceilings do not establish present project or per-resource access, which every action still checks. Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.
 
 ## Local multi-region material workspace
 
