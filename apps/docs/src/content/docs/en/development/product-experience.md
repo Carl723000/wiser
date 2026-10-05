@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: e5e2c13e81570c324bff324bedb151f9a631b597
+lastReviewedCommit: e337d2eae75bed7825b246934eec37cc713f8b74
 ---
 
 ## What this guide governs
@@ -215,3 +215,5 @@ The matrix reuses the question details' current fixed-copy canonicalization, inc
 Monthly coverage details now include the exact original values with source titles and evidence for each eligible month, retaining multiple values from the same month. Printed-name, approved-correspondence and hypothesis views reuse their existing grouping. An absent month, an unknown month, a null value, empty text, dry, unmonitored and valid zero remain distinct; no missing cause, concentration or trend is inferred. A value selects the existing record only when its complete fixed source reference matches and the current record ID is unique. Unresolved references remain readable with an explicit unavailable-selection state. Withdrawal invalidates the open detail scope. The existing coverage counts, date roles and window controls stay intact; local reveal actions do not change statistical denominators.
 
 Closing spatial filter controls does not conceal applied search, material-layer choices, unknown-time exclusion or a rectangle extent. Empty layer selection is explicit. The current period distinguishes an existing month window from an exact-date window even when calendar boundaries match; it does not infer source precision. Public-map source attribution stays visible on the displayed canvas, with detailed source evidence still available on demand.
+
+Wheel zoom and paused drag gestures settle to the same camera in the rendered local map and its reading state, including when reduced motion disables inertia. Hidden panes and resize events do not replace that state. Existing locate, reset, fixed-scene restoration and comparison scopes retain their established behavior.

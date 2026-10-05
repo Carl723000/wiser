@@ -276,6 +276,7 @@ export function SpatialWorkspaceMap({
     drawStart = useRef<number[] | null>(null);
   const id = useId().replaceAll(':', '');
   const lastGestureCamera = useRef<string | null>(null);
+  const [, settleCamera] = useState(0);
   const effectiveCamera = {
     longitude: camera.longitude,
     latitude: camera.latitude,
@@ -645,10 +646,20 @@ export function SpatialWorkspaceMap({
               setReady(false);
               setFrame(null);
             }}
-            onMove={({ viewState, originalEvent }) => {
+            onMove={({ viewState, originalEvent, target }) => {
               // Hidden/show resize events may carry an old proposed camera.
               // They are not user navigation and must not change owned state.
-              if (!active || !originalEvent) return;
+              // Delayed native wheel classification may omit its DOM event.
+              // Limit that exception to this map while its scroll handler zooms.
+              const native = map.current?.getMap();
+              const nativeScroll =
+                target === native && native?.scrollZoom?.isZooming?.() === true;
+              if (
+                !active ||
+                ((!originalEvent || originalEvent.type === 'wheel') &&
+                  !nativeScroll)
+              )
+                return;
               const next = {
                 longitude: viewState.longitude,
                 latitude: viewState.latitude,
@@ -658,6 +669,11 @@ export function SpatialWorkspaceMap({
               };
               lastGestureCamera.current = JSON.stringify(next);
               onCamera(next);
+            }}
+            onMoveEnd={() => {
+              // Reapply the latest controlled props after the binding stops
+              // deferring them during movement; never write an end proposal.
+              if (active) settleCamera((value) => value + 1);
             }}
             onMouseDown={(event) => {
               if (drawBounds) {
