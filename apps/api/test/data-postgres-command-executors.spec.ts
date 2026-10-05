@@ -3131,6 +3131,343 @@ const managedIngestionInput = {
 };
 const managedResumeInput = { ingestionId: INGESTION_ID, expectedVersion: 2 };
 
+function resumeIdentityFixture(
+  actorType: 'human' | 'agent' | 'service',
+  actorUpper = false,
+  delegatorUpper = false,
+) {
+  const value = runtime();
+  value.pool.client.submittedActorId = ACTOR_ID;
+  value.pool.client.submittedActorType = actorType;
+  const actorId = actorUpper ? ACTOR_ID.toUpperCase() : ACTOR_ID;
+  const delegatedBy = 'd2000000-0000-4000-8000-000000000090';
+  value.pool.client.submittedDelegatorId =
+    actorType === 'human' ? null : delegatedBy;
+  const actor: DataCapabilityExecutionContext = {
+    ...managedIntakeContext(),
+    principal:
+      actorType === 'human'
+        ? { ...context.principal, actorId, authUserId: actorId }
+        : {
+            actorId,
+            actorType,
+            authenticationMethod: 'delegated_credential',
+            credentialId: SESSION_ID,
+            delegationId: INGESTION_ID,
+            delegatedBy: delegatorUpper
+              ? delegatedBy.toUpperCase()
+              : delegatedBy,
+          },
+  };
+  return {
+    ...value,
+    actor,
+    resume: executor(value.runtime, 'data.ingestion.resume'),
+  };
+}
+
+function resumeReceipt(value: ReturnType<typeof resumeIdentityFixture>) {
+  return value.pool.client.replay.get(IDEMPOTENCY_KEY) as {
+    readonly capabilityId: string;
+    readonly requestHash: string;
+    readonly result: unknown;
+  };
+}
+
+function expectResumeChangedOnce(
+  value: ReturnType<typeof resumeIdentityFixture>,
+) {
+  for (const marker of [
+    'data.ingestion.resume.job.update',
+    'data.ingestion.resume.operation.update',
+    'data.command.operation-event.insert',
+    'data.command.audit.insert',
+    'data.command.outbox.insert',
+  ]) {
+    expect(
+      value.pool.client.calls.filter(({ text }) => text.includes(marker)),
+    ).toHaveLength(1);
+  }
+}
+
+// Fixed request digests computed from bd59a167's original requestHash, not from
+// the implementation under test. Identity casing is the only varying input.
+const resumeCanonicalDigests = {
+  human: '36732e6a7f5bddacb53e5ea62fbf0fdaf679183cc5dd3f27022c1a546241e46f',
+  agent: '44a74280cc6e599d53fa87db6439f0517e9945bc75576d805d4608a79226eb55',
+  service: '56d23c33a9ef933ea21f67d10b5536e7a2cb903429773ac254b013fc1289d0fb',
+};
+
+describe('managed resume UUID receipt compatibility', () => {
+  it.each(['human', 'agent', 'service'] as const)(
+    'replays a new %s receipt across actor and delegator UUID casing',
+    async (actorType) => {
+      for (const [actorUpper, delegatorUpper] of [
+        [true, true],
+        [true, false],
+        [false, true],
+        [false, false],
+      ]) {
+        const value = resumeIdentityFixture(
+          actorType,
+          actorUpper,
+          delegatorUpper,
+        );
+        const first = await value.resume.execute(
+          managedResumeInput,
+          value.actor,
+        );
+        for (const [nextActorUpper, nextDelegatorUpper] of [
+          [false, false],
+          [true, false],
+          [false, true],
+          [true, true],
+        ]) {
+          const retry = resumeIdentityFixture(
+            actorType,
+            nextActorUpper,
+            nextDelegatorUpper,
+          ).actor;
+          await expect(
+            value.resume.execute(managedResumeInput, retry),
+          ).resolves.toEqual(first);
+        }
+        expect(resumeReceipt(value).requestHash).toBe(
+          resumeCanonicalDigests[actorType],
+        );
+        expectResumeChangedOnce(value);
+      }
+    },
+  );
+
+  it.each([
+    [
+      true,
+      true,
+      '6f92f32280449fc2c6a5fc9d14b36451a5c80c3af01cf8f77817d420aa948dd7',
+    ],
+    [
+      false,
+      true,
+      'abd53add265bc86a02f0b7387756fe4ae28f4aeba07e5e4900dbbdbf311cf714',
+    ],
+    [
+      true,
+      false,
+      '1f3ec31ddf29feb2ec7ac6e2002f827615901cb1fb29c8f73f78f336a3d5e273',
+    ],
+  ] as const)(
+    'preserves exact old raw receipt actorUpper=%s delegatorUpper=%s',
+    async (actorUpper, delegatorUpper, requestHash) => {
+      const value = resumeIdentityFixture('agent', actorUpper, delegatorUpper);
+      const first = await value.resume.execute(managedResumeInput, value.actor);
+      const historical = { ...resumeReceipt(value), requestHash };
+      value.pool.client.replay.set(IDEMPOTENCY_KEY, historical);
+      await expect(
+        value.resume.execute(managedResumeInput, value.actor),
+      ).resolves.toEqual(first);
+      expect(resumeReceipt(value)).toEqual(historical);
+      expectResumeChangedOnce(value);
+    },
+  );
+
+  it('replays a provably matching old lowercase receipt without rewriting it', async () => {
+    const value = resumeIdentityFixture('agent');
+    const first = await value.resume.execute(managedResumeInput, value.actor);
+    const historical = {
+      ...resumeReceipt(value),
+      requestHash: resumeCanonicalDigests.agent,
+    };
+    value.pool.client.replay.set(IDEMPOTENCY_KEY, historical);
+    await expect(
+      value.resume.execute(
+        managedResumeInput,
+        resumeIdentityFixture('agent', true, true).actor,
+      ),
+    ).resolves.toEqual(first);
+    expect(resumeReceipt(value)).toEqual(historical);
+    expectResumeChangedOnce(value);
+  });
+
+  it.each([
+    '6f92f32280449fc2c6a5fc9d14b36451a5c80c3af01cf8f77817d420aa948dd7',
+    // Old internal managed resume before actor type/delegator/purpose binding.
+    'f16511170e29adaaaeeadf3a7df53ddc295e21df7c45d92e86f2b867dfc69c45',
+  ])(
+    'fails closed when neither complete request digest matches %s',
+    async (requestHash) => {
+      const value = resumeIdentityFixture('agent');
+      await value.resume.execute(managedResumeInput, value.actor);
+      const historical = { ...resumeReceipt(value), requestHash };
+      value.pool.client.replay.set(IDEMPOTENCY_KEY, historical);
+      await expect(
+        value.resume.execute(managedResumeInput, value.actor),
+      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+      expect(resumeReceipt(value)).toEqual(historical);
+      expectResumeChangedOnce(value);
+    },
+  );
+
+  it.each([
+    'actor',
+    'delegator',
+    'actor-type',
+    'purpose',
+    'fingerprint',
+    'ingestion',
+    'version',
+  ] as const)(
+    'keeps the complete %s request binding after UUID normalization',
+    async (kind) => {
+      const value = resumeIdentityFixture('agent', true, true);
+      await value.resume.execute(managedResumeInput, value.actor);
+      let retry = resumeIdentityFixture('agent').actor;
+      let input = managedResumeInput;
+      if (kind === 'actor' || kind === 'delegator' || kind === 'actor-type') {
+        retry = {
+          ...retry,
+          principal: {
+            ...retry.principal,
+            ...(kind === 'actor' ? { actorId: PROJECT_ID } : {}),
+            ...(kind === 'delegator'
+              ? { delegatedBy: 'd2000000-0000-4000-8000-000000000091' }
+              : {}),
+            ...(kind === 'actor-type' ? { actorType: 'service' as const } : {}),
+          },
+        };
+      } else if (kind === 'purpose') {
+        retry = {
+          ...retry,
+          authorization: { ...retry.authorization, purpose: 'other-purpose' },
+        };
+      } else if (kind === 'fingerprint') {
+        retry = {
+          ...retry,
+          authorization: {
+            ...retry.authorization,
+            resourceAccess: {
+              ...retry.authorization.resourceAccess!,
+              fingerprint: 'e'.repeat(64),
+            },
+          },
+        };
+      } else {
+        input =
+          kind === 'ingestion'
+            ? { ...input, ingestionId: PROJECT_ID }
+            : { ...input, expectedVersion: 3 };
+      }
+      await expect(value.resume.execute(input, retry)).rejects.toMatchObject({
+        code: 'IDEMPOTENCY_CONFLICT',
+      });
+      expectResumeChangedOnce(value);
+    },
+  );
+
+  it.each([
+    'revoked',
+    'expired-principal',
+    'expired-scope',
+    'missing-owner',
+    'changed-owner',
+    'invalid-uuid',
+  ] as const)('does not use canonical matching to bypass %s', async (kind) => {
+    const value = resumeIdentityFixture('agent', true, true);
+    await value.resume.execute(managedResumeInput, value.actor);
+    let retry = resumeIdentityFixture('agent').actor;
+    if (kind === 'missing-owner') {
+      value.pool.client.submittedActorId = null;
+    } else if (kind === 'changed-owner') {
+      value.pool.client.submittedDelegatorId = PROJECT_ID;
+    } else if (kind === 'revoked') {
+      retry = {
+        ...retry,
+        authorization: {
+          ...retry.authorization,
+          scopes: ['data.operation.read'],
+        },
+      };
+    } else if (kind === 'expired-scope') {
+      retry = {
+        ...retry,
+        authorization: {
+          ...retry.authorization,
+          resourceAccess: {
+            ...retry.authorization.resourceAccess!,
+            scope: {
+              ...retry.authorization.resourceAccess!.scope,
+              validUntil: '2026-01-01T00:00:00Z',
+            },
+          },
+        },
+      };
+    } else {
+      retry = {
+        ...retry,
+        principal: {
+          ...retry.principal,
+          ...(kind === 'expired-principal'
+            ? { expiresAt: '2026-01-01T00:00:00Z' }
+            : { actorId: 'not-a-uuid' }),
+        },
+      };
+    }
+    await expect(
+      value.resume.execute(managedResumeInput, retry),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expectResumeChangedOnce(value);
+  });
+
+  it('still validates a cached result before returning it after UUID matching', async () => {
+    const value = resumeIdentityFixture('agent', true, true);
+    await value.resume.execute(managedResumeInput, value.actor);
+    value.pool.client.replay.set(IDEMPOTENCY_KEY, {
+      ...resumeReceipt(value),
+      result: { operation: { operationId: OPERATION_ID } },
+    });
+    await expect(
+      value.resume.execute(
+        managedResumeInput,
+        resumeIdentityFixture('agent').actor,
+      ),
+    ).rejects.toMatchObject({ code: 'PERSISTENCE_FAILED' });
+    expectResumeChangedOnce(value);
+  });
+
+  it('leaves the legacy resume digest and exact-case replay unchanged', async () => {
+    const value = resumeIdentityFixture('human', true);
+    const actor = {
+      ...value.actor,
+      authorization: { ...context.authorization },
+    };
+    const first = await value.resume.execute(managedResumeInput, actor);
+    expect(resumeReceipt(value).requestHash).toBe(
+      'fbcb0bdcfce31e62bd52878e17018653303a5c1342fe99e56f604eee44206591',
+    );
+    await expect(
+      value.resume.execute(managedResumeInput, actor),
+    ).resolves.toEqual(first);
+    await expect(
+      value.resume.execute(managedResumeInput, {
+        ...actor,
+        principal: { ...context.principal },
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    expectResumeChangedOnce(value);
+  });
+
+  it('does not normalize the original digest of another managed intake command', async () => {
+    const value = resumeIdentityFixture('human', true);
+    await executor(value.runtime, 'data.uploadSession.create').execute(
+      managedUploadInput,
+      value.actor,
+    );
+    expect(resumeReceipt(value).requestHash).toBe(
+      'e20f58f21acd733b1ed85f1b8236ff522c8e1ff115e7e3dc0d6e76657899137f',
+    );
+  });
+});
+
 describe('managed pending intake ownership and fresh authority', () => {
   it('managed resume preserves the owned expired job and checks the same owner on replay', async () => {
     const value = runtime();
