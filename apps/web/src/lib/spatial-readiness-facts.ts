@@ -56,6 +56,23 @@ function canonicalMaterial(
   return current;
 }
 
+function sourceParsingState(
+  source: Material,
+): ProjectReadinessRecord['parsing'] {
+  switch (source.status.parsed) {
+    case 'ready':
+    case 'table-complete':
+    case 'geometry-complete':
+      return 'READY';
+    case 'partial':
+      return 'PARTIAL';
+    case 'failed':
+      return 'FAILED';
+    default:
+      return 'NOT_PARSED';
+  }
+}
+
 /** Rebind every evidence carrier to the current display scope, never a saved permission snapshot. */
 function currentReadinessFacts(
   facts: ProjectReadinessInput,
@@ -230,7 +247,8 @@ export function projectReadinessFromPack(
       excerpt: item.text,
     }));
   const adapted: ProjectReadinessRecord[] = realRecords.map((record) => {
-    const source = canonicalMaterial(sourceFor(record)!, readable);
+    const recordSource = sourceFor(record)!;
+    const source = canonicalMaterial(recordSource, readable);
     const reference = materialReference(source);
     const fact =
       facts?.track === track
@@ -309,7 +327,7 @@ export function projectReadinessFromPack(
         unit: record.unit,
         method: record.method?.code ?? null,
       },
-      parsing: record.evidence.length ? 'READY' : 'NOT_PARSED',
+      parsing: sourceParsingState(recordSource),
       professionalState:
         track === 'SYNTHETIC' &&
         record.track === 'SYNTHETIC' &&

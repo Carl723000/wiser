@@ -1515,14 +1515,14 @@ const zhCN = {
       taskKinds: { CLEANING: '清洗任务', QUALITY_CONTROL: '质控任务' },
       matrixTitle: '六范围资料就绪矩阵',
       matrixHelp:
-        '每格表示当前可见资料在一个范围和一类需求中的情况。取得、解析、专业核验和展示许可分别记录；用途检查不代替专业批准。范围可能重叠，数量不可相加；时窗记录单列，缺月原因须回查原文。',
+        '每格表示当前可见资料在一个范围和一类需求中的情况。取得、解析、专业核验分别记录；当前可见范围不表示全部所需资料已获授权，也不展示不可见资料的名称或数量。摘录和定位证据不代表完整解析；用途检查不代替专业批准。范围可能重叠，数量不可相加；时窗记录单列，缺月原因须回查原文。',
       matrixUse: '用途条件',
       matrixWindowRecords: '时窗记录',
       matrixAxes: {
         obtained: '取得',
         parsed: '解析',
         professional: '核验',
-        authorized: '展示许可',
+        authorized: '当前可见范围',
       },
       matrixRegions: {
         bth: '京津冀全域',
@@ -5508,14 +5508,14 @@ const en: typeof zhCN = {
       },
       matrixTitle: 'Six-range material readiness matrix',
       matrixHelp:
-        'Each cell covers currently readable materials for one range and need. Acquisition, parsing, professional review and display access remain separate; use checks do not grant professional approval. Ranges overlap and their counts cannot be summed. Window rows are separate; missing-period reasons require evidence.',
+        'Each cell covers currently readable materials for one range and need. Acquisition, parsing and professional review remain separate. Current visible scope does not establish authorization for every required material or reveal hidden names or counts. Excerpts and location evidence do not establish complete parsing; use checks do not grant professional approval. Ranges overlap and their counts cannot be summed. Window rows are separate; missing-period reasons require evidence.',
       matrixUse: 'Use conditions',
       matrixWindowRecords: 'Window rows',
       matrixAxes: {
         obtained: 'Obtained',
         parsed: 'Parsed',
         professional: 'Review',
-        authorized: 'Display access',
+        authorized: 'Current visible scope',
       },
       matrixRegions: {
         bth: 'Beijing–Tianjin–Hebei',

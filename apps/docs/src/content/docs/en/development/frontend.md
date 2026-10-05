@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: a9d48bd7
+lastReviewedCommit: f7191bde
 ---
 
 ## Two frontend applications
@@ -314,6 +314,8 @@ Local split-pane comparison uses optional fixed measurement-definition reference
 
 An optional absolute `WISER_SPATIAL_READINESS_INPUT_MANIFEST` JSON file requires its exact `WISER_SPATIAL_READINESS_INPUT_SHA256` and the same loopback-only gate as the source pack. It is bounded to 12 MiB, parsed against a whitelist of existing internal fact fields and trimmed to the validated pack’s readable fixed sources and matching original records before serialization. Absent facts stay absent; invalid facts show a localized unavailable status while original reading remains available. Owners, processors, quality checks and use conclusions are never filled from fixture defaults. Coverage dates define an expected inclusive window of at most 1,200 months and do not remove original records. Lists render in batches of 40; changing requirement, date role, source version, readability or facts invalidates an opened result set. Fixed-version links and keyboard focus remain available.
 
+Record parsing retains an exactly matched fixed processing fact when available. Otherwise it uses that record's own source parser status: `ready`, `table-complete` and `geometry-complete` map to READY, `partial` to PARTIAL and `failed` to FAILED; other or undeclared values remain NOT_PARSED. An excerpt or location witness cannot establish complete parsing, and duplicate identity normalization cannot borrow another source's parser status. Failure does not establish that the original lacks data. Cleaning and human quality-control facts remain unknown unless registered.
+
 Unrelated object selection reuses the current readiness calculation. An absent stale-record scope uses a stable empty value; actual source, requirement, window, date-role and stale-fact changes still recalculate. The browser performance check retains its existing latency thresholds and records the fixed input and renderer separately from physical-device acceptance.
 
 Use summaries and use-check drilldowns show each existing rule reason in both locales. Unverified conditions retain Unknown; passed technical checks with related records still lacking professional approval explicitly remain unavailable for business computation without implying rejection. Initially closed Technical details retain the original reason codes and rule version. Unregistered reasons use a neutral explanation with the original code available for lookup. State, calculation eligibility, fixed record scope and withdrawn-source filtering follow the existing result.
@@ -339,6 +341,8 @@ Reopen uses the service's fresh request, verifies the whole saved manifest again
 The native raster panel names the four exact retained TIFFs as derived input imagery and visibly retains their unverified conversion lineage. B03/B8A columns show encoded file values, not physical reflectance: product scale and offset have not been verified. The SCL filter identifier is user-entered, not a professionally reviewed quality-rule version. Shared contextual help explains source/value semantics, the fixed-input `all_valid` mask basis and projected-area limits without changing hashes, values, filters or reading authority.
 
 The local readiness panel presents a keyboard-operable six-range by19-demand matrix and a declared-use selector. Selecting one cell changes the existing region/demand scope and closes stale details. Shared memoized rule results retain visible record identities, real/synthetic separation and withdrawn-source filtering. The existing question cards and bounded detail pages remain available. Original inventory and current-window row counts are separate; source registration outside the chosen month does not falsely become missing material. This UI changes no public query or persistence contract. Real session, database and browser acceptance remain separate.
+
+The matrix's current visible scope counts only currently readable sources. Its known state does not establish authorization for every required material; withdrawn names and counts are not exposed. Empty scope stays unknown, while zero values, missing values and not-applicable facts retain their separate meanings.
 
 The pure `spatial-monthly-readout.ts` adapter consumes only the already filtered `ProjectReadinessResult` monthly rows, records and classified values. Joins use `readinessRecordKey`, never a source-local record ID. UI navigation checks `materialReference` work/version/original-asset references against the current record source/version, and requires a unique current ID before calling the existing record-selection callback. Initial month/value lists are bounded and reveal exact shown/full counts. Unknown time entries stay outside month cells. No core time, authority, saved-view, public query or permission contract changes are introduced. Focused component/type checks remain separate from full verification and real browser acceptance.
 
