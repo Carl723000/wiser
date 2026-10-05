@@ -90,6 +90,10 @@ coverage:
     - apps/worker/src/**
     - apps/telemetry-ingress/src/**
     - apps/web/src/**
+    - apps/web/playwright*.config.ts
+    - apps/web/e2e-live/**
+    - tests/toolchain/*browser*.spec.ts
+    - tests/toolchain/candidate-backflow-fixture.spec.ts
     - apps/docs/src/app/**
     - apps/docs/src/components/**
     - apps/docs/src/lib/**
@@ -272,6 +276,24 @@ rules:
       - path: apps/docs/src/content/docs/en/development/repository-structure.md
         mode: review_or_update
     reason: Toolchain changes must keep bilingual installation and local development commands accurate.
+  - id: browser-testing
+    scope: repo
+    repo: wiser
+    triggers:
+      - path: apps/web/playwright*.config.ts
+        kind: configuration
+      - path: apps/web/e2e-live/**
+        kind: code
+      - path: tests/toolchain/*browser*.spec.ts
+        kind: code
+      - path: tests/toolchain/candidate-backflow-fixture.spec.ts
+        kind: code
+    requiredDocs:
+      - path: apps/docs/src/content/docs/zh-CN/development/testing.md
+        mode: review_or_update
+      - path: apps/docs/src/content/docs/en/development/testing.md
+        mode: review_or_update
+    reason: Browser configuration, live cases and their discovery fixtures must preserve the bilingual test inputs, privacy and acceptance boundaries.
   - id: wiser-platform-contracts
     scope: repo
     repo: wiser

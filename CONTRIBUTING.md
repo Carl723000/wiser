@@ -16,8 +16,8 @@ checkPaths:
   - AGENTS.md
   - .docpact/config.yaml
   - .github/workflows/**
-lastReviewedAt: 2026-10-04
-lastReviewedCommit: 392fca26
+lastReviewedAt: 2026-10-05
+lastReviewedCommit: cd4dfe0254b5d0d93590e2676e3552436b013907
 ---
 
 # Contributing / 贡献指南

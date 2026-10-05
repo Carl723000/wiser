@@ -63,6 +63,7 @@ it('discovers the CI browser suite without private case URLs', () => {
   delete env.WISER_WEB_LIVE_RELATION_URL;
   delete env.WISER_WEB_LIVE_RECORD_URL;
   delete env.WISER_WEB_LIVE_OBSERVATION_COUNT;
+  delete env.WISER_WEB_LIVE_CANDIDATE_VIEW_URL;
   try {
     const result = spawnSync(
       process.execPath,
@@ -94,6 +95,7 @@ it('discovers the CI browser suite without private case URLs', () => {
       'business-relation-navigation',
       'exploration-record-focus',
       'home-entry',
+      'candidate-backflow',
     ])
       expect(result.stdout).not.toContain(name);
 
@@ -122,6 +124,13 @@ it('discovers the CI browser suite without private case URLs', () => {
     env.WISER_WEB_LIVE_RELATION_URL = `${origin}/zh-CN/data-foundation/catalog/${id}?version=${id}&relations=%7B%7D`;
     env.WISER_WEB_LIVE_RECORD_URL = `${origin}/zh-CN/data-foundation/explore?recordFocus=${encodeURIComponent(JSON.stringify({ dataItemId: id, versionId: id, recordId: id }))}`;
     env.WISER_WEB_LIVE_OBSERVATION_COUNT = '2';
+    const missingBackflow = listCases();
+    expect(missingBackflow.status).not.toBe(0);
+    expect(missingBackflow.stdout + missingBackflow.stderr).toContain(
+      'not_run',
+    );
+    // Explicitly synthetic --list input; no saved view, Auth, HTTP or browser is created.
+    env.WISER_WEB_LIVE_CANDIDATE_VIEW_URL = `${origin}/zh-CN/data-foundation/ingestions/${id}?candidateView=${id}`;
     const cases = listCases();
     expect(cases.status, cases.stdout + cases.stderr).toBe(0);
     for (const name of [
@@ -130,6 +139,7 @@ it('discovers the CI browser suite without private case URLs', () => {
       'exploration-record-focus.case.ts',
       'exploration-workspace.case.ts',
       'home-entry.case.ts',
+      'candidate-backflow.case.ts',
     ])
       expect(cases.stdout).toContain(name);
     expect(cases.stdout).toContain(
@@ -138,7 +148,7 @@ it('discovers the CI browser suite without private case URLs', () => {
     expect(cases.stdout).toContain(
       'applies a real public monthly period consistently across graph, records, map and refresh',
     );
-    expect(cases.stdout).toContain('Total: 9 tests in 5 files');
+    expect(cases.stdout).toContain('Total: 10 tests in 6 files');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

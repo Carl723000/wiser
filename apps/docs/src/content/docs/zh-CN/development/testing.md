@@ -20,12 +20,14 @@ checkPaths:
   - apps/*/playwright.config.ts
   - apps/*/playwright.*.config.ts
   - apps/*/e2e*/**
+  - tests/toolchain/*browser*.spec.ts
+  - tests/toolchain/candidate-backflow-fixture.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
-lastReviewedAt: 2026-08-23
-lastReviewedCommit: 009852bdcfd26240fa31553e7d0e2254400aaf67
+lastReviewedAt: 2026-10-05
+lastReviewedCommit: cd4dfe0254b5d0d93590e2676e3552436b013907
 ---
 
 ## Red → Green → Refactor
@@ -288,6 +290,18 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 
 ### 显式来源案例浏览器测试
 
-三个固定版本的业务关系/记录导航回归使用已接纳的本机来源数据，包括 TCI 波段和独立核对的观测关系数。运行 `pnpm --filter @wiser/web test:e2e:data-case` 时，提供 `WISER_WEB_LIVE_BASE_URL`、既有 live 凭据、`WISER_WEB_LIVE_RELATION_URL`、`WISER_WEB_LIVE_RECORD_URL` 和 `WISER_WEB_LIVE_OBSERVATION_COUNT`。关系 URL 必须指向固定目录版本与关系视图，记录 URL 必须携带固定记录焦点；缺少或无效的案例输入会明确失败。`e2e-live/*.case.ts` 保留全部断言，由 `playwright.case.config.ts` 收集，不作为可移植的 CI fixture。`test:e2e:data-live` 继续对 CI smoke 环境收集既有全部 `*.spec.ts` 套件。测试发现回归只使用合成输入调用 Playwright `--list`，不能算作真实案例浏览器运行。
+三个固定版本的业务关系/记录导航回归使用已接纳的本机来源数据，包括 TCI 波段和独立核对的观测关系数。未按文件过滤运行 `pnpm --filter @wiser/web test:e2e:data-case --reporter=list` 整套案例时，须提供 `WISER_WEB_LIVE_BASE_URL`、既有 live 凭据、`WISER_WEB_LIVE_RELATION_URL`、`WISER_WEB_LIVE_RECORD_URL`、`WISER_WEB_LIVE_OBSERVATION_COUNT` 和 `WISER_WEB_LIVE_CANDIDATE_VIEW_URL`。关系 URL 必须指向固定目录版本与关系视图，记录 URL 必须携带固定记录焦点，候选 URL 须满足下文真实保存视图要求；只运行候选返回案例时使用下文按文件过滤的命令。缺少或无效的案例输入会明确失败。`e2e-live/*.case.ts` 保留全部断言，由 `playwright.case.config.ts` 收集，不作为可移植的 CI fixture。`test:e2e:data-live` 继续对 CI smoke 环境收集既有全部 `*.spec.ts` 套件。测试发现回归只使用合成输入调用 Playwright `--list`，不能算作真实案例浏览器运行。Docpact 将 live 浏览器案例、浏览器配置和发现 fixture 映射到本双语测试契约。
+
+#### 固定候选同标签返回案例
+
+只在已经准备好的可丢弃本机栈运行 `pnpm --filter @wiser/web test:e2e:data-case candidate-backflow.case.ts --reporter=list`，提供既有 live 基础地址、测试身份，以及同一栈真实保存视图 HTTP 回执中的 `WISER_WEB_LIVE_CANDIDATE_VIEW_URL`。URL 必须采用配置的 HTTP `localhost` 或 `127.0.0.1` 源，指向接入详情，并且只含一个 `candidateView` UUID；拒绝用户密码段、片段、额外参数和游标。保存视图及所选材料页必须当前可读且非空；输入或资源缺失会明确失败，记为 `not_run`，不能以跳过算作通过。仅提供 URL 不证明资源来源真实或已有读取权限。
+
+案例经过真实登录页，消费实际保存视图 open、固定材料读取和确认结果，点击接入详情当前的 Operation 链接，再以首段控件消费真实事件 HTTP 请求，随后执行 `page.goBack()`。返回前先开启观察，并隔离离开前的请求；保存请求须与实际材料动作及固定引用绑定。仅在内存中比较恢复后的完整 references、viewSpec、固定页锚点和材料内容，等值比较只剔除重新签发的短期游标；逐条将可见行、原值或几何条目与 HTTP 对照，核对所选记录的 focus 状态，并在首段读取结束后比对渲染的事件。不要求 open 恰好发生几次。当前接入的 Operation 以实际链接核对，不推定历史保存批次属于该 Operation。资产、记录和几何响应分别使用既有 schema，保留固定引用绑定。
+
+可见材料只有在受限内容实际可见、没有 inert 且不再忙碌、加载结束并可刷新、所选面板实际可见且与标签绑定，以及技术信息中的批次和审核哈希与保存请求一致后，才算恢复。测试专用可见性 helper 保持真实用例的 30 秒默认超时；可丢弃的合成 DOM 探针可明确传入较短超时。探针用公开合成资产调用同一实际 helper，不加载 live 案例模块、凭据或平台资源；它只证明断言行为，不是实际 Auth 或 Back 验收。
+
+同轮任一候选响应出现 HTTP、JSON、schema 或固定身份不符，超过既有保存 open 的 128 KiB／材料读取器的 3 MiB 上限，或无法读取 body，观察器都会使整轮失败；其后成功的响应不能恢复该轮，45 秒快照等待以泛化失败结束。这一保守判定不能证明拒读后的恢复。Operation 没有可读事件属于缺资源，记为 `not_run`；其他事件契约或渲染不符仍记为失败。真实运行须记录实际使用的资产、记录或几何页类型，验收结论仅适用于实际执行的类型。
+
+案例在填入凭据前要求只有 `list` 报告器，HTML、JSON、blob、自定义或混合报告器会以 `not_run` 拒绝；这些格式即使面对已泛化的错误，仍可能持久化 API 步骤参数。失败截图覆盖为 `off`，trace、video 也保持关闭，并在测试 worker 内启用当前 runner 的 `PLAYWRIGHT_NO_COPY_PROMPT` 开关，持续到产物清理阶段，禁止自动保存失败 DOM 快照。runner 仍可能写出泛化错误与元数据；这个开关并非禁用全部 error-context 文件。诊断不回显输入 URL、响应内容、签名游标或凭据；不得附加 cookie、storage state 或候选材料。案例只测试普通获权的同标签往返，不撤权或合成事件，不验地图真实相机姿态或超过 100 条事件的续页。独立的续页 403 路径仍需真实长事件 Operation 和另经明确授权的控制动作；测试发现和本往返案例都不能满足该路径。发现测试保留原九项案例，新增这一项时只使用明确合成的 `--list` 输入，不启动服务或真实登录。
 
 Supabase CI 通道在结构检查后，串行运行真实智能体连接、受管 MCP 同意、资源权威和资源批次集成套件。`WISER_AGENT_TEST_DATABASE_URL` 和 `WISER_RESOURCE_TEST_DATABASE_URL` 均须指向已播种的隔离测试控制库。它们核验真实 PostgreSQL 授权、同意范围上限、撤权、按用途独立审批和审计失败回滚；未设置变量而跳过测试不算验收。不得指向共享部署。本人浏览器／客户端与获许可外部供方仍是独立的目标环境验收。
