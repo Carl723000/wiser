@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-03
-lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: 31b88955f0ba66cc4608e161bea2a2cb3e6a0eb3
 ---
 
 ## HTTP adapter only
@@ -319,7 +319,7 @@ The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit
 
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived; REST, GraphQL, MCP and Skills share the new registry contract. Follow the returned reference into the existing three candidate reads.
 
-These paths do not admit managed Operation status/events, resume/cancel, approval/rejection or additional maintenance capabilities. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
+Managed `data.operation.get/events` admit only upload and ingestion Operations created by the standard intake flow, within the current tenant and project. Each read, including each event page, rechecks current maintenance authority and immutable submission/delegation responsibility, or independent human-review authority. Event cursors remain bound to the current identity, purpose and resource scope. This is not a project-wide Operation list. Public managed resume/cancel, approval/rejection and additional maintenance capabilities remain excluded. Candidate discovery grants no professional approval or publication. Real Auth, SQL/RLS and browser-chain acceptance must be completed separately; local synthetic tests are not that acceptance.
 
 ## Fixed candidate saved-view tools (1.0)
 

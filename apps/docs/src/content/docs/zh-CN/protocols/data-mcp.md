@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-03
-lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: 31b88955f0ba66cc4608e161bea2a2cb3e6a0eb3
 ---
 
 ## 只做 HTTP 适配
@@ -319,7 +319,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 
 `data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约继续归档，REST、GraphQL、MCP和Skill采用同一注册契约。只使用返回的引用衔接现有三项候选读取。
 
-本切片未放行受管Operation状态／事件、恢复／取消、批准／拒绝及其他维护能力。候选发现不授予专业批准或发布权；真实Auth、SQL／RLS和浏览器链须单独完成验收，不能由合成测试替代。
+受管`data.operation.get/events`仅准入标准接收流程创建、属于当前租户和项目的上传及入库Operation。每次读取及事件续页均重新核查当前维护权限与不可变提交／委托责任，或独立人工审核权限；事件游标继续绑定当前身份、用途和资源范围，不提供项目全量任务清单。公共受管恢复／取消、批准／拒绝及其他维护能力仍未准入。候选发现不授予专业批准或发布权；真实Auth、SQL／RLS和浏览器链须单独完成验收，不能由合成测试替代。
 
 ## 候选固定视图工具（1.0）
 

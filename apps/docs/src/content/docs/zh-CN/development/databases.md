@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-10-03
-lastReviewedCommit: db04019558e38f1eb538f9b8fde2abd3d86c9424
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: 31b88955f0ba66cc4608e161bea2a2cb3e6a0eb3
 ---
 
 ## 先区分两个 PostgreSQL 边界
