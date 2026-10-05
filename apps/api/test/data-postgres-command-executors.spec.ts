@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
 import { Pool, type PoolClient } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DATA_CAPABILITY_IDS,
   DATA_CAPABILITY_REGISTRY,
   type DataCapabilityId,
 } from '@wiser/data-contracts';
@@ -11,8 +12,14 @@ import {
   DATA_INGESTION_PROCESS_JOB_TYPE,
   type DataIngestionProcessJobPayload,
 } from '@wiser/data-infra';
+import { ResourceScopedPrincipalResolver } from '@wiser/platform-auth';
+import { PlatformRequestContextSchema } from '@wiser/platform-contracts';
 
-import type { DataCapabilityExecutionContext } from '../src/data-foundation/capability-handler.js';
+import {
+  DataCapabilityHandler,
+  type DataCapabilityExecutionContext,
+} from '../src/data-foundation/capability-handler.js';
+import { admitsManagedCapability } from '../src/data-foundation/managed-capability-policy.js';
 import { pendingIntakeAuthority } from '../src/data-foundation/managed-ingestion-access.js';
 import {
   PostgresDataCommandError,
@@ -34,6 +41,25 @@ const NOW = new Date('2026-08-22T05:00:00.000Z');
 const SHA256 = 'a'.repeat(64);
 const REVIEW_HASH = 'b'.repeat(64);
 const REVIEW_POLICY = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+
+const CATALOG_DRAFT_INPUT = {
+  name: 'Synthetic catalog maintenance draft',
+  businessDomains: ['water-monitoring'],
+  sourceNatures: ['observed'],
+  sourceChannels: ['file-upload'],
+  processingStage: 'RAW',
+  intendedUses: ['hydrology-analysis'],
+  ownerProjectId: PROJECT_ID,
+  sourceOrganization: 'Synthetic WISER fixture',
+  authorizationScope: 'data.catalog.read',
+  citationRequirements: [],
+  unitDefinitions: [],
+  missingValueRules: [],
+  anomalyRules: [],
+  generationMethod: 'OBSERVED',
+  securityLevel: 'L1_INTERNAL',
+  updateMode: 'SNAPSHOT',
+} as const;
 
 const context: DataCapabilityExecutionContext = {
   principal: {
@@ -683,6 +709,403 @@ class SavepointRollbackPool implements PostgresDataCommandPool {
     return Promise.resolve();
   }
 }
+
+// A direct production-executor probe, not public managed admission or real SQL.
+// The production scope compiler stamps each synthetic authority snapshot. Its
+// fingerprint must change with purpose/delegator; do not forge a stale one.
+async function managedCatalogContext(
+  base: DataCapabilityExecutionContext = context,
+): Promise<DataCapabilityExecutionContext> {
+  const request = PlatformRequestContextSchema.parse({
+    principal: base.principal,
+    authorization: base.authorization,
+    traceId: base.traceId,
+  });
+  const grant = (actorId: string) => ({
+    id: 'd2000000-0000-4000-8000-000000000080',
+    tenantId: TENANT_ID,
+    projectId: PROJECT_ID,
+    actorId,
+    purpose: base.authorization.purpose,
+    packageId: 'd2000000-0000-4000-8000-000000000081',
+    packageVersion: 1,
+    presetId: 'd2000000-0000-4000-8000-000000000082',
+    presetVersion: 1,
+    resources: [
+      { kind: 'version', dataItemId: INGESTION_ID, versionId: ASSET_ID },
+    ],
+    actions: ['content.read'],
+    startsAt: '2026-01-01T00:00:00Z',
+    expiresAt: '2099-01-01T00:00:00Z',
+    status: 'active',
+  });
+  const resolver = new ResourceScopedPrincipalResolver({
+    base: { resolve: () => Promise.resolve(request) },
+    load: () =>
+      Promise.resolve({
+        mode: 'managed',
+        tenantId: TENANT_ID,
+        projectId: PROJECT_ID,
+        actorId: base.principal.actorId,
+        purpose: base.authorization.purpose,
+        now: NOW.toISOString(),
+        revision: 1,
+        grants: [grant(base.principal.actorId)],
+        ...(base.principal.delegatedBy === undefined
+          ? {}
+          : {
+              delegator: {
+                actorId: base.principal.delegatedBy,
+                grants: [grant(base.principal.delegatedBy)],
+              },
+            }),
+      }),
+  });
+  const resolved = await resolver.resolve({
+    token: 'synthetic-port-token',
+    tenantId: TENANT_ID,
+    projectId: PROJECT_ID,
+    purpose: base.authorization.purpose,
+    traceId: base.traceId,
+  });
+  expect(resolved).not.toBeNull();
+  expect(PlatformRequestContextSchema.safeParse(resolved).success).toBe(true);
+  return { ...base, ...resolved! };
+}
+
+function delegatedCatalogContext(): DataCapabilityExecutionContext {
+  return {
+    ...context,
+    principal: {
+      actorId: ACTOR_ID,
+      actorType: 'agent',
+      authenticationMethod: 'delegated_credential',
+      credentialId: 'd2000000-0000-4000-8000-000000000083',
+      delegationId: 'd2000000-0000-4000-8000-000000000084',
+      delegatedBy: 'd2000000-0000-4000-8000-000000000085',
+      expiresAt: '2099-01-01T00:00:00Z',
+    },
+  };
+}
+
+async function observeCatalogMaintenance(
+  value: ReturnType<typeof runtime>,
+  actor: DataCapabilityExecutionContext,
+) {
+  const outcome = await executor(value.runtime, 'data.catalog.create')
+    .execute(CATALOG_DRAFT_INPUT, actor)
+    .then(
+      () => ({ errorCode: null }),
+      (error: unknown) => ({
+        errorCode: (error as PostgresDataCommandError).code,
+      }),
+    );
+  return {
+    ...outcome,
+    catalogWrites: value.pool.client.calls.filter(({ text }) =>
+      text.includes('/* data.catalog.create */'),
+    ).length,
+    outboxWrites: value.pool.client.calls.filter(({ text }) =>
+      text.includes('/* data.command.outbox.insert */'),
+    ).length,
+  };
+}
+
+describe('managed catalog maintenance internal guard Red', () => {
+  it('keeps public managed catalog creation denied before its executor', async () => {
+    const value = runtime();
+    const create = executor(value.runtime, 'data.catalog.create');
+    const execute = vi.fn(create.execute);
+    const actor = await managedCatalogContext();
+    const handler = new DataCapabilityHandler({
+      executors: DATA_CAPABILITY_IDS.map((id) =>
+        id === create.id
+          ? { id, execute }
+          : {
+              id,
+              execute: () =>
+                Promise.reject(
+                  new Error('Unrelated synthetic executor called'),
+                ),
+            },
+      ),
+      audit: { record: () => Promise.resolve() },
+    });
+    expect(admitsManagedCapability('data.catalog.create')).toBe(false);
+    await expect(
+      handler.execute({
+        capabilityId: create.id,
+        input: CATALOG_DRAFT_INPUT,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        requestContext: {
+          principal: actor.principal,
+          authorization: actor.authorization,
+          traceId: actor.traceId,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(execute).not.toHaveBeenCalled();
+    expect(value.pool.client.calls).toHaveLength(0);
+  });
+
+  it.each([
+    { name: 'current human maintainer', base: context },
+    { name: 'current delegated maintainer', base: delegatedCatalogContext() },
+  ])('preserves an internal draft and replay for $name', async ({ base }) => {
+    const value = runtime();
+    const actor = await managedCatalogContext(base);
+    expect(pendingIntakeAuthority(actor)?.maintainer).toBe(true);
+    const create = executor(value.runtime, 'data.catalog.create');
+    const first = await create.execute(CATALOG_DRAFT_INPUT, actor);
+    expect(first).toMatchObject({
+      item: { acceptanceStatus: 'PENDING', publicationStatus: 'UNPUBLISHED' },
+    });
+    expect(await create.execute(CATALOG_DRAFT_INPUT, actor)).toEqual(first);
+    expect(
+      value.pool.client.calls.filter(({ text }) =>
+        text.includes('/* data.catalog.create */'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      value.pool.client.calls.filter(({ text }) =>
+        text.includes('/* data.command.outbox.insert */'),
+      ),
+    ).toHaveLength(1);
+    const sql = value.pool.client.calls.map(({ text }) => text).join('\n');
+    expect(sql).not.toContain('/* data.intake.scope */');
+    expect(sql).not.toContain('/* data.ingestion.session.lock */');
+  });
+
+  it.each([
+    { name: 'intake write', scopes: ['data.operation.read', 'data.publish'] },
+    { name: 'operation read', scopes: ['data.ingestion.write'] },
+  ])(
+    'refuses missing current $name before draft writes',
+    async ({ scopes }) => {
+      const value = runtime();
+      const actor = await managedCatalogContext({
+        ...context,
+        authorization: { ...context.authorization, scopes },
+      });
+      expect(pendingIntakeAuthority(actor)?.maintainer).toBe(false);
+      expect(await observeCatalogMaintenance(value, actor)).toEqual({
+        errorCode: 'INTAKE_FORBIDDEN',
+        catalogWrites: 0,
+        outboxWrites: 0,
+      });
+    },
+  );
+
+  it('refuses replay when current project maintenance has been withdrawn', async () => {
+    const value = runtime();
+    const current = await managedCatalogContext();
+    await executor(value.runtime, 'data.catalog.create').execute(
+      CATALOG_DRAFT_INPUT,
+      current,
+    );
+    value.pool.client.calls.length = 0;
+    const withdrawn = await managedCatalogContext({
+      ...context,
+      authorization: {
+        ...context.authorization,
+        scopes: ['data.operation.read', 'data.publish'],
+      },
+    });
+    expect(withdrawn.authorization.resourceAccess).toEqual(
+      current.authorization.resourceAccess,
+    );
+    expect(pendingIntakeAuthority(withdrawn)?.maintainer).toBe(false);
+    expect(await observeCatalogMaintenance(value, withdrawn)).toEqual({
+      errorCode: 'INTAKE_FORBIDDEN',
+      catalogWrites: 0,
+      outboxWrites: 0,
+    });
+  });
+
+  it('refuses same-key replay after only operation read is withdrawn before reading the receipt', async () => {
+    const value = runtime();
+    const current = await managedCatalogContext();
+    await executor(value.runtime, 'data.catalog.create').execute(
+      CATALOG_DRAFT_INPUT,
+      current,
+    );
+    const receipts = structuredClone([...value.pool.client.replay]);
+    value.pool.client.calls.length = 0;
+    const withdrawn = await managedCatalogContext({
+      ...context,
+      authorization: {
+        ...context.authorization,
+        scopes: context.authorization.scopes.filter(
+          (scope) => scope !== 'data.operation.read',
+        ),
+      },
+    });
+    expect(withdrawn.authorization.scopes).toContain('data.ingestion.write');
+    expect(withdrawn.authorization.resourceAccess).toEqual(
+      current.authorization.resourceAccess,
+    );
+    expect(pendingIntakeAuthority(withdrawn)?.maintainer).toBe(false);
+    expect(await observeCatalogMaintenance(value, withdrawn)).toEqual({
+      errorCode: 'INTAKE_FORBIDDEN',
+      catalogWrites: 0,
+      outboxWrites: 0,
+    });
+    expect(value.pool.client.calls).toHaveLength(0);
+    expect([...value.pool.client.replay]).toEqual(receipts);
+  });
+
+  it('preserves legacy create and replay with only ingestion write', async () => {
+    const value = runtime();
+    const actor = {
+      ...context,
+      authorization: {
+        ...context.authorization,
+        scopes: ['data.ingestion.write'],
+      },
+    };
+    expect(actor.authorization.resourceAccess).toBeUndefined();
+    expect(pendingIntakeAuthority(actor)?.maintainer).toBe(false);
+    const create = executor(value.runtime, 'data.catalog.create');
+    const first = await create.execute(CATALOG_DRAFT_INPUT, actor);
+    expect(first).toMatchObject({
+      item: { acceptanceStatus: 'PENDING', publicationStatus: 'UNPUBLISHED' },
+    });
+    expect(await create.execute(CATALOG_DRAFT_INPUT, actor)).toEqual(first);
+    for (const marker of [
+      '/* data.catalog.create */',
+      '/* data.command.outbox.insert */',
+    ])
+      expect(
+        value.pool.client.calls.filter(({ text }) => text.includes(marker)),
+      ).toHaveLength(1);
+    const sql = value.pool.client.calls.map(({ text }) => text).join('\n');
+    expect(sql).not.toContain('/* data.intake.scope */');
+    expect(sql).not.toContain('/* data.ingestion.session.lock */');
+  });
+
+  it.each([
+    { name: 'system actor', actorType: 'system' as const },
+    { name: 'agent with a local token', actorType: 'agent' as const },
+  ])(
+    'refuses a managed $name despite complete maintenance scopes',
+    async ({ actorType }) => {
+      const value = runtime();
+      const actor = await managedCatalogContext({
+        ...context,
+        principal: {
+          actorId: ACTOR_ID,
+          actorType,
+          authenticationMethod: 'local_token',
+        },
+      });
+      expect(actor.authorization.scopes).toContain('data.ingestion.write');
+      expect(actor.authorization.scopes).toContain('data.operation.read');
+      expect(pendingIntakeAuthority(actor)).toBeNull();
+      expect(await observeCatalogMaintenance(value, actor)).toEqual({
+        errorCode: 'INTAKE_FORBIDDEN',
+        catalogWrites: 0,
+        outboxWrites: 0,
+      });
+      expect(value.pool.client.calls).toHaveLength(0);
+    },
+  );
+
+  it('refuses a delegated credential expiring after resolution and before consumption', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      const value = runtime();
+      const delegated = delegatedCatalogContext();
+      const actor = await managedCatalogContext({
+        ...delegated,
+        principal: {
+          ...delegated.principal,
+          expiresAt: new Date(NOW.getTime() + 1_000).toISOString(),
+        },
+      });
+      expect(pendingIntakeAuthority(actor)?.maintainer).toBe(true);
+      vi.setSystemTime(new Date(NOW.getTime() + 2_000));
+      expect(pendingIntakeAuthority(actor)).toBeNull();
+      expect(await observeCatalogMaintenance(value, actor)).toEqual({
+        errorCode: 'INTAKE_FORBIDDEN',
+        catalogWrites: 0,
+        outboxWrites: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses same-key replay after delegated credential expiry without changing the receipt', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      const value = runtime();
+      const delegated = delegatedCatalogContext();
+      const actor = await managedCatalogContext({
+        ...delegated,
+        principal: {
+          ...delegated.principal,
+          expiresAt: new Date(NOW.getTime() + 1_000).toISOString(),
+        },
+      });
+      expect(pendingIntakeAuthority(actor)?.maintainer).toBe(true);
+      await executor(value.runtime, 'data.catalog.create').execute(
+        CATALOG_DRAFT_INPUT,
+        actor,
+      );
+      const receipts = structuredClone([...value.pool.client.replay]);
+      value.pool.client.calls.length = 0;
+      vi.setSystemTime(new Date(NOW.getTime() + 2_000));
+      expect(pendingIntakeAuthority(actor)).toBeNull();
+      expect(await observeCatalogMaintenance(value, actor)).toEqual({
+        errorCode: 'INTAKE_FORBIDDEN',
+        catalogWrites: 0,
+        outboxWrites: 0,
+      });
+      expect(value.pool.client.calls).toHaveLength(0);
+      expect([...value.pool.client.replay]).toEqual(receipts);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(['purpose', 'delegator'] as const)(
+    'rejects replay after a real compiled fingerprint changes with %s',
+    async (change) => {
+      const value = runtime();
+      const base = delegatedCatalogContext();
+      const first = await managedCatalogContext(base);
+      await executor(value.runtime, 'data.catalog.create').execute(
+        CATALOG_DRAFT_INPUT,
+        first,
+      );
+      const changed = await managedCatalogContext(
+        change === 'purpose'
+          ? {
+              ...base,
+              authorization: { ...base.authorization, purpose: 'research' },
+            }
+          : {
+              ...base,
+              principal: {
+                ...base.principal,
+                delegatedBy: 'd2000000-0000-4000-8000-000000000086',
+              },
+            },
+      );
+      expect(changed.authorization.resourceAccess?.fingerprint).not.toBe(
+        first.authorization.resourceAccess?.fingerprint,
+      );
+      await expect(
+        executor(value.runtime, 'data.catalog.create').execute(
+          CATALOG_DRAFT_INPUT,
+          changed,
+        ),
+      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    },
+  );
+});
 
 describe('PostgreSQL Data Foundation command executors', () => {
   it('queues version analysis atomically, replays idempotently, and rejects inaccessible versions', async () => {
