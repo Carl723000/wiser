@@ -819,3 +819,82 @@ it('does not attribute absent reference geometry or turn camera controls into an
   ).toBeTruthy();
   expect(screen.queryByRole('toolbar', { name: copy.mapTitle })).toBeNull();
 });
+
+it.each(['zh-CN', 'en'] as const)(
+  'keeps %s manifest counts separate from records and draws hollow noninteractive reference anchors offline',
+  (locale) => {
+    const dictionary = getDictionary(locale).dataFoundation.spatialWorkspace;
+    const anchor: PublicReferences['features'][number] = {
+      type: 'Feature',
+      id: 'reference-anchor:123',
+      geometry: { type: 'Point', coordinates: [116.5, 39.5] },
+      properties: {
+        ...publicReferences.features[0].properties,
+        kind: 'reference-anchor',
+        label: '原生汇口参考',
+        referenceFileId: 'reference-file',
+        sourceUrl: 'https://www.openstreetmap.org/node/123',
+      },
+    };
+    const references: PublicReferences = {
+      ...publicReferences,
+      features: [...publicReferences.features, anchor],
+      manifest: {
+        version: '2026-10-05.1',
+        files: [
+          {
+            id: 'reference-file',
+            sha256: 'a'.repeat(64),
+            featureCount: 4,
+            format: 'osm-native-anchors-v1',
+            originalSha256: ['b'.repeat(64)],
+            scope: 'public-geographic-reference',
+            license: {
+              id: 'ODbL-1.0',
+              url: 'https://www.openstreetmap.org/copyright',
+              attribution: '© OpenStreetMap contributors · ODbL 1.0',
+              state: 'verified',
+            },
+            limitation: {
+              'zh-CN': '原生参考；不能当作采样点。',
+              en: 'Native reference; not a sampling point.',
+            },
+          },
+        ],
+      },
+    };
+    const { container } = render(
+      <SpatialWorkspaceMap
+        {...props}
+        copy={dictionary}
+        webGLAvailable={false}
+        publicReferences={references}
+        publicReferenceState="ready"
+      />,
+    );
+    expect(
+      container
+        .querySelector('[data-public-reference-kind="reference-anchor"] path')
+        ?.getAttribute('fill'),
+    ).toBe('none');
+    expect(
+      container.querySelectorAll('[data-public-reference-kind]'),
+    ).toHaveLength(4);
+    const label =
+      locale === 'zh-CN'
+        ? '汇口与设施参考锚点'
+        : 'Confluence and facility reference anchors';
+    expect(screen.getByLabelText(label)).toBeTruthy();
+    expect(screen.getByText(/2026-10-05.1/)).toBeTruthy();
+    const counts =
+      locale === 'zh-CN'
+        ? /固定文件要素：4.*当前显示参考要素：4/
+        : /Fixed file features: 4.*Displayed reference features: 4/;
+    expect(screen.getByText(counts)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(label));
+    expect(
+      container.querySelectorAll('[data-public-reference-kind]'),
+    ).toHaveLength(3);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  },
+);

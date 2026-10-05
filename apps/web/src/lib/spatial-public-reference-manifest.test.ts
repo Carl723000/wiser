@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadLocalSpatialWorkspace } from './spatial-workspace-local';
+import { parsePublicReferenceManifest } from './spatial-public-reference';
 
 const attribution = '© OpenStreetMap contributors · ODbL 1.0';
 const licenseUrl = 'https://www.openstreetmap.org/copyright';
@@ -118,6 +119,75 @@ async function setup() {
 }
 
 describe('versioned public geographic reference manifest', () => {
+  it('strips undeclared geometry fields while retaining the exact native coordinates', async () => {
+    const fixture = await setup();
+    try {
+      await fixture.add('third', 'osm-reference-reach-v1', [
+        {
+          ...thirdReach,
+          geometry: {
+            ...line,
+            privatePath: '/private/geometry-never-serialize',
+          },
+        },
+      ]);
+      const result = await loadLocalSpatialWorkspace(
+        await fixture.save(),
+        'localhost:3410',
+      );
+      expect(result.publicReferenceState).toBe('ready');
+      expect(result.publicReferences?.features[0].geometry).toEqual(line);
+      expect(JSON.stringify(result)).not.toContain('geometry-never-serialize');
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+  it('rejects an aggregate feature declaration over 25,000 without truncating a file', async () => {
+    const fixture = await setup();
+    try {
+      await fixture.add('first', 'osm-reference-reaches-v1', [reach(0)]);
+      await fixture.add('second', 'osm-reference-reaches-v1', [reach(1)]);
+      fixture.files[0].featureCount = 13000;
+      fixture.files[1].featureCount = 13000;
+      expect(() =>
+        parsePublicReferenceManifest({
+          schemaVersion: 1,
+          version: 'budget-1',
+          files: fixture.files,
+        }),
+      ).toThrow();
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects aggregate inputs over 32 MiB even when every file fits its own budget', async () => {
+    const fixture = await setup();
+    try {
+      for (let index = 0; index < 3; index++) {
+        const path = await fixture.add(
+          `file-${index}`,
+          'osm-reference-reaches-v1',
+          [reach(index)],
+        );
+        const bytes = (await readFile(path, 'utf8')).padEnd(
+          11 * 1024 * 1024,
+          ' ',
+        );
+        await writeFile(path, bytes);
+        fixture.files[index].sha256 = digest(bytes);
+      }
+      expect(
+        await loadLocalSpatialWorkspace(await fixture.save(), 'localhost:3410'),
+      ).toMatchObject({
+        state: 'ready',
+        publicReferenceState: 'invalid',
+        publicReferences: null,
+      });
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+    }
+  });
   it('loads six reaches from separately pinned files without assigning monthly identity', async () => {
     const fixture = await setup();
     try {
@@ -203,7 +273,9 @@ describe('versioned public geographic reference manifest', () => {
           fixture.files[1].originalSha256 = ['b'.repeat(64)];
         if (failure === 'duplicate-id') fixture.files[1].id = 'good';
         if (failure === 'monthly-identity' || failure === 'coordinate') {
-          const changed = JSON.parse(await readFile(path, 'utf8'));
+          const changed = JSON.parse(await readFile(path, 'utf8')) as {
+            features: (typeof thirdReach)[];
+          };
           if (failure === 'monthly-identity')
             changed.features[0].properties.monthlyBoundaryConfirmed = true;
           else changed.features[0].geometry.coordinates[0][0] = 181;

@@ -314,6 +314,7 @@ export function SpatialWorkspaceMap({
       administrative: true,
       watercourse: true,
       'reference-reach': true,
+      'reference-anchor': true,
     });
   const shownPublicReferences = useMemo(
     () =>
@@ -752,6 +753,18 @@ export function SpatialWorkspaceMap({
                   'line-color': colors.selected,
                   'line-width': 1.5,
                   'line-dasharray': [3, 2],
+                }}
+              />
+              <Layer
+                id="workspace-public-reference-anchor"
+                type="circle"
+                filter={['==', ['get', 'kind'], 'reference-anchor']}
+                paint={{
+                  'circle-radius': 4,
+                  'circle-color': colors.selected,
+                  'circle-opacity': 0,
+                  'circle-stroke-color': colors.selected,
+                  'circle-stroke-width': 1.5,
                 }}
               />
             </Source>
@@ -1254,7 +1267,7 @@ export function SpatialWorkspaceMap({
               <label key={kind} className={styles.checkbox}>
                 <input
                   type="checkbox"
-                  checked={publicReferenceVisibility[kind]}
+                  checked={publicReferenceVisibility[kind] ?? false}
                   disabled={
                     !publicReferences.features.some(
                       (feature) => feature.properties.kind === kind,
@@ -1283,35 +1296,84 @@ export function SpatialWorkspaceMap({
                       fillOpacity="0.12"
                     />
                   ) : null}
-                  <line
-                    x1="2"
-                    x2="26"
-                    y1="7"
-                    y2="7"
-                    stroke={
-                      kind === 'administrative'
-                        ? colors.border
-                        : kind === 'watercourse'
-                          ? colors.accent
-                          : colors.selected
-                    }
-                    strokeWidth="2"
-                    strokeDasharray={
-                      kind === 'administrative'
-                        ? '3 3'
-                        : kind === 'reference-reach'
-                          ? '6 4'
-                          : undefined
-                    }
-                  />
+                  {kind === 'reference-anchor' ? (
+                    <circle
+                      cx="14"
+                      cy="7"
+                      r="4"
+                      fill="none"
+                      stroke={colors.selected}
+                      strokeWidth="1.5"
+                    />
+                  ) : (
+                    <line
+                      x1="2"
+                      x2="26"
+                      y1="7"
+                      y2="7"
+                      stroke={
+                        kind === 'administrative'
+                          ? colors.border
+                          : kind === 'watercourse'
+                            ? colors.accent
+                            : colors.selected
+                      }
+                      strokeWidth="2"
+                      strokeDasharray={
+                        kind === 'administrative'
+                          ? '3 3'
+                          : kind === 'reference-reach'
+                            ? '6 4'
+                            : undefined
+                      }
+                    />
+                  )}
                 </svg>
                 {copy.publicReferenceKinds[kind]}
               </label>
             ))}
           </div>
           <p>{copy.publicReferenceLimit}</p>
+          {publicReferences.manifest ? (
+            <p>
+              {copy.publicReferenceManifestSummary
+                .replace('{version}', publicReferences.manifest.version)
+                .replace(
+                  '{files}',
+                  String(publicReferences.manifest.files.length),
+                )
+                .replace('{total}', String(publicReferences.features.length))
+                .replace(
+                  '{shown}',
+                  String(shownPublicReferences.features.length),
+                )}
+            </p>
+          ) : null}
           <details>
             <summary>{copy.publicReferenceEvidence}</summary>
+            {publicReferences.manifest ? (
+              <ul>
+                {publicReferences.manifest.files.map((file) => (
+                  <li key={file.id}>
+                    <code>{file.id}</code> ·{' '}
+                    {copy.publicReferenceManifestFeatures}：{file.featureCount}{' '}
+                    ·{' '}
+                    <a href={file.license.url} target="_blank" rel="noreferrer">
+                      {file.license.attribution}
+                    </a>
+                    <p>
+                      {copy.publicReferenceFileHash}: <code>{file.sha256}</code>
+                    </p>
+                    <p>
+                      {copy.publicReferenceOriginalHash}:{' '}
+                      {file.originalSha256.map((hash) => (
+                        <code key={hash}>{hash} </code>
+                      ))}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <ul>
               {publicReferences.features.map((feature) => (
                 <li key={String(feature.id)}>
@@ -1331,7 +1393,11 @@ export function SpatialWorkspaceMap({
                   >
                     {feature.properties.attribution}
                   </a>
-                  <p>{feature.properties.limitation}</p>
+                  <p>
+                    {feature.properties.referenceFileId
+                      ? copy.publicReferenceLimit
+                      : feature.properties.limitation}
+                  </p>
                   <p>
                     {copy.publicReferenceFileHash}:{' '}
                     <code>{feature.properties.sourceFileSha256}</code>

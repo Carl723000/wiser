@@ -45,6 +45,7 @@ export interface SpatialWorkspaceCopy {
     administrative: string;
     watercourse: string;
     'reference-reach': string;
+    'reference-anchor': string;
   };
   publicReferenceLimit: string;
   publicReferenceEvidence: string;
@@ -52,6 +53,8 @@ export interface SpatialWorkspaceCopy {
   publicReferenceFileHash: string;
   publicReferenceOriginalHash: string;
   publicReferenceUnavailable: string;
+  publicReferenceManifestSummary: string;
+  publicReferenceManifestFeatures: string;
   referenceHint: string;
   flatView: string;
   spaceView: string;

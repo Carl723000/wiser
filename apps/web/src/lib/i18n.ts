@@ -1737,6 +1737,7 @@ const zhCN = {
         administrative: '行政参考范围',
         watercourse: '原生水系参考线',
         'reference-reach': '河段端点补证参考线',
+        'reference-anchor': '汇口与设施参考锚点',
       },
       publicReferenceLimit:
         '这些公开地图几何仅供地理参照，不是月报河段边界、采样位置或已核准的业务定位；关闭参照不隐藏资料记录。',
@@ -1745,7 +1746,10 @@ const zhCN = {
       publicReferenceFileHash: '固定参照文件哈希',
       publicReferenceOriginalHash: '来源原件哈希',
       publicReferenceUnavailable:
-        '公共地理参照暂不可显示；资料位置与未定位记录仍按原证据查阅。',
+        '参照文件未齐或校验未通过，本组公共地理参照已关闭；资料位置与未定位记录仍按原证据查阅。',
+      publicReferenceManifestSummary:
+        '参照清单版本：{version} · 固定参照文件：{files} · 固定文件要素：{total} · 当前显示参考要素：{shown}',
+      publicReferenceManifestFeatures: '固定文件要素',
       referenceHint: '只显示本批许可几何与经纬网；位置与范围的依据见资料档案。',
       flatView: '切换平面视图',
       spaceView: '切换鸟瞰视图',
@@ -5741,6 +5745,7 @@ const en: typeof zhCN = {
         administrative: 'Administrative reference areas',
         watercourse: 'Native watercourse reference',
         'reference-reach': 'Endpoint evidence reference reaches',
+        'reference-anchor': 'Confluence and facility reference anchors',
       },
       publicReferenceLimit:
         'These public map geometries are geographic references only. They are not monthly reach boundaries, sampling positions, or verified business locations. Turning off a reference does not hide material records.',
@@ -5749,7 +5754,10 @@ const en: typeof zhCN = {
       publicReferenceFileHash: 'Fixed reference file hash',
       publicReferenceOriginalHash: 'Original source hash',
       publicReferenceUnavailable:
-        'Public geographic references cannot be displayed now. Material positions and unresolved records remain available from their own evidence.',
+        'A reference file is missing or has failed verification, so this public geographic reference group is closed. Material positions and unresolved records remain available from their own evidence.',
+      publicReferenceManifestSummary:
+        'Reference manifest version: {version} · Fixed reference files: {files} · Fixed file features: {total} · Displayed reference features: {shown}',
+      publicReferenceManifestFeatures: 'Fixed file features',
       referenceHint:
         'Only licensed geometries from this batch and a graticule are shown. Read the material dossier for location and extent evidence.',
       flatView: 'Switch to planar view',

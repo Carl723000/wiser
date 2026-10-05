@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: cdd258ac
+lastReviewedCommit: a9d48bd7
 ---
 
 ## 两个前端应用
@@ -280,7 +280,11 @@ BusinessQuery v2允许已审与待审关系共同展示，但不改变断言状�
 
 启用须同时满足非 production、`WISER_AUTH_MODE=off`、`WISER_SPATIAL_WORKSPACE_MODE=local` 和本机 Host。`WISER_SPATIAL_INPUT_MANIFEST` 是绝对路径 JSON；未配置、损坏或版本不一致分别收敛，禁止伪造资料回退。配置只用于局部开发预览，不进入正式部署。
 
-可选的离线公共地理参照，分别将`WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON`设为`spatial-reference.geojson`绝对路径，和／或将`WISER_SPATIAL_REACH_REFERENCE_GEOJSON`设为`reference-ranges.geojson`绝对路径。前者完整SHA-256须为`955998aa4f119709801e288aa765c9333c9f0a8c108c00c30fa9a1bbc986b7b9`（最多1 MiB）；后者须为`1843e403c2f4ccf2f7cff8c64cd339dd3729133f99592ce6b62b3e3650525269`（最多256 KiB）。地图内可查来源原件哈希和ODbL署名。任一已配置文件变化或不可取得时，整组公共背景关闭，资料记录地图仍可用；读取受非生产、关闭Auth和本机Host的同一门禁约束。该层只是独立公共地理参照，既非候选业务定位或月报河段边界，也不作登录后Data地图回退。
+可选的离线公共地理参照使用`WISER_SPATIAL_PUBLIC_REFERENCE_MANIFEST`（绝对路径JSON）及`WISER_SPATIAL_PUBLIC_REFERENCE_SHA256`（完整SHA-256）配置有版本的本地清单。schema 1声明非空版本及最多32个唯一命名文件；每项固定GeoJSON绝对路径、完整文件哈希、预期要素数、受支持的OSM格式、来源原件哈希、经核ODbL 1.0署名／许可、地理参考角色及双语限制。清单最多256 KiB，单文件最多12 MiB；整组最多25,000要素及32 MiB输入字节（包括清单）。顺序读取先消耗剩余额度再分配下一文件；超限时关闭整组，不截断要素。声明、哈希、几何、来源原件、位置角色与待审边界全部核对后才返回整组参照，路径与未知字段剥离。清单不赋予月报记录、采样位置、专业批准或业务身份。
+
+格式保留既有行政／河段派生件，另支持分别冻结的参考河段、原生河线及空心的汇口／设施参考锚点。预期要素数取自每个固定文件声明，不再限制为五要素。地图区分固定文件数、固定文件要素数和当前显示参考要素；筛选与视觉去重不改变业务记录计数。折叠证据保留原件哈希、逐文件许可和清单版本。任一文件失败时关闭整组参照，明确提示文件缺项或校验未通过，资料记录仍可查阅。显式配置清单后，失败不回退旧两文件配置。
+
+未配置清单时，`WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON`与`WISER_SPATIAL_REACH_REFERENCE_GEOJSON`继续兼容，原完整SHA-256守卫及1 MiB／256 KiB限制保留。所有文件读取仍受非生产、关闭Auth及本机Host门禁约束。该层只作独立公共地理参照，不成为候选业务定位、月报边界或登录后Data地图回退。
 
 服务器校验固定来源与几何来源版本、哈希格式和使用条件，剥离原件路径及未知字段；不可显示的来源和关联记录清除。派生影像 PNG 只通过本机受限 `spatial-workspace-media` 路由交付，生产环境不可用。正式 Auth、Data API、RLS、入库与专业审核继续按既有流程另验。
 
