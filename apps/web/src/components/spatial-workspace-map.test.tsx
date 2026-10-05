@@ -7,7 +7,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { renderToStaticMarkup, renderToString } from 'react-dom/server';
@@ -73,7 +73,19 @@ vi.mock('react-map-gl/maplibre', async () => {
         queryRenderedFeatures: probe.query,
         unproject: ({ x, y }: { x: number; y: number }) => ({ lng: x, lat: y }),
       }));
-      return <div data-testid="native-map">{props.children as ReactNode}</div>;
+      return (
+        <div
+          data-testid="native-map"
+          onWheel={(event) =>
+            (props.onWheel as ((event: unknown) => void) | undefined)?.({
+              target: native,
+              originalEvent: event.nativeEvent,
+            })
+          }
+        >
+          {props.children as ReactNode}
+        </div>
+      );
     }),
     Source: (props: {
       children?: ReactNode;
@@ -318,6 +330,119 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+});
+
+describe('wheel qualification after external stop', () => {
+  const stopReasons = ['load', 'external camera', 'hide and show'] as const;
+  const sources = ['wheel', 'sourceless'] as const;
+  const external = { ...camera, longitude: 117.4, latitude: 40.5, zoom: 6 };
+  const delayed = { ...external, zoom: 6.25 };
+  const wheel = () =>
+    fireEvent.wheel(screen.getByTestId('native-map'), { deltaY: 180 });
+  function stopAfterPendingWheel(reason: (typeof stopReasons)[number]) {
+    const result = render(<SpatialWorkspaceMap {...props} />);
+    if (reason !== 'load') act(() => (probe.props.onLoad as () => void)());
+    wheel();
+    // Simulate the classification delay: this wheel has not started zooming
+    // when the external stop happens, but its timer may start it afterwards.
+    expect(probe.zooming()).toBe(false);
+    probe.stop.mockClear();
+    if (reason === 'load') act(() => (probe.props.onLoad as () => void)());
+    else if (reason === 'external camera')
+      result.rerender(<SpatialWorkspaceMap {...props} camera={external} />);
+    else {
+      result.rerender(<SpatialWorkspaceMap {...props} active={false} />);
+      result.rerender(<SpatialWorkspaceMap {...props} />);
+    }
+    expect(probe.stop).toHaveBeenCalled();
+    return result;
+  }
+  function move(source: (typeof sources)[number], target = probe.native) {
+    act(() =>
+      (probe.props.onMove as (event: unknown) => void)({
+        target,
+        viewState: delayed,
+        ...(source === 'wheel'
+          ? { originalEvent: new WheelEvent('wheel', { deltaY: 180 }) }
+          : {}),
+      }),
+    );
+  }
+
+  it.each(
+    stopReasons.flatMap((reason) =>
+      sources.map((source) => [reason, source] as const),
+    ),
+  )(
+    'rejects an old %s classification frame with %s provenance after stopping',
+    (reason, source) => {
+      stopAfterPendingWheel(reason);
+      probe.zooming.mockReturnValue(true);
+      move(source);
+      expect(props.onCamera).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(
+    stopReasons.flatMap((reason) =>
+      sources.map((source) => [reason, source] as const),
+    ),
+  )(
+    'accepts a new DOM wheel after %s stop with %s provenance',
+    (reason, source) => {
+      stopAfterPendingWheel(reason);
+      wheel();
+      probe.zooming.mockReturnValue(true);
+      move(source);
+      expect(props.onCamera).toHaveBeenCalledExactlyOnceWith(delayed);
+    },
+  );
+
+  it.each(
+    ['wrong target', 'inactive', 'ended'].flatMap((guard) =>
+      sources.map((source) => [guard, source] as const),
+    ),
+  )('retains the %s guard for a qualified %s frame', (guard, source) => {
+    const { rerender } = stopAfterPendingWheel('load');
+    wheel();
+    if (guard === 'inactive')
+      rerender(<SpatialWorkspaceMap {...props} active={false} />);
+    probe.zooming.mockReturnValue(guard !== 'ended');
+    move(source, guard === 'wrong target' ? {} : probe.native);
+    expect(props.onCamera).not.toHaveBeenCalled();
+  });
+
+  it.each(['mouse', 'keyboard'] as const)(
+    'keeps %s navigation available without wheel qualification',
+    (source) => {
+      stopAfterPendingWheel('load');
+      act(() =>
+        (probe.props.onMove as (event: unknown) => void)({
+          target: probe.native,
+          viewState: delayed,
+          originalEvent:
+            source === 'mouse'
+              ? new MouseEvent('mousemove')
+              : new KeyboardEvent('keydown', { key: '+' }),
+        }),
+      );
+      expect(props.onCamera).toHaveBeenCalledExactlyOnceWith(delayed);
+    },
+  );
+
+  it('reapplies the controlled camera on move end without writing the rejected end proposal', () => {
+    stopAfterPendingWheel('external camera');
+    act(() =>
+      (probe.props.onMoveEnd as (event: unknown) => void)({
+        target: probe.native,
+        viewState: delayed,
+      }),
+    );
+    expect(props.onCamera).not.toHaveBeenCalled();
+    expect(probe.props.longitude).toBe(external.longitude);
+    expect(probe.props.latitude).toBe(external.latitude);
+    expect(probe.props.zoom).toBe(external.zoom);
+  });
 });
 
 it('passes original geometry and the common geographic pitch/bearing to MapLibre', () => {
