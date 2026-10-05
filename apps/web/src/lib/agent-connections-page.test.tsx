@@ -97,7 +97,7 @@ it('shows the disconnect action only while either access or saved consent remain
   expect(screen.getAllByRole('button', { name: '断开连接' })).toHaveLength(1);
   expect(screen.getByRole('status').textContent).toContain('连接已断开');
 });
-it('shows an active connection without a fixed expiry as lasting until disconnect', async () => {
+it('shows an active connection without a fixed expiry without promising perpetual access', async () => {
   mocks.viewer.mockResolvedValue({ userId: 'owner' });
   mocks.account.mockResolvedValue({ load: mocks.load });
   mocks.load.mockResolvedValue([
@@ -112,8 +112,133 @@ it('shows an active connection without a fixed expiry as lasting until disconnec
     },
   ]);
   render(await Page(props('zh-CN')));
-  expect(screen.getByText('直到手动断开')).toBeDefined();
+  expect(screen.getByText('未设置固定期限；可手动断开')).toBeDefined();
   expect(screen.queryByText('1970')).toBeNull();
+});
+
+it.each([
+  {
+    locale: 'zh-CN',
+    conditions: '当前连接条件',
+    met: '成员条件已满足；具体资料仍须判权',
+    member: '本人当前成员状态',
+    role: '本人当前有效角色',
+    expiry: '成员有效期',
+    active: '有效',
+    readRole: '资料查询',
+    noExpiry: '未设置期限',
+  },
+  {
+    locale: 'en',
+    conditions: 'Current connection conditions',
+    met: 'Membership conditions met; data access still requires a check',
+    member: 'My current membership',
+    role: 'My current effective roles',
+    expiry: 'Membership term',
+    active: 'Active',
+    readRole: 'Data reader',
+    noExpiry: 'No expiry set',
+  },
+])(
+  'reads current membership separately from the ceiling in $locale',
+  async (copy) => {
+    mocks.viewer.mockResolvedValue({ userId: 'owner' });
+    mocks.account.mockResolvedValue({ load: mocks.load });
+    mocks.load.mockResolvedValue([
+      {
+        ...registeredRange,
+        connectionId: 'current',
+        clientName: 'Current client',
+        projectName: { 'zh-CN': '河流', en: 'River' },
+        expiresAt: null,
+        status: 'active',
+        providerConsent: true,
+        projectAccess: {
+          state: 'loaded',
+          memberStatus: 'active',
+          roles: ['data-reader'],
+          expiresAt: null,
+        },
+      },
+    ]);
+    render(await Page(props(copy.locale)));
+    const region = within(
+      screen.getByRole('region', { name: 'Current client' }),
+    );
+    for (const label of [
+      copy.conditions,
+      copy.met,
+      copy.member,
+      copy.role,
+      copy.expiry,
+      copy.active,
+      copy.readRole,
+      copy.noExpiry,
+    ])
+      expect(region.getByText(label)).toBeDefined();
+  },
+);
+
+it.each([
+  ['not-loaded', '本次尚未查到该项目；请重新加载或前往访问管理核对。'],
+  ['not-visible', '该项目当前不在你的可见范围；请联系项目管理员核对。'],
+  ['unavailable', '暂时无法核对项目成员条件；请重新加载后再试。'],
+] as const)(
+  'does not conflate %s with loss of access',
+  async (state, label) => {
+    mocks.viewer.mockResolvedValue({ userId: 'owner' });
+    mocks.account.mockResolvedValue({ load: mocks.load });
+    mocks.load.mockResolvedValue([
+      {
+        ...registeredRange,
+        connectionId: 'unknown',
+        clientName: 'Unknown client',
+        projectName: null,
+        expiresAt: null,
+        status: 'active',
+        providerConsent: true,
+        projectAccess: { state },
+      },
+    ]);
+    render(await Page(props()));
+    expect(screen.getByText(label)).toBeDefined();
+    expect(screen.getByText('当前成员条件尚未确认')).toBeDefined();
+    expect(screen.getByRole('button', { name: '断开连接' })).toBeDefined();
+    expect(
+      screen.getByRole('link', { name: '查看我的访问' }).getAttribute('href'),
+    ).toBe('/zh-CN/account/access');
+  },
+);
+
+it('keeps an expired membership and its exact term visible without removing disconnect', async () => {
+  mocks.viewer.mockResolvedValue({ userId: 'owner' });
+  mocks.account.mockResolvedValue({ load: mocks.load });
+  mocks.load.mockResolvedValue([
+    {
+      ...registeredRange,
+      connectionId: 'expired-member',
+      clientName: 'Expired member',
+      projectName: { 'zh-CN': '河流', en: 'River' },
+      expiresAt: null,
+      status: 'active',
+      providerConsent: true,
+      projectAccess: {
+        state: 'loaded',
+        memberStatus: 'active',
+        roles: [],
+        expiresAt: '2026-01-01T00:00:00Z',
+      },
+    },
+  ]);
+  render(await Page(props()));
+  expect(screen.getByText('成员已到期')).toBeDefined();
+  expect(
+    screen.getByText('成员期限已到，当前无法通过此连接访问'),
+  ).toBeDefined();
+  expect(
+    document.querySelector('time[datetime="2026-01-01T00:00:00Z"]'),
+  ).toBeDefined();
+  expect(screen.getByRole('button', { name: '断开连接' })).toBeDefined();
 });
 
 it.each([

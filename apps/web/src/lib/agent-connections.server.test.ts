@@ -34,6 +34,15 @@ const owned = {
   expiresAt: '2026-09-26T12:00:00Z',
   status: 'active',
 };
+const project = {
+  projectId: owned.projectId,
+  tenantId: owned.tenantId,
+  nameZh: '河流',
+  nameEn: 'River',
+  memberStatus: 'active',
+  expiresAt: '2099-09-26T12:00:00Z',
+  roles: ['data-reader'],
+};
 beforeEach(() => {
   mocks.createClient.mockResolvedValue({
     auth: { oauth: { listGrants: mocks.grants, revokeGrant: mocks.revoke } },
@@ -46,9 +55,105 @@ beforeEach(() => {
   });
   mocks.revoke.mockResolvedValue({ error: null });
   mocks.projects.mockResolvedValue({
-    items: [{ projectId: owned.projectId, nameZh: '河流', nameEn: 'River' }],
+    items: [project],
     hasMore: false,
   });
+});
+it('finds a connected project beyond the first fifty and retains its current membership', async () => {
+  mocks.projects
+    .mockResolvedValueOnce({
+      items: Array.from({ length: 50 }, () => ({
+        ...project,
+        projectId: randomUUID(),
+      })),
+      hasMore: true,
+    })
+    .mockResolvedValueOnce({ items: [project], hasMore: true });
+  const view = await (await getAgentConnectionAccount()).load();
+  expect(mocks.projects.mock.calls).toEqual([
+    [{ offset: 0, limit: 50, search: '' }],
+    [{ offset: 50, limit: 50, search: '' }],
+  ]);
+  expect(view[0]).toMatchObject({
+    projectName: { 'zh-CN': '河流', en: 'River' },
+    projectAccess: {
+      state: 'loaded',
+      memberStatus: 'active',
+      expiresAt: project.expiresAt,
+      roles: ['data-reader'],
+    },
+  });
+});
+it('distinguishes an exhausted visible list from a failed membership request', async () => {
+  mocks.projects.mockResolvedValue({ items: [], hasMore: false });
+  const account = await getAgentConnectionAccount();
+  expect((await account.load())[0]?.projectAccess).toEqual({
+    state: 'not-visible',
+  });
+  mocks.projects.mockRejectedValue(new Error('private upstream'));
+  expect((await account.load())[0]?.projectAccess).toEqual({
+    state: 'unavailable',
+  });
+  expect(await account.disconnect(owned.connectionId)).toBe('disconnected');
+});
+it('bounds project reads and keeps an unresolved page distinct from invisibility', async () => {
+  mocks.projects.mockResolvedValue({
+    items: Array.from({ length: 50 }, () => ({
+      ...project,
+      projectId: randomUUID(),
+    })),
+    hasMore: true,
+  });
+  expect(
+    (await (await getAgentConnectionAccount()).load())[0]?.projectAccess,
+  ).toEqual({ state: 'not-loaded' });
+  expect(mocks.projects).toHaveBeenCalledTimes(10);
+  expect(mocks.projects).toHaveBeenLastCalledWith({
+    offset: 450,
+    limit: 50,
+    search: '',
+  });
+});
+it('stops an empty continuing page without asserting invisibility', async () => {
+  mocks.projects.mockResolvedValue({ items: [], hasMore: true });
+  expect(
+    (await (await getAgentConnectionAccount()).load())[0]?.projectAccess,
+  ).toEqual({ state: 'not-loaded' });
+  expect(mocks.projects).toHaveBeenCalledTimes(1);
+});
+it('does not reuse a project from another tenant or fetch projects for no connections', async () => {
+  mocks.projects.mockResolvedValue({
+    items: [{ ...project, tenantId: randomUUID() }],
+    hasMore: false,
+  });
+  const account = await getAgentConnectionAccount();
+  expect((await account.load())[0]?.projectAccess).toEqual({
+    state: 'not-visible',
+  });
+  mocks.projects.mockClear();
+  mocks.request.mockResolvedValue({ connections: [] });
+  expect(await account.load()).toEqual([]);
+  expect(mocks.projects).not.toHaveBeenCalled();
+});
+it('preserves already read conditions when a later page fails but rereads on the next load', async () => {
+  const second = {
+    ...owned,
+    connectionId: randomUUID(),
+    projectId: randomUUID(),
+  };
+  mocks.request.mockResolvedValue({ connections: [owned, second] });
+  mocks.projects
+    .mockResolvedValueOnce({ items: [project], hasMore: true })
+    .mockRejectedValueOnce(new Error('private upstream'));
+  const account = await getAgentConnectionAccount();
+  const view = await account.load();
+  expect(view[0]?.projectAccess).toMatchObject({ state: 'loaded' });
+  expect(view[1]?.projectAccess).toEqual({ state: 'unavailable' });
+  mocks.projects.mockResolvedValue({ items: [], hasMore: false });
+  expect((await account.load()).map((item) => item.projectAccess)).toEqual([
+    { state: 'not-visible' },
+    { state: 'not-visible' },
+  ]);
 });
 afterEach(() => vi.resetAllMocks());
 it('never reads or revokes when the live user session cannot be verified', async () => {
