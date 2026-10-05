@@ -528,6 +528,12 @@ it.each(['visible', 'persisted pageshow'] as const)(
           ),
         );
       }
+      if (url(value).endsWith('/create'))
+        return Promise.resolve(
+          Response.json({
+            savedView: saved('geometry', 'synthetic-resume-after').savedView,
+          }),
+        );
       return Promise.resolve(pageReply(value, init));
     });
     await persisted('geometry');
@@ -581,9 +587,23 @@ it.each(['visible', 'persisted pageshow'] as const)(
         .getAttribute('aria-pressed'),
     ).toBe('true');
     expect(probe.maps.at(-1)?.camera).toEqual(cameraBefore);
-    // The actual request above proves use of the newly issued fixed-page
-    // resume cursor. The reader does not expose afterRecordId itself; retaining
-    // that internal navigation anchor for a later save is not proven here.
+    fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+    await screen.findByText('View saved.');
+    const creation = fetch.mock.calls.find(([value]) =>
+      url(value).endsWith('/create'),
+    )!;
+    expect(input(creation[1])).toMatchObject({
+      viewSpec: {
+        page: {
+          kind: 'geometry',
+          reference: oldRef,
+          assetId,
+          afterRecordId: anchorId,
+        },
+        focus: { reference: oldRef, assetId, recordId },
+        map: { camera: savedCamera },
+      },
+    });
   },
 );
 
@@ -873,4 +893,104 @@ it('does not interrupt current-view revoke or reopen a view after that revoke cl
   expect(fetch.mock.calls.length).toBe(before);
   expect(revokeSignal!.aborted).toBe(false);
   expect(screen.queryByText(rawValue)).toBeNull();
+});
+
+it.each(['post-read denial', 'changed manifest'] as const)(
+  'does not retain delivered content when full-list confirmation reports %s',
+  async (mode) => {
+    let recovering = false;
+    let recoveryOpens = 0;
+    fetch.mockImplementation((value, init) => {
+      if (url(value).endsWith('/open')) {
+        if (recovering && ++recoveryOpens === 2) {
+          if (mode === 'post-read denial')
+            return Promise.resolve(new Response(null, { status: 403 }));
+          const changed = saved('records', 'fresh-start');
+          changed.references = [oldRef];
+          return Promise.resolve(Response.json(changed));
+        }
+        return Promise.resolve(Response.json(saved('records', 'fresh-start')));
+      }
+      return Promise.resolve(pageReply(value, init));
+    });
+    await persisted('records');
+    const before = fetch.mock.calls.length;
+    recovering = true;
+    restore('visible');
+    await screen.findByRole('alert');
+    expect(
+      fetch.mock.calls
+        .slice(before)
+        .map(([value]) => url(value).split('/').at(-1)),
+    ).toEqual(['open', 'records', 'open']);
+    expect(screen.queryByText(rawValue)).toBeNull();
+    expect(screen.queryByDisplayValue(savedTitle)).toBeNull();
+  },
+);
+it('uses a fresh saved-start cursor after returning from an advanced page, and clears that association on the explicit first-page action', async () => {
+  let recovering = false;
+  fetch.mockImplementation((value, init) => {
+    if (url(value).endsWith('/open'))
+      return Promise.resolve(
+        Response.json(
+          saved('records', recovering ? 'fresh-start' : 'saved-start'),
+        ),
+      );
+    if (url(value).endsWith('/records')) {
+      const result = records(oldRef);
+      if (input(init).after === 'advanced-page')
+        result.records = result.records.map((row) => ({
+          ...row,
+          recordId: advancedId,
+          index: 3,
+        }));
+      else result.nextCursor = 'advanced-page';
+      return Promise.resolve(Response.json(result));
+    }
+    return Promise.resolve(pageReply(value, init));
+  });
+  await persisted('records');
+  fireEvent.click(screen.getByRole('button', { name: 'Next records' }));
+  await screen.findByRole('button', { name: 'Select record 3' });
+  await idle();
+  fireEvent.click(screen.getByRole('button', { name: 'Previous records' }));
+  await screen.findByRole('button', { name: 'Select record 2' });
+  await idle();
+  recovering = true;
+  const before = fetch.mock.calls.length;
+  restore('visible');
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls
+        .slice(before)
+        .some(([value]) => url(value).endsWith('/records')),
+    ).toBe(true),
+  );
+  await idle();
+  expect(
+    input(
+      fetch.mock.calls
+        .slice(before)
+        .find(([value]) => url(value).endsWith('/records'))![1],
+    ).after,
+  ).toBe('fresh-start');
+  fireEvent.click(screen.getByRole('button', { name: 'First page' }));
+  await idle();
+  const firstBefore = fetch.mock.calls.length;
+  restore('visible');
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls
+        .slice(firstBefore)
+        .some(([value]) => url(value).endsWith('/records')),
+    ).toBe(true),
+  );
+  await idle();
+  expect(
+    input(
+      fetch.mock.calls
+        .slice(firstBefore)
+        .find(([value]) => url(value).endsWith('/records'))![1],
+    ),
+  ).not.toHaveProperty('after');
 });
