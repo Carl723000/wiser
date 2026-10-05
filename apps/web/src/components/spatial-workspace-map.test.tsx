@@ -30,6 +30,8 @@ const probe = vi.hoisted(() => ({
   query: vi.fn(() => []),
   stop: vi.fn(),
   jumpTo: vi.fn(),
+  native: null as unknown,
+  zooming: vi.fn(() => false),
 }));
 vi.mock('maplibre-gl', () => ({
   setWorkerUrl: vi.fn(),
@@ -49,22 +51,25 @@ vi.mock('react-map-gl/maplibre', async () => {
       Record<string, unknown> & { children?: ReactNode }
     >((props, ref) => {
       probe.props = props;
-      useImperativeHandle(ref, () => ({
-        getMap: () => ({
-          stop: probe.stop,
-          jumpTo: probe.jumpTo,
-          addLayer: (layer: CustomLayerInterface) => {
-            probe.custom = layer;
-          },
-          getLayer: () => null,
-          removeLayer: vi.fn(),
-          triggerRepaint: vi.fn(),
-          getCanvas: () => ({ clientWidth: 800, clientHeight: 460 }),
-          project: ([lng, lat]: number[]) => ({
-            x: (lng / 180 + 1) * 400,
-            y: (1 - lat / 90) * 230,
-          }),
+      const native = {
+        stop: probe.stop,
+        jumpTo: probe.jumpTo,
+        addLayer: (layer: CustomLayerInterface) => {
+          probe.custom = layer;
+        },
+        getLayer: () => null,
+        removeLayer: vi.fn(),
+        triggerRepaint: vi.fn(),
+        getCanvas: () => ({ clientWidth: 800, clientHeight: 460 }),
+        project: ([lng, lat]: number[]) => ({
+          x: (lng / 180 + 1) * 400,
+          y: (1 - lat / 90) * 230,
         }),
+        scrollZoom: { isZooming: probe.zooming },
+      };
+      probe.native = native;
+      useImperativeHandle(ref, () => ({
+        getMap: () => native,
         queryRenderedFeatures: probe.query,
         unproject: ({ x, y }: { x: number; y: number }) => ({ lng: x, lat: y }),
       }));
@@ -224,6 +229,7 @@ beforeEach(() => {
   probe.source = null;
   probe.publicReferences = null;
   probe.query.mockClear();
+  probe.zooming.mockReturnValue(false);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     callback(0);
     return 1;
@@ -334,6 +340,38 @@ it('does not accept stale non-user resize camera events after a programmatic cam
     move({ viewState: old, originalEvent: new MouseEvent('mousemove') }),
   );
   expect(props.onCamera).toHaveBeenCalledExactlyOnceWith(old);
+});
+
+it('accepts a sourceless scroll frame only from the currently zooming native map', () => {
+  render(<SpatialWorkspaceMap {...props} />);
+  const move = probe.props.onMove as (event: unknown) => void;
+  const next = { ...camera, zoom: camera.zoom - 0.25 };
+  probe.zooming.mockReturnValue(true);
+  act(() => move({ viewState: next, target: {} }));
+  expect(props.onCamera).not.toHaveBeenCalled();
+  act(() => move({ viewState: next, target: probe.native }));
+  expect(props.onCamera).toHaveBeenCalledExactlyOnceWith(next);
+});
+
+it('rejects sourceless frames when native scrolling ends or the map is inactive', () => {
+  const { rerender } = render(<SpatialWorkspaceMap {...props} />);
+  const next = { ...camera, zoom: camera.zoom - 0.25 };
+  act(() =>
+    (probe.props.onMove as (event: unknown) => void)({
+      viewState: next,
+      target: probe.native,
+    }),
+  );
+  expect(props.onCamera).not.toHaveBeenCalled();
+  rerender(<SpatialWorkspaceMap {...props} active={false} />);
+  probe.zooming.mockReturnValue(true);
+  act(() =>
+    (probe.props.onMove as (event: unknown) => void)({
+      viewState: next,
+      target: probe.native,
+    }),
+  );
+  expect(props.onCamera).not.toHaveBeenCalled();
 });
 
 it('stops a gesture before applying an external camera and ignores its reflected user camera', () => {
