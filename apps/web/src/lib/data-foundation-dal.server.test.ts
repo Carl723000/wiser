@@ -18,6 +18,167 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 const GEO_VERSION_ID = '55555555-5555-4555-8555-555555555555';
 
+const operationEvent = (sequence: number, operationId = GEO_VERSION_ID) => ({
+  eventId: `10000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`,
+  operationId,
+  sequence,
+  operationVersion: sequence,
+  eventType: 'PROGRESS_REPORTED',
+  status: 'RUNNING',
+  progressPercent: 10,
+  occurredAt: '2026-10-05T00:00:00Z',
+});
+const eventResponse = (items: unknown[], cursor?: string) =>
+  new Response(
+    items.map((item) => `data: ${JSON.stringify(item)}\n\n`).join(''),
+    {
+      headers: {
+        'content-type': 'text/event-stream',
+        ...(cursor === undefined ? {} : { 'X-Next-Cursor': cursor }),
+      },
+    },
+  );
+function eventDal(fetch: typeof globalThis.fetch) {
+  return createDataFoundationDal({
+    config: {
+      apiOrigin: 'http://api:3001',
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'read',
+      requestTimeoutMs: 50,
+      responseLimitBytes: 100_000,
+    },
+    createAuthClient: () => Promise.resolve(authClient([])),
+    fetch,
+  });
+}
+
+describe('same-operation bounded event continuation', () => {
+  it.each([1, 2048])(
+    'retains a single %i-character cursor and requests exactly one next page',
+    async (length) => {
+      const cursor = 'c'.repeat(length);
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(eventResponse([operationEvent(1)], cursor))
+        .mockResolvedValueOnce(eventResponse([operationEvent(2)]));
+      const dal = eventDal(fetch);
+      const first = await dal.operationEvents(GEO_VERSION_ID);
+      expect(first).toMatchObject({
+        items: [{ sequence: 1 }],
+        nextCursor: cursor,
+      });
+      const read = dal.operationEvents as unknown as (
+        id: string,
+        after?: string,
+      ) => Promise<unknown>;
+      expect(await read(GEO_VERSION_ID, cursor)).toMatchObject({
+        items: [{ sequence: 2 }],
+      });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      const url = new URL(String(fetch.mock.calls[1][0]));
+      expect(url.pathname).toBe(
+        `/api/data/v1/operations/${GEO_VERSION_ID}/events`,
+      );
+      expect(url.searchParams.get('first')).toBe('100');
+      expect(url.searchParams.get('after')).toBe(cursor);
+      expect(
+        new Headers(fetch.mock.calls[1][1]?.headers).get('X-WISER-Project-ID'),
+      ).toBe(PROJECT_ID);
+    },
+  );
+  it.each([7, 100])(
+    'ends a %i-event page only when the header is absent',
+    async (count) => {
+      expect(
+        await eventDal(
+          vi
+            .fn()
+            .mockResolvedValue(
+              eventResponse(
+                Array.from({ length: count }, (_, i) => operationEvent(i + 1)),
+              ),
+            ),
+        ).operationEvents(GEO_VERSION_ID),
+      ).toMatchObject({ items: expect.any(Array) });
+    },
+  );
+  it.each(['', 'x'.repeat(2049), 'one,two'])(
+    'rejects a malformed cursor header without rendering it',
+    async (cursor) => {
+      await expect(
+        eventDal(
+          vi.fn().mockResolvedValue(eventResponse([operationEvent(1)], cursor)),
+        ).operationEvents(GEO_VERSION_ID),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it.each([
+    [operationEvent(1, PROJECT_ID)],
+    [operationEvent(2), operationEvent(1)],
+    [operationEvent(1), operationEvent(1)],
+    Array.from({ length: 101 }, (_, i) => operationEvent(i + 1)),
+  ])(
+    'rejects mixed-operation, reversed, repeated or oversized pages',
+    async (...items) => {
+      await expect(
+        eventDal(
+          vi.fn().mockResolvedValue(eventResponse(items)),
+        ).operationEvents(GEO_VERSION_ID),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it('rejects an empty page with continuation and a self-loop', async () => {
+    await expect(
+      eventDal(
+        vi.fn().mockResolvedValue(eventResponse([], 'next')),
+      ).operationEvents(GEO_VERSION_ID),
+    ).rejects.toMatchObject({ kind: 'contract' });
+    const read = eventDal(
+      vi.fn().mockResolvedValue(eventResponse([operationEvent(2)], 'same')),
+    ).operationEvents as unknown as (
+      id: string,
+      after: string,
+    ) => Promise<unknown>;
+    await expect(read(GEO_VERSION_ID, 'same')).rejects.toMatchObject({
+      kind: 'contract',
+    });
+  });
+  it.each([
+    [401, 'authentication'],
+    [403, 'authorization'],
+    [404, 'not-found'],
+    [400, 'invalid-request'],
+    [422, 'invalid-request'],
+    [503, 'unavailable'],
+  ])('preserves the actual continuation %i classification', async (status, kind) => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        new Response('private upstream text', { status: Number(status) }),
+      );
+    const read = eventDal(fetch).operationEvents as unknown as (
+      id: string,
+      after: string,
+    ) => Promise<unknown>;
+    await expect(read(GEO_VERSION_ID, 'cursor')).rejects.toMatchObject({
+      kind,
+      status,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('bounds an unresolved continuation request', async () => {
+    const read = eventDal(vi.fn(() => new Promise<Response>(() => {})))
+      .operationEvents as unknown as (
+      id: string,
+      after: string,
+    ) => Promise<unknown>;
+    await expect(read(GEO_VERSION_ID, 'cursor')).rejects.toMatchObject({
+      kind: 'unavailable',
+    });
+  });
+});
+
 it('preserves structured relation filters in the authenticated HTTP request', async () => {
   const fetch = vi
     .fn<typeof globalThis.fetch>()
