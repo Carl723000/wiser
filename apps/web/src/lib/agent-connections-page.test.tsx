@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 const mocks = vi.hoisted(() => ({
   viewer: vi.fn(),
   account: vi.fn(),
@@ -33,6 +33,11 @@ function props(locale = 'zh-CN', result?: string) {
     searchParams: Promise.resolve({ result }),
   };
 }
+const registeredRange = {
+  scopes: ['data.catalog.read'],
+  purpose: 'agent-data',
+  maxSecurityLevel: 'L1_INTERNAL',
+} as const;
 it('requires a verified login before reading owned connections', async () => {
   mocks.viewer.mockResolvedValue(null);
   await expect(Page(props())).rejects.toThrow(
@@ -53,6 +58,7 @@ it('retains a retry for partial provider revocation and treats client names as t
   mocks.account.mockResolvedValue({ load: mocks.load });
   mocks.load.mockResolvedValue([
     {
+      ...registeredRange,
       connectionId: 'owned',
       clientName: '<a href="https://outside.test">client</a>',
       projectName: null,
@@ -77,6 +83,7 @@ it('shows the disconnect action only while either access or saved consent remain
   mocks.viewer.mockResolvedValue({ userId: 'owner' });
   mocks.account.mockResolvedValue({ load: mocks.load });
   const base = {
+    ...registeredRange,
     clientName: null,
     projectName: { 'zh-CN': '河流项目', en: 'River project' },
     expiresAt: '2026-09-26T10:00:00Z',
@@ -95,6 +102,7 @@ it('shows an active connection without a fixed expiry as lasting until disconnec
   mocks.account.mockResolvedValue({ load: mocks.load });
   mocks.load.mockResolvedValue([
     {
+      ...registeredRange,
       connectionId: 'active',
       clientName: 'Codex',
       projectName: { 'zh-CN': '黑臭水体', en: 'Black-odor water' },
@@ -107,3 +115,177 @@ it('shows an active connection without a fixed expiry as lasting until disconnec
   expect(screen.getByText('直到手动断开')).toBeDefined();
   expect(screen.queryByText('1970')).toBeNull();
 });
+
+it.each([
+  {
+    locale: 'zh-CN',
+    scopesLabel: '登记操作范围',
+    purposeLabel: '登记用途',
+    purpose: 'AI/MCP 数据工作',
+    levelLabel: '最高资料级别',
+    internal: '内部',
+    restricted: '受限',
+    catalog: '查阅资料目录',
+    query: '查询资料记录',
+    search: '检索资料',
+    knowledge: '查阅知识',
+    graph: '查阅关系图',
+    geo: '查询空间资料',
+    operation: '查看处理进度',
+    intake: '提交与维护接入资料',
+    boundary:
+      '登记范围是授权上限；实际操作仍需核查当前项目权限、资料许可和授权期限。',
+  },
+  {
+    locale: 'en',
+    scopesLabel: 'Registered actions',
+    purposeLabel: 'Registered purpose',
+    purpose: 'AI/MCP data work',
+    levelLabel: 'Highest data level',
+    internal: 'Internal',
+    restricted: 'Restricted',
+    catalog: 'Read the data catalog',
+    query: 'Query data records',
+    search: 'Search data',
+    knowledge: 'Read knowledge',
+    graph: 'Read relationship graphs',
+    geo: 'Query spatial data',
+    operation: 'View processing progress',
+    intake: 'Submit and maintain intake materials',
+    boundary:
+      'The registered scope is an authorization ceiling. Each action still requires current project access, data permission and an unexpired authorization.',
+  },
+])('reads only each connection’s registered range in $locale', async (copy) => {
+  mocks.viewer.mockResolvedValue({ userId: 'owner' });
+  mocks.account.mockResolvedValue({ load: mocks.load });
+  mocks.load.mockResolvedValue([
+    {
+      ...registeredRange,
+      connectionId: 'reader',
+      clientName: 'Read client',
+      projectName: null,
+      scopes: [
+        'data.catalog.read',
+        'data.query.execute',
+        'data.search.execute',
+        'data.knowledge.read',
+        'data.graph.read',
+        'data.geo.read',
+        'data.operation.read',
+      ],
+      expiresAt: null,
+      status: 'active',
+      providerConsent: true,
+    },
+    {
+      ...registeredRange,
+      connectionId: 'intake',
+      clientName: 'Intake client',
+      projectName: null,
+      scopes: ['data.ingestion.write'],
+      maxSecurityLevel: 'L2_RESTRICTED',
+      expiresAt: null,
+      status: 'active',
+      providerConsent: true,
+    },
+  ]);
+  render(await Page(props(copy.locale)));
+  const reader = within(screen.getByRole('region', { name: 'Read client' }));
+  const intake = within(screen.getByRole('region', { name: 'Intake client' }));
+  expect(reader.getByText(copy.scopesLabel)).toBeDefined();
+  expect(reader.getByText(copy.purposeLabel)).toBeDefined();
+  expect(reader.getByText(copy.purpose)).toBeDefined();
+  expect(reader.getByText(copy.levelLabel)).toBeDefined();
+  expect(reader.getByText(copy.internal)).toBeDefined();
+  for (const action of [
+    copy.catalog,
+    copy.query,
+    copy.search,
+    copy.knowledge,
+    copy.graph,
+    copy.geo,
+    copy.operation,
+  ]) {
+    expect(reader.getByText(action)).toBeDefined();
+    expect(intake.queryByText(action)).toBeNull();
+  }
+  expect(reader.queryByText(copy.intake)).toBeNull();
+  expect(intake.getByText(copy.intake)).toBeDefined();
+  expect(intake.getByText(copy.restricted)).toBeDefined();
+  expect(reader.getByText(copy.boundary)).toBeDefined();
+  expect(intake.getByText(copy.boundary)).toBeDefined();
+});
+
+it.each(['zh-CN', 'en'])(
+  'keeps unknown registered scopes as plain text without broadening actions in %s',
+  async (locale) => {
+    mocks.viewer.mockResolvedValue({ userId: 'owner' });
+    mocks.account.mockResolvedValue({ load: mocks.load });
+    mocks.load.mockResolvedValue([
+      {
+        ...registeredRange,
+        connectionId: 'future',
+        clientName: 'Future client',
+        scopes: ['data.future.read', 'constructor'],
+        projectName: null,
+        expiresAt: null,
+        status: 'active',
+        providerConsent: true,
+      },
+    ]);
+    render(await Page(props(locale)));
+    const region = within(
+      screen.getByRole('region', { name: 'Future client' }),
+    );
+    expect(region.getByText('data.future.read')).toBeDefined();
+    expect(region.getByText('constructor')).toBeDefined();
+    expect(
+      region.getAllByRole('listitem').map((item) => item.textContent),
+    ).toEqual(['data.future.read', 'constructor']);
+    expect(region.queryByText('查阅资料目录')).toBeNull();
+    expect(region.queryByText('Read the data catalog')).toBeNull();
+    expect(region.queryByRole('link')).toBeNull();
+  },
+);
+
+it.each([
+  { status: 'active', label: '授权有效', level: 'L0_PUBLIC', value: '公开' },
+  {
+    status: 'expired',
+    label: '授权已到期',
+    level: 'L2_RESTRICTED',
+    value: '受限',
+  },
+  {
+    status: 'revoked',
+    label: '已断开',
+    level: 'L3_CONFIDENTIAL',
+    value: '保密',
+  },
+])(
+  'keeps the registered ceiling separate from $status state',
+  async (state) => {
+    mocks.viewer.mockResolvedValue({ userId: 'owner' });
+    mocks.account.mockResolvedValue({ load: mocks.load });
+    mocks.load.mockResolvedValue([
+      {
+        ...registeredRange,
+        connectionId: state.status,
+        clientName: 'Registered client',
+        projectName: null,
+        maxSecurityLevel: state.level,
+        expiresAt: '2026-09-26T10:00:00Z',
+        status: state.status,
+        providerConsent: false,
+      },
+    ]);
+    render(await Page(props()));
+    expect(screen.getByText(state.label)).toBeDefined();
+    expect(screen.getByText(state.value)).toBeDefined();
+    expect(screen.getByText('登记用途')).toBeDefined();
+    expect(screen.getByText('AI/MCP 数据工作')).toBeDefined();
+    expect(screen.queryByRole('button') === null).toBe(
+      state.status === 'revoked',
+    );
+  },
+);
