@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 82605955d84c6721c7d42713883e2f0a12f37b0e
+lastReviewedCommit: 048701d6bde9353c95faea7a7de463e9a15d3ad0
 ---
 
 ## 当前可运行能力

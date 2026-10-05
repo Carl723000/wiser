@@ -8,6 +8,8 @@ import {
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { OperationEventReader } from './operation-event-reader';
+import { StatusBadge } from './data-foundation-workspace';
+import { OperationEventTypeSchema } from '@wiser/data-contracts';
 import type { OperationEventPageDto } from '@/lib/data-foundation';
 import { getDictionary } from '@/lib/i18n';
 
@@ -44,6 +46,22 @@ function mount(value = initial) {
     </OperationEventReader>,
   );
 }
+it.each([
+  { locale: 'zh-CN' as const, label: '已恢复' },
+  { locale: 'en' as const, label: 'Resumed' },
+])(
+  'shows the registered resumed event label in $locale',
+  ({ locale, label }) => {
+    const eventType = OperationEventTypeSchema.parse('RESUMED');
+    const labels: Readonly<Record<string, string>> =
+      getDictionary(locale).dataFoundation.status.events;
+    render(<StatusBadge code={eventType} label={labels[eventType] ?? ''} />);
+
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.queryByText('RESUMED')).toBeNull();
+  },
+);
+
 it.each([7, 100])(
   'shows %i records without fetching and no continuation without a cursor',
   (count) => {

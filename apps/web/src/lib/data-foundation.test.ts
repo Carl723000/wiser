@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OperationEventSchema } from '@wiser/data-contracts';
 
 import * as dataFoundation from './data-foundation';
 import {
@@ -63,6 +64,59 @@ type ResolveMapTileUrls = (
 };
 
 describe('Data Foundation browser-safe contracts', () => {
+  it.each(['page', 'stream'] as const)(
+    'accepts the registered RESUMED event in the existing %s reader',
+    (transport) => {
+      const resumed = OperationEventSchema.parse({
+        eventId: OTHER_VERSION_ID,
+        operationId: UUID,
+        sequence: 101,
+        operationVersion: 3,
+        eventType: 'RESUMED',
+        status: 'RUNNING',
+        progressPercent: 37,
+        occurredAt: '2026-10-05T16:00:00.000Z',
+      });
+      if (transport === 'page') {
+        expect(
+          dataFoundation.parseOperationEventPage(
+            { items: [resumed], nextCursor: 'next-cursor' },
+            UUID,
+            'previous-cursor',
+            100,
+          ),
+        ).toEqual({ items: [resumed], nextCursor: 'next-cursor' });
+      } else {
+        expect(
+          dataFoundation.parseOperationEventStream(
+            `id: ${resumed.eventId}\nevent: RESUMED\ndata: ${JSON.stringify(resumed)}\n\n`,
+          ),
+        ).toEqual([resumed]);
+      }
+    },
+  );
+
+  it('rejects an internal milestone as an unregistered public browser event', () => {
+    const internal = {
+      eventId: OTHER_VERSION_ID,
+      operationId: UUID,
+      sequence: 101,
+      operationVersion: 3,
+      eventType: 'PROJECTION_COMPLETED',
+      status: 'RUNNING',
+      progressPercent: 37,
+      occurredAt: '2026-10-05T16:00:00.000Z',
+    };
+    expect(() =>
+      dataFoundation.parseOperationEventPage({ items: [internal] }, UUID),
+    ).toThrow();
+    expect(() =>
+      dataFoundation.parseOperationEventStream(
+        `data: ${JSON.stringify(internal)}\n\n`,
+      ),
+    ).toThrow();
+  });
+
   it('declares every required localized management route', () => {
     expect(DATA_FOUNDATION_ROUTES.map((route) => route.path)).toEqual([
       '',

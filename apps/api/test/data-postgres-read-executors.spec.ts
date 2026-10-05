@@ -142,6 +142,7 @@ class FakeClient implements PostgresDataReadClient {
   notFound = false;
   emptyIngestionSummaries = false;
   internalOperationEvent = false;
+  resumedOperationEvent = false;
   pointSpatialExtent = false;
   released = false;
 
@@ -263,11 +264,13 @@ class FakeClient implements PostgresDataReadClient {
             event_id: '88888888-8888-4888-8888-888888888888',
             operation_id: '77777777-7777-4777-8777-777777777777',
             sequence_number: '1',
-            event_type: this.internalOperationEvent
-              ? 'PROJECTION_COMPLETED'
-              : 'SUCCEEDED',
-            to_status: 'SUCCEEDED',
-            progress_percent: 100,
+            event_type: this.resumedOperationEvent
+              ? 'RESUMED'
+              : this.internalOperationEvent
+                ? 'PROJECTION_COMPLETED'
+                : 'SUCCEEDED',
+            to_status: this.resumedOperationEvent ? 'RUNNING' : 'SUCCEEDED',
+            progress_percent: this.resumedOperationEvent ? 37 : 100,
             operation_version: '3',
             created_at: '2026-08-22T00:03:00.000Z',
             message: null,
@@ -638,6 +641,47 @@ describe('data-postgres RLS read executors', () => {
         events,
       ).success,
     ).toBe(true);
+  });
+
+  it('preserves the registered RESUMED event when reading an existing operation', async () => {
+    const pool = new FakePool();
+    pool.client.resumedOperationEvent = true;
+    const runtime = createPostgresDataReadRuntime(pool);
+    const currentReadContext: DataCapabilityExecutionContext = {
+      ...context,
+      principal: {
+        ...context.principal,
+        expiresAt: '2100-01-01T00:00:00.000Z',
+      },
+      authorization: {
+        ...context.authorization,
+        scopes: ['data.operation.read'],
+      },
+    };
+
+    const events = DATA_CAPABILITY_REGISTRY[
+      'data.operation.events'
+    ].outputSchema.parse(
+      await executor(runtime, 'data.operation.events').execute(
+        { operationId: '77777777-7777-4777-8777-777777777777', first: 10 },
+        currentReadContext,
+      ),
+    );
+
+    expect(events).toEqual({
+      items: [
+        {
+          eventId: '88888888-8888-4888-8888-888888888888',
+          operationId: '77777777-7777-4777-8777-777777777777',
+          sequence: 1,
+          eventType: 'RESUMED',
+          status: 'RUNNING',
+          progressPercent: 37,
+          operationVersion: 3,
+          occurredAt: '2026-08-22T00:03:00.000Z',
+        },
+      ],
+    });
   });
 
   it('normalizes internal projection milestones into public progress events', async () => {
