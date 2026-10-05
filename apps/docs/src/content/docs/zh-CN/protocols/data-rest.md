@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: d4875c42b5efb1079fad147dbafd80ea544d2166
+lastReviewedCommit: d9e8649ad3827c2c14a8abdfbdf651ee9f3b13a7
 ---
 
 ## 协议边界
@@ -134,6 +134,8 @@ If-Match: "v3"
 | `data.knowledge.relations.get`    | `GET /knowledge/relations/:assertionId`                   | `200` |
 | `data.knowledge.relations.list`   | `GET /knowledge/relations`                                | `200` |
 | `data.knowledge.relations.review` | `POST /knowledge/relations/:assertionId/review`           | `200` |
+
+内部`data.operation.cancel`执行器安装既有受管待审接收范围，在生命周期写入前检查当前维护权限及锁定会话的既有归属、提交主体／类型／委托责任。不可见或责任不明的会话安全拒绝，不转入普通任务取消。同键重放再次核当前权限与责任；受管请求摘要绑定主体／类型／委托人和用途。旧范围取消及运行任务租约／取消函数保持原行为。公共受管取消仍未放行；隔离执行器检查不代表真实Auth、SQL／RLS、函数内事件或事务提交验收通过。
 
 表中路径相对于 `/api/data/v1`。准确输入、输出、Scope 与 timeout 必须从 discovery schema 获取，不能复制旧客户端类型代替运行时契约。
 

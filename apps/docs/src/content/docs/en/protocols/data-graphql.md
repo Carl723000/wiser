@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: d4875c42b5efb1079fad147dbafd80ea544d2166
+lastReviewedCommit: d9e8649ad3827c2c14a8abdfbdf651ee9f3b13a7
 ---
 
 ## Endpoint and authority contract
@@ -308,6 +308,8 @@ The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit
 `data.ingestion.get` 1.2 adds required nullable `candidateReference`: the actual frozen `kind: ingestion-candidate`, `ingestionId`, `processingBatchId` and `reviewHash`, or null when no readable completed batch exists. It never creates a published `versionId`. Get guards ownership or current independent human review permission before reading any quality/Agent/projection summary, then reads the session and candidate reference in one consistent snapshot. Both strict 1.0 and 1.1 output schemas remain archived, including their original GraphQL mapping. REST and MCP return the full new output; GraphQL discovery maps 1.2 to `dataIngestionDetail(id: ID!): JSON!`, which retains that output and its candidate reference. The existing `dataIngestion(id: ID!): JSON` still returns only the ingestion object. Skills use the discovered current mapping and follow the returned reference into the existing three candidate reads.
 
 `dataOperation(id: ID!)` and `dataOperationEvents(id: ID!, first: Int, after: String)` use the same [managed standard-intake Operation guard](/en/architecture/data-foundation/#managed-pending-intake-and-candidate-discovery) as REST. The latter returns the existing bounded JSON event page; it is not SSE. Denied tasks expose neither status nor events. Its cursor binds current actor/type/delegator, authorized purpose and resource scope; new currently authorized purposes require a fresh page. Managed error diagnostics and event messages are sanitized before GraphQL projection. Legacy responses, DTOs and discovery archives are unchanged. Resume/cancel, approval/rejection and other maintenance capabilities remain excluded; reading status grants no approval or publication. Real Auth, SQL/RLS, Worker and browser validation remains a separate gate.
+
+The internal `data.operation.cancel` executor now installs the existing managed pending-intake scope and checks current maintenance authority plus the locked session's existing owner, submitter/type/delegator fields before lifecycle writes. A hidden or responsibility-unknown session fails closed rather than falling through to general cancellation. Same-key replay rechecks current authority and responsibility; managed request digests bind actor/type/delegator and purpose. Legacy cancellation and the running-job lease/cancellation function are unchanged. Public managed cancellation remains excluded; isolated executor controls do not establish live Auth, SQL/RLS, function event emissions or transaction-commit acceptance.
 
 Original bytes use the authenticated [pending-original REST content route](/en/protocols/data-rest/#pending-original-content), rather than a GraphQL field or signed storage URL. The summary's fixed ingestion/review/batch reference and original asset ID identify that request. Full hash/size verification and current maintenance/review authority apply even to HEAD and ranges; JSON metadata access alone is not permission to receive bytes. Live Auth/storage/browser acceptance and saved-candidate integration remain separate.
 

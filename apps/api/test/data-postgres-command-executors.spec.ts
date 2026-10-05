@@ -3226,10 +3226,13 @@ describe('managed cancellation internal responsibility guard Red', () => {
         selectedCancellationColumns(lockingSql).sort(),
       );
     }
-    expect.soft(observed).toEqual({
-      errorCode: maintainer
-        ? expect.stringMatching(/^(INTAKE_FORBIDDEN|NOT_FOUND)$/)
-        : 'INTAKE_FORBIDDEN',
+    expect
+      .soft(observed.errorCode)
+      .toMatch(
+        maintainer ? /^(INTAKE_FORBIDDEN|NOT_FOUND)$/ : /^INTAKE_FORBIDDEN$/,
+      );
+    expect.soft({ ...observed, errorCode: null }).toEqual({
+      errorCode: null,
       result: null,
       ingestionWrites: [],
       jobWrites: [],
@@ -3296,6 +3299,7 @@ describe('managed cancellation current responsibility and replay', () => {
     'fails closed for %s responsibility without lifecycle or receipt writes',
     async (reason) => {
       const value = runtime();
+      value.pool.client.operationCapabilityId = 'data.ingestion.create';
       const actor = managedIntakeContext();
       if (reason === 'invisible')
         value.pool.client.zeroRowCountFor = 'data.operation.ingestion.lock';
@@ -3340,7 +3344,7 @@ describe('managed cancellation current responsibility and replay', () => {
         const marker = /\/\* (data\.[^*]+) \*\//.exec(text)?.[1];
         if (
           marker &&
-          !['data.command.context', 'data.intake.scope'].includes(marker) &&
+          !['data.command.scope', 'data.intake.scope'].includes(marker) &&
           !marker.startsWith('data.resource.')
         )
           expect(allowed.has(marker)).toBe(true);
@@ -3381,9 +3385,20 @@ describe('managed cancellation current responsibility and replay', () => {
       for (const marker of [
         'data.command.audit.insert',
         'data.command.outbox.insert',
-        'data.command.operation-event.insert',
       ])
         expect(markers.filter((text) => text.includes(marker))).toHaveLength(1);
+      // RUNNING jobs use the existing SQL cancellation function; the Fake
+      // cannot prove the events emitted inside that function's transaction.
+      expect(
+        markers.filter((text) =>
+          text.includes('data.command.operation-event.insert'),
+        ),
+      ).toHaveLength(state === 'RUNNING' ? 0 : 1);
+      expect(
+        markers.filter((text) =>
+          text.includes('data.operation.job-cancellation.request'),
+        ),
+      ).toHaveLength(state === 'RUNNING' ? 1 : 0);
       expect(markers.join('\n')).not.toMatch(
         /lease_owner\s*=\s*null|attempt_count\s*=|data\.ingestion\.review\./i,
       );
@@ -3434,14 +3449,17 @@ describe('managed cancellation current responsibility and replay', () => {
       },
       {
         ...actor,
+        principal: { ...actor.principal, actorType: 'service' as const },
+      },
+      {
+        ...actor,
         authorization: { ...actor.authorization, purpose: 'other-purpose' },
       },
     ])
-      await expect(cancel.execute(input, next)).rejects.toMatchObject({
-        code: expect.stringMatching(
-          /^(INTAKE_FORBIDDEN|IDEMPOTENCY_CONFLICT)$/,
-        ),
-      });
+      await expect(cancel.execute(input, next)).rejects.toHaveProperty(
+        'code',
+        expect.stringMatching(/^(INTAKE_FORBIDDEN|IDEMPOTENCY_CONFLICT)$/),
+      );
     value.pool.client.submittedDelegatorId =
       'd2000000-0000-4000-8000-000000000091';
     await expect(cancel.execute(input, actor)).rejects.toMatchObject({

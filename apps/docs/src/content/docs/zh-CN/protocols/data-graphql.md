@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: d4875c42b5efb1079fad147dbafd80ea544d2166
+lastReviewedCommit: d9e8649ad3827c2c14a8abdfbdf651ee9f3b13a7
 ---
 
 ## 入口与权威契约
@@ -308,6 +308,8 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 `data.ingestion.get`1.2增加必填、可为null的`candidateReference`，返回实际冻结的`kind: ingestion-candidate`、`ingestionId`、`processingBatchId`与`reviewHash`；没有可读的已完成解析批次时为null，不构造已发布`versionId`。详情在读取质量、Agent或投影摘要前先检查归属，或检查当前独立人工审核权，再用一致快照读取会话及候选引用。1.0和1.1严格输出契约与原GraphQL映射继续归档。REST和MCP返回完整新详情；GraphQL发现中的1.2映射为`dataIngestionDetail(id: ID!): JSON!`，保留完整详情和候选引用。既有`dataIngestion(id: ID!): JSON`仍只返回入库会话对象。Skill按当前发现映射调用，只使用返回的引用衔接现有三项候选读取。
 
 `dataOperation(id: ID!)`及`dataOperationEvents(id: ID!, first: Int, after: String)`采用与REST相同的[受管标准接收操作守卫](/architecture/data-foundation/#受管待审接收与候选发现)。后者返回既有的有界JSON事件页，不使用SSE。被拒任务不泄露状态或事件，游标绑定当前主体／类型／委托、获权用途和资源范围；新的当前合法用途须从新页面开始。受管错误诊断和事件原始消息在GraphQL投影前清理。旧范围响应、DTO及发现归档保持原样。恢复／取消、批准／拒绝和其他维护能力仍未放行，读取状态不授予批准或发布权。真实Auth、SQL／RLS、Worker和浏览器验收仍须单独完成。
+
+内部`data.operation.cancel`执行器安装既有受管待审接收范围，在生命周期写入前检查当前维护权限及锁定会话的既有归属、提交主体／类型／委托责任。不可见或责任不明的会话安全拒绝，不转入普通任务取消。同键重放再次核当前权限与责任；受管请求摘要绑定主体／类型／委托人和用途。旧范围取消及运行任务租约／取消函数保持原行为。公共受管取消仍未放行；隔离执行器检查不代表真实Auth、SQL／RLS、函数内事件或事务提交验收通过。
 
 原件字节使用受鉴权的[待审原件 REST 内容入口](/zh-CN/protocols/data-rest/#待审原件内容)，不增加 GraphQL 字节字段，不返回存储签名地址。请求依据摘要中的固定接收／审核／批次引用及原件编号；即使请求 HEAD 或范围，也须核完整哈希、准确长度及当前维护／审核权限。能读取 JSON 元数据不等于能读取原件字节；真实 Auth／存储／浏览器验收与候选保存另行核对。
 

@@ -382,7 +382,9 @@ returning row_version
 
 const INGESTION_BY_OPERATION_LOCK_SQL = `
 /* data.operation.ingestion.lock */
-select ingestion_id, state, row_version, security_level, policy_version
+select ingestion_id, state, row_version, security_level, policy_version,
+  owner_project_id, submitted_by_actor_id, submitted_actor_type,
+  submitted_delegator_actor_id
 from ingestion.session
 where operation_id = $1::uuid
   and tenant_id = $2::uuid and project_id = $3::uuid
@@ -849,6 +851,7 @@ const MANAGED_INTAKE_COMMANDS = new Set<DataCapabilityId>([
   'data.ingestion.create',
   'data.ingestion.submit',
   'data.ingestion.resume',
+  'data.operation.cancel',
 ]);
 
 function requestHash(
@@ -1356,6 +1359,22 @@ export class CommandTransactions {
             );
             if (!stored) throw commandError('NOT_FOUND');
             assertUploadResponsibility(stored, context);
+          } else if (capabilityId === 'data.operation.cancel') {
+            // Replaying a cancellation still requires the current submission
+            // responsibility, even after its lifecycle is already CANCELLED.
+            const stored = singleRow(
+              await this.query(
+                client,
+                context,
+                INGESTION_BY_OPERATION_LOCK_SQL,
+                [
+                  parseStoredPayload(input)['operationId'],
+                  ...scopeValues(context),
+                ],
+              ),
+            );
+            if (!stored) throw commandError('NOT_FOUND');
+            assertIngestionOwner(stored, context);
           } else {
             const ingestionId =
               capabilityId === 'data.ingestion.create'
@@ -3195,6 +3214,12 @@ export function createPostgresDataCommandRuntime(
             [input.operationId, ...scopeValues(context)],
           );
           const session = singleRow(sessionResult);
+          if (context.authorization.resourceAccess !== undefined) {
+            // A hidden or unrelated intake must never fall through to the
+            // general operation cancellation path.
+            if (!session) throw commandError('NOT_FOUND');
+            assertIngestionOwner(session, context);
+          }
           if (
             session !== undefined &&
             [

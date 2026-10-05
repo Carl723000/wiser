@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: d4875c42b5efb1079fad147dbafd80ea544d2166
+lastReviewedCommit: d9e8649ad3827c2c14a8abdfbdf651ee9f3b13a7
 ---
 
 ## Protocol boundary
@@ -134,6 +134,8 @@ This applies to upload Session completion, ingestion submit/resume/approve/rejec
 | `data.knowledge.relations.get`    | `GET /knowledge/relations/:assertionId`                   | `200`   |
 | `data.knowledge.relations.list`   | `GET /knowledge/relations`                                | `200`   |
 | `data.knowledge.relations.review` | `POST /knowledge/relations/:assertionId/review`           | `200`   |
+
+The internal `data.operation.cancel` executor now installs the existing managed pending-intake scope and checks current maintenance authority plus the locked session's existing owner, submitter/type/delegator fields before lifecycle writes. A hidden or responsibility-unknown session fails closed rather than falling through to general cancellation. Same-key replay rechecks current authority and responsibility; managed request digests bind actor/type/delegator and purpose. Legacy cancellation and the running-job lease/cancellation function are unchanged. Public managed cancellation remains excluded; isolated executor controls do not establish live Auth, SQL/RLS, function event emissions or transaction-commit acceptance.
 
 Paths in the table are relative to `/api/data/v1`. Obtain exact inputs, outputs, scopes, and timeouts from discovery schema; do not substitute stale client types for the runtime contract.
 
