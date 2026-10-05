@@ -16,14 +16,19 @@ import { getDictionary } from '@/lib/i18n';
 import {
   captureSpatialWorkspaceView,
   createSpatialWorkspaceView,
+  workspaceRegionCamera,
+  type WorkspaceCamera,
 } from '@/lib/spatial-workspace-view';
+import { defaultWorkspaceReadingState } from '@/lib/spatial-workspace-reading-view';
 import { StrictMode, useEffect, useState } from 'react';
 import { SpatialWorkspace } from './spatial-workspace';
+import { SpatialWorkspaceComparison } from './spatial-workspace-comparison';
 
 const mapProbe = vi.hoisted(() => ({
   camera: null as ((value: unknown) => void) | null,
   mounts: 0,
   unmounts: 0,
+  frames: [] as { onCamera: (value: unknown) => void }[],
 }));
 
 vi.mock('./spatial-workspace-map', () => ({
@@ -43,9 +48,11 @@ vi.mock('./spatial-workspace-map', () => ({
       };
     }, []);
     if (!mapProbe.camera) mapProbe.camera = props.onCamera;
+    mapProbe.frames.push({ onCamera: props.onCamera });
     return (
       <div
         data-testid="workspace-map"
+        data-camera={JSON.stringify(props.camera)}
         data-pitch={props.camera.pitch}
         data-bearing={props.camera.bearing}
         data-selection={JSON.stringify(props.selection)}
@@ -252,8 +259,201 @@ beforeEach(() => {
   mapProbe.camera = null;
   mapProbe.mounts = 0;
   mapProbe.unmounts = 0;
+  mapProbe.frames = [];
 });
 afterEach(cleanup);
+
+describe('camera proposal region ownership', () => {
+  const proposal: WorkspaceCamera = {
+    longitude: 117.2,
+    latitude: 40.3,
+    zoom: 7.4,
+    pitch: 50,
+    bearing: 35,
+  };
+  const cameras = () =>
+    screen
+      .getAllByTestId('workspace-map')
+      .map((map) => JSON.parse(map.getAttribute('data-camera')!));
+
+  it.each(['reading state', 'legacy region'] as const)(
+    'rejects a previous region camera after a %s replacement without emitting a reading change',
+    (navigation) => {
+      const onReadingStateChange = vi.fn();
+      const state = defaultWorkspaceReadingState();
+      const props = { pack, locale: 'zh-CN' as const, copy: zh };
+      const { rerender } = render(
+        <SpatialWorkspace
+          {...props}
+          {...(navigation === 'reading state'
+            ? { readingState: state, onReadingStateChange }
+            : { regionId: 'bth' as const })}
+        />,
+      );
+      const delayed = mapProbe.frames.at(-1)!.onCamera;
+      rerender(
+        <SpatialWorkspace
+          {...props}
+          {...(navigation === 'reading state'
+            ? {
+                readingState: { ...state, regionId: 'chaobai' as const },
+                onReadingStateChange,
+              }
+            : { regionId: 'chaobai' as const })}
+        />,
+      );
+      const restored = workspaceRegionCamera(pack, 'chaobai');
+      expect(cameras()).toEqual([restored]);
+      onReadingStateChange.mockClear();
+      act(() => delayed(proposal));
+      expect(cameras()).toEqual([restored]);
+      expect(onReadingStateChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['month', 'evidence'] as const)(
+    'accepts an earlier same-region camera after a %s reading change',
+    (change) => {
+      const state = defaultWorkspaceReadingState();
+      const onReadingStateChange = vi.fn();
+      const props = { pack, locale: 'zh-CN' as const, copy: zh };
+      const { rerender } = render(
+        <SpatialWorkspace
+          {...props}
+          readingState={state}
+          onReadingStateChange={onReadingStateChange}
+        />,
+      );
+      const delayed = mapProbe.frames.at(-1)!.onCamera;
+      const changed =
+        change === 'month'
+          ? {
+              ...state,
+              dateRole: 'OBSERVATION' as const,
+              monthWindow: { start: '2023-12', end: '2023-12' },
+            }
+          : {
+              ...state,
+              pane: 'evidence' as const,
+              source: {
+                sourceId: 'report',
+                versionId: 'v1',
+                sha256: 'a'.repeat(64),
+                processingVersion: 'parse1',
+              },
+              selection: {
+                recordId: sampleRecord.id,
+                processingVersion: 'parse1',
+                position: null,
+              },
+            };
+      rerender(
+        <SpatialWorkspace
+          {...props}
+          readingState={changed}
+          onReadingStateChange={onReadingStateChange}
+        />,
+      );
+      onReadingStateChange.mockClear();
+      act(() => delayed(proposal));
+      expect(cameras()).toEqual([proposal]);
+      expect(onReadingStateChange).not.toHaveBeenCalled();
+      if (change === 'month') {
+        expect(
+          screen.getByTestId('workspace-current-period').textContent,
+        ).toContain('2023-12');
+      } else {
+        expect(
+          screen.getByTestId('spatial-original-evidence').textContent,
+        ).toContain('潮白河 7.8 mg/L');
+      }
+    },
+  );
+
+  it('accepts the camera rendered by the new region', () => {
+    const state = defaultWorkspaceReadingState();
+    const props = { pack, locale: 'zh-CN' as const, copy: zh };
+    const { rerender } = render(
+      <SpatialWorkspace {...props} readingState={state} />,
+    );
+    rerender(
+      <SpatialWorkspace
+        {...props}
+        readingState={{ ...state, regionId: 'chaobai' }}
+      />,
+    );
+    const fresh = mapProbe.frames.at(-1)!.onCamera;
+    act(() => fresh(proposal));
+    expect(cameras()).toEqual([proposal]);
+  });
+
+  function ComparisonHost({ regionId }: { regionId: 'bth' | 'chaobai' }) {
+    const [view, setView] = useState(() =>
+      createSpatialWorkspaceView(pack, regionId),
+    );
+    useEffect(() => {
+      setView((previous) => ({
+        ...createSpatialWorkspaceView(pack, regionId),
+        comparison: previous.comparison,
+      }));
+    }, [regionId]);
+    return (
+      <SpatialWorkspaceComparison
+        pack={pack}
+        view={view}
+        copy={zh}
+        onChange={setView}
+        onSelect={() => {}}
+      />
+    );
+  }
+
+  it.each([0, 1])(
+    'rejects comparison window %s camera from the previous shared region',
+    (side) => {
+      const { rerender } = render(<ComparisonHost regionId="bth" />);
+      const delayed = mapProbe.frames.slice(-2)[side].onCamera;
+      rerender(<ComparisonHost regionId="chaobai" />);
+      const restored = workspaceRegionCamera(pack, 'chaobai');
+      expect(cameras()).toEqual([restored, restored]);
+      act(() => delayed(proposal));
+      expect(cameras()).toEqual([restored, restored]);
+    },
+  );
+
+  it.each([0, 1])(
+    'keeps window %s camera shared after a comparison scope and month change',
+    (side) => {
+      render(<ComparisonHost regionId="bth" />);
+      const delayed = mapProbe.frames.slice(-2)[side].onCamera;
+      fireEvent.change(screen.getAllByLabelText(zh.region)[0], {
+        target: { value: 'chaobai' },
+      });
+      fireEvent.change(screen.getAllByLabelText(zh.from)[0], {
+        target: { value: '2023-12-01' },
+      });
+      act(() => delayed(proposal));
+      expect(cameras()).toEqual([proposal, proposal]);
+      expect(
+        screen.getAllByLabelText<HTMLSelectElement>(zh.region)[0].value,
+      ).toBe('chaobai');
+      expect(screen.getAllByLabelText<HTMLInputElement>(zh.from)[0].value).toBe(
+        '2023-12-01',
+      );
+    },
+  );
+
+  it('accepts both comparison cameras rendered by the new shared region', () => {
+    const { rerender } = render(<ComparisonHost regionId="bth" />);
+    rerender(<ComparisonHost regionId="chaobai" />);
+    const fresh = mapProbe.frames.slice(-2).map((frame) => frame.onCamera);
+    for (const [side, onCamera] of fresh.entries()) {
+      const next = { ...proposal, bearing: proposal.bearing + side };
+      act(() => onCamera(next));
+      expect(cameras()).toEqual([next, next]);
+    }
+  });
+});
 
 describe('spatial result table reading', () => {
   const manyRecords = (located: boolean, count: number) =>
