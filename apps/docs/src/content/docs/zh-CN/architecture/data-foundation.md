@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 63d0113fd5d023fea5ab4e832e972f1e11ec77fd
+lastReviewedCommit: 0e6fed4e20178cf46a7960d6f6395e46303df1fa
 ---
 
 ## 当前可运行能力
@@ -601,4 +601,4 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 
 网页任务页通过明确动作，以最多100条事件续读既有获权事件流。内部POST传输使绑定权限范围的游标不进入浏览器地址；每次动作仍由既有确切任务API重新核权。网页核对页面身份、事件顺序与续读头，失败隐藏原内容。未新增任务权限、公共API、SQL或迁移；真实权限和数据库验收继续单列。
 
-共享API宿主仅从既有事件GET的请求日志URL副本移除`after`参数，包含编码／重复键和编码任务编号；真实请求、授权、游标校验与其他查询参数原编码保持不变。默认与显式请求serializer收到安全URL／raw URL副本，关闭日志仍保持关闭。外部代理日志和独立自定义日志不在本项验收内。
+共享API宿主仅从既有事件GET的请求日志URL副本移除`after`参数，包含编码／重复键和编码任务编号；真实请求、授权、游标校验与其他查询参数原编码保持不变。默认与显式请求serializer收到安全URL／raw URL／original URL副本，关闭日志仍保持关闭。外部代理日志和独立自定义日志不在本项验收内。

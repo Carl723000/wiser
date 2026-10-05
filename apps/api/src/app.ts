@@ -83,7 +83,8 @@ function operationEventLogRequest(request: FastifyRequest): FastifyRequest {
   });
   return new Proxy(request, {
     get(target, property, receiver): unknown {
-      if (property === 'url') return url;
+      // Bypass Fastify's originalUrl getter: it caches through `this`.
+      if (property === 'url' || property === 'originalUrl') return url;
       if (property === 'raw') return raw;
       return Reflect.get(target, property, receiver);
     },

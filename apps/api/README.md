@@ -20,7 +20,7 @@ checkPaths:
   - .env.example
   - compose.yaml
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 63d0113fd5d023fea5ab4e832e972f1e11ec77fd
+lastReviewedCommit: 0e6fed4e20178cf46a7960d6f6395e46303df1fa
 ---
 
 # WISER API / WISER 共享 API
@@ -73,7 +73,7 @@ pnpm --filter @wiser/api dev
 - `DATA_FOUNDATION_MODE` enables Data Foundation only with unified Auth and its complete database, object-store, Worker, and internal-service configuration.
 - `.env.example`, `compose.yaml`, and runtime config loaders are the variable sources of truth; do not copy secrets, version pins, or persistence algorithms into this README.
 
-任务事件 GET 的请求日志只从日志副本移除 `after` 参数（含编码键与重复键）；授权及游标校验仍收到原请求，其他参数保留原编码。默认请求字段、关闭日志模式与显式日志配置的其他 serializer 保持兼容，自定义请求 serializer 的 `url`／`raw.url` 读取安全副本。此边界不代表外部代理、独立自定义日志或真实 Auth／SQL 链已经验收。 / For operation-event GET requests, request-log serialization removes only `after` parameters from a logging copy, including encoded and repeated keys. Authorization and cursor validation still receive the original request, and other query parameters retain their original encoding. Default request fields, disabled logging and other serializers in explicit logger options remain compatible; custom request serializers read the safe `url`/`raw.url` copy. This does not establish acceptance of external proxies, independent custom logs or live Auth/SQL integration.
+任务事件 GET 的请求日志只从日志副本移除 `after` 参数（含编码键与重复键）；授权及游标校验仍收到原请求，其他参数保留原编码。默认请求字段、关闭日志模式与显式日志配置的其他 serializer 保持兼容，自定义请求 serializer 的 `url`／`raw.url`／`originalUrl` 读取安全副本。此边界不代表外部代理、独立自定义日志或真实 Auth／SQL 链已经验收。 / For operation-event GET requests, request-log serialization removes only `after` parameters from a logging copy, including encoded and repeated keys. Authorization and cursor validation still receive the original request, and other query parameters retain their original encoding. Default request fields, disabled logging and other serializers in explicit logger options remain compatible; custom request serializers read the safe `url`/`raw.url`/`originalUrl` copy. This does not establish acceptance of external proxies, independent custom logs or live Auth/SQL integration.
 
 ## 验证 / Verify
 

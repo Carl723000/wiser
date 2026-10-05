@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 63d0113fd5d023fea5ab4e832e972f1e11ec77fd
+lastReviewedCommit: 0e6fed4e20178cf46a7960d6f6395e46303df1fa
 ---
 
 ## What runs today
@@ -601,4 +601,4 @@ Error responses do not wait for audit observation. The existing non-stream clean
 
 The Web Operation page continues the existing authorized event stream in explicit 100-event segments. Its internal POST transport keeps the scope-bound cursor out of browser URLs; each action repeats the existing exact-Operation API authorization. It validates page identity, ordering and continuation headers and hides previous content on failure. No new Operation permission, API contract, SQL or migration is introduced; live authority and database acceptance remain separate.
 
-The shared API host removes the existing event GET `after` parameter only from the request-log URL copy, including encoded/repeated keys and encoded Operation IDs. The real request, authorization, cursor validation and all other query encodings remain unchanged. Default and explicit request serializers receive the safe URL/raw-URL copy, while disabled logging stays disabled. External proxy logs and independent custom logging remain outside this check.
+The shared API host removes the existing event GET `after` parameter only from the request-log URL copy, including encoded/repeated keys and encoded Operation IDs. The real request, authorization, cursor validation and all other query encodings remain unchanged. Default and explicit request serializers receive the safe URL/raw-URL/original-URL copy, while disabled logging stays disabled. External proxy logs and independent custom logging remain outside this check.
