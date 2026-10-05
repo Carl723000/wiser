@@ -327,16 +327,22 @@ class FakeClient implements PostgresDataCommandClient {
       });
     }
     if (text.includes('data.operation.ingestion.lock')) {
+      // A Fake may return only columns actually selected by this production SQL.
+      // Responsibility values already exist in the same table fixture.
+      const stored: Readonly<Record<string, unknown>> = {
+        ingestion_id: INGESTION_ID,
+        state: this.ingestionState,
+        row_version: this.ingestionVersion,
+        security_level: 'L1_INTERNAL',
+        policy_version: 7,
+        owner_project_id: PROJECT_ID,
+        submitted_by_actor_id: this.submittedActorId,
+        submitted_actor_type: this.submittedActorType,
+        submitted_delegator_actor_id: this.submittedDelegatorId,
+      };
+      const selected = selectedCancellationColumns(text);
       return Promise.resolve({
-        rows: [
-          {
-            ingestion_id: INGESTION_ID,
-            state: this.ingestionState,
-            row_version: this.ingestionVersion,
-            security_level: 'L1_INTERNAL',
-            policy_version: 7,
-          },
-        ],
+        rows: [Object.fromEntries(selected.map((key) => [key, stored[key]]))],
         rowCount: 1,
       });
     }
@@ -1085,13 +1091,12 @@ describe('PostgreSQL Data Foundation command executors', () => {
       { operationId: OPERATION_ID, expectedVersion: 2, reason: 'superseded' },
       context,
     );
-    expect(Object.keys(lockedSession ?? {}).sort()).toEqual([
-      'ingestion_id',
-      'policy_version',
-      'row_version',
-      'security_level',
-      'state',
-    ]);
+    const lockingSql = value.pool.client.calls.find(({ text }) =>
+      text.includes('data.operation.ingestion.lock'),
+    )!.text;
+    expect(Object.keys(lockedSession ?? {}).sort()).toEqual(
+      selectedCancellationColumns(lockingSql).sort(),
+    );
     expect(
       DATA_CAPABILITY_REGISTRY['data.operation.cancel'].outputSchema.safeParse(
         output,
@@ -3125,6 +3130,14 @@ function managedIntakeContext(): DataCapabilityExecutionContext {
   };
 }
 
+function selectedCancellationColumns(sql: string): string[] {
+  const selected = /\bselect\s+([\s\S]+?)\s+from\s+ingestion\.session/i.exec(
+    sql,
+  );
+  if (!selected) throw new Error('Cancellation projection not found');
+  return selected[1]!.split(',').map((column) => column.trim());
+}
+
 async function observeManagedCancellation(
   value: ReturnType<typeof runtime>,
   actor: DataCapabilityExecutionContext,
@@ -3205,19 +3218,18 @@ describe('managed cancellation internal responsibility guard Red', () => {
       value,
       actor,
     );
-    // Preserve the five-column result of INGESTION_BY_OPERATION_LOCK_SQL.
-    // Do not supply owner/submission facts that the actual query cannot return.
     if (lockedSession !== undefined) {
-      expect(Object.keys(lockedSession).sort()).toEqual([
-        'ingestion_id',
-        'policy_version',
-        'row_version',
-        'security_level',
-        'state',
-      ]);
+      const lockingSql = value.pool.client.calls.find(({ text }) =>
+        text.includes('data.operation.ingestion.lock'),
+      )!.text;
+      expect(Object.keys(lockedSession).sort()).toEqual(
+        selectedCancellationColumns(lockingSql).sort(),
+      );
     }
     expect.soft(observed).toEqual({
-      errorCode: 'INTAKE_FORBIDDEN',
+      errorCode: maintainer
+        ? expect.stringMatching(/^(INTAKE_FORBIDDEN|NOT_FOUND)$/)
+        : 'INTAKE_FORBIDDEN',
       result: null,
       ingestionWrites: [],
       jobWrites: [],
@@ -3227,6 +3239,217 @@ describe('managed cancellation internal responsibility guard Red', () => {
       outboxWrites: [],
       cachedReceipts: [],
     });
+  });
+});
+
+describe('managed cancellation current responsibility and replay', () => {
+  const input = { operationId: OPERATION_ID, expectedVersion: 2 };
+  const writePattern =
+    /\b(?:insert\s+into|update\s+|delete\s+from)\b|data\.operation\.job-cancellation\.request/i;
+
+  it.each(['principal', 'scope', 'maintenance'] as const)(
+    'refuses expired or missing %s before acquiring a SQL connection',
+    async (missing) => {
+      const value = runtime();
+      const current = managedIntakeContext();
+      const resourceAccess = current.authorization.resourceAccess!;
+      if (resourceAccess.scope.mode !== 'managed')
+        throw new Error('Expected the managed cancellation fixture');
+      const actor: DataCapabilityExecutionContext =
+        missing === 'principal'
+          ? {
+              ...current,
+              principal: {
+                ...current.principal,
+                expiresAt: '2000-01-01T00:00:00Z',
+              },
+            }
+          : missing === 'scope'
+            ? {
+                ...current,
+                authorization: {
+                  ...current.authorization,
+                  resourceAccess: {
+                    ...resourceAccess,
+                    scope: {
+                      ...resourceAccess.scope,
+                      validUntil: '2000-01-01T00:00:00Z',
+                    },
+                  },
+                },
+              }
+            : {
+                ...current,
+                authorization: {
+                  ...current.authorization,
+                  scopes: ['data.operation.read', 'data.publish'],
+                },
+              };
+      await expect(
+        executor(value.runtime, 'data.operation.cancel').execute(input, actor),
+      ).rejects.toMatchObject({ code: 'INTAKE_FORBIDDEN' });
+      expect(value.pool.client.calls).toEqual([]);
+    },
+  );
+
+  it.each(['invisible', 'unknown', 'other', 'changed-delegator'] as const)(
+    'fails closed for %s responsibility without lifecycle or receipt writes',
+    async (reason) => {
+      const value = runtime();
+      const actor = managedIntakeContext();
+      if (reason === 'invisible')
+        value.pool.client.zeroRowCountFor = 'data.operation.ingestion.lock';
+      if (reason === 'unknown') value.pool.client.submittedActorId = null;
+      const acting: DataCapabilityExecutionContext =
+        reason === 'changed-delegator'
+          ? {
+              ...actor,
+              principal: {
+                actorId: ACTOR_ID,
+                actorType: 'agent',
+                authenticationMethod: 'delegated_credential',
+                credentialId: SESSION_ID,
+                delegationId: INGESTION_ID,
+                delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+              },
+            }
+          : actor;
+      if (reason === 'changed-delegator') {
+        value.pool.client.submittedActorId = ACTOR_ID;
+        value.pool.client.submittedActorType = 'agent';
+        value.pool.client.submittedDelegatorId =
+          'd2000000-0000-4000-8000-000000000090';
+      }
+      const result = await executor(value.runtime, 'data.operation.cancel')
+        .execute(input, acting)
+        .then(
+          () => 'UNEXPECTED_SUCCESS',
+          (error: unknown) => (error as PostgresDataCommandError).code,
+        );
+      expect(result).toMatch(/^(INTAKE_FORBIDDEN|NOT_FOUND)$/);
+      expect(
+        value.pool.client.calls.filter(({ text }) => writePattern.test(text)),
+      ).toEqual([]);
+      expect(value.pool.client.replay.size).toBe(0);
+      const allowed = new Set([
+        'data.command.idempotency.lock',
+        'data.command.idempotency.read',
+        'data.operation.ingestion.lock',
+      ]);
+      for (const { text } of value.pool.client.calls) {
+        const marker = /\/\* (data\.[^*]+) \*\//.exec(text)?.[1];
+        if (
+          marker &&
+          !['data.command.context', 'data.intake.scope'].includes(marker) &&
+          !marker.startsWith('data.resource.')
+        )
+          expect(allowed.has(marker)).toBe(true);
+      }
+    },
+  );
+
+  it.each(['WAITING_INPUT', 'RUNNING', 'REVIEW_REQUIRED'] as const)(
+    'permits the current submitting maintainer in %s and preserves lease semantics',
+    async (state) => {
+      const value = runtime();
+      value.pool.client.submittedActorId = ACTOR_ID;
+      value.pool.client.operationCapabilityId = 'data.ingestion.create';
+      value.pool.client.operationStatus =
+        state === 'REVIEW_REQUIRED' ? 'WAITING_REVIEW' : state;
+      value.pool.client.ingestionState =
+        state === 'REVIEW_REQUIRED' ? state : 'RECEIVED';
+      if (state === 'RUNNING')
+        value.pool.client.cancellationJobStatus = 'RUNNING';
+      const result = await executor(
+        value.runtime,
+        'data.operation.cancel',
+      ).execute(input, managedIntakeContext());
+      expect(result).toHaveProperty(
+        'status',
+        state === 'RUNNING' ? 'RUNNING' : 'CANCELLED',
+      );
+      const markers = value.pool.client.calls.map(({ text }) => text);
+      const scopeAt = markers.findIndex((text) =>
+        text.includes('data.intake.scope'),
+      );
+      expect(scopeAt).toBeGreaterThanOrEqual(0);
+      expect(scopeAt).toBeLessThan(
+        markers.findIndex((text) =>
+          text.includes('data.operation.ingestion.lock'),
+        ),
+      );
+      for (const marker of [
+        'data.command.audit.insert',
+        'data.command.outbox.insert',
+        'data.command.operation-event.insert',
+      ])
+        expect(markers.filter((text) => text.includes(marker))).toHaveLength(1);
+      expect(markers.join('\n')).not.toMatch(
+        /lease_owner\s*=\s*null|attempt_count\s*=|data\.ingestion\.review\./i,
+      );
+    },
+  );
+
+  it('allows matching delegated responsibility and rechecks same-key replay', async () => {
+    const value = runtime();
+    value.pool.client.submittedActorId = ACTOR_ID;
+    value.pool.client.submittedActorType = 'agent';
+    value.pool.client.submittedDelegatorId =
+      'd2000000-0000-4000-8000-000000000090';
+    const actor: DataCapabilityExecutionContext = {
+      ...managedIntakeContext(),
+      principal: {
+        actorId: ACTOR_ID,
+        actorType: 'agent',
+        authenticationMethod: 'delegated_credential',
+        credentialId: SESSION_ID,
+        delegationId: INGESTION_ID,
+        delegatedBy: value.pool.client.submittedDelegatorId,
+      },
+    };
+    const cancel = executor(value.runtime, 'data.operation.cancel');
+    const first = await cancel.execute(input, actor);
+    value.pool.client.ingestionState = 'CANCELLED';
+    const writes = value.pool.client.calls.filter(({ text }) =>
+      writePattern.test(text),
+    ).length;
+    await expect(cancel.execute(input, actor)).resolves.toEqual(first);
+    expect(
+      value.pool.client.calls.filter(({ text }) => writePattern.test(text)),
+    ).toHaveLength(writes);
+    for (const next of [
+      {
+        ...actor,
+        authorization: {
+          ...actor.authorization,
+          scopes: ['data.operation.read'],
+        },
+      },
+      {
+        ...actor,
+        principal: {
+          ...actor.principal,
+          delegatedBy: 'd2000000-0000-4000-8000-000000000091',
+        },
+      },
+      {
+        ...actor,
+        authorization: { ...actor.authorization, purpose: 'other-purpose' },
+      },
+    ])
+      await expect(cancel.execute(input, next)).rejects.toMatchObject({
+        code: expect.stringMatching(
+          /^(INTAKE_FORBIDDEN|IDEMPOTENCY_CONFLICT)$/,
+        ),
+      });
+    value.pool.client.submittedDelegatorId =
+      'd2000000-0000-4000-8000-000000000091';
+    await expect(cancel.execute(input, actor)).rejects.toMatchObject({
+      code: 'INTAKE_FORBIDDEN',
+    });
+    expect(
+      value.pool.client.calls.filter(({ text }) => writePattern.test(text)),
+    ).toHaveLength(writes);
   });
 });
 
