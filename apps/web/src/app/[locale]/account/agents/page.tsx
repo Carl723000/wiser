@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { readVerifiedAuthViewer } from '@/lib/auth';
 import { getAgentConnectionAccount } from '@/lib/agent-connections.server';
+import { readAgentConnectionConditions } from '@/lib/agent-connections';
 import { getDictionary, isLocale } from '@/lib/i18n';
 import { createWiserServerSupabaseClient } from '@/lib/supabase/server';
 import styles from '@/components/project-access-workspace.module.css';
@@ -29,6 +30,7 @@ export default async function AgentConnectionsPage({
       `/${locale}/login?next=${encodeURIComponent(`/${locale}/account/agents`)}`,
     );
   const authCopy = getDictionary(locale).auth;
+  const memberCopy = getDictionary(locale).projectAccess;
   const t = authCopy.agentConnections;
   let items;
   try {
@@ -43,6 +45,7 @@ export default async function AgentConnectionsPage({
     );
   }
   const { result } = await searchParams;
+  const checkedAt = Date.now();
   const message =
     result === 'disconnected'
       ? t.disconnected
@@ -66,74 +69,119 @@ export default async function AgentConnectionsPage({
       {items.length === 0 ? (
         <p>{t.empty}</p>
       ) : (
-        items.map((item) => (
-          <section
-            className={styles.content}
-            key={item.connectionId}
-            aria-labelledby={`connection-${item.connectionId}`}
-          >
-            <h2 id={`connection-${item.connectionId}`}>
-              {item.clientName ?? t.client}
-            </h2>
-            <p>{t.status[item.status]}</p>
-            <dl>
-              <dt>{t.project}</dt>
-              <dd>{item.projectName?.[locale] ?? t.unknownProject}</dd>
-              <dt>{t.registeredScopes}</dt>
-              <dd>
-                <ul>
-                  {item.scopes.map((scope, index) => (
-                    <li key={`${index}:${scope}`}>
-                      {Object.hasOwn(t.scopeLabels, scope)
-                        ? t.scopeLabels[scope as keyof typeof t.scopeLabels]
-                        : scope}
-                    </li>
-                  ))}
-                </ul>
-              </dd>
-              <dt>{t.registeredPurpose}</dt>
-              <dd>{t.purposeLabels[item.purpose]}</dd>
-              <dt>{authCopy.agentConsent.securityLevel}</dt>
-              <dd>{authCopy.agentConsent.levels[item.maxSecurityLevel]}</dd>
-              <dt>{t.expires}</dt>
-              <dd>
-                {item.expiresAt === null ? (
-                  item.status === 'revoked' ? (
-                    t.status.revoked
+        items.map((item) => {
+          const projectAccess = item.projectAccess ?? { state: 'unavailable' };
+          const conditions = readAgentConnectionConditions(
+            item,
+            projectAccess,
+            checkedAt,
+          );
+          return (
+            <section
+              className={styles.content}
+              key={item.connectionId}
+              aria-labelledby={`connection-${item.connectionId}`}
+            >
+              <h2 id={`connection-${item.connectionId}`}>
+                {item.clientName ?? t.client}
+              </h2>
+              <p>{t.status[conditions.connectionStatus]}</p>
+              <dl>
+                <dt>{t.project}</dt>
+                <dd>{item.projectName?.[locale] ?? t.unknownProject}</dd>
+                <dt>{t.currentConditions}</dt>
+                <dd>{t.conditionLabels[conditions.currentState]}</dd>
+                {projectAccess.state === 'loaded' ? (
+                  <>
+                    <dt>{t.currentMembership}</dt>
+                    <dd>{t.memberLabels[conditions.memberState]}</dd>
+                    <dt>{t.currentRoles}</dt>
+                    <dd>
+                      {projectAccess.roles.length > 0
+                        ? projectAccess.roles.map((role) => (
+                            <span className={styles.roleBadge} key={role}>
+                              {role === 'data-reader'
+                                ? memberCopy.readRole
+                                : role}
+                            </span>
+                          ))
+                        : memberCopy.noRole}
+                    </dd>
+                    <dt>{t.membershipTerm}</dt>
+                    <dd>
+                      {projectAccess.expiresAt === null ? (
+                        memberCopy.noExpiry
+                      ) : (
+                        <time dateTime={projectAccess.expiresAt}>
+                          {new Intl.DateTimeFormat(locale, {
+                            dateStyle: 'medium',
+                            timeStyle: 'long',
+                            timeZone: 'UTC',
+                          }).format(new Date(projectAccess.expiresAt))}
+                        </time>
+                      )}
+                    </dd>
+                  </>
+                ) : null}
+                <dt>{t.registeredScopes}</dt>
+                <dd>
+                  <ul>
+                    {item.scopes.map((scope, index) => (
+                      <li key={`${index}:${scope}`}>
+                        {Object.hasOwn(t.scopeLabels, scope)
+                          ? t.scopeLabels[scope as keyof typeof t.scopeLabels]
+                          : scope}
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+                <dt>{t.registeredPurpose}</dt>
+                <dd>{t.purposeLabels[item.purpose]}</dd>
+                <dt>{authCopy.agentConsent.securityLevel}</dt>
+                <dd>{authCopy.agentConsent.levels[item.maxSecurityLevel]}</dd>
+                <dt>{t.expires}</dt>
+                <dd>
+                  {item.expiresAt === null ? (
+                    t.noFixedExpiry
                   ) : (
-                    t.untilDisconnected
-                  )
-                ) : (
-                  <time dateTime={item.expiresAt}>
-                    {new Intl.DateTimeFormat(locale, {
-                      dateStyle: 'medium',
-                      timeStyle: 'long',
-                      timeZone: 'UTC',
-                    }).format(new Date(item.expiresAt))}
-                  </time>
-                )}
-              </dd>
-            </dl>
-            <p>{t.registeredLimit}</p>
-            {item.status !== 'revoked' || item.providerConsent ? (
-              <form
-                method="post"
-                action={`/${locale}/account/agents/disconnect`}
-                aria-describedby={`impact-${item.connectionId}`}
-              >
-                <input
-                  type="hidden"
-                  name="connectionId"
-                  value={item.connectionId}
-                />
-                <p id={`impact-${item.connectionId}`}>{t.impact}</p>
-                <button type="submit">
-                  {item.status === 'revoked' ? t.retryDisconnect : t.disconnect}
-                </button>
-              </form>
-            ) : null}
-          </section>
-        ))
+                    <time dateTime={item.expiresAt}>
+                      {new Intl.DateTimeFormat(locale, {
+                        dateStyle: 'medium',
+                        timeStyle: 'long',
+                        timeZone: 'UTC',
+                      }).format(new Date(item.expiresAt))}
+                    </time>
+                  )}
+                </dd>
+              </dl>
+              {projectAccess.state !== 'loaded' ? (
+                <p>{t.projectLookup[projectAccess.state]}</p>
+              ) : null}
+              <p>{t.currentBoundary}</p>
+              <Link href={`/${locale}/account/access`}>{t.checkAccess}</Link>
+              <p>{t.registeredLimit}</p>
+              {item.status !== 'revoked' || item.providerConsent ? (
+                <form
+                  method="post"
+                  action={`/${locale}/account/agents/disconnect`}
+                  aria-describedby={`impact-${item.connectionId}`}
+                >
+                  <input
+                    type="hidden"
+                    name="connectionId"
+                    value={item.connectionId}
+                  />
+                  <p id={`impact-${item.connectionId}`}>{t.impact}</p>
+                  <button type="submit">
+                    {item.status === 'revoked'
+                      ? t.retryDisconnect
+                      : t.disconnect}
+                  </button>
+                </form>
+              ) : null}
+            </section>
+          );
+        })
       )}
       <Link href={`/${locale}`}>{t.home}</Link>
     </main>

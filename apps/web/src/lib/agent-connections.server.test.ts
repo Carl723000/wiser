@@ -135,6 +135,27 @@ it('does not reuse a project from another tenant or fetch projects for no connec
   expect(await account.load()).toEqual([]);
   expect(mocks.projects).not.toHaveBeenCalled();
 });
+it('never combines membership across tenants when two connections have the same project id', async () => {
+  const other = {
+    ...owned,
+    connectionId: randomUUID(),
+    tenantId: randomUUID(),
+  };
+  mocks.request.mockResolvedValue({ connections: [owned, other] });
+  mocks.projects.mockResolvedValue({
+    items: [{ ...project, tenantId: other.tenantId }],
+    hasMore: false,
+  });
+  const view = await (await getAgentConnectionAccount()).load();
+  expect(view[0]).toMatchObject({
+    projectName: null,
+    projectAccess: { state: 'not-visible' },
+  });
+  expect(view[1]).toMatchObject({
+    projectName: { 'zh-CN': '河流', en: 'River' },
+    projectAccess: { state: 'loaded' },
+  });
+});
 it('preserves already read conditions when a later page fails but rereads on the next load', async () => {
   const second = {
     ...owned,

@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 1f0afb2f4c6c4acdbcda32766f1d351c1c924de8
+lastReviewedCommit: cdd258ac
 ---
 
 ## Two frontend applications
@@ -274,7 +274,7 @@ The resource-enabled project workbench includes a batch-access tab for managers 
 
 Batch member details show frozen differences by action, with an explicit unknown state for older previews. Changed grants prompt a fresh application; current effective access is never inferred from a historical receipt.
 
-The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and either an optional expiry or “Until you disconnect.” Each connection also reads its existing registered action scopes, `agent-data` purpose and maximum data level. Known actions use localized labels; unrecognized scope codes remain exact plain text. These registered ceilings do not establish present project or per-resource access, which every action still checks. Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.
+The account control links to `/[locale]/account/agents` for the current user’s AI/MCP connections. The verified-session page shows bounded ownership, status and an optional expiry; no fixed expiry does not promise continuing access. Project names and the user’s current membership state, effective roles and term reuse the existing project list with `offset/limit/hasMore`, at most ten pages of fifty items. Reading stops once all connected projects are found, without requesting other project details. An unreached page, absence from an exhausted visible list and a failed request have separate states. Membership expires at its exact term boundary; missing membership, absent effective roles, suspension and revocation remain distinct. Met membership conditions establish only necessary prerequisites, never per-resource access. Each load rereads the existing API without a browser membership archive; lookup outcomes never prevent ownership-based disconnection. Synthetic regressions and static browser readout do not replace live Auth/API/database acceptance. Each connection also reads its existing registered action scopes, `agent-data` purpose and maximum data level. Known actions use localized labels; unrecognized scope codes remain exact plain text. These registered ceilings do not establish present project or per-resource access, which every action still checks. Its native disconnect form uses same-origin protection and reports partial provider revocation so the user can retry before reauthorizing in the original client.
 
 ## Local multi-region material workspace
 

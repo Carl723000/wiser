@@ -125,7 +125,7 @@ it.each([
     role: '本人当前有效角色',
     expiry: '成员有效期',
     active: '有效',
-    readRole: '资料查询',
+    readRole: '资料查阅',
     noExpiry: '未设置期限',
   },
   {
@@ -369,7 +369,9 @@ it.each(['zh-CN', 'en'])(
     ).toEqual(['data.future.read', 'constructor']);
     expect(region.queryByText('查阅资料目录')).toBeNull();
     expect(region.queryByText('Read the data catalog')).toBeNull();
-    expect(region.queryByRole('link')).toBeNull();
+    expect(region.getByRole('link').getAttribute('href')).toBe(
+      `/${locale}/account/access`,
+    );
   },
 );
 
@@ -399,7 +401,10 @@ it.each([
         clientName: 'Registered client',
         projectName: null,
         maxSecurityLevel: state.level,
-        expiresAt: '2026-09-26T10:00:00Z',
+        expiresAt:
+          state.status === 'active'
+            ? '2099-09-26T10:00:00Z'
+            : '2026-09-26T10:00:00Z',
         status: state.status,
         providerConsent: false,
       },
