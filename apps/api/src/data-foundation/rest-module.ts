@@ -756,7 +756,8 @@ export function createDataFoundationRestModule(
               const fresh = await resolveContext(request, options.resolver);
               if ('error' in fresh)
                 throw Object.assign(new Error('Original access unavailable'), {
-                  code: 'FORBIDDEN',
+                  code:
+                    fresh.error.status === 503 ? 'UNAVAILABLE' : 'FORBIDDEN',
                 });
               if (!sameDeliveryAuthority(resolved.context, fresh.context))
                 throw Object.assign(new Error('Original access unavailable'), {
@@ -811,7 +812,7 @@ export function createDataFoundationRestModule(
                     ),
                 );
               if (controller.signal.aborted) {
-                if (outcomes) await observeOriginalAudit(outcomes.interrupt());
+                if (outcomes) void observeOriginalAudit(outcomes.interrupt());
                 return sendError(request, reply, errors.unavailable);
               }
               const url = new URL(download.url);
@@ -840,7 +841,7 @@ export function createDataFoundationRestModule(
                 }) ?? undefined;
               if (!releaseBudget) {
                 if (outcomes)
-                  await observeOriginalAudit(
+                  void observeOriginalAudit(
                     outcomes.fail('CAPACITY_REJECTED', 'CAPACITY_LIMIT'),
                   );
                 reply.header('Retry-After', '1');
@@ -890,7 +891,7 @@ export function createDataFoundationRestModule(
                 .header('Accept-Ranges', 'bytes');
               if (!selected) {
                 if (outcomes)
-                  await observeOriginalAudit(
+                  void observeOriginalAudit(
                     outcomes.fail('OUTPUT_FAILED', 'RANGE_UNSATISFIABLE'),
                   );
                 reply
@@ -927,8 +928,12 @@ export function createDataFoundationRestModule(
                 try {
                   await authorize();
                   return true;
-                } catch {
-                  deliveryFailure = 'AUTHORITY_CHANGED';
+                } catch (error) {
+                  const code = mapError(error).code;
+                  deliveryFailure =
+                    code === 'FORBIDDEN' || code === 'NOT_FOUND'
+                      ? 'AUTHORITY_CHANGED'
+                      : 'UNAVAILABLE';
                   return false;
                 }
               });
@@ -962,15 +967,15 @@ export function createDataFoundationRestModule(
                   integrityCode === 'HASH_MISMATCH' ||
                   integrityCode === 'SIZE_MISMATCH'
                 )
-                  await observeOriginalAudit(
+                  void observeOriginalAudit(
                     outcomes.fail('INTEGRITY_FAILED', integrityCode),
                   );
                 else if (controller.signal.aborted)
-                  await observeOriginalAudit(
+                  void observeOriginalAudit(
                     outcomes.interrupt(deliveryFailure),
                   );
                 else
-                  await observeOriginalAudit(
+                  void observeOriginalAudit(
                     outcomes.fail(
                       'OUTPUT_FAILED',
                       mapError(error).code === 'FORBIDDEN' ||

@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: acde00ea
+lastReviewedCommit: bb954686aa2437b299b1fd4848a70c80a05feac4
 ---
 
 ## 当前可运行能力
@@ -594,3 +594,5 @@ API 只对标准内部隔离对象签名，发送任何字节前核对完整 SHA
 API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加到已有只追加 `security.audit_event` 载体。原有 `data.ingestion.candidate.original.read`／`ALLOWED` 仍表示签发授权。每次由服务器生成尝试编号，区分完整 GET、单范围 GET 和 HEAD，记录有界的选择／提供字节数、耗时和安全错误码。HTTP `finish` 仅在所选字节已提供后记为 API 输出完成；先于 finish 的 `close` 记为中断。容量拒绝、哈希／长度不符及其他输出失败分别记录终态；首个终态有效，正常 finish 后的 close 不重复追加。
 
 只有可信下载适配器产生的进程内不透明收据能追加结果，在异步签发前固定主体／委托人、租户／项目、候选引用及资产密级和策略。结果写入不重新读取或授予内容权限，不增加客户端 JSON 输入、公开 Capability、权限枚举或迁移。独立 SQL 事务保留 10 秒语句上限；每个追加 Promise 只观察一次，观察时限复用原件操作既有的 120 秒上限，期限届满或本模块关闭时记为未确认，不无限等待。追加失败只输出一次含服务器尝试编号的固定脱敏诊断。观察期限不代表取消 SQL、确认回滚或释放仍活动的连接；迟到结果不会重复诊断，不重试或改写不明写入。既有共享连接池关闭逻辑不变，本切片不据此证明整台服务有全局关闭期限。字节表示提供给 API 响应流的数量，不表示浏览器收件、用户落盘下载或后续网页代理的输出。管理读取视图、真实 Auth／SQL／存储核验及产品验收仍分别待验。
+
+错误响应不等待审计观察。非流式原件预算沿用既有清理：已经等待的原件工作落定后释放，未决且不响应取消的取件仍保留预算。流中核权遇到当前拒绝或暂时失败均停止输出并保留已提供字节前缀；禁止访问或资源不可见记为 `AUTHORITY_CHANGED`，其他失败记为 `UNAVAILABLE`。审计 SQL 仍独立持有连接直到实际落定。既有流关闭清理不变，不能据此证明每个未决核权查询或生成器均已结束；观察期限也不证明全局连接池关闭期限。

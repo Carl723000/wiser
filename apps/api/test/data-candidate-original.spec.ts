@@ -387,6 +387,27 @@ describe('candidate original output audit failures', () => {
       selectedBytes: bytes.byteLength,
     });
   });
+  it.each([2, 3])(
+    'preserves temporary context failure before output at current check %i',
+    async (failedCheck) => {
+      const f = fixture();
+      let resolves = 0;
+      f.resolver.mockImplementation(() =>
+        ++resolves === failedCheck
+          ? Promise.reject(new Error('private resolver unavailable'))
+          : Promise.resolve(context),
+      );
+      const response = await f.app.inject({ method: 'GET', url, headers });
+      expect(response.statusCode).toBe(503);
+      expect(response.body).not.toMatch(/private|原月报/);
+      await vi.waitFor(() => expect(f.outcome).toHaveBeenCalledOnce());
+      expect(f.outcome.mock.calls[0]?.[1]).toMatchObject({
+        terminal: 'OUTPUT_FAILED',
+        errorCode: 'UNAVAILABLE',
+        offeredBytes: 0,
+      });
+    },
+  );
   it('bounds original-audit shutdown even when the trusted append promise never settles', async () => {
     let settle!: () => void;
     const outcomeTask = new Promise<void>((resolve) => {
