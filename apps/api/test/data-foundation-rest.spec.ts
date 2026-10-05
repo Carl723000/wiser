@@ -482,6 +482,10 @@ describe('Data Foundation REST module', () => {
     '%61fter=private-cursor%2Bscope',
     'after=private-cursor&after=other-private-cursor',
     'after=',
+    {
+      query: 'after=private-cursor%2Bscope',
+      id: `%63${OPERATION_ID.slice(1)}`,
+    },
   ])(
     'omits only event after values from the default serializer in an isolated memory log: %s',
     async (query) => {
@@ -498,24 +502,15 @@ describe('Data Foundation REST module', () => {
           },
         },
       );
-      const url = `/api/data/v1/operations/${OPERATION_ID}/events?first=1%30%30&${query}`;
+      const queryValue = typeof query === 'string' ? query : query.query;
+      const pathId = typeof query === 'string' ? OPERATION_ID : query.id;
+      const url = `/api/data/v1/operations/${pathId}/events?first=1%30%30&${queryValue}`;
       const response = await app.inject({
         method: 'GET',
         url,
         headers: authHeaders(),
       });
-      const logs = lines.join('');
-      expect(logs).toContain('incoming request');
-      expect(logs).toContain(
-        `/api/data/v1/operations/${OPERATION_ID}/events?first=1%30%30`,
-      );
-      expect(logs).not.toContain('private-cursor');
-      expect(logs).not.toContain('after=');
-      expect(logs).not.toContain('%61fter=');
-      expect(logs).toContain('"method":"GET"');
-      expect(logs).toContain('"host":"localhost:80"');
-      expect(logs).toContain('"remoteAddress":"127.0.0.1"');
-      if (!query.includes('&') && !query.endsWith('=')) {
+      if (!queryValue.includes('&') && !queryValue.endsWith('=')) {
         expect(response.statusCode).toBe(200);
         expect(execute).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -527,6 +522,17 @@ describe('Data Foundation REST module', () => {
           }),
         );
       }
+      const logs = lines.join('');
+      expect(logs).toContain('incoming request');
+      expect(logs).toContain(
+        `/api/data/v1/operations/${pathId}/events?first=1%30%30`,
+      );
+      expect(logs).not.toContain('private-cursor');
+      expect(logs).not.toContain('after=');
+      expect(logs).not.toContain('%61fter=');
+      expect(logs).toContain('"method":"GET"');
+      expect(logs).toContain('"host":"localhost:80"');
+      expect(logs).toContain('"remoteAddress":"127.0.0.1"');
       await app.inject({
         method: 'GET',
         url: '/health/live?after=unrelated-visible-query',

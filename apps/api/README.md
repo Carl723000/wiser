@@ -20,7 +20,7 @@ checkPaths:
   - .env.example
   - compose.yaml
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 882d285591042e7989b057c213243590df0c36cd
+lastReviewedCommit: 55d1966c1ec99a5a98adbded79c7a6d7da256ebd
 ---
 
 # WISER API / WISER 共享 API
