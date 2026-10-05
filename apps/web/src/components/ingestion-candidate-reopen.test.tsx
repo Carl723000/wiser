@@ -454,7 +454,7 @@ it.each(['visible', 'persisted pageshow'] as const)(
     // intentionally permits a transport to complete after cancellation, just
     // like the existing race tests; the production parser must check its signal.
     fireEvent.click(screen.getByRole('tab', { name: 'Records' }));
-    expect(oldSignals[0]).not.toBeNull();
+    await waitFor(() => expect(oldSignals[0]).toBeInstanceOf(AbortSignal));
     const denied = vi.fn(() =>
       Promise.resolve(new Response(null, { status: 409 })),
     );
@@ -674,9 +674,7 @@ it.each(['visible', 'persisted pageshow'] as const)(
     ).toBe('true');
     expect(probe.maps.at(-1)).toBe(engine);
     expect(engine.camera).toEqual(advancedCamera);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save view', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
     await screen.findByText('View saved.');
     const created = fetch.mock.calls.filter(([value]) =>
       url(value).endsWith('/create'),
@@ -746,13 +744,21 @@ it.each([400, 409])(
         if (recovering && input(init).after === 'advanced-page')
           return Promise.resolve(new Response(null, { status }));
         const result = records(oldRef);
-        result.nextCursor = 'advanced-page';
+        if (input(init).after === 'advanced-page')
+          result.records = result.records.map((row) => ({
+            ...row,
+            recordId: advancedId,
+            index: 3,
+            sourceId: 'table:1/row:3',
+          }));
+        else result.nextCursor = 'advanced-page';
         return Promise.resolve(Response.json(result));
       }
       return Promise.resolve(pageReply(value, init));
     });
     await persisted('records');
     fireEvent.click(screen.getByRole('button', { name: 'Next records' }));
+    await screen.findByRole('button', { name: 'Select record 3' });
     await idle();
     const before = fetch.mock.calls.length;
     recovering = true;
@@ -806,9 +812,7 @@ it('defers recovery until the current save finishes, preserving its signal and d
       return Promise.resolve(Response.json(saved('records', 'fresh-start')));
     return Promise.resolve(pageReply(value, init));
   });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Save view', exact: true }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
   await waitFor(() => expect(mutationSignal).not.toBeNull());
   const before = fetch.mock.calls.length;
   restore('visible');
