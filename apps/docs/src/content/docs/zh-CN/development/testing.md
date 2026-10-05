@@ -26,8 +26,8 @@ checkPaths:
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: cd4dfe0254b5d0d93590e2676e3552436b013907
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: 63758bc098af02c30376c2ccbc9a357bc6a87686
 ---
 
 ## Red → Green → Refactor
@@ -41,6 +41,8 @@ lastReviewedCommit: cd4dfe0254b5d0d93590e2676e3552436b013907
 5. **Document and commit**：更新中英文文档；每个提交前运行 worktree Docpact check，分支交接前再对 merge base 运行 branch-wide lint；保留小而可恢复的 Red/Green 提交。
 
 测试优先调用公开函数、HTTP、GraphQL、MCP、数据库策略或可见 UI。不要用私有函数调用次数代替业务结果；生产缺陷先以回归测试复现。
+
+异步地图替换测试先等待旧实例移除及新实例创建，再核对相机和未改变的原生输入。加载文字消失不能作为绘制生命周期完成的屏障。可通过受控响应与提交阶段观察区分这两个条件，无需改变生产 effect；聚焦检查和有界重复通过后，仍须完成组合验证门禁才能形成 Green 里程碑。
 
 ## 测试层级
 

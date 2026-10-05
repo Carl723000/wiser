@@ -26,8 +26,8 @@ checkPaths:
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: cd4dfe0254b5d0d93590e2676e3552436b013907
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: 63758bc098af02c30376c2ccbc9a357bc6a87686
 ---
 
 ## Red → Green → Refactor
@@ -41,6 +41,8 @@ A behavior change starts with a failing test that describes a user outcome, prot
 5. **Document and commit:** update Chinese/English docs, run worktree Docpact before every commit and branch-wide lint against the merge base before handoff, and retain small recoverable Red/Green commits.
 
 Tests should prefer public functions, HTTP, GraphQL, MCP, database policies, or visible UI. Do not substitute private-call counts for business outcomes. Reproduce a production defect with a regression test before fixing it.
+
+Asynchronous map-replacement tests wait for the old instance to be removed and its replacement to exist before checking the camera and unchanged native input. Loading text disappearing is not a drawing-lifecycle barrier. Controlled responses and commit-phase observations can distinguish these conditions without changing production effects; focused checks and bounded repetition still require the combined verification gate before a Green milestone.
 
 ## Test layers
 

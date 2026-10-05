@@ -361,6 +361,10 @@ it('replaces the old drawing when new authorized native geometry differs within 
   };
   fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
   await settle();
+  // Wait for passive-effect replacement, not only the loading indicator.
+  await waitFor(() =>
+    expect(previous.removed && probe.instances.length === 2).toBe(true),
+  );
   expect(geometryReads).toBe(2);
   expect(previous.removed).toBe(true);
   expect(probe.instances).toHaveLength(2);
