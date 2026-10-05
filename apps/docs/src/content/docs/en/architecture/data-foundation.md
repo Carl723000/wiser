@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0e6fed4e20178cf46a7960d6f6395e46303df1fa
+lastReviewedCommit: 82605955d84c6721c7d42713883e2f0a12f37b0e
 ---
 
 ## What runs today
@@ -528,6 +528,8 @@ Records and geometry use ordered, reference/view/asset/actor/delegator/purpose/p
 Candidate originals use the canonical `FINGERPRINTED` state: no catalog version, a CLEAN scan, equal input/asset/content-blob hashes and byte sizes. `0039_candidate_fingerprinted_original.sql` corrects candidate guard admission without rewriting the 0037/0038 checksums or weakening existing lifecycle constraints. It does not rescan, downgrade to QUARANTINED, create RAW originals or publish versions.
 
 ### Managed pending intake and candidate discovery
+
+The internal `data.catalog.create` executor checks the same current maintenance authority before opening a transaction or reading a cached receipt, only when a managed resource scope is present. Requiring `data.operation.read` alongside `data.ingestion.write` keeps the maintenance-role definition consistent; operation-read permission is not a functional requirement of catalog creation. Legacy callers with ingestion-write permission retain their draft and replay behavior. Catalog request hashes and SQL are unchanged, and the command does not install pending-intake scope or lock an ingestion session. Public managed catalog creation remains excluded; internal executor controls do not establish live Auth or SQL/RLS acceptance.
 
 The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit` and `data.ingestion.get` paths now admit managed projects through their own current maintenance/ownership guards. Writes require both `data.ingestion.write` and `data.operation.read`; fresh trusted identity, purpose, expiry and project scope are checked before cached results or object-store work. Upload responsibility is server-generated immutable Operation metadata. A human owner or the responsible human delegator may continue maintenance; a delegated actor must match the original actor type, actor ID and delegator. Unknown legacy responsibility fails closed. Create only binds completed owned QUARANTINED assets; it neither removes resource scope nor grants access to published content. Managed idempotency also binds actor type, delegator, purpose and resource fingerprint; retries recheck current ownership.
 

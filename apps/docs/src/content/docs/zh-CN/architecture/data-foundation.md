@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0e6fed4e20178cf46a7960d6f6395e46303df1fa
+lastReviewedCommit: 82605955d84c6721c7d42713883e2f0a12f37b0e
 ---
 
 ## 当前可运行能力
@@ -528,6 +528,8 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 候选原件沿用标准流水线的 `FINGERPRINTED` 状态：未绑定目录版本，扫描结果为 CLEAN，输入、资产与内容对象的哈希一致，字节数量一致。`0039_candidate_fingerprinted_original.sql` 只更正候选守卫的状态接线，保留 0037、0038 校验和及既有生命周期约束；不重新扫描、不降级为 QUARANTINED、不创建 RAW 原件或发布版本。
 
 ### 受管待审接收与候选发现
+
+内部`data.catalog.create`执行器仅在携带受管资源范围时，于开启事务或读取旧回执前检查同一当前维护资格。同时要求`data.operation.read`与`data.ingestion.write`是维护角色定义的一致性要求，目录创建本身并不需要读取操作。旧范围仅有接入写入权限的调用仍可创建草稿并重放。目录请求摘要及SQL保持原样，不安装待审接收范围、不锁定入库会话。公共受管目录创建仍未放行；内部执行器控制不表示真实Auth或SQL／RLS验收通过。
 
 标准`data.uploadSession.create/complete`、`data.ingestion.create/submit`及`data.ingestion.get`通过当前维护权限和归属守卫接入受管项目。写入同时要求`data.ingestion.write`和`data.operation.read`，在返回旧回执或处理对象存储前检查可信身份、用途、期限及当前项目。上传责任由服务器保存于不可变Operation请求信息；原人类提交者或负责委托的人类可继续维护，委托主体须同时匹配原身份类型、身份编号和委托人。旧记录责任不明时拒绝。创建只绑定已完成、自有且处于QUARANTINED的资产，不清除资源范围或扩大已发布内容权限。受管幂等请求同时绑定身份类型、委托人、用途和资源指纹，重试重新检查当前归属。
 

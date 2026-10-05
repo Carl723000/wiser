@@ -1946,6 +1946,11 @@ export function createPostgresDataCommandRuntime(
           throw commandError('INVALID_INPUT');
         }
       }
+      if (
+        context.authorization.resourceAccess !== undefined &&
+        pendingIntakeAuthority(context)?.maintainer !== true
+      )
+        throw commandError('INTAKE_FORBIDDEN');
       return transactions.run(
         'data.catalog.create',
         input,
