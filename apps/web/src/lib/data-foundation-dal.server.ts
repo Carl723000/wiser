@@ -45,6 +45,7 @@ import {
   parseIngestion,
   parseOperation,
   parseOperationEventStream,
+  parseOperationEventPage,
   parseSearchPage,
   parseStacFeatureCollection,
   type CapabilityRegistryDto,
@@ -57,7 +58,7 @@ import {
   type GraphResultDto,
   type IngestionDto,
   type OperationDto,
-  type OperationEventDto,
+  type OperationEventPageDto,
   type SearchPageDto,
   type StacFeatureCollectionDto,
 } from './data-foundation';
@@ -183,7 +184,11 @@ export interface DataFoundationDal {
     signal?: AbortSignal,
   ): Promise<CandidateSavedViewOutput>;
   operation(operationId: string): Promise<OperationDto>;
-  operationEvents(operationId: string): Promise<readonly OperationEventDto[]>;
+  operationEvents(
+    operationId: string,
+    after?: string,
+    signal?: AbortSignal,
+  ): Promise<OperationEventPageDto>;
   search(query: string, after?: string): Promise<SearchPageDto>;
   knowledge(query: string, after?: string): Promise<SearchPageDto>;
   graph(entityId: string): Promise<GraphResultDto>;
@@ -490,7 +495,9 @@ export function createDataFoundationDal(
         if (error instanceof DataFoundationApiError) throw error;
         throw new DataFoundationApiError('contract', 502);
       }
-      return mode === 'json' ? json(text) : text;
+      return mode === 'json'
+        ? json(text)
+        : { body: text, nextCursor: response.headers.get('X-Next-Cursor') };
     };
     try {
       if (signal.aborted) throw abortError();
@@ -1080,18 +1087,35 @@ export function createDataFoundationDal(
         parseOperation,
       );
     },
-    operationEvents: async (operationId) => {
+    operationEvents: async (operationId, after, signal) => {
       validateUuid(operationId);
+      if (after !== undefined) validateQuery(after, 2048);
+      const query = new URLSearchParams({ first: '100' });
+      if (after !== undefined) query.set('after', after);
       const value = await call(
-        `/api/data/v1/operations/${operationId}/events?first=100`,
-        {},
+        `/api/data/v1/operations/${operationId}/events?${query}`,
+        { signal },
         'sse',
       );
-      if (typeof value !== 'string') {
-        throw new DataFoundationApiError('contract', 502);
-      }
       try {
-        return parseOperationEventStream(value);
+        if (
+          value === null ||
+          typeof value !== 'object' ||
+          !('body' in value) ||
+          typeof value.body !== 'string' ||
+          !('nextCursor' in value)
+        )
+          throw Error('Invalid event response');
+        return parseOperationEventPage(
+          {
+            items: parseOperationEventStream(value.body),
+            ...(value.nextCursor === null
+              ? {}
+              : { nextCursor: value.nextCursor }),
+          },
+          operationId,
+          after,
+        );
       } catch {
         throw new DataFoundationApiError('contract', 502);
       }

@@ -298,11 +298,18 @@ export interface OperationEventDto {
   readonly eventId: string;
   readonly operationId: string;
   readonly sequence: number;
+  readonly operationVersion: number;
   readonly eventType: (typeof OPERATION_EVENT_TYPES)[number];
   readonly status: OperationStatus;
   readonly progressPercent: number;
   readonly occurredAt: string;
   readonly message?: string;
+}
+
+/** Web projection of the existing OperationEventPage response. */
+export interface OperationEventPageDto {
+  readonly items: readonly OperationEventDto[];
+  readonly nextCursor?: string;
 }
 
 export interface SearchResultDto {
@@ -861,12 +868,12 @@ export function parseOperation(value: unknown): OperationDto {
 function parseOperationEvent(value: unknown): OperationEventDto {
   const contract = 'operation event';
   const row = object(value, contract);
-  integer(row.operationVersion, contract, 1);
   const message = optionalString(row.message, contract, 2_048);
   return {
     eventId: uuid(row.eventId, contract),
     operationId: uuid(row.operationId, contract),
     sequence: integer(row.sequence, contract, 1),
+    operationVersion: integer(row.operationVersion, contract, 1),
     eventType: oneOf(row.eventType, OPERATION_EVENT_TYPES, contract),
     status: oneOf(row.status, OPERATION_STATUSES, contract),
     progressPercent: integer(row.progressPercent, contract, 0, 100),
@@ -891,6 +898,40 @@ export function parseOperationEventStream(value: string): OperationEventDto[] {
     }
   }
   return events;
+}
+
+export function parseOperationEventPage(
+  value: unknown,
+  operationId: string,
+  after?: string,
+  previousSequence = 0,
+): OperationEventPageDto {
+  const contract = 'operation event page';
+  const row = object(value, contract);
+  if (!Array.isArray(row.items) || row.items.length > 100) fail(contract);
+  const items = row.items.map(parseOperationEvent);
+  let sequence = previousSequence;
+  for (const item of items) {
+    if (
+      item.operationId.toLowerCase() !== operationId.toLowerCase() ||
+      item.sequence <= sequence
+    )
+      fail(contract);
+    sequence = item.sequence;
+  }
+  const nextCursor =
+    row.nextCursor === undefined
+      ? undefined
+      : string(row.nextCursor, contract, 1, 2048);
+  if (
+    nextCursor !== undefined &&
+    (nextCursor.includes(',') ||
+      /[\r\n]/.test(nextCursor) ||
+      nextCursor === after ||
+      items.length === 0)
+  )
+    fail(contract);
+  return { items, ...(nextCursor === undefined ? {} : { nextCursor }) };
 }
 
 function parseSearchResult(value: unknown): SearchResultDto {

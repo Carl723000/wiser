@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-05
-lastReviewedCommit: 4e8afc585fa8c1bdfb41e87af6bc307e7259b09b
+lastReviewedCommit: c0509bdb07a4632918799ee4e492e1e075627028
 ---
 
 ## Two frontend applications
@@ -347,3 +347,11 @@ The matrix's current visible scope counts only currently readable sources. Its k
 The pure `spatial-monthly-readout.ts` adapter consumes only the already filtered `ProjectReadinessResult` monthly rows, records and classified values. Joins use `readinessRecordKey`, never a source-local record ID. UI navigation checks `materialReference` work/version/original-asset references against the current record source/version, and requires a unique current ID before calling the existing record-selection callback. Initial month/value lists are bounded and reveal exact shown/full counts. Unknown time entries stay outside month cells. No core time, authority, saved-view, public query or permission contract changes are introduced. Focused component/type checks remain separate from full verification and real browser acceptance.
 
 The local spatial scope strip reads non-default filter chips from the active view, not the rectangle input draft. Month-window labelling reuses the existing reading state only while its expanded bounds still match; changed exact dates use a date-window label. No URL or time-role contract changes. Displayed public references derive deduplicated attribution links from their existing metadata on both renderers. Zoom and camera controls expose named groups without introducing toolbar arrow semantics. Focused component regressions cover these states; actual browser acceptance remains a separate step.
+
+### Operation progress continuation
+
+The task page starts with at most 100 events for the exact Operation. An explicit continuation action replaces the visible segment with one next page; it does not accumulate or automatically read the full history. The page identifies the current sequence range, announces loading and completion, and returns keyboard focus to the reading status. Refreshing and the explicit first-segment action restart at the first 100 events.
+
+The session-verified internal POST endpoint `/api/data-foundation/operation-events` follows the existing same-origin BFF pattern. It accepts only the Operation identifier and optional cursor, caps the request body at 16 KiB and the request at ten seconds, and creates a fresh DAL for every action. Authority-bound cursors remain in component memory and the request/response body; they never enter browser URLs, visible copy or logs. Each server request uses the existing Operation events API with `first=100`. The Web projection retains the existing page shape, rejects malformed or repeated continuation headers, and checks the Operation identifier and increasing sequence order on every page. A continuation also requires increasing sequence order relative to the previous segment.
+
+Authentication, authorization, missing-task, invalid-cursor and unavailable outcomes remain separate. A failed read hides the previous task summary and events; invalid reading positions require an explicit return to the first segment. Aborted or superseded object/initial-state requests cannot publish late content. These Web checks do not prove live Auth, PostgreSQL/RLS, storage or global shutdown behavior, and do not change the public API, permissions, saved-view identity, time rules or migrations.

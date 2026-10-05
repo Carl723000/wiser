@@ -30,7 +30,7 @@ it('provides an explicit first-segment recovery on the production task page', as
     createdAt: '2026-10-05T00:00:00Z',
     updatedAt: '2026-10-05T00:00:00Z',
   });
-  mocks.events.mockResolvedValue([]);
+  mocks.events.mockResolvedValue({ items: [] });
   const markup = renderToStaticMarkup(
     await Page({ params: Promise.resolve({ locale: 'en', operationId }) }),
   );

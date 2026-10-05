@@ -105,7 +105,8 @@
 }
 
 .queryForm button,
-.queryForm a {
+.queryForm a,
+.readingControls button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -119,10 +120,23 @@
   cursor: pointer;
 }
 
-.queryForm button {
+.queryForm button,
+.readingControls button {
   border-color: var(--action-primary-bg);
   color: var(--action-primary-text);
   background: var(--action-primary-bg);
+}
+
+.readingControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block: 1rem;
+}
+
+.readingControls button {
+  white-space: normal;
 }
 
 .queryForm a {

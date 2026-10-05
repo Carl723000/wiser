@@ -272,7 +272,7 @@ export function DataFailureState({
   error,
   locale,
 }: {
-  readonly error: DataFoundationApiError;
+  readonly error: Pick<DataFoundationApiError, 'kind'>;
   readonly locale: Locale;
 }) {
   const copy = getDictionary(locale).dataFoundation;

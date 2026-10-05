@@ -54,6 +54,27 @@ function eventDal(fetch: typeof globalThis.fetch) {
 }
 
 describe('same-operation bounded event continuation', () => {
+  it('rejects an operation summary for another task before combining it with events', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({
+          operationId: PROJECT_ID,
+          resource: 'ingestion',
+          tenantId: TENANT_ID,
+          projectId: PROJECT_ID,
+          capabilityId: 'data.ingestion.create',
+          status: 'RUNNING',
+          progressPercent: 10,
+          version: 1,
+          createdAt: '2026-10-05T00:00:00Z',
+          updatedAt: '2026-10-05T00:00:00Z',
+        }),
+      );
+    await expect(
+      eventDal(fetch).operation(GEO_VERSION_ID),
+    ).rejects.toMatchObject({ kind: 'contract' });
+  });
   it.each([1, 2048])(
     'retains a single %i-character cursor and requests exactly one next page',
     async (length) => {
@@ -151,22 +172,25 @@ describe('same-operation bounded event continuation', () => {
     [400, 'invalid-request'],
     [422, 'invalid-request'],
     [503, 'unavailable'],
-  ])('preserves the actual continuation %i classification', async (status, kind) => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(
-        new Response('private upstream text', { status: Number(status) }),
-      );
-    const read = eventDal(fetch).operationEvents as unknown as (
-      id: string,
-      after: string,
-    ) => Promise<unknown>;
-    await expect(read(GEO_VERSION_ID, 'cursor')).rejects.toMatchObject({
-      kind,
-      status,
-    });
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
+  ])(
+    'preserves the actual continuation %i classification',
+    async (status, kind) => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          new Response('private upstream text', { status: Number(status) }),
+        );
+      const read = eventDal(fetch).operationEvents as unknown as (
+        id: string,
+        after: string,
+      ) => Promise<unknown>;
+      await expect(read(GEO_VERSION_ID, 'cursor')).rejects.toMatchObject({
+        kind,
+        status,
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
   it('bounds an unresolved continuation request', async () => {
     const read = eventDal(vi.fn(() => new Promise<Response>(() => {})))
       .operationEvents as unknown as (

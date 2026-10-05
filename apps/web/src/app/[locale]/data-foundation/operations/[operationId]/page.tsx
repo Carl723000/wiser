@@ -8,7 +8,6 @@ import {
   DataPageMain,
   DataSection,
   FieldGrid,
-  OperationEventList,
   ProtocolValue,
   SectionHeading,
   StatusBadge,
@@ -17,8 +16,9 @@ import {
 import {
   parseDataRouteUuid,
   type OperationDto,
-  type OperationEventDto,
+  type OperationEventPageDto,
 } from '@/lib/data-foundation';
+import { OperationEventReader } from '@/components/operation-event-reader';
 import { getDataFoundationDal } from '@/lib/data-foundation-dal.server';
 import {
   dataFoundationMetadata,
@@ -47,7 +47,7 @@ export default async function OperationPage({ params }: OperationPageProps) {
   const operationId = parseDataRouteUuid(rawOperationId);
   const route = `/${locale}/data-foundation/operations/${rawOperationId}`;
   let operation: OperationDto | undefined;
-  let events: readonly OperationEventDto[] | undefined;
+  let events: OperationEventPageDto | undefined;
   let failure: ReturnType<typeof handleDataPageError> | undefined;
   try {
     if (operationId === null) throw invalidDataPageRequest();
@@ -72,7 +72,12 @@ export default async function OperationPage({ params }: OperationPageProps) {
         <DataFailureState locale={locale} error={failure} />
       )}
       {operation === undefined || events === undefined ? null : (
-        <>
+        <OperationEventReader
+          key={operationId}
+          operationId={operation.operationId}
+          initialPage={events}
+          locale={locale}
+        >
           <DataSection>
             <SectionHeading title={copy.operationPage.summaryTitle} />
             <FieldGrid
@@ -130,14 +135,7 @@ export default async function OperationPage({ params }: OperationPageProps) {
               ]}
             />
           </DataSection>
-          <DataSection>
-            <SectionHeading
-              title={copy.operationPage.eventsTitle}
-              lede={copy.operationPage.eventsLede}
-            />
-            <OperationEventList locale={locale} events={events} />
-          </DataSection>
-        </>
+        </OperationEventReader>
       )}
     </DataPageMain>
   );
