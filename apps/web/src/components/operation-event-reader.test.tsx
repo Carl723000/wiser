@@ -8,8 +8,8 @@ import {
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { OperationEventReader } from './operation-event-reader';
-import { StatusBadge } from './data-foundation-workspace';
-import { OperationEventTypeSchema } from '@wiser/data-contracts';
+import { OperationEventList } from './data-foundation-workspace';
+import { OperationEventSchema } from '@wiser/data-contracts';
 import type { OperationEventPageDto } from '@/lib/data-foundation';
 import { getDictionary } from '@/lib/i18n';
 
@@ -52,10 +52,14 @@ it.each([
 ])(
   'shows the registered resumed event label in $locale',
   ({ locale, label }) => {
-    const eventType = OperationEventTypeSchema.parse('RESUMED');
-    const labels: Readonly<Record<string, string>> =
-      getDictionary(locale).dataFoundation.status.events;
-    render(<StatusBadge code={eventType} label={labels[eventType] ?? ''} />);
+    const resumed = OperationEventSchema.parse({
+      ...event(101),
+      eventType: 'RESUMED',
+    });
+    // The public DTO is valid; the existing Web type omits this registered value.
+    // Assert only the test boundary type, preserving the exact runtime event.
+    const events = [resumed] as OperationEventPageDto['items'];
+    render(<OperationEventList events={events} locale={locale} />);
 
     expect(screen.getByText(label)).toBeTruthy();
     expect(screen.queryByText('RESUMED')).toBeNull();
