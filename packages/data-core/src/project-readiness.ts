@@ -372,7 +372,13 @@ function restrictFluxUseCheck(
   };
   if (
     !hasEvidence(check.evidence) ||
-    selected.some((record) => !hasEvidence(record.evidence))
+    selected.some(
+      (record) =>
+        !hasEvidence(record.evidence) ||
+        record.evidence.some(
+          (item) => sourceKey(item.source) !== sourceKey(record.source),
+        ),
+    )
   )
     unknown.push('EVIDENCE_UNKNOWN');
   if (
