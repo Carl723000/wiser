@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 23a3e1c9353c88e636233e2b33f7ba2602681914
+lastReviewedCommit: d9c945df694f0d71ba64f5639ddc6c67e3fdaf08
 ---
 
 ## What this guide governs
@@ -209,6 +209,8 @@ Original links from a reopened saved view retain its canonical `savedViewId` on 
 Map-to-record and record-to-map reading within the same fixed drawing retains map camera, selection and layer state. Each return still reads an authorized geometry page and uses its newly issued cursor. Inactive panels are hidden and their controls are excluded from focus; full-workspace expansion keeps the map mounted. A changed reference, asset, drawing or access denial clears the previous map. This recovery remains within the mounted reader and does not claim persisted-camera/period restoration or real browser acceptance from a synthetic engine lifecycle test.
 
 Returning to a visible candidate tab or a persisted browser page checks the current reading page without reopening the saved starting page. Restricted controls are inert immediately; permitted delivered bytes and reading state remain until the check resolves. A saved view checks all members before and after the read. Its starting page uses a fresh server resume cursor, while user-advanced pages retain their current cursor and consume any invalid or expired response without silently resetting. Current tab, selection, page anchor and same-drawing camera survive a valid check and are observable in the next immutable save. Recovery events merge and defer behind an ongoing save/revoke, without resending the mutation. A denial or changed reference clears loaded content and the saved title. These synthetic component/browser checks do not establish real authorization, SQL execution or actual bfcache restoration.
+
+While a save or revoke is pending, candidate tabs are natively disabled and synchronous click/keyboard guards keep the current tab and mutation request intact. A rejected arrow-key navigation does not move focus to another tab. After settlement, explicit reading navigation is available again. Ordinary read-to-read tab changes remain enabled and cancel only the replaced read; identity replacement and unmount cancellation retain their existing behavior.
 
 The readiness overview presents six ranges against19 needs before the existing question drilldowns. Obtained, parsed, professionally reviewed and displayable information remain separate. Selecting a region/demand cell opens that same inspection scope; permissions and record identity are unchanged. Overlapping regional counts are never added into the global total. Historical inventory and selected-window rows have distinct labels, and technical use-check success is still separate from professional approval and executable eligibility.
 

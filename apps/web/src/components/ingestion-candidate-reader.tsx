@@ -225,6 +225,7 @@ function CandidateSession({
   const [recordNav, setRecordNav] = useState(firstPosition);
   const [geometryNav, setGeometryNav] = useState(firstPosition);
   const [busy, setBusy] = useState(false);
+  const [mutating, setMutating] = useState(false);
   const [failure, setFailure] = useState<CandidateReaderError['kind'] | null>(
     null,
   );
@@ -331,6 +332,7 @@ function CandidateSession({
   ) {
     if (recoveryGate.current && kind !== 'recovery') return;
     mutationPending.current = kind === 'mutation';
+    setMutating(mutationPending.current);
     rasterCancel.current?.();
     setRasterEpoch((value) => value + 1);
     pending.current?.abort();
@@ -360,6 +362,7 @@ function CandidateSession({
       ) {
         pending.current = null;
         mutationPending.current = false;
+        setMutating(false);
         setBusy(false);
         if (kind === 'recovery') releaseRecovery();
         else if (recoveryQueued.current) {
@@ -464,7 +467,7 @@ function CandidateSession({
     });
   }
   function switchTab(next: Tab) {
-    if (recoveryGate.current) return;
+    if (recoveryGate.current || mutationPending.current) return;
     if (next !== 'originals') rasterCancel.current?.();
     setTab(next);
     if (next === 'map' && assetId) void loadGeometry(assetId, geometryNav);
@@ -1173,6 +1176,7 @@ function CandidateSession({
                         : undefined;
               if (next) {
                 event.preventDefault();
+                if (recoveryGate.current || mutationPending.current) return;
                 switchTab(next);
                 event.currentTarget
                   .querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)
@@ -1190,6 +1194,7 @@ function CandidateSession({
                 tabIndex={tab === value ? 0 : -1}
                 data-tab={value}
                 key={value}
+                disabled={mutating}
                 onClick={() => switchTab(value)}
               >
                 {copy[value]}

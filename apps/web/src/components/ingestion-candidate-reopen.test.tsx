@@ -844,6 +844,13 @@ it.each(['click', 'keyboard'] as const)(
     expect(mutationSignal!.aborted).toBe(false);
     expect(fetch.mock.calls.length).toBe(before);
     expect(
+      screen.getByRole('tab', { name: 'Map' }).hasAttribute('disabled'),
+    ).toBe(true);
+    if (navigation === 'keyboard')
+      expect(document.activeElement).not.toBe(
+        screen.getByRole('tab', { name: 'Map' }),
+      );
+    expect(
       screen
         .getByRole('tab', { name: 'Records' })
         .getAttribute('aria-selected'),
@@ -906,6 +913,13 @@ it.each(['click', 'keyboard'] as const)(
     expect(mutationSignal!.aborted).toBe(false);
     expect(fetch.mock.calls.length).toBe(before);
     expect(
+      screen.getByRole('tab', { name: 'Map' }).hasAttribute('disabled'),
+    ).toBe(true);
+    if (navigation === 'keyboard')
+      expect(document.activeElement).not.toBe(
+        screen.getByRole('tab', { name: 'Map' }),
+      );
+    expect(
       screen
         .getByRole('tab', { name: 'Records' })
         .getAttribute('aria-selected'),
@@ -918,6 +932,32 @@ it.each(['click', 'keyboard'] as const)(
     expect(screen.queryByText(rawValue)).toBeNull();
   },
 );
+it('still cancels an ordinary pending read when keyboard tab navigation starts another read', async () => {
+  await direct();
+  const held = deferred();
+  let readSignal: AbortSignal | null = null;
+  fetch.mockImplementation((value, init) => {
+    if (url(value).endsWith('/geometry')) {
+      readSignal = init?.signal ?? null;
+      return held.promise;
+    }
+    return Promise.resolve(pageReply(value, init, lateValue));
+  });
+  const map = screen.getByRole('tab', { name: 'Map' });
+  const recordTab = screen.getByRole('tab', { name: 'Records' });
+  fireEvent.click(map);
+  await waitFor(() => expect(readSignal).not.toBeNull());
+  expect(recordTab.hasAttribute('disabled')).toBe(false);
+  map.focus();
+  fireEvent.keyDown(map, { key: 'ArrowLeft' });
+  expect(readSignal!.aborted).toBe(true);
+  expect(document.activeElement).toBe(recordTab);
+  await screen.findByText(lateValue);
+  act(() => held.resolve(Response.json(geometry())));
+  await idle();
+  expect(recordTab.getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByText(lateValue)).toBeDefined();
+});
 it('defers recovery until the current save finishes, preserving its signal and delivered bytes', async () => {
   savedReplies('records');
   await persisted('records');

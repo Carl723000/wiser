@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 23a3e1c9353c88e636233e2b33f7ba2602681914
+lastReviewedCommit: d9c945df694f0d71ba64f5639ddc6c67e3fdaf08
 ---
 
 ## Design direction
@@ -152,6 +152,8 @@ Original links from a reopened saved view retain its canonical `savedViewId` on 
 Candidate tabs have stable labelled panels. The inactive map stays mounted but hidden, and its controls stay outside keyboard navigation. Returning to the same fixed candidate, asset, CRS and native drawing preserves the current map instance and reading camera even when a newly authorized response has a new cursor. Changed candidate identity, asset or drawing and denied access remove the previous drawing. Only this bounded in-memory display source is retained; fresh server reads and full saved-manifest checks remain mandatory. A reopened fixed view restores its supported planar center and zoom without an initial fit overriding them; saving creates a new immutable view using the current reading camera. Another asset or drawing does not inherit the previous camera when saved without its own reading position; the earlier immutable view stays intact. Unsupported bearing, pitch or zoom of the same asset remains unchanged and visibly unapplied. Stored layer flags and periods remain unapplied, with an explicit no-period-filter label. Actual browser layout/camera acceptance is separate.
 
 Visible-tab and persisted-pageshow recovery immediately makes retained candidate controls inert while checking the current page. Existing saved views recheck their complete manifest before and after that read. The saved start uses its newly issued resume cursor; an advanced page keeps its current cursor and fails visibly if invalid or expired. The current tab, page anchor, selection and same-drawing camera stay in memory, and the next immutable save records that reading position. Overlapping events share one check; an ongoing save or revoke finishes before recovery. Denied or changed references clear content and titles, and late cancelled reads cannot restore them. No timer polling or browser content archive is added. Synthetic browser interaction checks establish native inert/Tab/click behavior only; real accounts, SQL and actual bfcache restoration remain separate.
+
+While a save or revoke is pending, candidate tabs are natively disabled and synchronous click/keyboard guards keep the current tab and mutation request intact. A rejected arrow-key navigation does not move focus to another tab. After settlement, explicit reading navigation is available again. Ordinary read-to-read tab changes remain enabled and cancel only the replaced read; identity replacement and unmount cancellation retain their existing behavior.
 
 The readiness matrix uses sticky row/column labels inside a bounded scroll area. All114 geographic-demand cells retain text for four independent information axes and their use verdict, with semantic color as a supplementary cue. Unknown visible coverage is not a global absence claim. Cell selection is keyboard-operable and pressed state names the exact region/demand. Context help explains overlap, current display scope and professional-review limits; ordinary labels remain concise.
 
