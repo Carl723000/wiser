@@ -35,7 +35,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: c2754d90be5e2658db195bc488c714b972c8783d
+lastReviewedCommit: 51a3bd5a
 ---
 
 ## Red → Green → Refactor
@@ -332,7 +332,7 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 
 候选清单采集须对照准备好的资产／哈希清单读取既有资产、记录和几何分页，保留来源顺序、严格递增的记录索引、有序列键与标签，以及不依赖分页大小的内容摘要。几何的记录身份、索引和来源标识须与标为包含几何的记录对应。已知零保留为零，未知数量记为 `not_run`，已知 `PARTIAL` 仍为部分解析；正式负载准入继续要求既有完整 `READY` 门禁。空续页仍按无效回应拒绝；回应已判为无权访问后，后续取消或清理失败不得覆盖首个结果。`tests/toolchain/a12-candidate-inventory-collector.spec.ts` 使用合成分页核对这项消费者契约，覆盖外来资产、元数据／列／数量漂移、游标回环、取消和首因清理。这些检查不证明正常栈来源、扫描、真实权限或正式 A12。
 
-任务私有的完整接收采集器须把同一准备顺序贯穿上传目标、上传完成、创建接收任务、实际当前资料读取及提交处理。提交版本取自资料而非Operation；全部回应须保留原创建任务身份。随后有界读取状态与事件分页，采集同一候选清单，并将每个完整原件与准备字节核对。负载入口的接收回执保持六键；提交、提交前读取及字节校验留在私有持有者的捕获记录中。合成DTO、READY或可复制JSON不能生成可信正常栈来源；缺可信证据仍为未知，禁止派发正式负载。使用 `pnpm exec vitest run tests/toolchain/a12-standard-intake-collector.spec.ts` 核对消费者契约，不代替实际Auth／SQL或扫描验收。
+任务私有的完整接收采集器须把同一准备顺序贯穿上传目标、上传完成、创建接收任务、实际当前资料读取及提交处理。提交版本取自资料而非Operation；全部回应须保留原创建任务身份。随后有界读取状态与事件分页，拒绝连续已观察版本倒退，采集同一候选清单，并将每个完整原件与准备字节核对。冻结结果前，须在全部原件之后重新读取当前资料和原Operation；候选身份变化、版本倒退、无权访问或终止失败均拒绝成功。负载入口的接收回执保持六键；提交、提交前读取及字节校验留在私有持有者的捕获记录中。合成DTO、READY或可复制JSON不能生成可信正常栈来源；缺可信证据仍为未知，禁止派发正式负载。使用 `pnpm exec vitest run tests/toolchain/a12-standard-intake-collector.spec.ts` 核对消费者契约，不代替实际Auth／SQL或扫描验收。
 
 #### 固定候选同标签返回案例
 
@@ -347,3 +347,5 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 案例在填入凭据前要求只有 `list` 报告器，HTML、JSON、blob、自定义或混合报告器会以 `not_run` 拒绝；这些格式即使面对已泛化的错误，仍可能持久化 API 步骤参数。失败截图覆盖为 `off`，trace、video 也保持关闭，并在测试 worker 内启用当前 runner 的 `PLAYWRIGHT_NO_COPY_PROMPT` 开关，持续到产物清理阶段，禁止自动保存失败 DOM 快照。runner 仍可能写出泛化错误与元数据；这个开关并非禁用全部 error-context 文件。诊断不回显输入 URL、响应内容、签名游标或凭据；不得附加 cookie、storage state 或候选材料。案例只测试普通获权的同标签往返，不撤权或合成事件，不验地图真实相机姿态或超过 100 条事件的续页。独立的续页 403 路径仍需真实长事件 Operation 和另经明确授权的控制动作；测试发现和本往返案例都不能满足该路径。发现测试保留原九项案例，新增这一项时只使用明确合成的 `--list` 输入，不启动服务或真实登录。
 
 Supabase CI 通道在结构检查后，串行运行真实智能体连接、受管 MCP 同意、资源权威和资源批次集成套件。`WISER_AGENT_TEST_DATABASE_URL` 和 `WISER_RESOURCE_TEST_DATABASE_URL` 均须指向已播种的隔离测试控制库。它们核验真实 PostgreSQL 授权、同意范围上限、撤权、按用途独立审批和审计失败回滚；未设置变量而跳过测试不算验收。不得指向共享部署。本人浏览器／客户端与获许可外部供方仍是独立的目标环境验收。
+
+`tests/toolchain/a12-standard-intake-http-combination.spec.ts` 使用实际接收、候选分页和二进制原件适配器，对接本次独占的临时回环监听器，核对字节顺序、游标续读、原件后的权限变化与请求清理。公开DTO对照及编译检查用于确认夹具有效性；这些检查不证明真实Auth、RLS、正常扫描来源或正式A12。

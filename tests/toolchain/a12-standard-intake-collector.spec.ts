@@ -873,3 +873,72 @@ it('rejects candidate source SHA drift despite valid public schema and generated
   expect(result).toMatchObject({ status: 'failed', reason: 'drift' });
   expect(f.original.read).not.toHaveBeenCalled();
 });
+
+it.each(['ingestion', 'operation'] as const)(
+  'rejects a same-identity schema-valid %s version regression between polling rounds',
+  async (regressing) => {
+    const f = fixture();
+    const controlSend = f.api.send.getMockImplementation();
+    if (controlSend === undefined)
+      throw new Error('missing synthetic fixture control');
+    let ingestionReads = 0,
+      operationReads = 0;
+    f.api.send.mockImplementation(async (request) => {
+      const reply = await controlSend(request);
+      let body = reply.body;
+      if (request.capabilityId === 'data.ingestion.get') {
+        ingestionReads += 1;
+        // Preserve the original pre-submit v2 control. A null candidate forces
+        // a second status round, with only the named version moving backward.
+        if (ingestionReads > 1) {
+          const current = GetIngestionOutputSchema.parse(body);
+          const firstRound = ingestionReads === 2;
+          body = GetIngestionOutputSchema.parse({
+            ...current,
+            ingestion: {
+              ...current.ingestion,
+              state: firstRound ? 'FINGERPRINTED' : 'REVIEW_REQUIRED',
+              version:
+                regressing === 'ingestion'
+                  ? firstRound
+                    ? 5
+                    : 4
+                  : firstRound
+                    ? 3
+                    : 4,
+            },
+            candidateReference: firstRound ? null : current.candidateReference,
+          });
+        }
+      }
+      if (request.capabilityId === 'data.operation.get') {
+        operationReads += 1;
+        const current = OperationSchema.parse(body);
+        const firstRound = operationReads === 1;
+        body = OperationSchema.parse({
+          ...current,
+          status: firstRound ? 'RUNNING' : 'WAITING_REVIEW',
+          version:
+            regressing === 'operation'
+              ? firstRound
+                ? 4
+                : 3
+              : firstRound
+                ? 2
+                : 3,
+        });
+      }
+      const wire = Buffer.from(JSON.stringify(body));
+      return {
+        ...reply,
+        body,
+        wireBytes: wire.length,
+        wireSha256: sha(wire),
+      };
+    });
+    const result = await createA12StandardIntakeCollector(f.options).collect();
+    expect(result).toMatchObject({ status: 'failed', reason: 'drift' });
+    expect(f.createInventory).not.toHaveBeenCalled();
+    expect(f.original.read).not.toHaveBeenCalled();
+  },
+);
