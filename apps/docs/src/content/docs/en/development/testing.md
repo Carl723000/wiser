@@ -29,7 +29,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 2eb9466b95c82afeeea237ab4018e8822e7f1aba
+lastReviewedCommit: 5808d6e1bafbd489489834cf477b51677634b9fd
 ---
 
 ## Red → Green → Refactor
@@ -307,6 +307,12 @@ The public REST GET boundary and same-origin Web BFF POST boundary are distinct.
 The three version-bound business/record navigation regressions use admitted local source data, including a TCI band and independently checked observation counts. An unfiltered `pnpm --filter @wiser/web test:e2e:data-case --reporter=list` run requires `WISER_WEB_LIVE_BASE_URL`, the existing live credentials, `WISER_WEB_LIVE_RELATION_URL`, `WISER_WEB_LIVE_RECORD_URL`, `WISER_WEB_LIVE_OBSERVATION_COUNT`, and `WISER_WEB_LIVE_CANDIDATE_VIEW_URL`. The relation URL must identify the fixed catalog version and relation view; the record URL must carry its fixed record focus; the candidate URL must satisfy the real saved-view contract below. Use the file-filtered command below when running only the candidate return case. Missing or invalid case inputs fail explicitly. These `e2e-live/*.case.ts` tests retain all assertions and are collected by `playwright.case.config.ts`; they are not portable CI fixtures. `test:e2e:data-live` continues to collect all existing `*.spec.ts` suites against the CI smoke stack. The discovery regression invokes Playwright with synthetic inputs and `--list` only; it does not claim a real-case browser run. Docpact routes live browser cases, browser configuration and discovery fixtures to this bilingual testing contract.
 
 The full-traversal utility uses a domain-separated SHA256 chain with ordered entries and column definitions, independent of page boundaries. Every one of twenty traversals must match the pre-frozen inventory, including full assets, row and geometry counts, identity uniqueness and order; matching only another traversal is insufficient. It rejects duplicate/cyclic cursors and bounds reads by the frozen counts, without retaining original content in results.
+
+The test-side HTTP adapter uses the registered method, route and input schema for these three public GET capabilities. Admit the exact task-owned loopback origin and port before supplying a verified session closure. It never follows redirects, sends a GET body or retries a failed attempt. Successful JSON responses retain actual consumed entity bytes, enforce the existing 3 MiB streaming limit, reject incomplete transport and invalid UTF-8, and preserve the existing 30-second total deadline. Non-200 replies retain their status without consuming error content; zero bytes means nothing was consumed, not that the response was empty. Thrown failures retain unknown byte counts. Client abort and adapter close release owned requests, listeners and timers; these checks do not prove server SQL cancellation.
+
+The in-memory Auth guard signs in once using the existing Supabase client, then rechecks verified claims, the same session token and the existing platform identity response before each condition. These checks are outside measured GET timing. It disables persisted sessions and refresh, rejects token replacement, and invalidates old condition closures after a new check or failure. The identity endpoint proves only identity and necessary scopes: it does not expose every candidate resource, delegation or validity condition. Complete current candidate authority remains the responsibility of the actual public GET. Fake Auth tests and synthetic loopback tests do not establish actual Auth, RLS, standard intake provenance or formal A12 results.
+
+Run the adapter checks with `pnpm exec vitest run tests/toolchain/a12-candidate-load-http.spec.ts tests/toolchain/a12-candidate-load-auth.spec.ts`. Their synthetic HTTP fixtures bind only their own system-assigned loopback ports and close only their own listeners, so they do not reserve the live API port. Composition checks exercise the actual Auth guard, HTTP adapter and driver together: token expiry stops new attempts as denied, an obsolete condition stops them as stale, and a closed guard cancels them. Already started attempts remain in the results; no replacement requests are made. Configuration exceptions and error classifications remain bounded and sanitized.
 
 #### Fixed candidate same-tab Back case
 

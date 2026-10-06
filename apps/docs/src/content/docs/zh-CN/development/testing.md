@@ -29,7 +29,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 2eb9466b95c82afeeea237ab4018e8822e7f1aba
+lastReviewedCommit: 5808d6e1bafbd489489834cf477b51677634b9fd
 ---
 
 ## Red → Green → Refactor
@@ -307,6 +307,12 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 三个固定版本的业务关系/记录导航回归使用已接纳的本机来源数据，包括 TCI 波段和独立核对的观测关系数。未按文件过滤运行 `pnpm --filter @wiser/web test:e2e:data-case --reporter=list` 整套案例时，须提供 `WISER_WEB_LIVE_BASE_URL`、既有 live 凭据、`WISER_WEB_LIVE_RELATION_URL`、`WISER_WEB_LIVE_RECORD_URL`、`WISER_WEB_LIVE_OBSERVATION_COUNT` 和 `WISER_WEB_LIVE_CANDIDATE_VIEW_URL`。关系 URL 必须指向固定目录版本与关系视图，记录 URL 必须携带固定记录焦点，候选 URL 须满足下文真实保存视图要求；只运行候选返回案例时使用下文按文件过滤的命令。缺少或无效的案例输入会明确失败。`e2e-live/*.case.ts` 保留全部断言，由 `playwright.case.config.ts` 收集，不作为可移植的 CI fixture。`test:e2e:data-live` 继续对 CI smoke 环境收集既有全部 `*.spec.ts` 套件。测试发现回归只使用合成输入调用 Playwright `--list`，不能算作真实案例浏览器运行。Docpact 将 live 浏览器案例、浏览器配置和发现 fixture 映射到本双语测试契约。
 
 完整遍历工具使用区分动作的 SHA256 摘要链，保留条目和列定义顺序，摘要不依赖分页边界。二十次遍历每次都须与预先固定的清单匹配，包括全部原件、行与几何计数、身份唯一性和顺序；只与另一遍历相符不足以通过。重复或循环游标会被拒绝，读取量受固定计数约束，结果不保存原始内容。
+
+测试侧 HTTP 适配器直接使用三项公共 GET 的已注册方法、路径和输入契约。提供已验证会话闭包前，先核准任务专用的本机地址及准确端口。适配器不跟随重定向、不发送 GET 正文、不重试失败尝试。成功 JSON 响应记录实际消费的正文流字节，遵守既有 3 MiB 流限制，拒绝未完整结束的传输和非法 UTF-8，保留既有 30 秒总期限。非 200 响应保留状态但不读取错误正文；零字节表示未消费正文，不能解释为响应为空。抛错时字节数仍为未知。客户端取消与关闭适配器会清理自身请求、监听器和定时器，这些检查不证明服务端 SQL 已取消。
+
+内存认证守卫通过既有 Supabase 客户端登录一次，再在每组条件前核验可信声明、相同会话令牌和既有平台身份响应；这些操作不计入 GET 耗时。守卫禁止持久保存会话和刷新，拒绝令牌替换，新检查或失败后旧条件闭包失效。身份接口只能证明身份及必要操作范围，没有包含候选资源、委托和有效期的全部条件；完整的当前候选权限仍由实际公共 GET 核验。假认证测试和合成回环测试不能证明真实 Auth、行级权限、标准接收来源或正式 A12 结果。
+
+通过 `pnpm exec vitest run tests/toolchain/a12-candidate-load-http.spec.ts tests/toolchain/a12-candidate-load-auth.spec.ts` 运行适配器检查。合成 HTTP 服务仅绑定系统为自身分配的回环端口，并只关闭自己的监听器，不占用真实 API 端口。组合检查调用实际认证守卫、HTTP 适配器和驱动器：令牌过期按失权停止新尝试，旧条件按失效停止，守卫关闭按取消停止。已开始的尝试保留在结果中，不发替补请求；配置异常及错误分类均限定范围并脱敏。
 
 #### 固定候选同标签返回案例
 

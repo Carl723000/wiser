@@ -96,6 +96,8 @@ coverage:
     - tests/toolchain/candidate-backflow-fixture.spec.ts
     - tests/toolchain/a12-candidate-load-driver.spec.ts
     - tests/toolchain/a12-candidate-load-traversal.spec.ts
+    - tests/toolchain/a12-candidate-load-http.spec.ts
+    - tests/toolchain/a12-candidate-load-auth.spec.ts
     - apps/docs/src/app/**
     - apps/docs/src/components/**
     - apps/docs/src/lib/**
@@ -293,6 +295,10 @@ rules:
       - path: tests/toolchain/a12-candidate-load-driver.spec.ts
         kind: code
       - path: tests/toolchain/a12-candidate-load-traversal.spec.ts
+        kind: code
+      - path: tests/toolchain/a12-candidate-load-http.spec.ts
+        kind: code
+      - path: tests/toolchain/a12-candidate-load-auth.spec.ts
         kind: code
     requiredDocs:
       - path: apps/docs/src/content/docs/zh-CN/development/testing.md
