@@ -30,12 +30,13 @@ checkPaths:
   - tests/toolchain/a12-candidate-inventory-collector.spec.ts
   - tests/toolchain/a12-standard-intake-collector.spec.ts
   - tests/toolchain/a12-standard-intake-http-combination.spec.ts
+  - tests/toolchain/a12-normal-runtime-window.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 23246726
+lastReviewedCommit: cc0ed614e8e57e754b066060b183fd20a94074a3
 ---
 
 ## Red → Green → Refactor
@@ -349,3 +350,5 @@ The case requires the sole `list` reporter before any credential fill, rejecting
 The Supabase CI lane also runs the live Agent connection, managed MCP consent, resource authority and resource batch integration suites serially after schema verification. Both `WISER_AGENT_TEST_DATABASE_URL` and `WISER_RESOURCE_TEST_DATABASE_URL` must target the disposable seeded control database. These suites validate real PostgreSQL authorization, bounded consent, revocation, independent purpose approval and transactional audit failure; setting neither variable skips them and is not acceptance. Never point them at a shared deployment. The personal browser/client and authorized external-provider checks remain separate target gates.
 
 The owned synthetic HTTP composition in `tests/toolchain/a12-standard-intake-http-combination.spec.ts` uses the actual intake, candidate-page and binary-original adapters against task-only ephemeral loopback listeners. It verifies ordered bytes, cursor continuation, post-original authority changes and owned cleanup. Public DTO controls and compiler checks establish fixture validity; these tests do not establish actual Auth, RLS, normal scan provenance or formal A12.
+
+Task-host observation lifecycle is tested separately in `tests/toolchain/a12-normal-runtime-window.spec.ts`. Each drift variant must first open its own window and pass an unchanged read. Missing observation remains unknown; a known generation, build, configuration, mount, migration or signature change rejects and remains terminal after recovery. Check bounded observation deadlines, out-of-band sampling, cross-owner handles, close during pending reads, and complete owned timer cancellation. This lifecycle helper cannot issue a scanner receipt or runner verified: actual native launch ownership and same-window intake membership require their own private composition and live evidence.

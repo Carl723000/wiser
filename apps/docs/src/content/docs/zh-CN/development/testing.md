@@ -30,12 +30,13 @@ checkPaths:
   - tests/toolchain/a12-candidate-inventory-collector.spec.ts
   - tests/toolchain/a12-standard-intake-collector.spec.ts
   - tests/toolchain/a12-standard-intake-http-combination.spec.ts
+  - tests/toolchain/a12-normal-runtime-window.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 23246726
+lastReviewedCommit: cc0ed614e8e57e754b066060b183fd20a94074a3
 ---
 
 ## Red → Green → Refactor
@@ -349,3 +350,5 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 Supabase CI 通道在结构检查后，串行运行真实智能体连接、受管 MCP 同意、资源权威和资源批次集成套件。`WISER_AGENT_TEST_DATABASE_URL` 和 `WISER_RESOURCE_TEST_DATABASE_URL` 均须指向已播种的隔离测试控制库。它们核验真实 PostgreSQL 授权、同意范围上限、撤权、按用途独立审批和审计失败回滚；未设置变量而跳过测试不算验收。不得指向共享部署。本人浏览器／客户端与获许可外部供方仍是独立的目标环境验收。
 
 `tests/toolchain/a12-standard-intake-http-combination.spec.ts` 使用实际接收、候选分页和二进制原件适配器，对接本次独占的临时回环监听器，核对字节顺序、游标续读、原件后的权限变化与请求清理。公开DTO对照及编译检查用于确认夹具有效性；这些检查不证明真实Auth、RLS、正常扫描来源或正式A12。
+
+任务宿主的观察窗口生命周期由 `tests/toolchain/a12-normal-runtime-window.spec.ts` 单独验证。每项漂移反例先打开自己的窗口并通过一次未变化读取；观测缺失保持未知，已知代次、构建、配置、挂载、迁移或签名变化则拒绝，恢复后仍保留首次失效原因。另核整个观测期限、计时外采样、跨宿主句柄、读取在途关闭及自有定时器完整取消。此组件不签发扫描回执或运行入口的可信通过状态；真实启动归属和同窗口接收成员须通过独立的私有接线及现场证据确认。
