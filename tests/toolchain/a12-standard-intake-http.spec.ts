@@ -288,7 +288,7 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
           expect(req.headers['idempotency-key']).toBe(idempotencyKey);
         if (id === 'data.uploadSession.complete')
           expect(req.headers['if-match']).toBe('"v1"');
-        req.on('data', (chunk) => {
+        req.on('data', (chunk: Buffer) => {
           received += chunk.toString();
         });
         req.on('end', () =>
@@ -309,7 +309,7 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
         expect(JSON.parse(received)).toMatchObject(
           id === 'data.uploadSession.complete'
             ? { expectedVersion: 1 }
-            : request.input,
+            : (request.input as Record<string, unknown>),
         );
     },
   );
@@ -715,5 +715,247 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
     value.close();
     await pending;
     expect(value.diagnostics()).toEqual({ activeRequests: 0, closed: true });
+  });
+
+  it.each([
+    'unknown-option',
+    'scope-accessor',
+    'array-accessor',
+    'byte-accessor',
+  ] as const)(
+    'rejects unsnapshottable input %s without evaluating or dispatching it',
+    async (kind) => {
+      const getter = vi.fn(() => 'private-accessor');
+      if (kind === 'unknown-option' || kind === 'scope-accessor') {
+        const config = { ...options() };
+        if (kind === 'unknown-option')
+          Object.defineProperty(config, 'headers', {
+            value: { Authorization: 'private-header' },
+          });
+        else Object.defineProperty(config, 'tenantId', { get: getter });
+        expect(() => createA12StandardIntakeHttpAdapter(config)).toThrow(
+          CandidateLoadTransportError,
+        );
+      } else if (kind === 'array-accessor') {
+        const request = input('data.uploadSession.create');
+        const body = request.input as { objects: unknown[] };
+        Object.defineProperty(body.objects, '0', { get: getter });
+        await failure(adapter().send(request), 'invalid');
+      } else {
+        const bytes = Uint8Array.from(syntheticBytes);
+        Object.defineProperty(bytes, 'byteLength', { get: getter });
+        await failure(adapter().put({ ...put(), bytes }), 'invalid');
+      }
+      expect(getter).not.toHaveBeenCalled();
+      expect(apiHits + storageHits).toBe(0);
+    },
+  );
+
+  it.each(['tenant', 'project', 'operation', 'ingestion'] as const)(
+    'rejects schema-valid response bound to another %s',
+    async (kind) => {
+      const id =
+        kind === 'ingestion' ? 'data.ingestion.get' : 'data.operation.get';
+      const body = output(id);
+      if (id === 'data.ingestion.get')
+        (body as { ingestion: { ingestionId: string } }).ingestion.ingestionId =
+          assetId;
+      else
+        (body as Record<string, unknown>)[
+          kind === 'tenant'
+            ? 'tenantId'
+            : kind === 'project'
+              ? 'projectId'
+              : 'operationId'
+        ] = assetId;
+      expect(
+        DATA_CAPABILITY_REGISTRY[id].outputSchema.safeParse(body).success,
+      ).toBe(true);
+      apiHandler = (_req, res) => json(res, 200, body);
+      await failure(adapter().send(input(id)), 'invalid');
+    },
+  );
+
+  it.each([
+    'other-operation',
+    'duplicate-event',
+    'sequence-order',
+    'duplicate-cursor',
+  ] as const)(
+    'rejects a schema-valid ambiguous SSE snapshot %s',
+    async (kind) => {
+      apiHandler = (_req, res) => {
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          ...(kind === 'duplicate-cursor'
+            ? { 'x-next-cursor': ['one', 'two'] }
+            : {}),
+        });
+        const item = {
+          ...event(),
+          ...(kind === 'other-operation' ? { operationId: assetId } : {}),
+        };
+        const frame = (value: typeof item) =>
+          `id: ${value.eventId}\nevent: ${value.eventType}\ndata: ${JSON.stringify(value)}\n\n`;
+        res.end(
+          frame(item) +
+            (kind === 'duplicate-event'
+              ? frame(item)
+              : kind === 'sequence-order'
+                ? frame({ ...item, eventId: assetId })
+                : ''),
+        );
+      };
+      await failure(adapter().send(input('data.operation.events')), 'invalid');
+    },
+  );
+
+  it('bounds the finite REST SSE snapshot at 30s despite the registry long-stream allowance', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const value = adapter({ accessToken: () => new Promise<string>(() => {}) });
+    const pending = failure(
+      value.send(input('data.operation.events')),
+      'unavailable',
+    );
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(value.diagnostics().activeRequests).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(value.diagnostics().activeRequests).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('redacts actual operation errors and optional event messages while preserving schemas', async () => {
+    const failed = {
+      ...operation(),
+      status: 'FAILED',
+      completedAt: instant,
+      error: {
+        code: 'SCAN_FAILED',
+        message: 'private-error-token-path',
+        retryable: false,
+      },
+    };
+    apiHandler = (_req, res) => json(res, 200, failed);
+    const reply = await adapter().send(get());
+    const projected = redactA12StandardIntakeReply(reply);
+    expect(projected.body).toMatchObject({
+      error: { code: 'SCAN_FAILED', message: 'redacted', retryable: false },
+    });
+    expect(projected.redactedFields).toEqual(['body.error.message']);
+    expect(JSON.stringify(projected)).not.toContain('private-error-token-path');
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.operation.get'].outputSchema.safeParse(
+        projected.body,
+      ).success,
+    ).toBe(true);
+    apiHandler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(
+        `id: ${eventId}\nevent: WAITING_REVIEW\ndata: ${JSON.stringify(event())}\n\n`,
+      );
+    };
+    const events = redactA12StandardIntakeReply(
+      await adapter().send(input('data.operation.events')),
+    );
+    expect(events.body).toEqual({
+      items: [{ ...event(), message: undefined }],
+    });
+    expect(events.redactedFields).toEqual(['body.items[0].message']);
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.operation.events'].outputSchema.safeParse(
+        events.body,
+      ).success,
+    ).toBe(true);
+    expect(Object.isFrozen(projected.body)).toBe(true);
+    expect(Object.isFrozen(events.body)).toBe(true);
+  });
+
+  it('uses the actual AbortSignal state and cleanup without evaluating later caller overrides', async () => {
+    const controller = new AbortController();
+    const value = adapter({ signal: controller.signal });
+    const getter = vi.fn(() => {
+      throw new Error('private-signal-getter');
+    });
+    for (const key of ['aborted', 'addEventListener', 'removeEventListener'])
+      Object.defineProperty(controller.signal, key, { get: getter });
+    let started!: () => void;
+    const observed = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    apiHandler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.write('{');
+      started();
+    };
+    const pending = failure(value.send(get()), 'cancelled');
+    await observed;
+    controller.abort();
+    await pending;
+    expect(getter).not.toHaveBeenCalled();
+    expect(value.diagnostics().activeRequests).toBe(0);
+    value.close();
+    expect(value.diagnostics()).toEqual({ activeRequests: 0, closed: true });
+  });
+
+  it('redacts actual ingestion quality messages and optional field paths while retaining a schema-valid projection', async () => {
+    const body = {
+      ...output('data.ingestion.get'),
+      qualityIssues: [
+        {
+          issueId: eventId,
+          severity: 'ERROR',
+          status: 'OPEN',
+          message: 'private-original-value',
+          fieldPath: 'private-original-path',
+          createdAt: instant,
+        },
+      ],
+    };
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.get'].outputSchema.safeParse(
+        body,
+      ).success,
+    ).toBe(true);
+    apiHandler = (_req, res) => json(res, 200, body);
+    const reply = await adapter().send(input('data.ingestion.get'));
+    const projected = redactA12StandardIntakeReply(reply);
+    expect(projected.body).toMatchObject({
+      qualityIssues: [{ message: 'redacted' }],
+    });
+    expect(projected.body).not.toHaveProperty('qualityIssues.0.fieldPath');
+    expect(projected.redactedFields).toEqual([
+      'body.qualityIssues[0].message',
+      'body.qualityIssues[0].fieldPath',
+    ]);
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.get'].outputSchema.safeParse(
+        projected.body,
+      ).success,
+    ).toBe(true);
+    expect(projected.wireSha256).toBe(sha(JSON.stringify(body)));
+    expect(reply.body).toEqual(body);
+    expect(JSON.stringify(projected)).not.toContain('private-original-');
+  });
+
+  it('rejects a schema-valid candidate reference pointing at another ingestion', async () => {
+    const body = {
+      ...output('data.ingestion.get'),
+      candidateReference: {
+        kind: 'ingestion-candidate',
+        ingestionId: assetId,
+        processingBatchId: uploadSessionId,
+        reviewHash: 'a'.repeat(64),
+      },
+    };
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.get'].outputSchema.safeParse(
+        body,
+      ).success,
+    ).toBe(true);
+    apiHandler = (_req, res) => json(res, 200, body);
+    const value = adapter();
+    await failure(value.send(input('data.ingestion.get')), 'invalid');
+    expect(value.diagnostics().activeRequests).toBe(0);
   });
 });

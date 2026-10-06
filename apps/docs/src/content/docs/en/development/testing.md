@@ -25,12 +25,14 @@ checkPaths:
   - tests/toolchain/a12-candidate-load-driver.spec.ts
   - tests/toolchain/a12-candidate-load-traversal.spec.ts
   - tests/toolchain/a12-candidate-load-runner.spec.ts
+  - tests/toolchain/a12-candidate-original-http.spec.ts
+  - tests/toolchain/a12-standard-intake-http.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 501da7d142dfc5e2662af6b149a5621bb7bf232f
+lastReviewedCommit: 22de50b3feaf0d81d8449f3c0335469a61d52633
 ---
 
 ## Red → Green → Refactor
@@ -318,6 +320,12 @@ Run the adapter checks with `pnpm exec vitest run tests/toolchain/a12-candidate-
 The private matrix runner in `apps/web/e2e-live/support/a12-candidate-load-runner.ts` admits independently pinned receipt, inventory, prepared-asset and standard-stack capture files before signing in. It recomputes hashes from actual bytes, checks existing upload/ingestion/Operation associations and complete per-track totals, then snapshots the admitted input immutably. The linked Operation must identify `data.ingestion.create`; matching two unrelated capability identifiers is insufficient. Submitted upload hashes, generic Operation messages and a declared READY label cannot certify scanning or fingerprinting. A task-owned trusted capture verifier must confirm that evidence; absent or unknown evidence is `not_run`. Source registration is optional in the existing intake contract. A manifest-bearing PARTIAL batch remains partial; do not drop its manifest or relabel it READY to satisfy this test.
 
 The runner invokes the existing driver for all thirty-six fixed conditions and traverses every member in frozen order within each of twenty rounds per track. A fixed representative member is selected per action before sampling; performance attempts are not pooled across members. Traversal page samples retain only ordinals, action, elapsed time, consumed bytes and bounded outcomes. Current authority is checked outside timing before each condition or member traversal, owned transports are closed afterward, and terminal failures stop later work without replacing started attempts. A cleanup exception preserves an earlier terminal cause and its samples; malformed returned guards or transports release their own data-property close method without evaluating accessors. Run `pnpm exec vitest run tests/toolchain/a12-candidate-load-runner.spec.ts` for synthetic orchestration checks. Its fake clocks, capture verifier and transports do not prove actual Auth/SQL, dataset scale or formal performance. Even a completed candidate matrix keeps overall `formalA12` as `not_run` until the separately registered sustained, memory, first-screen and cold-rebuild exits have actual evidence.
+
+The private original-content adapter in `apps/web/e2e-live/support/a12-candidate-original-http.ts` consumes the existing fixed candidate GET route. It accepts only the registered task loopback origin and exact reference/asset, requires a complete uncompressed 200 response with the expected Content-Length, hashes the actual stream, and retains the existing 32 MiB input boundary and 30-second deadline. It rejects redirects, ranges, truncated transfers, changed bytes and accessor-based inputs, and closes its own requests. Synthetic checks of `tests/toolchain/a12-candidate-original-http.spec.ts` prove the consumer's integrity guards; an actual successful normal API GET would prove current API guards and bytes, not a fresh per-asset scanner transaction.
+
+`apps/web/e2e-live/support/a12-standard-intake-http.ts` consumes only six existing upload-session, intake and Operation capabilities. Commands retain their registered paths, success statuses, deadlines, UUID idempotency keys and matching optimistic versions. Event reads parse the actual finite SSE snapshot and its next cursor within a bounded 30-second read, preserving event identity and order. Presigned PUT copies and hashes admitted bytes before dispatch, permits only the task storage origin and existing required object headers, and sends no API credentials. JSON/SSE reads retain the existing 3 MiB stream budget; PUT response reads are bounded separately. The adapter checks both schema and requested scope/identity, then releases owned timers, requests and sockets on completion, cancellation and failure.
+
+Live DTOs and signed upload targets remain in memory. `redactA12StandardIntakeReply` produces an explicit persistence projection: signed URLs become `https://redacted.invalid/`, upload headers are removed, error/message text is redacted, and actual wire and projection digests remain distinct. A redacted JSON file cannot establish scanner execution or mint trusted intake admission. Run `pnpm exec vitest run tests/toolchain/a12-candidate-original-http.spec.ts tests/toolchain/a12-standard-intake-http.spec.ts` for synthetic loopback checks; these consumers do not start services, change permissions or approve/publish intake. Real normal-stack provenance, Auth/SQL and formal A12 remain separate gates.
 
 #### Fixed candidate same-tab Back case
 
