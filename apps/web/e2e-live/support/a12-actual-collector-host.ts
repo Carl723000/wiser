@@ -508,20 +508,44 @@ export async function constructActualCollectorOptions(
       const signals = [cancellation.signal, AbortSignal.timeout(30_000)];
       if (init?.signal) signals.push(init.signal);
       if (requestSignal) signals.push(requestSignal);
+      const transportSignal = AbortSignal.any(signals);
+      const retainTransportFailure = () => {
+        // A later close must not turn an already-expired deadline into cancellation.
+        constructionFailure ??=
+          aborted(cancellation.signal) &&
+          transportSignal.reason === cancellation.signal.reason
+            ? 'cancelled'
+            : 'unavailable';
+      };
       try {
         const response = await ownedFetch(input, {
           ...init,
-          signal: AbortSignal.any(signals),
+          signal: transportSignal,
           redirect: 'error',
         });
         // Preserve the existing Auth guard's rejection classification once a
         // failed Auth response is observed, even if cleanup later aborts.
         if (!response.ok) constructionFailure ??= 'denied';
+        // fetch settles at the headers; the installed SDK consumes json later.
+        // Keep the same native Response/stream and metadata, without a tee or
+        // second credential-body copy. Complete invalid JSON keeps Auth's rule.
+        const readJson = response.json.bind(response);
+        Object.defineProperty(response, 'json', {
+          configurable: true,
+          writable: true,
+          value: async () => {
+            try {
+              const payload: unknown = await readJson();
+              return payload;
+            } catch (error) {
+              if (!(error instanceof SyntaxError)) retainTransportFailure();
+              throw error;
+            }
+          },
+        });
         return response;
       } catch (error) {
-        constructionFailure ??= aborted(cancellation.signal)
-          ? 'cancelled'
-          : 'unavailable';
+        retainTransportFailure();
         throw error;
       }
     };
