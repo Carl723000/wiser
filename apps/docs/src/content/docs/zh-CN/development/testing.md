@@ -22,12 +22,13 @@ checkPaths:
   - apps/*/e2e*/**
   - tests/toolchain/*browser*.spec.ts
   - tests/toolchain/candidate-backflow-fixture.spec.ts
+  - tests/toolchain/a12-candidate-load-driver.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 63758bc098af02c30376c2ccbc9a357bc6a87686
+lastReviewedCommit: 725458e9474ed18f283850c80fa55a804f41499d
 ---
 
 ## Red → Green → Refactor
@@ -291,6 +292,14 @@ WORKBUDDY_LIVE=1 pnpm cookbook:workbuddy
 Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色仍需在共享 schema 上配置权限，即使业务数据分属不同租户，并发 fixture 也可能在系统目录发生冲突。全部测试和回滚检查仍保留。
 
 ### 显式来源案例浏览器测试
+
+#### 候选 API 负载驱动器
+
+`pnpm exec vitest run tests/toolchain/a12-candidate-load-driver.spec.ts` 使用合成响应验证 `apps/web/e2e-live/support/a12-candidate-load-driver.ts` 中的确定性测量工具。这个单元门禁只证明驱动器与断言，不证明当前 Auth、真实 HTTP 耗时、完整分页、内存、连续负载或冷重建。
+
+采样前固定标准接收回执、候选引用、各原件计数、有序列定义及内容摘要。未知计数或不完整清单使任务未运行；正式采样后出现漂移使本轮失败。真实与合成数据分开统计。每个数据集有十八个条件：三项既有候选 GET 能力、首段 50/200 条和客户端并发 1/4/8。每个条件保留五次预热、一百次正式尝试及所有错误和慢请求；失败不算严格完成响应，不能用重试替换。全部已测耗时排序后，中位数取上中间项，p95 取最近秩；目标保持中位数 ≤300 毫秒、p95 ≤800 毫秒，同时须有一百个完整响应且没有失败尝试。
+
+公开 REST GET 与网页同源 BFF POST 是不同测量边界。拒绝固定引用错误、原件计数漂移、schema 失败、非 JSON 响应、既有 3 MiB 材料上限、过长或回显游标及空续页。保留原字段缺失、null、空字符串及原索引间隙；GeometryCollection 按一条原始几何记录计数，不能按绘制部件计数。报告只含条件标签、序号、耗时、字节／计数检查及泛化结果，不保存 body、原值、坐标、URL、游标、请求头、凭据或原始异常。正式执行仍须经过独立登记的运行／资源／隐私门禁、二十次完整遍历和真实当前核权，并另过连续负载、内存及冷重建验收。
 
 三个固定版本的业务关系/记录导航回归使用已接纳的本机来源数据，包括 TCI 波段和独立核对的观测关系数。未按文件过滤运行 `pnpm --filter @wiser/web test:e2e:data-case --reporter=list` 整套案例时，须提供 `WISER_WEB_LIVE_BASE_URL`、既有 live 凭据、`WISER_WEB_LIVE_RELATION_URL`、`WISER_WEB_LIVE_RECORD_URL`、`WISER_WEB_LIVE_OBSERVATION_COUNT` 和 `WISER_WEB_LIVE_CANDIDATE_VIEW_URL`。关系 URL 必须指向固定目录版本与关系视图，记录 URL 必须携带固定记录焦点，候选 URL 须满足下文真实保存视图要求；只运行候选返回案例时使用下文按文件过滤的命令。缺少或无效的案例输入会明确失败。`e2e-live/*.case.ts` 保留全部断言，由 `playwright.case.config.ts` 收集，不作为可移植的 CI fixture。`test:e2e:data-live` 继续对 CI smoke 环境收集既有全部 `*.spec.ts` 套件。测试发现回归只使用合成输入调用 Playwright `--list`，不能算作真实案例浏览器运行。Docpact 将 live 浏览器案例、浏览器配置和发现 fixture 映射到本双语测试契约。
 

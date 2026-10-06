@@ -94,6 +94,7 @@ coverage:
     - apps/web/e2e-live/**
     - tests/toolchain/*browser*.spec.ts
     - tests/toolchain/candidate-backflow-fixture.spec.ts
+    - tests/toolchain/a12-candidate-load-driver.spec.ts
     - apps/docs/src/app/**
     - apps/docs/src/components/**
     - apps/docs/src/lib/**
@@ -287,6 +288,8 @@ rules:
       - path: tests/toolchain/*browser*.spec.ts
         kind: code
       - path: tests/toolchain/candidate-backflow-fixture.spec.ts
+        kind: code
+      - path: tests/toolchain/a12-candidate-load-driver.spec.ts
         kind: code
     requiredDocs:
       - path: apps/docs/src/content/docs/zh-CN/development/testing.md

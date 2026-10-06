@@ -17,8 +17,8 @@ checkPaths:
   - .docpact/config.yaml
   - .github/workflows/**
   - package.json
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: cd4dfe0254b5d0d93590e2676e3552436b013907
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: 725458e9474ed18f283850c80fa55a804f41499d
 ---
 
 # WISER repository instructions
