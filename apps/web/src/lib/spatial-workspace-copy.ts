@@ -226,6 +226,7 @@ export interface SpatialWorkspaceCopy {
   timeRoles: {
     observation: string;
     publication: string;
+    'report-period': string;
     event: string;
     acquisition: string;
     unknown: string;

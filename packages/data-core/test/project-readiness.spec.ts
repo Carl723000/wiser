@@ -6,6 +6,7 @@ import {
   type ProjectReadinessInput,
   type ProjectReadinessRecord,
   type ProjectReadinessSource,
+  type PublishedReadinessSourceReference,
   type ReadinessEvidence,
 } from '../src/project-readiness.js';
 
@@ -22,7 +23,7 @@ const months = [
 function source(
   month: string,
   track: 'REAL' | 'SYNTHETIC' = 'REAL',
-): ProjectReadinessSource {
+): ProjectReadinessSource & PublishedReadinessSourceReference {
   return {
     workId: `monthly-${month}`,
     versionId: `${month}-v1`,
@@ -34,7 +35,7 @@ function source(
   };
 }
 function evidence(
-  s: ProjectReadinessSource,
+  s: ProjectReadinessSource & PublishedReadinessSourceReference,
   locator = 'table:1/row:14',
 ): ReadinessEvidence {
   return {
@@ -44,7 +45,7 @@ function evidence(
   };
 }
 function record(
-  s: ProjectReadinessSource,
+  s: ProjectReadinessSource & PublishedReadinessSourceReference,
   object: number,
   name = `原表对象${object}`,
 ): ProjectReadinessRecord {
@@ -74,7 +75,9 @@ function record(
     spatial: null,
   };
 }
-function fixture(objects = 25): ProjectReadinessInput {
+function fixture(objects = 25): ProjectReadinessInput & {
+  sources: (ProjectReadinessSource & PublishedReadinessSourceReference)[];
+} {
   const sources = months.map((month) => source(month));
   return {
     track: 'REAL',

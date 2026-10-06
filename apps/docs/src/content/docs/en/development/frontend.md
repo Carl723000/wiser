@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: b0f89ae3
 ---
 
 ## Two frontend applications
@@ -357,3 +357,5 @@ The session-verified internal POST endpoint `/api/data-foundation/operation-even
 Authentication, authorization, missing-task, invalid-cursor and unavailable outcomes remain separate. A failed read hides the previous task summary and events; invalid reading positions require an explicit return to the first segment. Aborted or superseded object/initial-state requests cannot publish late content. These Web checks do not prove live Auth, PostgreSQL/RLS, storage or global shutdown behavior, and do not change the public API, permissions, saved-view identity, time rules or migrations.
 
 The summary names the progress snapshot from opening the page; event continuation does not refresh that summary. Invalid continuation positions use the shared failure surface with an Operation-specific restart message, rather than search-condition guidance. The browser caps JSON responses at 1 MiB and ends an unresolved read after fifteen seconds.
+
+Local spatial format 2 carries the explicit `report-period` time role through map filters, readiness month selection, reading URLs, local scenes and exports. Format 1 retains its existing publication semantics. The pure readiness input also preserves typed candidate references without converting them into published identities; these adapters do not themselves enable candidate projections or authorize reads. See [Candidate readiness and report periods](/en/architecture/data-foundation/#candidate-readiness-and-report-periods).

@@ -89,7 +89,13 @@ export interface WorkspaceRecord {
     start: string | null;
     end: string | null;
     precision: 'day' | 'month' | 'year' | 'unknown';
-    role: 'observation' | 'publication' | 'event' | 'acquisition' | 'unknown';
+    role:
+      | 'observation'
+      | 'publication'
+      | 'report-period'
+      | 'event'
+      | 'acquisition'
+      | 'unknown';
   };
   metric: string;
   value: string | null;
@@ -173,7 +179,7 @@ export interface WorkspaceRasterReport {
   }[];
 }
 export interface WorkspacePack {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   generatedAt: string;
   processingVersion: string;
   sources: Material[];

@@ -14,7 +14,11 @@ import {
   parseLocalReadinessFacts,
   readableLocalReadinessFacts,
 } from './spatial-readiness-input';
-import type { ProjectReadinessInput } from '@wiser/data-core';
+import type {
+  ProjectReadinessInput,
+  ProjectReadinessRecord,
+  PublishedReadinessSourceReference,
+} from '@wiser/data-core';
 
 const material: Material = {
   id: 'report',
@@ -92,7 +96,11 @@ it('does not promote an undeclared record into an explicitly synthetic source tr
     [],
   );
 });
-function publicationFacts(input: WorkspacePack): ProjectReadinessInput {
+function publicationFacts(input: WorkspacePack): ProjectReadinessInput & {
+  records: (ProjectReadinessRecord & {
+    source: PublishedReadinessSourceReference;
+  })[];
+} {
   const sources = input.sources.map((source) => ({
     ...materialReference(source),
     track: 'REAL' as const,

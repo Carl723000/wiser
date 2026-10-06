@@ -90,7 +90,8 @@ export interface ReadinessResult {
     spatial: number | null;
     reportWindows: string[];
     missingReportWindows: string[];
-    frequency: 'monthly-publication' | 'mixed-or-unknown';
+    frequency:
+      'monthly-publication' | 'monthly-report-period' | 'mixed-or-unknown';
   };
   uses: {
     id: UseId;
@@ -385,7 +386,8 @@ export function buildReadiness(
     const fact = factById.get(record.id);
     return (
       fact?.metric?.kind === 'CATEGORY' &&
-      fact.time.role === 'PUBLICATION' &&
+      (fact.time.role === 'PUBLICATION' ||
+        fact.time.role === 'REPORT_PERIOD') &&
       fact.time.precision === 'MONTH'
     );
   });
@@ -472,7 +474,9 @@ export function buildReadiness(
   const uses: ReadinessResult['uses'] = [
     readingUse('archive', usable, ['source-and-version-required']),
     useCheck('monthly-category', 'CATEGORY_REVIEW', category, [
-      'published-category-only',
+      selection.dateRole === 'REPORT_PERIOD'
+        ? 'reported-category-only'
+        : 'published-category-only',
       'sampling-frequency-unknown',
     ]),
     readingUse('report-summary', report, [
@@ -557,9 +561,11 @@ export function buildReadiness(
         project.monthly.raw.flatMap((row) => row.missingMonths ?? []),
       ).sort(),
       frequency:
-        project.monthly.raw.length && selection.dateRole === 'PUBLICATION'
-          ? 'monthly-publication'
-          : 'mixed-or-unknown',
+        project.monthly.raw.length && selection.dateRole === 'REPORT_PERIOD'
+          ? 'monthly-report-period'
+          : project.monthly.raw.length && selection.dateRole === 'PUBLICATION'
+            ? 'monthly-publication'
+            : 'mixed-or-unknown',
     },
     staleRecordIds: [...stale],
     fields: unique(sources.flatMap((source) => source.fieldNames ?? [])),

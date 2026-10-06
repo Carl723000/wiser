@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: b0f89ae3
 ---
 
 # WISER Web / 产品界面
@@ -108,3 +108,5 @@ pnpm --filter @wiser/web test:e2e
 月度覆盖明细新增逐月原值，复用既有分类、分组与固定引用。同月多值、未知月份、缺月、null、空文本、无水、未监测和有效零值分别保留；不推断浓度或趋势。首屏有界并支持本地展开，显示／总数不改计数口径。点选核对固定作品／版本／原件和唯一当前记录ID，引用冲突时不跳到另一来源。 / Monthly coverage details now read exact original values using existing kinds, grouping and fixed references. Multiple same-month values, unknown or missing months, null, empty text, dry, unmonitored and valid zero remain distinct. Bounded local reveal retains full counts. Selection requires a complete fixed reference and unique current record ID; ambiguity never navigates to another source. No concentration or trend is inferred.
 
 本机空间首屏保留生效检索、图层、时间未知资料排除及矩形标签，月份与日期窗口明确区分。已显示公共参照署名在WebGL和平面画布可见，完整许可依据按需展开；查询、时间及保存契约不变。 / The local spatial first screen retains active search, layers, unknown-time exclusion and rectangle chips, distinguishes month/date windows, and keeps displayed public-reference attribution visible in both renderers. Detailed evidence remains disclosed on demand; query, time and saving contracts are unchanged.
+
+本地规格2将“报告期”与“发布日期”“观测期”分开，沿地图、月份、阅读链接、本机场景和导出显式保存；规格1原义不变。纯候选就绪引用独立计数，不伪造已发布身份或授予访问权限。 / Local format 2 preserves Report period separately from Publication and Observation through map/month/URL/scene/export adapters. Format 1 keeps its meaning; pure candidate references retain separate counts without published identities or access grants.

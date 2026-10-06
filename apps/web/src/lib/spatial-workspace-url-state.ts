@@ -231,6 +231,7 @@ export function decodeWorkspaceReadingUrl(
     (dateRole !== null &&
       ![
         'PUBLICATION',
+        'REPORT_PERIOD',
         'OBSERVATION',
         'EVENT',
         'ACQUISITION',
@@ -332,7 +333,9 @@ export function decodeWorkspaceReadingUrl(
     view.start = state.dayWindow?.start ?? monthWindow?.start ?? null;
     view.end = state.dayWindow?.end ?? monthWindow?.end ?? null;
     view.timeRole =
-      (state.dateRole?.toLowerCase() as typeof view.timeRole) ?? 'all';
+      state.dateRole === 'REPORT_PERIOD'
+        ? 'report-period'
+        : ((state.dateRole?.toLowerCase() as typeof view.timeRole) ?? 'all');
     view.includeUndated =
       state.includeUndated ?? (monthWindow === null && !hasDays);
     if (

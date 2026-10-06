@@ -1338,6 +1338,7 @@ const zhCN = {
         'use-conditions-required': '按用途说明所需证据',
         'source-and-version-required': '保留来源、固定版本和回查位置',
         'published-category-only': '可查已发布水质类别',
+        'reported-category-only': '可查报告期水质类别',
         'sampling-frequency-unknown': '实际采样频率未披露',
         'reported-scope-only': '仅使用报告声明的统计范围',
         'publication-year-distinct': '统计年度与发布日期分开',
@@ -1436,6 +1437,9 @@ const zhCN = {
         WORK: '资料作品',
         VERSION: '固定版本',
         ASSET: '原件引用',
+        CANDIDATE_BATCH: '固定候选批次',
+        CANDIDATE_ASSET: '候选原件引用',
+        CANDIDATE_RECORD: '候选记录',
         SOURCE_OBJECT: '来源内对象',
         RECORD: '原表记录',
         CHECK: '检查事实',
@@ -1452,6 +1456,7 @@ const zhCN = {
       dateRole: '日期角色',
       dateRoles: {
         PUBLICATION: '发布月份',
+        REPORT_PERIOD: '报告月份',
         OBSERVATION: '观测月份',
         EVENT: '事件月份',
       },
@@ -1923,6 +1928,7 @@ const zhCN = {
       timeRoles: {
         observation: '观测期',
         publication: '发布日期',
+        'report-period': '报告期',
         event: '事件期',
         acquisition: '成像期',
         unknown: '时间角色未知',
@@ -5323,6 +5329,8 @@ const en: typeof zhCN = {
         'source-and-version-required':
           'Retain source, fixed version and evidence location',
         'published-category-only': 'Inspect published water quality categories',
+        'reported-category-only':
+          'Inspect report-period water quality categories',
         'sampling-frequency-unknown': 'Sampling frequency not disclosed',
         'reported-scope-only': 'Use only the reported statistical scope',
         'publication-year-distinct':
@@ -5436,6 +5444,9 @@ const en: typeof zhCN = {
         WORK: 'Works',
         VERSION: 'Fixed versions',
         ASSET: 'Original references',
+        CANDIDATE_BATCH: 'Fixed candidate batches',
+        CANDIDATE_ASSET: 'Candidate original references',
+        CANDIDATE_RECORD: 'Candidate records',
         SOURCE_OBJECT: 'Source-local objects',
         RECORD: 'Original records',
         CHECK: 'Check facts',
@@ -5452,6 +5463,7 @@ const en: typeof zhCN = {
       dateRole: 'Date role',
       dateRoles: {
         PUBLICATION: 'Publication month',
+        REPORT_PERIOD: 'Report month',
         OBSERVATION: 'Observation month',
         EVENT: 'Event month',
       },
@@ -5964,6 +5976,7 @@ const en: typeof zhCN = {
       timeRoles: {
         observation: 'Observation period',
         publication: 'Publication date',
+        'report-period': 'Report period',
         event: 'Event period',
         acquisition: 'Acquisition date',
         unknown: 'Unknown time role',

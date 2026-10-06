@@ -140,13 +140,16 @@ export function workspaceViewForReadingState(
   previous?: SpatialWorkspaceView,
 ): SpatialWorkspaceView {
   const view = createSpatialWorkspaceView(pack, state.regionId ?? 'bth');
+  if (state.dateRole === 'REPORT_PERIOD') view.schemaVersion = 2;
   const bounds = state.dayWindow ?? monthBounds(state.monthWindow);
   return {
     ...view,
     ...bounds,
     timeRole:
-      (state.dateRole?.toLowerCase() as SpatialWorkspaceView['timeRole']) ??
-      'all',
+      state.dateRole === 'REPORT_PERIOD'
+        ? 'report-period'
+        : ((state.dateRole?.toLowerCase() as SpatialWorkspaceView['timeRole']) ??
+          'all'),
     includeUndated:
       state.includeUndated ?? (!state.dayWindow && state.monthWindow === null),
     selection: state.selection
@@ -255,7 +258,9 @@ export function workspaceReadingStateForView(
     dateRole:
       view.timeRole === 'all'
         ? null
-        : (view.timeRole.toUpperCase() as WorkspaceReadingUrlState['dateRole']),
+        : view.timeRole === 'report-period'
+          ? 'REPORT_PERIOD'
+          : (view.timeRole.toUpperCase() as WorkspaceReadingUrlState['dateRole']),
     monthWindow: stillMonth ? state.monthWindow : null,
     ...(!stillMonth && (view.start !== null || view.end !== null)
       ? { dayWindow: { start: view.start, end: view.end } }

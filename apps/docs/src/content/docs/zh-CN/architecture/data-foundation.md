@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: b0f89ae3
 ---
 
 ## 当前可运行能力
@@ -606,3 +606,9 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 共享API宿主仅从既有事件GET的请求日志URL副本移除`after`参数，包含编码／重复键和编码任务编号；真实请求、授权、游标校验与其他查询参数原编码保持不变。默认与显式请求serializer收到安全URL／raw URL／original URL副本，关闭日志仍保持关闭。外部代理日志和独立自定义日志不在本项验收内。
 
 已登记的 `RESUMED` 事件在 API 和网页读取中保留事件类型，显示为“已恢复 / Resumed”；事件标签不改变独立的任务状态。内部 `PROJECTION_COMPLETED` 与 `PUBLISHED` 里程碑仍归一为 `PROGRESS_REPORTED`，网页读取器继续拒收未登记的事件类型。
+
+## 候选就绪引用与报告期
+
+纯就绪模型保留已发布作品／版本／资产的原键和计数。嵌套的 `candidateReference` 在独立命名空间中固定接收编号、审核哈希、处理批次及资产；候选批次／资产／记录分别计数，任一来源缺少作品声明时，来源声明作品数仍为未知。这些引用不授予读取权限，也不生成目录身份。
+
+`beijing-monthly-docx-c3/1.0.0` 保留历史 `PUBLICATION` 输出。显式的2.0.0投影将题名月份标为 `REPORT_PERIOD`；发布日期和文档级观测日期须有各自原文定位与精度，否则为null。源内编号、原类别、空格和解析拒绝条件保持。承载 `report-period` 的本地空间包、保存场景和专题导出采用规格2，规格1不静默获得新含义。URL适配显式对应 `REPORT_PERIOD` 与 `report-period`；整月转为日边界仅供筛选，不产生逐日观测。转换可信、当前Auth、候选持久化及端到端验收仍各有独立门槛。

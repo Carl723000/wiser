@@ -256,7 +256,7 @@ function position(value: unknown): WorkspacePosition {
     fail('restricted-geometry');
   return result;
 }
-function record(value: unknown): WorkspaceRecord {
+function record(value: unknown, schemaVersion: 1 | 2): WorkspaceRecord {
   const v = object(value),
     t = object(v.time);
   const start = nullable(t.start),
@@ -298,6 +298,7 @@ function record(value: unknown): WorkspaceRecord {
       role: choice(t.role, [
         'observation',
         'publication',
+        ...(schemaVersion === 2 ? ['report-period' as const] : []),
         'event',
         'acquisition',
         'unknown',
@@ -435,9 +436,11 @@ function raster(value: unknown): WorkspaceRasterReport {
 /** Validate all identities before applying the stricter anonymous local-display boundary. */
 export function parseWorkspacePack(input: unknown): WorkspacePack {
   const v = object(input);
-  if (v.schemaVersion !== 1) fail('schema-version');
+  if (v.schemaVersion !== 1 && v.schemaVersion !== 2) fail('schema-version');
   const sources = array(v.sources, 80).map(source),
-    records = array(v.records).map(record);
+    records = array(v.records).map((value) =>
+      record(value, v.schemaVersion as 1 | 2),
+    );
   const definitions =
     v.measurementDefinitions === undefined
       ? undefined
@@ -507,7 +510,7 @@ export function parseWorkspacePack(input: unknown): WorkspacePack {
     }));
   const recordIds = new Set(visibleRecords.map((r) => r.id));
   return {
-    schemaVersion: 1,
+    schemaVersion: v.schemaVersion,
     generatedAt: string(v.generatedAt),
     processingVersion: string(v.processingVersion),
     sources: allowed,

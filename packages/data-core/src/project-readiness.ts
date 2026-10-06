@@ -1,23 +1,40 @@
+import {
+  IngestionCandidateReferenceSchema,
+  PlatformUuidSchema,
+  type IngestionCandidateReference,
+} from '@wiser/data-contracts';
 import { DataFoundationDomainError } from './domain-error.ts';
 
 export type ProjectReadinessTrack = 'REAL' | 'SYNTHETIC';
-export interface ReadinessSourceReference {
+export interface PublishedReadinessSourceReference {
   readonly workId: string;
   readonly versionId: string;
   readonly assetId: string;
+  readonly candidateReference?: never;
+  readonly sourceLocalWorkId?: never;
 }
+export interface CandidateReadinessSourceReference {
+  readonly candidateReference: IngestionCandidateReference;
+  readonly assetId: string;
+  /** Source declaration only, not a catalog work or independent-observation ID. */
+  readonly sourceLocalWorkId: string | null;
+  readonly workId?: never;
+  readonly versionId?: never;
+}
+export type ReadinessSourceReference =
+  PublishedReadinessSourceReference | CandidateReadinessSourceReference;
 export interface ReadinessEvidence {
   readonly source: ReadinessSourceReference;
   readonly locator: string;
   readonly excerpt: string;
 }
-export interface ProjectReadinessSource extends ReadinessSourceReference {
+export type ProjectReadinessSource = ReadinessSourceReference & {
   readonly track: ProjectReadinessTrack;
   readonly kind:
     'MONTHLY_REPORT' | 'TABLE' | 'DOCUMENT' | 'VECTOR' | 'RASTER' | 'DIRECTORY';
   readonly needIds: readonly string[];
   readonly regionIds: readonly string[];
-}
+};
 export type ReadinessReviewState =
   'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'REQUIRES_CORRECTION';
 export interface ProjectReadinessRecord {
@@ -34,7 +51,8 @@ export interface ProjectReadinessRecord {
   readonly series: { readonly id: string; readonly version: string } | null;
   readonly time: {
     readonly value: string | null;
-    readonly role: 'PUBLICATION' | 'OBSERVATION' | 'EVENT' | 'UNKNOWN';
+    readonly role:
+      'PUBLICATION' | 'REPORT_PERIOD' | 'OBSERVATION' | 'EVENT' | 'UNKNOWN';
     readonly precision: 'MONTH' | 'DAY' | 'YEAR' | 'UNKNOWN';
   };
   readonly rawValue: string | number | null;
@@ -126,7 +144,8 @@ export interface ProjectReadinessInput {
     readonly version: string;
     readonly regionId: string;
     readonly purpose: string;
-    readonly dateRole: 'PUBLICATION' | 'OBSERVATION' | 'EVENT';
+    readonly dateRole:
+      'PUBLICATION' | 'REPORT_PERIOD' | 'OBSERVATION' | 'EVENT';
     readonly window: { readonly start: string; readonly end: string } | null;
   };
   readonly sources: readonly ProjectReadinessSource[];
@@ -190,7 +209,10 @@ export interface ReadinessQuestion {
       | 'COVERAGE_CELL'
       | 'TASK'
       | 'USE_CHECK'
-      | 'CORRESPONDENCE';
+      | 'CORRESPONDENCE'
+      | 'CANDIDATE_BATCH'
+      | 'CANDIDATE_ASSET'
+      | 'CANDIDATE_RECORD';
     readonly ids: readonly string[];
   }[];
 }
@@ -208,6 +230,17 @@ export interface ProjectReadinessResult {
     readonly nonMonthlyRecords: number;
     readonly knownGeometries: number;
     readonly independentObservations: number | null;
+  };
+  /** Present only for the explicit candidate branch; legacy published counts stay unchanged. */
+  readonly candidateCounts?: {
+    readonly batches: number;
+    readonly assets: number;
+    readonly records: number;
+    readonly sourceObjects: number;
+    readonly monthlyRecords: number;
+    readonly nonMonthlyRecords: number;
+    readonly knownGeometries: number;
+    readonly sourceLocalWorks: number | null;
   };
   readonly monthly: {
     readonly namedObjectCount: number | null;
@@ -249,8 +282,44 @@ function invalid(): never {
     'Project readiness facts are inconsistent.',
   );
 }
-function sourceKey(source: ReadinessSourceReference): string {
-  return JSON.stringify([source.workId, source.versionId, source.assetId]);
+export function isCandidateReadinessReference(
+  source: ReadinessSourceReference,
+): source is CandidateReadinessSourceReference {
+  return Object.hasOwn(source, 'candidateReference');
+}
+/** Published keys are byte-compatible; candidate keys retain all fixed run identity. */
+export function readinessSourceKey(source: ReadinessSourceReference): string {
+  if (!isCandidateReadinessReference(source)) {
+    if (Object.hasOwn(source, 'sourceLocalWorkId')) invalid();
+    return JSON.stringify([source.workId, source.versionId, source.assetId]);
+  }
+  const parsed = IngestionCandidateReferenceSchema.safeParse(
+    source.candidateReference,
+  );
+  const asset = PlatformUuidSchema.safeParse(source.assetId);
+  if (
+    !parsed.success ||
+    !asset.success ||
+    Object.hasOwn(source, 'workId') ||
+    Object.hasOwn(source, 'versionId') ||
+    (source.sourceLocalWorkId !== null &&
+      (typeof source.sourceLocalWorkId !== 'string' ||
+        !source.sourceLocalWorkId.trim() ||
+        source.sourceLocalWorkId.length > 256))
+  )
+    invalid();
+  return JSON.stringify([
+    'ingestion-candidate',
+    parsed.data.ingestionId.toLowerCase(),
+    parsed.data.reviewHash,
+    parsed.data.processingBatchId.toLowerCase(),
+    asset.data.toLowerCase(),
+  ]);
+}
+const sourceKey = readinessSourceKey;
+function candidateBatchKey(source: CandidateReadinessSourceReference): string {
+  const key = JSON.parse(sourceKey(source)) as string[];
+  return JSON.stringify(key.slice(0, 4));
 }
 /** Internal fact references retain the original source-local record ID. */
 export function readinessRecordKey(
@@ -848,23 +917,76 @@ export function calculateProjectReadiness(
       return key === null ? [] : [key];
     }),
   );
-  const geometries = unique(
-    records.flatMap((record) =>
-      record.spatial?.state === 'LOCATED' &&
-      record.spatial.geometryKey !== null &&
-      record.spatial.geometryKind !== null &&
-      record.spatial.role !== null &&
-      record.spatial.role.trim().length > 0 &&
-      hasEvidence(record.evidence)
-        ? [record.spatial.geometryKey]
-        : [],
+  const publishedSources = sources.filter(
+    (source) => !isCandidateReadinessReference(source),
+  );
+  const candidateSources = sources.filter(
+    (
+      source,
+    ): source is ProjectReadinessSource & CandidateReadinessSourceReference =>
+      isCandidateReadinessReference(source),
+  );
+  const publishedRecords = records.filter(
+    (record) => !isCandidateReadinessReference(record.source),
+  );
+  const candidateRecords = records.filter((record) =>
+    isCandidateReadinessReference(record.source),
+  );
+  const publishedMonthlyRecords = monthlyRecords.filter(
+    (record) => !isCandidateReadinessReference(record.source),
+  );
+  const candidateMonthlyRecords = monthlyRecords.filter((record) =>
+    isCandidateReadinessReference(record.source),
+  );
+  const works = unique(publishedSources.map((source) => source.workId));
+  const versions = unique(
+    publishedSources.map((source) =>
+      JSON.stringify([source.workId, source.versionId]),
     ),
   );
-  const works = unique(sources.map((source) => source.workId));
-  const versions = unique(
-    sources.map((source) => JSON.stringify([source.workId, source.versionId])),
-  );
-  const assets = unique(sources.map(sourceKey));
+  const assets = unique(publishedSources.map(sourceKey));
+  const candidateAssets = unique(candidateSources.map(sourceKey));
+  const candidateBatches = unique(candidateSources.map(candidateBatchKey));
+  const scopedObjects = (items: readonly ProjectReadinessRecord[]) =>
+    unique(items.flatMap((record) => objectKey(record) ?? []));
+  const scopedGeometries = (items: readonly ProjectReadinessRecord[]) =>
+    unique(
+      items.flatMap((record) =>
+        record.spatial?.state === 'LOCATED' &&
+        record.spatial.geometryKey !== null &&
+        record.spatial.geometryKind !== null &&
+        record.spatial.role !== null &&
+        record.spatial.role.trim().length > 0 &&
+        hasEvidence(record.evidence)
+          ? [
+              isCandidateReadinessReference(record.source)
+                ? JSON.stringify([
+                    sourceKey(record.source),
+                    record.spatial.geometryKey,
+                  ])
+                : record.spatial.geometryKey,
+            ]
+          : [],
+      ),
+    );
+  const candidateCounts = candidateSources.length
+    ? {
+        batches: candidateBatches.length,
+        assets: candidateAssets.length,
+        records: candidateRecords.length,
+        sourceObjects: scopedObjects(candidateRecords).length,
+        monthlyRecords: candidateMonthlyRecords.length,
+        nonMonthlyRecords:
+          candidateRecords.length - candidateMonthlyRecords.length,
+        knownGeometries: scopedGeometries(candidateRecords).length,
+        sourceLocalWorks: candidateSources.every(
+          (source) => source.sourceLocalWorkId !== null,
+        )
+          ? unique(candidateSources.map((source) => source.sourceLocalWorkId!))
+              .length
+          : null,
+      }
+    : undefined;
   const cleaning = tasks.filter((task) => task.kind === 'CLEANING');
   const qualityControl = tasks.filter(
     (task) => task.kind === 'QUALITY_CONTROL',
@@ -895,12 +1017,25 @@ export function calculateProjectReadiness(
   const questions = [
     question('KINDS', sources.length ? 'KNOWN' : 'UNKNOWN', [
       { grain: 'ASSET', ids: assets },
+      ...(candidateCounts
+        ? [{ grain: 'CANDIDATE_ASSET' as const, ids: candidateAssets }]
+        : []),
     ]),
     question('COUNTS', independentObservations === null ? 'PARTIAL' : 'KNOWN', [
       { grain: 'WORK', ids: works },
       { grain: 'VERSION', ids: versions },
       { grain: 'SOURCE_OBJECT', ids: sourceObjects },
-      { grain: 'RECORD', ids: recordIds },
+      { grain: 'RECORD', ids: publishedRecords.map(readinessRecordKey) },
+      ...(candidateCounts
+        ? [
+            { grain: 'CANDIDATE_BATCH' as const, ids: candidateBatches },
+            { grain: 'CANDIDATE_ASSET' as const, ids: candidateAssets },
+            {
+              grain: 'CANDIDATE_RECORD' as const,
+              ids: candidateRecords.map(readinessRecordKey),
+            },
+          ]
+        : []),
     ]),
     question(
       'QUALITY',
@@ -997,20 +1132,27 @@ export function calculateProjectReadiness(
     ),
   ];
   return {
-    ruleVersion: RULE_VERSION,
+    ruleVersion:
+      candidateCounts ||
+      input.requirement.dateRole === 'REPORT_PERIOD' ||
+      records.some((record) => record.time.role === 'REPORT_PERIOD')
+        ? 'wiser.project-readiness.v3'
+        : RULE_VERSION,
     track: input.track,
     requirement: input.requirement,
     counts: {
       works: works.length,
       versions: versions.length,
       assets: assets.length,
-      sourceObjects: sourceObjects.length,
-      records: records.length,
-      monthlyRecords: monthlyRecords.length,
-      nonMonthlyRecords: records.length - monthlyRecords.length,
-      knownGeometries: geometries.length,
+      sourceObjects: scopedObjects(publishedRecords).length,
+      records: publishedRecords.length,
+      monthlyRecords: publishedMonthlyRecords.length,
+      nonMonthlyRecords:
+        publishedRecords.length - publishedMonthlyRecords.length,
+      knownGeometries: scopedGeometries(publishedRecords).length,
       independentObservations,
     },
+    ...(candidateCounts ? { candidateCounts } : {}),
     monthly: {
       namedObjectCount: undeclaredRecordIds.length ? null : namedGroups.length,
       undeclaredRecordIds,

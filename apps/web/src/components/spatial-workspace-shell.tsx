@@ -193,6 +193,7 @@ export function SpatialWorkspaceShell({
   const readinessDateRole =
     reading.dateRole === null ||
     reading.dateRole === 'PUBLICATION' ||
+    reading.dateRole === 'REPORT_PERIOD' ||
     reading.dateRole === 'OBSERVATION' ||
     reading.dateRole === 'EVENT'
       ? (reading.dateRole ?? 'PUBLICATION')

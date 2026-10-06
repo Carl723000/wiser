@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: b0f89ae3
 ---
 
 ## What runs today
@@ -606,3 +606,9 @@ The Web Operation page continues the existing authorized event stream in explici
 The shared API host removes the existing event GET `after` parameter only from the request-log URL copy, including encoded/repeated keys and encoded Operation IDs. The real request, authorization, cursor validation and all other query encodings remain unchanged. Default and explicit request serializers receive the safe URL/raw-URL/original-URL copy, while disabled logging stays disabled. External proxy logs and independent custom logging remain outside this check.
 
 Registered `RESUMED` events retain their event type in API and Web reads and display as “Resumed” / “已恢复”. The event does not change the independent Operation status. Internal `PROJECTION_COMPLETED` and `PUBLISHED` milestones still normalize to `PROGRESS_REPORTED`; the Web reader continues to reject unregistered event types.
+
+## Candidate readiness and report periods
+
+The pure readiness model retains published work/version/asset keys and counts. An explicit nested `candidateReference` identifies ingestion, review hash, processing batch and asset in a separate namespace. Candidate batches/assets/records are counted separately; source-declared work counts remain unknown if any declaration is absent. These references grant no read permission or catalog identity.
+
+`beijing-monthly-docx-c3/1.0.0` remains readable with its historical `PUBLICATION` output. The explicit 2.0.0 projection reports the title month as `REPORT_PERIOD`; publication and document-level observation dates require their own source locators and precision, otherwise they stay null. It preserves source-local IDs, raw categories, empty cells and parsing refusal conditions. Local spatial packs, saved scenes and topic exports use format 2 when carrying `report-period`; format 1 does not silently acquire this meaning. URL adapters map `REPORT_PERIOD` to `report-period` explicitly. Month-to-day filter boundaries do not manufacture day-resolution observations. Conversion trust, current Auth, candidate persistence and end-to-end acceptance remain separate gates.

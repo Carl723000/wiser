@@ -111,7 +111,7 @@ function fixture(version: 1 | 2 = 1): WorkspacePack {
 }
 
 function declaredFacts(pack: WorkspacePack): ProjectReadinessInput {
-  const source = materialReference(pack.sources[0]!);
+  const source = materialReference(pack.sources[0]);
   const role = pack.schemaVersion === 2 ? 'REPORT_PERIOD' : 'PUBLICATION';
   const evidence = [
     {
@@ -282,7 +282,7 @@ describe('report-period explicit format compatibility', () => {
       role: 'REPORT_PERIOD',
       precision: 'MONTH',
     });
-    const cells = buildMonthlyReadout(result.project)[0]!.cells;
+    const cells = buildMonthlyReadout(result.project)[0].cells;
     expect(cells.map((cell) => [cell.month, cell.state])).toEqual([
       ['2023-04', 'PRESENT'],
       ['2023-05', 'MISSING'],

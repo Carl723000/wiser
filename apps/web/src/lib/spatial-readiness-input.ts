@@ -1,10 +1,12 @@
 import {
   readinessRecordKey,
+  readinessSourceKey,
   type ProjectReadinessInput,
   type ReadinessEvidence,
   type ReadinessSourceReference,
   type ReadinessFactScope,
 } from '@wiser/data-core/project-readiness';
+import { IngestionCandidateReferenceSchema } from '@wiser/data-contracts';
 import type { WorkspacePack } from './spatial-workspace-contract';
 import { fixedSourceKey, materialReference } from './spatial-readiness-facts';
 
@@ -54,7 +56,25 @@ const shape =
       }),
     );
   };
-const source = shape({ workId: id, versionId: id, assetId: id });
+const publishedSource = shape({ workId: id, versionId: id, assetId: id });
+const source: Reader = (value) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    return invalid();
+  const current = value as Record<string, unknown>;
+  if (!Object.hasOwn(current, 'candidateReference')) {
+    if (Object.hasOwn(current, 'sourceLocalWorkId')) return invalid();
+    return publishedSource(current);
+  }
+  // Validate before selecting fields: stripping a mixed identity would change its meaning.
+  readinessSourceKey(current as unknown as ReadinessSourceReference);
+  return {
+    candidateReference: IngestionCandidateReferenceSchema.parse(
+      current['candidateReference'],
+    ),
+    assetId: id(current['assetId']),
+    sourceLocalWorkId: nullable(id)(current['sourceLocalWorkId']),
+  };
+};
 const evidence = list(shape({ source, locator: text, excerpt: text }));
 const recordIds = list(id);
 const sources = list(source);
@@ -90,14 +110,12 @@ const input = shape({
     version: id,
     regionId: id,
     purpose: text,
-    dateRole: choice('PUBLICATION', 'OBSERVATION', 'EVENT'),
+    dateRole: choice('PUBLICATION', 'REPORT_PERIOD', 'OBSERVATION', 'EVENT'),
     window: nullable(window),
   }),
-  sources: list(
-    shape({
-      workId: id,
-      versionId: id,
-      assetId: id,
+  sources: list((value) => ({
+    ...(source(value) as ReadinessSourceReference),
+    ...(shape({
       track: choice('REAL'),
       kind: choice(
         'MONTHLY_REPORT',
@@ -109,8 +127,8 @@ const input = shape({
       ),
       needIds: recordIds,
       regionIds: recordIds,
-    }),
-  ),
+    })(value) as object),
+  })),
   records: list(
     shape({
       id,
@@ -128,7 +146,13 @@ const input = shape({
       series: nullable(shape({ id, version: id })),
       time: shape({
         value: nullable(text),
-        role: choice('PUBLICATION', 'OBSERVATION', 'EVENT', 'UNKNOWN'),
+        role: choice(
+          'PUBLICATION',
+          'REPORT_PERIOD',
+          'OBSERVATION',
+          'EVENT',
+          'UNKNOWN',
+        ),
         precision: choice('MONTH', 'DAY', 'YEAR', 'UNKNOWN'),
       }),
       rawValue: (value) =>

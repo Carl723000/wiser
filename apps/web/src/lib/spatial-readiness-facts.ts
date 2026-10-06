@@ -1,6 +1,8 @@
 import {
   calculateProjectReadiness,
   readinessRecordKey,
+  readinessSourceKey,
+  type PublishedReadinessSourceReference,
   type ProjectReadinessInput,
   type ProjectReadinessRecord,
   type ProjectReadinessResult,
@@ -21,13 +23,14 @@ export interface ReadinessSelection {
   track?: ProjectReadinessTrack;
   needId: string;
   window: { start: string; end: string } | null;
-  dateRole: 'PUBLICATION' | 'OBSERVATION' | 'EVENT';
+  dateRole: ProjectReadinessInput['requirement']['dateRole'];
 }
 
-export const fixedSourceKey = (source: ReadinessSourceReference) =>
-  JSON.stringify([source.workId, source.versionId, source.assetId]);
+export const fixedSourceKey = readinessSourceKey;
 
-export function materialReference(source: Material): ReadinessSourceReference {
+export function materialReference(
+  source: Material,
+): PublishedReadinessSourceReference {
   return {
     workId: source.workId ?? source.id,
     versionId: source.versionId,
@@ -303,13 +306,15 @@ export function projectReadinessFromPack(
       time: {
         value: record.time.start,
         role:
-          record.time.role === 'publication'
-            ? 'PUBLICATION'
-            : record.time.role === 'observation'
-              ? 'OBSERVATION'
-              : record.time.role === 'event'
-                ? 'EVENT'
-                : 'UNKNOWN',
+          record.time.role === 'report-period'
+            ? 'REPORT_PERIOD'
+            : record.time.role === 'publication'
+              ? 'PUBLICATION'
+              : record.time.role === 'observation'
+                ? 'OBSERVATION'
+                : record.time.role === 'event'
+                  ? 'EVENT'
+                  : 'UNKNOWN',
         precision:
           record.time.precision === 'month'
             ? 'MONTH'

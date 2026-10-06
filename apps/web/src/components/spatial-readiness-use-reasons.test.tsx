@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   calculateProjectReadiness,
   readinessRecordKey,
+  isCandidateReadinessReference,
   type ProjectReadinessInput,
   type ProjectReadinessRecord,
 } from '@wiser/data-core/project-readiness';
@@ -216,14 +217,26 @@ function ruleExamples(): ProjectReadinessInput[] {
 }
 
 function packFor(input: ProjectReadinessInput): WorkspacePack {
+  const source = input.sources[0];
+  if (isCandidateReadinessReference(source))
+    throw new Error(
+      'This published-source fixture cannot contain a candidate.',
+    );
+  const records = input.records.map((record) => {
+    if (isCandidateReadinessReference(record.source))
+      throw new Error(
+        'This published-record fixture cannot contain a candidate.',
+      );
+    return { ...record, source: record.source };
+  });
   return {
     schemaVersion: 1,
     generatedAt: '2026-10-04',
     processingVersion: 'synthetic-v1',
     sources: [
       {
-        id: input.sources[0].workId,
-        workId: input.sources[0].workId,
+        id: source.workId,
+        workId: source.workId,
         versionId: 'fixed-v1',
         track: input.track,
         title: 'Synthetic fixed source',
@@ -251,7 +264,7 @@ function packFor(input: ProjectReadinessInput): WorkspacePack {
         },
       },
     ],
-    records: input.records.map((record) => ({
+    records: records.map((record) => ({
       id: record.id,
       sourceId: record.source.workId,
       versionId: record.source.versionId,

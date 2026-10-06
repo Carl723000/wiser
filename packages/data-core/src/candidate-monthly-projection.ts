@@ -187,34 +187,216 @@ function cellLocator(row: LocatedTableRow, column: number): string {
   return `${row.locator}/column:${column}`;
 }
 
-/** Pure projection only: the candidate authority and current read permission live upstream. */
+type MonthlyRow = Omit<
+  CandidateMonthlyProjectedRecord,
+  'source' | 'time' | 'processingRuleVersion'
+> & {
+  readonly source: Pick<
+    CandidateMonthlyProjectedRecord['source'],
+    'assetId' | 'originalSha256'
+  >;
+};
+type MonthlyRowsInput = Omit<CandidateMonthlyProjectionInput, 'fixed'> & {
+  readonly fixed: Pick<
+    CandidateMonthlyProjectionInput['fixed'],
+    'assetId' | 'sourceHash'
+  >;
+};
+type MonthlyRowsProjection =
+  | {
+      readonly kind: 'READY';
+      readonly reason: null;
+      readonly month: string;
+      readonly records: readonly MonthlyRow[];
+    }
+  | {
+      readonly kind: 'NOT_PARSED';
+      readonly reason: CandidateMonthlyUnparsedReason;
+      readonly month: null;
+      readonly records: readonly [];
+    };
+function rowsUnparsed(
+  reason: CandidateMonthlyUnparsedReason,
+): MonthlyRowsProjection {
+  return { kind: 'NOT_PARSED', reason, month: null, records: [] };
+}
+
+/** Historical 1.0.0 contract: the title month retains its original PUBLICATION label. */
 export function projectCandidateMonthlyReport(
   input: CandidateMonthlyProjectionInput,
 ): CandidateMonthlyProjection {
   if (input.batch.status !== 'READY') return unparsed('SOURCE_NOT_READY');
-  if (
-    !input.fixed.workId.trim() ||
-    input.fixed.workId.length > 256 ||
-    !/^[a-f0-9]{64}$/u.test(input.fixed.sourceHash)
-  )
+  if (!input.fixed.workId.trim() || input.fixed.workId.length > 256)
     return unparsed('INVALID_INPUT');
+  const projected = projectMonthlyRows(input);
+  if (projected.kind !== 'READY') return unparsed(projected.reason);
+  return {
+    kind: 'READY',
+    reason: null,
+    ruleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
+    publicationMonth: projected.month,
+    records: projected.records.map((record) => ({
+      ...record,
+      source: { workId: input.fixed.workId, ...record.source },
+      time: { value: projected.month, role: 'PUBLICATION', precision: 'MONTH' },
+      processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
+    })),
+  };
+}
+
+export const CANDIDATE_MONTHLY_RULE_VERSION_V2 =
+  'beijing-monthly-docx-c3/2.0.0';
+export interface CandidateMonthlyDeclaredTime {
+  readonly value: string;
+  readonly precision: 'YEAR' | 'MONTH' | 'DAY';
+  /** Its own source locator, never an intake timestamp or inferred month end. */
+  readonly locator: string;
+}
+export interface CandidateMonthlyProjectionInputV2 extends MonthlyRowsInput {
+  readonly fixed: MonthlyRowsInput['fixed'] & {
+    readonly sourceLocalWorkId: string | null;
+  };
+  readonly publicationTime?: CandidateMonthlyDeclaredTime | null;
+  /** A document-level declaration; it is not assigned as each row's sampling time. */
+  readonly observationTime?: CandidateMonthlyDeclaredTime | null;
+}
+export type CandidateMonthlyProjectedRecordV2 = Omit<
+  CandidateMonthlyProjectedRecord,
+  'source' | 'time' | 'processingRuleVersion'
+> & {
+  readonly source: MonthlyRow['source'] & {
+    readonly sourceLocalWorkId: string | null;
+  };
+  readonly time: {
+    readonly value: string;
+    readonly role: 'REPORT_PERIOD';
+    readonly precision: 'MONTH';
+  };
+  readonly processingRuleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
+};
+export type CandidateMonthlyProjectionV2 =
+  | {
+      readonly kind: 'READY';
+      readonly reason: null;
+      readonly ruleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
+      readonly reportPeriod: string;
+      readonly publicationTime: CandidateMonthlyDeclaredTime | null;
+      readonly observationTime: CandidateMonthlyDeclaredTime | null;
+      readonly records: readonly CandidateMonthlyProjectedRecordV2[];
+    }
+  | {
+      readonly kind: 'NOT_PARSED';
+      readonly reason: CandidateMonthlyUnparsedReason;
+      readonly ruleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
+      readonly reportPeriod: null;
+      readonly publicationTime: null;
+      readonly observationTime: null;
+      readonly records: readonly [];
+    };
+function validDeclaredTime(
+  time: CandidateMonthlyDeclaredTime | null | undefined,
+): boolean {
+  if (time == null) return true;
+  if (
+    !time ||
+    typeof time !== 'object' ||
+    Array.isArray(time) ||
+    Object.keys(time).some(
+      (key) => !['value', 'precision', 'locator'].includes(key),
+    ) ||
+    typeof time.locator !== 'string' ||
+    !time.locator.trim() ||
+    time.locator.length > 2048 ||
+    typeof time.value !== 'string'
+  )
+    return false;
+  if (time.precision === 'YEAR') return /^(?:19|20)\d{2}$/.test(time.value);
+  if (time.precision === 'MONTH')
+    return /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(time.value);
+  if (
+    time.precision !== 'DAY' ||
+    !/^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(
+      time.value,
+    )
+  )
+    return false;
+  const [year, month, day] = time.value.split('-').map(Number);
+  const leap = year! % 4 === 0 && (year! % 100 !== 0 || year! % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day! <= days[month! - 1]!;
+}
+/** Explicit 2.0.0 semantics. The caller's declarations do not establish conversion trust or Auth. */
+export function projectCandidateMonthlyReportV2(
+  input: CandidateMonthlyProjectionInputV2,
+): CandidateMonthlyProjectionV2 {
+  const refused = (
+    reason: CandidateMonthlyUnparsedReason,
+  ): CandidateMonthlyProjectionV2 => ({
+    kind: 'NOT_PARSED',
+    reason,
+    ruleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V2,
+    reportPeriod: null,
+    publicationTime: null,
+    observationTime: null,
+    records: [],
+  });
+  if (
+    Object.hasOwn(input.fixed, 'workId') ||
+    Object.hasOwn(input.fixed, 'versionId') ||
+    (input.fixed.sourceLocalWorkId !== null &&
+      (typeof input.fixed.sourceLocalWorkId !== 'string' ||
+        !input.fixed.sourceLocalWorkId.trim() ||
+        input.fixed.sourceLocalWorkId.length > 256)) ||
+    !validDeclaredTime(input.publicationTime) ||
+    !validDeclaredTime(input.observationTime)
+  )
+    return refused('INVALID_INPUT');
+  const projected = projectMonthlyRows(input);
+  if (projected.kind !== 'READY') return refused(projected.reason);
+  return {
+    kind: 'READY',
+    reason: null,
+    ruleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V2,
+    reportPeriod: projected.month,
+    publicationTime: input.publicationTime ?? null,
+    observationTime: input.observationTime ?? null,
+    records: projected.records.map((record) => ({
+      ...record,
+      source: {
+        ...record.source,
+        sourceLocalWorkId: input.fixed.sourceLocalWorkId,
+      },
+      time: {
+        value: projected.month,
+        role: 'REPORT_PERIOD',
+        precision: 'MONTH',
+      },
+      processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V2,
+    })),
+  };
+}
+/** Pure projection only: the candidate authority and current read permission live upstream. */
+function projectMonthlyRows(input: MonthlyRowsInput): MonthlyRowsProjection {
+  if (input.batch.status !== 'READY') return rowsUnparsed('SOURCE_NOT_READY');
+  if (!/^[a-f0-9]{64}$/u.test(input.fixed.sourceHash))
+    return rowsUnparsed('INVALID_INPUT');
   const batch = IngestionCandidateBatchSchema.safeParse(input.batch);
-  if (!batch.success) return unparsed('INVALID_INPUT');
+  if (!batch.success) return rowsUnparsed('INVALID_INPUT');
   const original = batch.data.assets.find(
     (asset) =>
       asset.assetId.toLowerCase() === input.fixed.assetId.toLowerCase(),
   );
   if (!original || original.sourceHash !== input.fixed.sourceHash)
-    return unparsed('SOURCE_CHANGED');
+    return rowsUnparsed('SOURCE_CHANGED');
   if (original.status !== 'READY' || original.recordCount === null)
-    return unparsed('SOURCE_NOT_READY');
+    return rowsUnparsed('SOURCE_NOT_READY');
   if (
     original.recordCount < 1 ||
     original.recordCount > MAX_RECORDS ||
     input.pages.length < 1 ||
     input.pages.length > MAX_PAGES
   )
-    return unparsed('INCOMPLETE_RECORD_PAGES');
+    return rowsUnparsed('INCOMPLETE_RECORD_PAGES');
 
   const records: IngestionCandidateRecord[] = [];
   let expectedIndex = 1;
@@ -223,23 +405,24 @@ export function projectCandidateMonthlyReport(
   const seenIds = new Set<string>();
   for (const [pageIndex, inputPage] of input.pages.entries()) {
     const parsedPage = IngestionCandidateRecordPageSchema.safeParse(inputPage);
-    if (!parsedPage.success) return unparsed('INVALID_INPUT');
+    if (!parsedPage.success) return rowsUnparsed('INVALID_INPUT');
     const page = parsedPage.data;
     totalPageBytes += jsonUtf8Bytes(page);
-    if (totalPageBytes > MAX_PAGE_SET_BYTES) return unparsed('INVALID_INPUT');
+    if (totalPageBytes > MAX_PAGE_SET_BYTES)
+      return rowsUnparsed('INVALID_INPUT');
     if (
       !sameReference(page.reference, batch.data.reference) ||
       page.assetId.toLowerCase() !== original.assetId.toLowerCase()
     )
-      return unparsed('SOURCE_CHANGED');
+      return rowsUnparsed('SOURCE_CHANGED');
     if (
       page.records.length === 0 ||
       pageIndex < input.pages.length - 1 !== (page.nextCursor !== null)
     )
-      return unparsed('INCOMPLETE_RECORD_PAGES');
+      return rowsUnparsed('INCOMPLETE_RECORD_PAGES');
     const pageColumns = JSON.stringify(page.columns);
     if (columns !== null && pageColumns !== columns)
-      return unparsed('UNKNOWN_LAYOUT');
+      return rowsUnparsed('UNKNOWN_LAYOUT');
     columns = pageColumns;
     for (const [key, label] of [
       ['c1', 'Text'],
@@ -251,7 +434,7 @@ export function projectCandidateMonthlyReport(
           (column) => column.key === key && column.label === label,
         )
       )
-        return unparsed('UNKNOWN_LAYOUT');
+        return rowsUnparsed('UNKNOWN_LAYOUT');
     }
     for (const record of page.records) {
       if (
@@ -259,13 +442,13 @@ export function projectCandidateMonthlyReport(
         seenIds.has(record.recordId.toLowerCase()) ||
         record.hasGeometry
       )
-        return unparsed('INCOMPLETE_RECORD_PAGES');
+        return rowsUnparsed('INCOMPLETE_RECORD_PAGES');
       seenIds.add(record.recordId.toLowerCase());
       records.push(record);
     }
   }
   if (records.length !== original.recordCount)
-    return unparsed('INCOMPLETE_RECORD_PAGES');
+    return rowsUnparsed('INCOMPLETE_RECORD_PAGES');
 
   const titles = new Map<number, { month: string; locator: string }>();
   const tables = new Map<number, LocatedTableRow[]>();
@@ -273,15 +456,15 @@ export function projectCandidateMonthlyReport(
   for (const record of records) {
     const { c1, c2, c3 } = record.values;
     if (typeof c1 !== 'string' || typeof c2 !== 'string')
-      return unparsed('UNKNOWN_LAYOUT');
+      return rowsUnparsed('UNKNOWN_LAYOUT');
     if (/^word\/document\.xml#paragraph:[1-9]\d*$/u.test(c2)) {
       if (lastTable !== 0 || c3 !== undefined)
-        return unparsed('UNKNOWN_LAYOUT');
+        return rowsUnparsed('UNKNOWN_LAYOUT');
       const normalized = c1.replace(/[ \t\u3000]+/gu, '');
       if (!/^表[123]\d{4}年\d{1,2}月/u.test(normalized)) continue;
       const parsed = title(c1);
       if (!parsed || titles.has(parsed.table))
-        return unparsed('UNKNOWN_LAYOUT');
+        return rowsUnparsed('UNKNOWN_LAYOUT');
       titles.set(parsed.table, { month: parsed.month, locator: c2 });
       continue;
     }
@@ -293,26 +476,27 @@ export function projectCandidateMonthlyReport(
       c1 !== structure.cells.map((cell) => cell.text).join(' | ') ||
       structure.tableIndex < lastTable
     )
-      return unparsed('UNKNOWN_LAYOUT');
+      return rowsUnparsed('UNKNOWN_LAYOUT');
     lastTable = structure.tableIndex;
     const table = tables.get(structure.tableIndex) ?? [];
     if (structure.rowIndex !== table.length + 1)
-      return unparsed('UNKNOWN_LAYOUT');
+      return rowsUnparsed('UNKNOWN_LAYOUT');
     table.push({ record, structure, locator: c2 });
     tables.set(structure.tableIndex, table);
   }
-  if (titles.size !== 3 || tables.size !== 4) return unparsed('UNKNOWN_LAYOUT');
+  if (titles.size !== 3 || tables.size !== 4)
+    return rowsUnparsed('UNKNOWN_LAYOUT');
   const publicationMonth = titles.get(1)?.month;
   if (
     !publicationMonth ||
     [2, 3].some((number) => titles.get(number)?.month !== publicationMonth)
   )
-    return unparsed('UNKNOWN_LAYOUT');
+    return rowsUnparsed('UNKNOWN_LAYOUT');
   for (let number = 1; number <= 4; number++) {
     const table = tables.get(number);
     const expected = tableHeaders[number];
     if (!table || table.length < 2 || !expected)
-      return unparsed('UNKNOWN_LAYOUT');
+      return rowsUnparsed('UNKNOWN_LAYOUT');
     const header = table[0]?.structure.cells;
     if (
       !header ||
@@ -321,10 +505,10 @@ export function projectCandidateMonthlyReport(
           cell.text !== expected[index] || cell.verticalMerge !== null,
       )
     )
-      return unparsed('UNKNOWN_LAYOUT');
+      return rowsUnparsed('UNKNOWN_LAYOUT');
   }
 
-  const projected: CandidateMonthlyProjectedRecord[] = [];
+  const projected: MonthlyRow[] = [];
   let waterSystem: { text: string; locator: string } | null = null;
   for (let tableNumber = 1; tableNumber <= 4; tableNumber++) {
     const table = tables.get(tableNumber)!;
@@ -333,7 +517,7 @@ export function projectCandidateMonthlyReport(
       const cells = row.structure.cells;
       if (tableNumber === 4) {
         if (cells.some((cell) => cell.verticalMerge !== null))
-          return unparsed('UNKNOWN_LAYOUT');
+          return rowsUnparsed('UNKNOWN_LAYOUT');
         continue;
       }
       const isRiver = tableNumber === 1;
@@ -350,7 +534,7 @@ export function projectCandidateMonthlyReport(
         !name.text.trim() ||
         [name, district, category].some((cell) => cell.verticalMerge !== null)
       )
-        return unparsed('UNKNOWN_LAYOUT');
+        return rowsUnparsed('UNKNOWN_LAYOUT');
       if (isRiver) {
         const first = cells[0]!;
         if (first.verticalMerge === 'restart' && first.text.trim()) {
@@ -360,15 +544,14 @@ export function projectCandidateMonthlyReport(
           first.text !== '' ||
           !waterSystem
         ) {
-          return unparsed('UNKNOWN_LAYOUT');
+          return rowsUnparsed('UNKNOWN_LAYOUT');
         }
       } else if (cells.some((cell) => cell.verticalMerge !== null)) {
-        return unparsed('UNKNOWN_LAYOUT');
+        return rowsUnparsed('UNKNOWN_LAYOUT');
       }
       projected.push({
         candidateReference: batch.data.reference,
         source: {
-          workId: input.fixed.workId,
           assetId: original.assetId,
           originalSha256: original.sourceHash,
         },
@@ -386,11 +569,6 @@ export function projectCandidateMonthlyReport(
         waterSystemOriginal: isRiver ? waterSystem!.text : null,
         districtOriginal: district.text,
         rawCategory: category.text,
-        time: {
-          value: publicationMonth,
-          role: 'PUBLICATION',
-          precision: 'MONTH',
-        },
         locators: {
           title: titleLocator!,
           row: row.locator,
@@ -399,15 +577,13 @@ export function projectCandidateMonthlyReport(
           districtCell: cellLocator(row, districtColumn),
           waterSystemCell: isRiver ? waterSystem!.locator : null,
         },
-        processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
       });
     }
   }
   return {
     kind: 'READY',
     reason: null,
-    ruleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
-    publicationMonth,
+    month: publicationMonth,
     records: projected,
   };
 }

@@ -5,6 +5,7 @@ import {
   type ProjectReadinessInput,
   type ProjectReadinessRecord,
   type ProjectReadinessSource,
+  type PublishedReadinessSourceReference,
   type ReadinessEvidence,
 } from '../src/project-readiness.js';
 
@@ -26,7 +27,9 @@ const definitions = {
   },
 } as const;
 
-function fixture(): ProjectReadinessInput {
+function fixture(): ProjectReadinessInput & {
+  sources: (ProjectReadinessSource & PublishedReadinessSourceReference)[];
+} {
   const source: ProjectReadinessSource = {
     workId: 'SYNTHETIC-bohai-paired-observation',
     versionId: 'synthetic-fixed-v1',

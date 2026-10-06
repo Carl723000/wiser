@@ -417,11 +417,7 @@ describe('fixed candidate monthly semantic projection', () => {
 // The new path must be independently available; legacy expectations above stay intact.
 describe('explicit monthly report-period projection v2', () => {
   function v2(input = fixture()) {
-    const project = (
-      monthlyProjection as unknown as {
-        projectCandidateMonthlyReportV2: (input: unknown) => any;
-      }
-    ).projectCandidateMonthlyReportV2;
+    const project = monthlyProjection.projectCandidateMonthlyReportV2;
     expect(typeof project).toBe('function');
     return project({
       ...input,
@@ -446,9 +442,9 @@ describe('explicit monthly report-period projection v2', () => {
       time: { value: '2023-04', role: 'REPORT_PERIOD', precision: 'MONTH' },
       rawCategory: 'Ⅱ',
     });
-    expect(result.records[0].source).not.toHaveProperty('workId');
-    expect(result.records[1].rawCategory).toBe('无水');
-    expect(result.records[3].rawCategory).toBe('封闭无法监测');
+    expect(result.records[0]!.source).not.toHaveProperty('workId');
+    expect(result.records[1]!.rawCategory).toBe('无水');
+    expect(result.records[3]!.rawCategory).toBe('封闭无法监测');
     expect(projectCandidateMonthlyReport(fixture()).records[0]?.time.role).toBe(
       'PUBLICATION',
     );

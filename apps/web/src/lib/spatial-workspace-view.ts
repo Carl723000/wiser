@@ -298,7 +298,7 @@ export const defaultWorkspaceRaster: WorkspaceRasterSettings = {
   opacity: 0.8,
 };
 export interface SpatialWorkspaceView {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   kind: 'spatial-workspace-view';
   regionId: RegionId;
   start: string | null;
@@ -367,7 +367,7 @@ export function createSpatialWorkspaceView(
   regionId: RegionId = 'bth',
 ): SpatialWorkspaceView {
   return {
-    schemaVersion: 1,
+    schemaVersion: pack.schemaVersion,
     kind: 'spatial-workspace-view',
     regionId,
     start: null,
@@ -896,6 +896,10 @@ export function captureSpatialWorkspaceView(
   );
   return {
     ...structuredClone(view),
+    schemaVersion:
+      pack.schemaVersion === 2 || view.timeRole === 'report-period'
+        ? 2
+        : view.schemaVersion,
     selection,
     sourcePins,
     expandedSources: view.expandedSources.filter((id) =>
@@ -972,7 +976,7 @@ function isScope(value: unknown): value is WorkspaceComparisonScope {
 function isView(value: unknown): value is SpatialWorkspaceView {
   if (
     !object(value) ||
-    value['schemaVersion'] !== 1 ||
+    (value['schemaVersion'] !== 1 && value['schemaVersion'] !== 2) ||
     value['kind'] !== 'spatial-workspace-view' ||
     !workspaceRegionIds.includes(value['regionId'] as RegionId) ||
     !isCamera(value['camera'])
@@ -1002,6 +1006,7 @@ function isView(value: unknown): value is SpatialWorkspaceView {
       'all',
       'observation',
       'publication',
+      ...(value['schemaVersion'] === 2 ? ['report-period'] : []),
       'event',
       'acquisition',
       'unknown',
@@ -1493,7 +1498,7 @@ export function exportWorkspaceTopic(
       duplicateOf: source.duplicateOf,
     }));
   return {
-    schemaVersion: 1 as const,
+    schemaVersion: pack.schemaVersion,
     topic: {
       ...topic,
       recordIds: records.map((record) => record.id),
