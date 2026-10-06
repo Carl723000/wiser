@@ -86,6 +86,29 @@ const unavailable = (): Failure => ({
   status: 'unknown',
   reason: 'observation_unavailable',
 });
+function captureNative(prototype: object, name: string, kind: 'value' | 'get') {
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
+  const method: unknown = descriptor
+    ? Reflect.get(descriptor, kind)
+    : undefined;
+  return typeof method === 'function' ? method : null;
+}
+const nativeAddListener = captureNative(
+  EventTarget.prototype,
+  'addEventListener',
+  'value',
+);
+const nativeRemoveListener = captureNative(
+  EventTarget.prototype,
+  'removeEventListener',
+  'value',
+);
+const nativeAborted = captureNative(AbortSignal.prototype, 'aborted', 'get');
+function isAborted(signal: AbortSignal): boolean {
+  return nativeAborted
+    ? Reflect.apply(nativeAborted, signal, []) === true
+    : true;
+}
 function exact(
   value: unknown,
   names: readonly string[],
@@ -116,6 +139,37 @@ function exact(
   }
 }
 function parseObservation(value: unknown): Observation {
+  const failure = exact(value, ['status', 'reason']);
+  if (
+    failure &&
+    failure.status === 'unknown' &&
+    [
+      'observation_missing',
+      'observation_unavailable',
+      'invalid_observation',
+    ].includes(failure.reason as string)
+  ) {
+    return { status: 'unknown', reason: failure.reason as RuntimeWindowReason };
+  }
+  if (
+    failure &&
+    failure.status === 'rejected' &&
+    [
+      'generation_changed',
+      'build_changed',
+      'configuration_changed',
+      'mount_changed',
+      'migration_changed',
+      'signature_changed',
+      'ownership_changed',
+      'loopback_changed',
+    ].includes(failure.reason as string)
+  ) {
+    return {
+      status: 'rejected',
+      reason: failure.reason as RuntimeWindowReason,
+    };
+  }
   const fields = exact(value, ['status', 'binding']);
   const b =
     fields?.status === 'observed'
@@ -128,8 +182,7 @@ function parseObservation(value: unknown): Observation {
   if (
     !b ||
     hashFields.some(
-      (key) =>
-        typeof b[key] !== 'string' || !/^[a-f0-9]{64}$/.test(b[key] as string),
+      (key) => typeof b[key] !== 'string' || !/^[a-f0-9]{64}$/.test(b[key]),
     )
   )
     return invalid();
@@ -189,63 +242,229 @@ function parseObservation(value: unknown): Observation {
   };
 }
 
+function changed(
+  before: RuntimeObservationBinding,
+  after: RuntimeObservationBinding,
+): Failure | null {
+  if (
+    before.generations.length !== after.generations.length ||
+    before.generations.some((g, i) => {
+      const next = after.generations[i];
+      return (
+        next === undefined ||
+        g.service !== next.service ||
+        g.actualId !== next.actualId ||
+        g.startedAt !== next.startedAt ||
+        g.restartGeneration !== next.restartGeneration
+      );
+    })
+  )
+    return { status: 'rejected', reason: 'generation_changed' };
+  if (
+    before.generations.some(
+      (g, i) => g.immutableImageId !== after.generations[i]?.immutableImageId,
+    )
+  )
+    return { status: 'rejected', reason: 'build_changed' };
+  const reasons: Record<(typeof hashFields)[number], RuntimeWindowReason> = {
+    sourceBuildSha256: 'build_changed',
+    configurationSha256: 'configuration_changed',
+    mountsSha256: 'mount_changed',
+    migrationSha256: 'migration_changed',
+    signatureSourceSha256: 'signature_changed',
+    signatureBytesSha256: 'signature_changed',
+    signatureReadinessSha256: 'signature_changed',
+    ownershipLoopbackSha256: 'ownership_changed',
+  };
+  for (const key of hashFields)
+    if (before[key] !== after[key])
+      return { status: 'rejected', reason: reasons[key] };
+  return null;
+}
+interface WindowEntry {
+  readonly abort: AbortController;
+  baseline: RuntimeObservationBinding | null;
+  failure: Failure | null;
+  inflight: Promise<RuntimeWindowResult> | null;
+  watcher: ReturnType<typeof setTimeout> | null;
+}
+
 export function createA12RuntimeObservationWindows(
   read: (signal: AbortSignal) => Promise<unknown>,
-  _controls: RuntimeObservationControls,
+  controls: RuntimeObservationControls,
 ): RuntimeObservationWindows {
+  const selected = exact(controls, [
+    'maximumObservationMs',
+    'sampleIntervalMs',
+    'maximumWindows',
+  ]);
+  if (
+    typeof read !== 'function' ||
+    !selected ||
+    Object.values(selected).some(
+      (n) =>
+        typeof n !== 'number' ||
+        !Number.isSafeInteger(n) ||
+        n < 1 ||
+        n > 2_147_483_647,
+    ) ||
+    (selected.maximumWindows as number) > 32
+  )
+    throw new Error('Invalid runtime observation controls');
+  const maximumObservationMs = selected.maximumObservationMs as number;
+  const sampleIntervalMs = selected.sampleIntervalMs as number;
+  const maximumWindows = selected.maximumWindows as number;
   let closed = false;
-  const owned = new WeakMap<object, AbortController>();
-  const active = new Set<AbortController>();
+  const owned = new WeakMap<object, WindowEntry>();
+  const active = new Set<WindowEntry>();
   let activeObservations = 0;
-  return {
-    openWindow: async () => {
+  const stop = (entry: WindowEntry, failure: Failure): Failure => {
+    entry.failure ??= Object.freeze(failure);
+    if (entry.watcher !== null) {
+      clearTimeout(entry.watcher);
+      entry.watcher = null;
+    }
+    active.delete(entry);
+    if (!isAborted(entry.abort.signal)) entry.abort.abort(entry.failure.reason);
+    return entry.failure;
+  };
+  function readBounded(entry: WindowEntry): Promise<Observation> {
+    return new Promise((resolve) => {
       const controller = new AbortController();
-      activeObservations++;
-      try {
-        const observation = parseObservation(await read(controller.signal));
-        if (observation.status !== 'observed') return observation;
-        const window = Object.freeze(
-          Object.create(null),
-        ) as RuntimeObservationWindow;
-        owned.set(window, controller);
-        active.add(controller);
-        return { status: 'open', window };
-      } catch {
-        return unavailable();
-      } finally {
-        activeObservations--;
+      let settled = false;
+      const done = (value: Observation) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        // Never use mutable instance methods exposed through signal(window).
+        // Cleanup must not suppress completion or strand a canceled observation.
+        try {
+          if (nativeRemoveListener)
+            Reflect.apply(nativeRemoveListener, entry.abort.signal, [
+              'abort',
+              onAbort,
+            ]);
+        } catch {
+          /* The owned result still has to settle. */
+        }
+        resolve(value);
+      };
+      const onAbort = () => {
+        done(entry.failure ?? { status: 'unknown', reason: 'closed' });
+        controller.abort();
+      };
+      const deadline = setTimeout(() => {
+        done(unavailable());
+        controller.abort();
+      }, maximumObservationMs);
+      if (!nativeAddListener) {
+        done(unavailable());
+        return;
       }
+      Reflect.apply(nativeAddListener, entry.abort.signal, [
+        'abort',
+        onAbort,
+        { once: true },
+      ]);
+      if (isAborted(entry.abort.signal)) {
+        onAbort();
+        return;
+      }
+      // A non-cooperative reader is still bounded at the observation boundary;
+      // neither its late fulfillment nor rejection may change a completed result.
+      Promise.resolve()
+        .then(() => {
+          if (settled || isAborted(controller.signal)) return unavailable();
+          return read(controller.signal);
+        })
+        .then(
+          (value) => {
+            try {
+              done(parseObservation(value));
+            } catch {
+              done({ status: 'unknown', reason: 'invalid_observation' });
+            }
+          },
+          () => done(unavailable()),
+        );
+    });
+  }
+  function sampleLater(entry: WindowEntry): void {
+    if (entry.failure || closed || entry.watcher !== null) return;
+    entry.watcher = setTimeout(() => {
+      entry.watcher = null;
+      void observe(entry).then(() => sampleLater(entry));
+    }, sampleIntervalMs);
+    entry.watcher.unref();
+  }
+  function observe(entry: WindowEntry): Promise<RuntimeWindowResult> {
+    if (entry.failure) return Promise.resolve(entry.failure);
+    if (entry.inflight) return entry.inflight;
+    activeObservations++;
+    const pending = (async (): Promise<RuntimeWindowResult> => {
+      const observation = await readBounded(entry);
+      if (entry.failure) return entry.failure;
+      if (observation.status !== 'observed') return stop(entry, observation);
+      if (entry.baseline) {
+        const drift = changed(entry.baseline, observation.binding);
+        if (drift) return stop(entry, drift);
+      } else entry.baseline = observation.binding;
+      return { status: 'unchanged' };
+    })();
+    entry.inflight = pending.finally(() => {
+      activeObservations--;
+      entry.inflight = null;
+    });
+    return entry.inflight;
+  }
+  return Object.freeze({
+    openWindow: async () => {
+      if (closed) return { status: 'unknown', reason: 'closed' };
+      if (active.size >= maximumWindows)
+        return { status: 'unknown', reason: 'window_limit' };
+      const entry: WindowEntry = {
+        abort: new AbortController(),
+        baseline: null,
+        failure: null,
+        inflight: null,
+        watcher: null,
+      };
+      const window = Object.freeze(
+        Object.create(null),
+      ) as RuntimeObservationWindow;
+      owned.set(window, entry);
+      active.add(entry);
+      const check = await observe(entry);
+      if (check.status !== 'unchanged') return check;
+      if (entry.failure) return entry.failure;
+      sampleLater(entry);
+      return { status: 'open', window };
     },
     checkpoint: async (window) => {
-      const controller = owned.get(window);
-      if (!controller) return { status: 'unknown', reason: 'unowned_session' };
-      activeObservations++;
-      try {
-        await read(controller.signal);
-        return { status: 'unchanged' };
-      } catch {
-        return unavailable();
-      } finally {
-        activeObservations--;
-      }
+      const entry = owned.get(window);
+      return entry
+        ? observe(entry)
+        : { status: 'unknown', reason: 'unowned_session' };
     },
     signal: (window) =>
-      owned.get(window)?.signal ?? AbortSignal.abort('unowned_session'),
+      owned.get(window)?.abort.signal ?? AbortSignal.abort('unowned_session'),
     closeWindow: (window) => {
-      const controller = owned.get(window);
-      controller?.abort('closed');
-      if (controller) active.delete(controller);
+      const entry = owned.get(window);
+      if (entry) stop(entry, { status: 'unknown', reason: 'closed' });
     },
     close: () => {
+      if (closed) return;
       closed = true;
-      for (const controller of active) controller.abort('closed');
-      active.clear();
+      for (const entry of [...active])
+        stop(entry, { status: 'unknown', reason: 'closed' });
     },
     diagnostics: () => ({
-      activeWindows: active.size,
+      activeWindows: [...active].filter((entry) => entry.baseline !== null)
+        .length,
       activeObservations,
-      activeWatchers: 0,
+      activeWatchers: [...active].filter((entry) => entry.watcher !== null)
+        .length,
       closed,
     }),
-  };
+  } satisfies RuntimeObservationWindows);
 }

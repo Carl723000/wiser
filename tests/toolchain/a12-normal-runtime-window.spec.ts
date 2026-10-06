@@ -56,9 +56,9 @@ function deferred<T>() {
 
 it('forged and serialized handles never become owned windows or live signals', async () => {
   let reads = 0;
-  const owner = createA12RuntimeObservationWindows(async () => {
+  const owner = createA12RuntimeObservationWindows(() => {
     reads++;
-    return observation();
+    return Promise.resolve(observation());
   }, controls);
   const forged = JSON.parse(
     '{"status":"open","verified":true}',
@@ -129,7 +129,7 @@ it.each(drifts)(
   async ({ mutate, reason }) => {
     let value = observation();
     const owner = createA12RuntimeObservationWindows(
-      async () => value,
+      () => Promise.resolve(value),
       controls,
     );
     try {
@@ -155,7 +155,10 @@ it.each(drifts)(
 
 it('unchanged reordered service observations retain identity instead of rejecting order alone', async () => {
   const value = observation();
-  const owner = createA12RuntimeObservationWindows(async () => value, controls);
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(value),
+    controls,
+  );
   try {
     const window = await openedWindow(owner);
     value.binding.generations.reverse();
@@ -167,7 +170,10 @@ it('unchanged reordered service observations retain identity instead of rejectin
 
 it('valid snapshots are copied; mutating the first producer object cannot alter the baseline', async () => {
   const value = observation();
-  const owner = createA12RuntimeObservationWindows(async () => value, controls);
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(value),
+    controls,
+  );
   try {
     const window = await openedWindow(owner);
     value.binding.mountsSha256 = digest(72);
@@ -182,7 +188,10 @@ it('valid snapshots are copied; mutating the first producer object cannot alter 
 
 it('known absence stays unknown and cannot recover into unchanged', async () => {
   let value: unknown = observation();
-  const owner = createA12RuntimeObservationWindows(async () => value, controls);
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(value),
+    controls,
+  );
   try {
     const window = await openedWindow(owner);
     value = { status: 'unknown', reason: 'observation_missing' };
@@ -221,7 +230,7 @@ it('observation accessors, extra authority flags and malformed service lists rem
     },
   ]) {
     const owner = createA12RuntimeObservationWindows(
-      async () => value,
+      () => Promise.resolve(value),
       controls,
     );
     try {
@@ -238,11 +247,11 @@ it('observation accessors, extra authority flags and malformed service lists rem
 
 it('two live owners cannot exchange handles, even with identical observation hashes', async () => {
   const first = createA12RuntimeObservationWindows(
-    async () => observation(),
+    () => Promise.resolve(observation()),
     controls,
   );
   const second = createA12RuntimeObservationWindows(
-    async () => observation(),
+    () => Promise.resolve(observation()),
     controls,
   );
   try {
@@ -317,10 +326,13 @@ it('close while opening refuses a late observation and repeated close releases r
 });
 
 it('active-window bound refuses additional work without invalidating an existing window', async () => {
-  const owner = createA12RuntimeObservationWindows(async () => observation(), {
-    ...controls,
-    maximumWindows: 1,
-  });
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(observation()),
+    {
+      ...controls,
+      maximumWindows: 1,
+    },
+  );
   try {
     const window = await openedWindow(owner);
     expect(await owner.openWindow()).toEqual({
@@ -335,11 +347,14 @@ it('active-window bound refuses additional work without invalidating an existing
 
 it('out-of-band sampler invalidates a window before the next explicit checkpoint', async () => {
   vi.useFakeTimers();
-  let value = observation();
-  const owner = createA12RuntimeObservationWindows(async () => value, {
-    ...controls,
-    sampleIntervalMs: 10,
-  });
+  const value = observation();
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(value),
+    {
+      ...controls,
+      sampleIntervalMs: 10,
+    },
+  );
   try {
     const window = await openedWindow(owner);
     value.binding.signatureBytesSha256 = digest(73);
@@ -389,9 +404,9 @@ it('concurrent checkpoints share the same observation without racing a healthy r
   const gate = deferred<unknown>();
   let pending = false,
     reads = 0;
-  const owner = createA12RuntimeObservationWindows(async () => {
+  const owner = createA12RuntimeObservationWindows(() => {
     reads++;
-    return pending ? gate.promise : observation();
+    return pending ? gate.promise : Promise.resolve(observation());
   }, controls);
   try {
     const window = await openedWindow(owner);
@@ -419,7 +434,7 @@ it('concurrent checkpoints share the same observation without racing a healthy r
 it('invalid controls reject before any observation is attempted', () => {
   for (const value of [0, -1, NaN, Infinity, 1.1])
     expect(() =>
-      createA12RuntimeObservationWindows(async () => observation(), {
+      createA12RuntimeObservationWindows(() => Promise.resolve(observation()), {
         ...controls,
         maximumObservationMs: value,
       }),
@@ -428,7 +443,7 @@ it('invalid controls reject before any observation is attempted', () => {
 
 it('WINDOW-R1: observed runtime opens an opaque local window with unchanged checkpoint', async () => {
   const owner = createA12RuntimeObservationWindows(
-    async () => observation(),
+    () => Promise.resolve(observation()),
     controls,
   );
   try {
@@ -443,4 +458,77 @@ it('WINDOW-R1: observed runtime opens an opaque local window with unchanged chec
   } finally {
     owner.close();
   }
+});
+
+it('cleanup cannot strand a checkpoint after an exposed signal instance method is overwritten', async () => {
+  vi.useFakeTimers();
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(observation()),
+    { ...controls, maximumObservationMs: 50 },
+  );
+  const window = await openedWindow(owner),
+    signal = owner.signal(window);
+  let settled: unknown;
+  Object.defineProperty(signal, 'removeEventListener', {
+    configurable: true,
+    value: () => {
+      throw new Error('private cleanup failure');
+    },
+  });
+  const pending = owner.checkpoint(window).then((value) => {
+    settled = value;
+    return value;
+  });
+  try {
+    await vi.advanceTimersByTimeAsync(51);
+    expect(settled).toEqual({ status: 'unchanged' });
+    await pending;
+  } finally {
+    Reflect.deleteProperty(signal, 'removeEventListener');
+    owner.close();
+  }
+});
+
+it('synchronous close refuses queued checkpoint work before calling its reader', async () => {
+  let reads = 0;
+  const owner = createA12RuntimeObservationWindows(() => {
+    reads++;
+    return Promise.resolve(observation());
+  }, controls);
+  try {
+    const window = await openedWindow(owner),
+      before = reads;
+    const pending = owner.checkpoint(window);
+    owner.closeWindow(window);
+    expect(await pending).toEqual({ status: 'unknown', reason: 'closed' });
+    expect(reads).toBe(before);
+  } finally {
+    owner.close();
+  }
+});
+
+it('shadowed aborted getter cannot prevent owned cancellation or expose an exception', async () => {
+  const owner = createA12RuntimeObservationWindows(
+    () => Promise.resolve(observation()),
+    controls,
+  );
+  const window = await openedWindow(owner),
+    signal = owner.signal(window);
+  Object.defineProperty(signal, 'aborted', {
+    configurable: true,
+    get: () => {
+      throw new Error('private shadowed getter');
+    },
+  });
+  try {
+    expect(() => owner.closeWindow(window)).not.toThrow();
+  } finally {
+    Reflect.deleteProperty(signal, 'aborted');
+    owner.close();
+  }
+  expect(signal.aborted).toBe(true);
+  expect(await owner.checkpoint(window)).toEqual({
+    status: 'unknown',
+    reason: 'closed',
+  });
 });
