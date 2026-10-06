@@ -1,6 +1,7 @@
 import {
   Agent,
   request as httpRequest,
+  validateHeaderValue,
   type ClientRequest,
   type IncomingMessage,
 } from 'node:http';
@@ -135,6 +136,7 @@ function requestInput(value: CandidateLoadMeInput): CandidateLoadMeInput {
       /\s/.test(raw.accessToken)
     )
       return fail('invalid');
+    validateHeaderValue('Authorization', `Bearer ${raw.accessToken}`);
     return Object.freeze({
       accessToken: raw.accessToken,
       tenantId: PlatformUuidSchema.parse(raw.tenantId),
