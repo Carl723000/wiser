@@ -28,12 +28,14 @@ checkPaths:
   - tests/toolchain/a12-candidate-original-http.spec.ts
   - tests/toolchain/a12-standard-intake-http.spec.ts
   - tests/toolchain/a12-candidate-inventory-collector.spec.ts
+  - tests/toolchain/a12-standard-intake-collector.spec.ts
+  - tests/toolchain/a12-standard-intake-http-combination.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: ce4cfe5b04ae7f31c10bef4b0ad0026ef9a96411
+lastReviewedCommit: c2754d90be5e2658db195bc488c714b972c8783d
 ---
 
 ## Red → Green → Refactor
