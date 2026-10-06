@@ -25,6 +25,7 @@ import type {
   LoadRequest,
 } from '../../apps/web/e2e-live/support/a12-candidate-load-driver.ts';
 import { traversalContentDigest } from '../../apps/web/e2e-live/support/a12-candidate-load-traversal.ts';
+import type { CandidateLoadAuthCondition } from '../../apps/web/e2e-live/support/a12-candidate-load-auth.ts';
 import {
   admitA12RunInput,
   runA12CandidateMatrix,
@@ -363,12 +364,13 @@ function fixture(pagedRecords = false) {
       const ownGeneration = ++generation;
       return Promise.resolve({
         summary,
-        accessToken: async () => {
+        accessToken: () => {
           tokenReads += 1;
-          if (guardClosed) throw new CandidateLoadTransportError('cancelled');
+          if (guardClosed)
+            return Promise.reject(new CandidateLoadTransportError('cancelled'));
           if (generation !== ownGeneration)
-            throw new CandidateLoadTransportError('stale');
-          return 'synthetic-tool-token-never-report';
+            return Promise.reject(new CandidateLoadTransportError('stale'));
+          return Promise.resolve('synthetic-tool-token-never-report');
         },
       });
     }),
@@ -377,70 +379,75 @@ function fixture(pagedRecords = false) {
     }),
   };
   const ports: A12RunnerPorts = {
-    readArtifact: vi.fn((artifact) => {
+    readArtifact: vi.fn((artifact: A12ArtifactPin) => {
       const bytes = artifacts.get(artifact.path);
       if (bytes === undefined) return Promise.reject(Error(rawMarker));
       return Promise.resolve(Uint8Array.from(bytes));
     }),
     verifyStandardIntake: vi.fn(() => Promise.resolve('verified' as const)),
     authenticate: vi.fn(() => Promise.resolve(guard)),
-    createTransport: vi.fn((currentCondition, location) => {
-      const state = {
-        close: vi.fn(),
-        active: 0,
-        peak: 0,
-        location: structuredClone(location),
-      };
-      transports.push(state);
-      return {
-        send: async (request) => {
-          state.active += 1;
-          state.peak = Math.max(state.peak, state.active);
-          try {
-            if (state.close.mock.calls.length !== 0)
-              throw new CandidateLoadTransportError('cancelled');
-            await currentCondition.accessToken();
-            requests.push({ location: structuredClone(location), request });
-            dispatches += 1;
-            await Promise.resolve();
-            if (
-              dispatches === failAt ||
-              (location.phase === 'traversal' &&
-                location.trackOrdinal === 1 &&
-                location.roundOrdinal === 1 &&
-                location.memberOrdinal === failedTraversalMember)
-            )
-              throw new CandidateLoadTransportError(failKind);
-            const selected = members.find(
-              (item) =>
-                item.reference.ingestionId === request.reference.ingestionId,
-            );
-            if (selected === undefined) throw Error(rawMarker);
-            const body = structuredClone(
-              pagedRecords &&
-                request.action === 'records' &&
-                request.after !== undefined
-                ? selected.secondRecordsPage
-                : selected.pages[request.action],
-            );
-            return {
-              boundary: 'api-http' as const,
-              status: 200,
-              contentType: 'application/json',
-              wireBytes: Buffer.byteLength(JSON.stringify(body)),
-              body,
-            };
-          } finally {
-            state.active -= 1;
-          }
-        },
-        close: state.close,
-        diagnostics: () => ({
-          activeRequests: state.active,
-          closed: state.close.mock.calls.length !== 0,
-        }),
-      };
-    }),
+    createTransport: vi.fn(
+      (
+        currentCondition: CandidateLoadAuthCondition,
+        location: A12DispatchLocation,
+      ) => {
+        const state = {
+          close: vi.fn(),
+          active: 0,
+          peak: 0,
+          location: structuredClone(location),
+        };
+        transports.push(state);
+        return {
+          send: async (request: LoadRequest) => {
+            state.active += 1;
+            state.peak = Math.max(state.peak, state.active);
+            try {
+              if (state.close.mock.calls.length !== 0)
+                throw new CandidateLoadTransportError('cancelled');
+              await currentCondition.accessToken();
+              requests.push({ location: structuredClone(location), request });
+              dispatches += 1;
+              await Promise.resolve();
+              if (
+                dispatches === failAt ||
+                (location.phase === 'traversal' &&
+                  location.trackOrdinal === 1 &&
+                  location.roundOrdinal === 1 &&
+                  location.memberOrdinal === failedTraversalMember)
+              )
+                throw new CandidateLoadTransportError(failKind);
+              const selected = members.find(
+                (item) =>
+                  item.reference.ingestionId === request.reference.ingestionId,
+              );
+              if (selected === undefined) throw Error(rawMarker);
+              const body = structuredClone(
+                pagedRecords &&
+                  request.action === 'records' &&
+                  request.after !== undefined
+                  ? selected.secondRecordsPage
+                  : selected.pages[request.action],
+              );
+              return {
+                boundary: 'api-http' as const,
+                status: 200,
+                contentType: 'application/json',
+                wireBytes: Buffer.byteLength(JSON.stringify(body)),
+                body,
+              };
+            } finally {
+              state.active -= 1;
+            }
+          },
+          close: state.close,
+          diagnostics: () => ({
+            activeRequests: state.active,
+            closed: state.close.mock.calls.length !== 0,
+          }),
+        };
+      },
+    ),
     now: () => ++ticks, // Tool-only fake clock; never actual performance evidence.
     fingerprint,
   };
@@ -864,12 +871,15 @@ it('denied after five warmups retains its first measured sample and stops all la
   expect(result.conditions[0]!.result.measured).toEqual([
     {
       ordinal: 1,
-      elapsedMs: expect.any(Number),
+      elapsedMs: result.conditions[0]!.result.measured[0]?.elapsedMs,
       outcome: 'denied',
       wireBytes: null,
       dtoBytes: null,
     },
   ]);
+  expect(result.conditions[0]!.result.measured[0]!.elapsedMs).toBeTypeOf(
+    'number',
+  );
   expect(f.requests).toHaveLength(6);
   expect(result.rounds).toHaveLength(0);
   expect(result.pageSamples).toHaveLength(0);
@@ -1088,9 +1098,9 @@ it('invalid material DTOs keep actual page timing and bytes and stop the current
     pageOrdinal: 2,
     action: 'records',
     outcome: 'invalid',
-    elapsedMs: expect.any(Number),
-    wireBytes: expect.any(Number),
   });
+  expect(result.pageSamples.at(-1)?.elapsedMs).toBeTypeOf('number');
+  expect(result.pageSamples.at(-1)?.wireBytes).toBeTypeOf('number');
   const started = f.requests.filter(
     (entry) => entry.location.phase === 'traversal',
   );

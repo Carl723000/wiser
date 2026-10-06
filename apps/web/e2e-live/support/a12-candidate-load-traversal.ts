@@ -216,6 +216,127 @@ async function traversePages(
   }
 }
 
+export interface CandidateSingleTraversalResult {
+  readonly status: 'passed' | 'failed' | 'not_run';
+  readonly reason: 'incomplete_inventory' | 'iteration_invalid' | null;
+  readonly iteration: TraversalIteration | null;
+}
+
+async function traverseAdmittedOnce(
+  frozen: FrozenCandidateDataset,
+  ports: LoadPorts,
+  ordinal: number,
+): Promise<TraversalIteration> {
+  const counts = { assets: 0, records: 0, geometry: 0 };
+  const checks = { assets: false, records: false, geometry: false };
+  let digest: string | null = null;
+  let outcome: TraversalIteration['outcome'] = 'completed';
+  try {
+    const fingerprint = safeFingerprint(ports.fingerprint);
+    const expectedAssetsDigest = traversalContentDigest(
+      'get',
+      [],
+      frozen.batch.assets,
+      fingerprint,
+    );
+    const assetsDigest = await traversePages(
+      frozen,
+      'get',
+      undefined,
+      frozen.batch.assets.length,
+      [],
+      expectedAssetsDigest,
+      ports,
+      () => {
+        counts.assets += 1;
+      },
+    );
+    checks.assets = true;
+    const materials: {
+      ordinal: number;
+      records: string;
+      geometry: string;
+    }[] = [];
+    // Preserve the frozen material inventory order, independently of its
+    // relation to asset-page ordering. No material identity enters the report.
+    for (const [index, material] of frozen.materials.entries()) {
+      const asset = frozen.batch.assets.find(
+        (item) => canonicalId(item.assetId) === canonicalId(material.assetId),
+      );
+      if (
+        asset === undefined ||
+        asset.recordCount === null ||
+        asset.featureCount === null
+      )
+        fail('drift');
+      const records = await traversePages(
+        frozen,
+        'records',
+        material.assetId,
+        asset.recordCount,
+        material.columns,
+        material.recordsDigest,
+        ports,
+        () => {
+          counts.records += 1;
+        },
+      );
+      checks.records = index + 1 === frozen.materials.length;
+      const geometry = await traversePages(
+        frozen,
+        'geometry',
+        material.assetId,
+        asset.featureCount,
+        [],
+        material.geometryDigest,
+        ports,
+        () => {
+          counts.geometry += 1;
+        },
+      );
+      checks.geometry = index + 1 === frozen.materials.length;
+      materials.push({ ordinal: index + 1, records, geometry });
+    }
+    digest = fingerprint({
+      domain: 'a12-complete-traversal-v1',
+      assets: assetsDigest,
+      materials,
+    });
+  } catch (error) {
+    outcome =
+      error instanceof CandidateLoadTransportError ? error.kind : 'unavailable';
+  }
+  return { ordinal, outcome, counts, checks, digest };
+}
+
+/** One full traversal for an outer fixed round/member schedule; no retry. */
+export async function runCandidateLoadTraversalOnce(
+  input: unknown,
+  ports: LoadPorts,
+  ordinal: number,
+): Promise<CandidateSingleTraversalResult> {
+  if (!Number.isInteger(ordinal) || ordinal < 1 || ordinal > 20)
+    return { status: 'not_run', reason: 'iteration_invalid', iteration: null };
+  let admitted: ReturnType<typeof readFrozenCandidateInput>;
+  try {
+    admitted = readFrozenCandidateInput(input);
+  } catch {
+    return {
+      status: 'not_run',
+      reason: 'incomplete_inventory',
+      iteration: null,
+    };
+  }
+  if (admitted.status !== 'ready')
+    return { status: 'not_run', reason: admitted.reason, iteration: null };
+  const iteration = await traverseAdmittedOnce(admitted.input, ports, ordinal);
+  return {
+    status: iteration.outcome === 'completed' ? 'passed' : 'failed',
+    reason: null,
+    iteration,
+  };
+}
+
 /** Twenty complete attempts, each compared with the same admitted inventory. */
 export async function runCandidateLoadTraversal(
   input: unknown,
@@ -233,94 +354,16 @@ export async function runCandidateLoadTraversal(
   }
   if (admitted.status !== 'ready')
     return { status: 'not_run', reason: admitted.reason, iterations: [] };
-  const frozen = admitted.input;
   const iterations: TraversalIteration[] = [];
   for (let ordinal = 1; ordinal <= 20; ordinal += 1) {
-    const counts = { assets: 0, records: 0, geometry: 0 };
-    const checks = { assets: false, records: false, geometry: false };
-    let digest: string | null = null;
-    let outcome: TraversalIteration['outcome'] = 'completed';
-    try {
-      const fingerprint = safeFingerprint(ports.fingerprint);
-      const expectedAssetsDigest = traversalContentDigest(
-        'get',
-        [],
-        frozen.batch.assets,
-        fingerprint,
-      );
-      const assetsDigest = await traversePages(
-        frozen,
-        'get',
-        undefined,
-        frozen.batch.assets.length,
-        [],
-        expectedAssetsDigest,
-        ports,
-        () => {
-          counts.assets += 1;
-        },
-      );
-      checks.assets = true;
-      const materials: {
-        ordinal: number;
-        records: string;
-        geometry: string;
-      }[] = [];
-      // Preserve the frozen material inventory order, independently of its
-      // relation to asset-page ordering. No material identity enters the report.
-      for (const [index, material] of frozen.materials.entries()) {
-        const asset = frozen.batch.assets.find(
-          (item) => canonicalId(item.assetId) === canonicalId(material.assetId),
-        );
-        if (
-          asset === undefined ||
-          asset.recordCount === null ||
-          asset.featureCount === null
-        )
-          fail('drift');
-        const records = await traversePages(
-          frozen,
-          'records',
-          material.assetId,
-          asset.recordCount,
-          material.columns,
-          material.recordsDigest,
-          ports,
-          () => {
-            counts.records += 1;
-          },
-        );
-        checks.records = index + 1 === frozen.materials.length;
-        const geometry = await traversePages(
-          frozen,
-          'geometry',
-          material.assetId,
-          asset.featureCount,
-          [],
-          material.geometryDigest,
-          ports,
-          () => {
-            counts.geometry += 1;
-          },
-        );
-        checks.geometry = index + 1 === frozen.materials.length;
-        materials.push({ ordinal: index + 1, records, geometry });
-      }
-      digest = fingerprint({
-        domain: 'a12-complete-traversal-v1',
-        assets: assetsDigest,
-        materials,
-      });
-    } catch (error) {
-      outcome =
-        error instanceof CandidateLoadTransportError
-          ? error.kind
-          : 'unavailable';
-    }
-    iterations.push({ ordinal, outcome, counts, checks, digest });
-    // Never replace a failed measured traversal with a retry, or keep issuing
-    // reads after loss of permission, drift or an invalid continuation.
-    if (outcome !== 'completed')
+    const iteration = await traverseAdmittedOnce(
+      admitted.input,
+      ports,
+      ordinal,
+    );
+    iterations.push(iteration);
+    // Preserve all started iterations and the original fixed20 stop behavior.
+    if (iteration.outcome !== 'completed')
       return { status: 'failed', reason: null, iterations };
   }
   return { status: 'passed', reason: null, iterations };
