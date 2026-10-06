@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: e18d8725c8e3f5a20137fd560f280f92b1047807
+lastReviewedCommit: e68d19be
 ---
 
 ## 协议边界
@@ -464,7 +464,7 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 
 ### 完整候选专题规格 v2：合同检查点
 
-独立的`candidate-topic.ts`合同检查点保留明确的`schemaVersion:2`；无版本候选视图v1合同、既有注册接口和消费者不变。当前为Red检查点：在严格新规格实现前，完整v2样例按预期拒绝。本片不代表HTTP入口已启用、迁移已执行或持久恢复已验收。
+独立的`candidate-topic.ts`合同检查点保留明确的`schemaVersion:2`；无版本候选视图v1合同、既有注册接口和消费者不变。本合同检查点已实现严格形状与旧规格分派，依赖一致性反例仍为Red。本片不代表HTTP入口已启用、迁移已执行或持久恢复已验收。
 
 固定配置包含原有边界的页码、焦点和地图；具有有效日历边界、`timeRole`、`displayUnit`和`includeUndated`的明确月／日时窗；问题、区域／需求编号与候选／原件／记录pin；投影、就绪、需求及影响规则版本；明确的原件、记录或整记录几何依赖；关系内容修订与决定版本。不保存原始数值、几何坐标或客户端发出的可信声明；内容与权限由服务器按当前条件重新取得。
 

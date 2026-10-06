@@ -154,6 +154,132 @@ describe('complete candidate topic v2 contracts', () => {
     expect(IngestionCandidateTopicSpecSchema.parse(value)).toEqual(value);
   });
 
+  it('rejects contradictory record fingerprints across content and whole-record geometry dependencies', () => {
+    const value = {
+      ...topic(),
+      dependencyPins: [
+        assetDependency(),
+        recordDependency(),
+        {
+          ...recordDependency(),
+          kind: 'geometry',
+          recordHash: 'e'.repeat(64),
+          geometryHash: 'd'.repeat(64),
+        },
+      ],
+    };
+    expect(IngestionCandidateTopicSpecSchema.safeParse(value).success).toBe(
+      false,
+    );
+  });
+
+  it('allows consistent content and geometry pins for one record and an explicit empty selection for a real gap', () => {
+    const withGeometry = {
+      ...topic(),
+      dependencyPins: [
+        ...topic().dependencyPins,
+        {
+          ...recordDependency(),
+          kind: 'geometry',
+          geometryHash: 'd'.repeat(64),
+        },
+      ],
+    };
+    expect(IngestionCandidateTopicSpecSchema.parse(withGeometry)).toEqual(
+      withGeometry,
+    );
+    const gap = {
+      ...topic(),
+      page: { kind: 'assets', reference: reference(), first: 2 },
+      focus: undefined,
+      topic: { ...topic().topic, recordPins: [] },
+      dependencyPins: [assetDependency()],
+      relationPins: [],
+    };
+    expect(
+      CreateIngestionCandidateTopicInputSchema.safeParse(create(gap)).success,
+    ).toBe(true);
+  });
+
+  it.each(['1900-02-29', '2024-04-31', '2024-00-01', '2024-13-01'])(
+    'rejects the nonexistent day %s without date rollover',
+    (from) => {
+      expect(
+        IngestionCandidateTopicSpecSchema.safeParse({
+          ...topic(),
+          period: { ...topic().period, windowMode: 'day', from, to: null },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('accepts leap-century dates and retains source identity and map/page ceilings', () => {
+    const value = {
+      ...topic(),
+      period: {
+        ...topic().period,
+        windowMode: 'day',
+        from: '2000-02-29',
+        to: null,
+      },
+    };
+    expect(IngestionCandidateTopicSpecSchema.parse(value)).toEqual(value);
+    for (const invalid of [
+      { ...topic(), page: { ...topic().page, first: 201 } },
+      {
+        ...topic(),
+        map: { camera: { ...topic().map.camera, longitude: 181 } },
+      },
+      {
+        ...topic(),
+        dependencyPins: [
+          assetDependency(),
+          { ...recordDependency(), sourceHash: 'f'.repeat(64) },
+        ],
+      },
+      {
+        ...topic(),
+        dependencyPins: [
+          assetDependency(),
+          { ...recordDependency(), parserVersion: 'changed/2.0.0' },
+        ],
+      },
+      { ...topic(), focus: { ...recordPin(12) } },
+      {
+        ...topic(),
+        topic: {
+          ...topic().topic,
+          recordPins: [{ ...recordPin(), sourceObjectKey: ' ' }],
+        },
+      },
+      {
+        ...topic(),
+        topic: {
+          ...topic().topic,
+          regionIds: Array.from({ length: 33 }, (_, n) => `region-${n}`),
+        },
+      },
+      {
+        ...topic(),
+        topic: {
+          ...topic().topic,
+          needIds: Array.from({ length: 65 }, (_, n) => `need-${n}`),
+        },
+      },
+      {
+        ...topic(),
+        relationPins: Array.from({ length: 101 }, (_, n) => ({
+          relationId: id(n + 1000),
+          revision: 1,
+          decisionVersion: 0,
+        })),
+      },
+    ])
+      expect(IngestionCandidateTopicSpecSchema.safeParse(invalid).success).toBe(
+        false,
+      );
+  });
+
   it.each([
     { schemaVersion: 1 },
     { schemaVersion: 3 },
