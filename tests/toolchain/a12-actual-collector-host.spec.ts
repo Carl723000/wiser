@@ -27,6 +27,27 @@ const finiteKind =
     error instanceof CandidateLoadTransportError && error.kind === expected;
 const body = (value: Uint8Array): Record<string, unknown> =>
   JSON.parse(Buffer.from(value).toString('utf8')) as Record<string, unknown>;
+async function assertOwnedAuthBodyClosed(closed: Promise<void>): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      closed,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(
+              new Error(
+                'Owned incomplete Auth body was not closed before fixture teardown',
+              ),
+            ),
+          2_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 test(
   'real SDK and actual collector compose exact seven capabilities, originals and inventory',
@@ -205,6 +226,8 @@ for (const [mode, kind] of [
   ['me-denied', 'denied'],
   ['me-changed', 'stale'],
   ['me-unavailable', 'unavailable'],
+  ['token-invalid-json', 'denied'],
+  ['jwks-invalid-json', 'denied'],
 ] as const satisfies readonly (readonly [
   FixtureMode,
   CandidateLoadTransportError['kind'],
@@ -248,6 +271,158 @@ for (const [mode, kind] of [
   );
 }
 
+// Observe the installed SDK consuming the genuine Response body. The hook only
+// delegates to native json(): no SDK, fetch, response, body or error is fabricated.
+// Wait for bodyUsed before triggering a real socket failure or owned abort.
+for (const phase of ['token', 'jwks'] as const) {
+  for (const failure of ['disconnect', 'cancel', 'deadline'] as const) {
+    test(
+      `actual SDK ${phase} response body ${failure} retains its transport cause`,
+      { timeout: failure === 'deadline' ? 40_000 : 10_000 },
+      async () => {
+        const fixture = await startSyntheticLoopbackFixture(
+          `${phase}-body-stalled`,
+        );
+        const descriptor = Object.getOwnPropertyDescriptor(
+          Response.prototype,
+          'json',
+        )!;
+        const consume = descriptor.value as Response['json'];
+        const bodyEntered = Promise.withResolvers<Response>();
+        const controller = new AbortController();
+        let host:
+          | Awaited<ReturnType<typeof constructActualCollectorOptions>>
+          | undefined;
+        try {
+          const origin = fixture.configuration().authOrigin;
+          const endpoint = `${origin}/auth/v1/${
+            phase === 'token'
+              ? 'token?grant_type=password'
+              : '.well-known/jwks.json'
+          }`;
+          Object.defineProperty(Response.prototype, 'json', {
+            ...descriptor,
+            value: function (this: Response) {
+              if (this.url === endpoint) bodyEntered.resolve(this);
+              return Reflect.apply(consume, this, []);
+            },
+          });
+          const startedAt = performance.now();
+          const outcome = constructActualCollectorOptions(
+            fixture.configuration(),
+            controller.signal,
+          ).then(
+            (value) => {
+              host = value;
+              return { status: 'constructed' as const };
+            },
+            (error: unknown) => ({ status: 'failed' as const, error }),
+          );
+          const response = await Promise.race([
+            bodyEntered.promise,
+            outcome.then(() => {
+              throw new Error(
+                'Construction settled before SDK body consumption',
+              );
+            }),
+          ]);
+          assert.equal(response.status, 200);
+          assert.equal(response.bodyUsed, true);
+          assert.equal(response.type, 'basic');
+          assert.equal(response.redirected, false);
+          if (failure === 'disconnect') fixture.dropHeldAuthBody();
+          if (failure === 'cancel') controller.abort();
+          const result = await outcome;
+          assert.equal(result.status, 'failed');
+          if (result.status !== 'failed')
+            return assert.fail(
+              'Incomplete Auth body unexpectedly constructed a host',
+            );
+          assert(result.error instanceof CandidateLoadTransportError);
+          assert.equal(
+            result.error.kind,
+            failure === 'cancel' ? 'cancelled' : 'unavailable',
+          );
+          if (failure === 'deadline')
+            assert(
+              performance.now() - startedAt >= 29_000,
+              'Exercise the actual existing 30-second total deadline, without fake clocks or a reduced threshold',
+            );
+          await assertOwnedAuthBodyClosed(fixture.authBodyClosed);
+          assert.equal(
+            fixture.hits.some((hit) => hit.path.startsWith('/api/data/')),
+            false,
+          );
+          assert.deepEqual(fixture.fixtureErrors, []);
+        } finally {
+          Object.defineProperty(Response.prototype, 'json', descriptor);
+          controller.abort();
+          host?.close();
+          await fixture.close();
+        }
+      },
+    );
+  }
+}
+
+test(
+  'observed Auth rejection remains denied when its real body is later cancelled',
+  { timeout: 10_000 },
+  async () => {
+    const fixture = await startSyntheticLoopbackFixture(
+      'token-denied-body-stalled',
+    );
+    const descriptor = Object.getOwnPropertyDescriptor(
+      Response.prototype,
+      'json',
+    )!;
+    const consume = descriptor.value as Response['json'];
+    const bodyEntered = Promise.withResolvers<Response>();
+    const controller = new AbortController();
+    try {
+      const endpoint = `${fixture.configuration().authOrigin}/auth/v1/token?grant_type=password`;
+      Object.defineProperty(Response.prototype, 'json', {
+        ...descriptor,
+        value: function (this: Response) {
+          if (this.url === endpoint) bodyEntered.resolve(this);
+          return Reflect.apply(consume, this, []);
+        },
+      });
+      const outcome = constructActualCollectorOptions(
+        fixture.configuration(),
+        controller.signal,
+      ).then(
+        (value) => {
+          value.close();
+          return { status: 'constructed' as const };
+        },
+        (error: unknown) => ({ status: 'failed' as const, error }),
+      );
+      const response = await Promise.race([
+        bodyEntered.promise,
+        outcome.then(() => {
+          throw new Error('SDK did not consume the rejected body');
+        }),
+      ]);
+      assert.equal(response.status, 400);
+      assert.equal(response.bodyUsed, true);
+      controller.abort();
+      const result = await outcome;
+      assert.equal(result.status, 'failed');
+      if (result.status !== 'failed')
+        return assert.fail('Denied body succeeded');
+      assert(result.error instanceof CandidateLoadTransportError);
+      assert.equal(result.error.kind, 'denied');
+      await assertOwnedAuthBodyClosed(fixture.authBodyClosed);
+      assert.deepEqual(fixture.fixtureErrors, []);
+    } finally {
+      Object.defineProperty(Response.prototype, 'json', descriptor);
+      controller.abort();
+      await fixture.close();
+    }
+  },
+);
+
 test(
   'construction cleanup fault preserves current /me denial',
   { timeout: 10_000 },
@@ -258,14 +433,25 @@ test(
     )!;
     let cleanupFaultCalls = 0;
     let fresh: typeof ActualHostModule;
+    const controller = new AbortController();
     // Capture one controlled cleanup fault in the actual host module. Restore the
     // global before constructing SDK/server objects. No factory/port/SDK is faked.
     try {
       Object.defineProperty(EventTarget.prototype, 'removeEventListener', {
         ...original,
-        value: function () {
-          cleanupFaultCalls++;
-          throw new Error('SYNTHETIC_CLEANUP_FAULT');
+        value: function (
+          this: EventTarget,
+          ...args: Parameters<EventTarget['removeEventListener']>
+        ) {
+          if (this === controller.signal) {
+            cleanupFaultCalls++;
+            throw new Error('SYNTHETIC_CLEANUP_FAULT');
+          }
+          return Reflect.apply(
+            original.value as EventTarget['removeEventListener'],
+            this,
+            args,
+          );
         },
       });
       const moduleUrl = new URL(
@@ -281,7 +467,6 @@ test(
       );
     }
     const fixture = await startSyntheticLoopbackFixture('me-denied');
-    const controller = new AbortController();
     try {
       await assert.rejects(
         fresh.constructActualCollectorOptions(

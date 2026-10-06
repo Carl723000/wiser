@@ -31,6 +31,11 @@ export type FixtureMode =
   | 'token-denied'
   | 'token-stalled'
   | 'jwks-stalled'
+  | 'token-body-stalled'
+  | 'jwks-body-stalled'
+  | 'token-denied-body-stalled'
+  | 'token-invalid-json'
+  | 'jwks-invalid-json'
   | 'me-stalled'
   | 'me-denied'
   | 'me-changed'
@@ -124,6 +129,15 @@ export async function startSyntheticLoopbackFixture(mode: FixtureMode = 'ok') {
   const tokenReceived = Promise.withResolvers<void>();
   const jwksReceived = Promise.withResolvers<void>();
   const identityReceived = Promise.withResolvers<void>();
+  const authBodyClosed = Promise.withResolvers<void>();
+  let heldAuthBody: ServerResponse | null = null;
+  const holdAuthBody = (response: ServerResponse, status: number) => {
+    heldAuthBody = response;
+    response.once('close', () => authBodyClosed.resolve());
+    response.writeHead(status, { 'content-type': 'application/json' });
+    response.flushHeaders();
+    response.write('{"');
+  };
   let meReads = 0,
     ingestionReads = 0;
   let storagePort = 0,
@@ -310,6 +324,14 @@ export async function startSyntheticLoopbackFixture(mode: FixtureMode = 'ok') {
         );
         tokenReceived.resolve();
         if (mode === 'token-stalled') return;
+        if (mode === 'token-body-stalled') return holdAuthBody(response, 200);
+        if (mode === 'token-denied-body-stalled')
+          return holdAuthBody(response, 400);
+        if (mode === 'token-invalid-json') {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end('{');
+          return;
+        }
         if (mode === 'token-denied')
           return json(response, 400, {
             code: 'invalid_credentials',
@@ -329,6 +351,12 @@ export async function startSyntheticLoopbackFixture(mode: FixtureMode = 'ok') {
         assert.deepEqual(hit.query, {});
         jwksReceived.resolve();
         if (mode === 'jwks-stalled') return;
+        if (mode === 'jwks-body-stalled') return holdAuthBody(response, 200);
+        if (mode === 'jwks-invalid-json') {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end('{');
+          return;
+        }
         return json(response, 200, { keys: [jwk] });
       }
       // A fallback /user, refresh grant, cookie route or arbitrary endpoint is a real fixture failure.
@@ -621,6 +649,12 @@ export async function startSyntheticLoopbackFixture(mode: FixtureMode = 'ok') {
       tokenReceived: tokenReceived.promise,
       jwksReceived: jwksReceived.promise,
       identityReceived: identityReceived.promise,
+      authBodyClosed: authBodyClosed.promise,
+      dropHeldAuthBody: () => {
+        assert(heldAuthBody, 'A real Auth response body must be pending');
+        heldAuthBody.destroy();
+        heldAuthBody = null;
+      },
       token,
       credentialSentinel: credential.password,
       storageSignature,
