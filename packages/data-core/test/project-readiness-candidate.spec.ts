@@ -244,5 +244,16 @@ describe('candidate readiness identity and separate grains', () => {
     });
     expect(result.counts.knownGeometries).toBe(0);
     expect(result.candidateCounts?.knownGeometries).toBe(2);
+    const incomplete = {
+      ...facts,
+      records: result.records.map((record, index) =>
+        index === 0
+          ? record
+          : { ...record, spatial: { ...record.spatial!, role: null } },
+      ),
+    };
+    expect(
+      calculateProjectReadiness(incomplete).candidateCounts?.knownGeometries,
+    ).toBe(1);
   });
 });
