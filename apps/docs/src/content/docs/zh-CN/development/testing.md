@@ -33,7 +33,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 1ff4d59bf7c940f3d824e443456dc60ffca13423
+lastReviewedCommit: f1ac926a50c428619ab7099305f0677d48b78d8b
 ---
 
 ## Red → Green → Refactor
@@ -324,7 +324,7 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 
 `apps/web/e2e-live/support/a12-candidate-original-http.ts` 中的私有原件读取适配器复用既有固定候选 GET 路由，只接受任务专用回环地址和准确的候选／原件引用。它要求未压缩、完整的 200 响应及预期 Content-Length，对实际响应流重新计算哈希，保留既有 32 MiB 输入边界和 30 秒总期限。重定向、范围读取、传输截断、字节变化及输入访问器均会被拒绝，并清理自身请求。`tests/toolchain/a12-candidate-original-http.spec.ts` 的合成检查证明客户端完整性守卫；真实正常 API 的成功 GET 可证明当时 API 守卫及原件字节，不能单独证明本次逐原件扫描事务。
 
-`apps/web/e2e-live/support/a12-standard-intake-http.ts` 只调用既有六项上传会话、资料接收和 Operation 能力。写命令沿用登记的路径、成功状态、时限、UUID 幂等键和匹配的乐观版本；事件读取在 30 秒内解析真实有限 SSE 快照及续页游标，保留事件身份与顺序。预签名 PUT 在发送前复制并核对实际字节及哈希，只允许任务存储地址和既有必要对象头，不发送 API 凭据。JSON／SSE 保留既有 3 MiB 流上限，PUT 回应另有有界读取。适配器同时核对数据格式与请求归属，并在完成、取消或失败时清理自身定时器、请求和连接。
+`apps/web/e2e-live/support/a12-standard-intake-http.ts` 须仅调用既有七项上传会话、资料接收和 Operation 能力，包括 `data.ingestion.submit`。创建接收任务只登记等待中的 Operation；开始处理须调用既有提交命令，使用接收任务的当前版本及匹配的 If-Match。返回的嵌套 Operation 保留原创建能力和身份。写命令沿用登记的路径、成功状态、时限及 UUID 幂等键；事件读取在 30 秒内解析真实有限 SSE 快照及续页游标，保留事件身份与顺序。预签名 PUT 在发送前复制并核对实际字节及哈希，只允许任务存储地址和既有必要对象头，不发送 API 凭据。JSON／SSE 保留既有 3 MiB 流上限，PUT 回应另有有界读取。适配器同时核对数据格式与请求归属，并在完成、取消或失败时清理自身定时器、请求和连接。
 
 真实 DTO 和签名上传目标仅留内存。`redactA12StandardIntakeReply` 生成明确的持久化投影：签名 URL 替换为 `https://redacted.invalid/`，移除上传请求头，脱敏错误／消息文字，分别保存实际响应流与投影摘要。脱敏 JSON 文件不能自证扫描执行或取得可信接收准入。使用 `pnpm exec vitest run tests/toolchain/a12-candidate-original-http.spec.ts tests/toolchain/a12-standard-intake-http.spec.ts` 运行合成回环检查；这些消费者不启动服务、不改权限，也不批准或发布接收资料。真实正常栈来源、Auth／SQL 和正式 A12 仍是独立门禁。
 

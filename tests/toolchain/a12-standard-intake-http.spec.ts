@@ -199,6 +199,20 @@ function input(
   };
 }
 const get = () => input('data.operation.get');
+const submit = (): A12StandardIntakeRequest<'data.ingestion.submit'> => ({
+  capabilityId: 'data.ingestion.submit',
+  input: { ingestionId, expectedVersion: 1 },
+  idempotencyKey,
+  ifMatch: '"v1"',
+});
+const submitted = () => ({
+  operation: {
+    ...operation(),
+    status: 'RUNNING',
+    version: 2,
+    startedAt: instant,
+  },
+});
 const put = (): A12StandardIntakePutInput => ({
   target: target(),
   bytes: syntheticBytes,
@@ -957,5 +971,189 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
     const value = adapter();
     await failure(value.send(input('data.ingestion.get')), 'invalid');
     expect(value.diagnostics().activeRequests).toBe(0);
+  });
+
+  it('submits the existing ingestion with its matching version and retains the original create Operation', async () => {
+    const body = submitted();
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
+        body,
+      ).success,
+    ).toBe(true);
+    let received = '';
+    apiHandler = (req, res) => {
+      expect(req.method).toBe('POST');
+      expect(req.url).toBe(`/api/data/v1/ingestions/${ingestionId}/submit`);
+      expect(req.headers['idempotency-key']).toBe(idempotencyKey);
+      expect(req.headers['if-match']).toBe('"v1"');
+      expect(req.headers.authorization).toBe('Bearer synthetic-token');
+      expect(req.headers['x-wiser-tenant-id']).toBe(tenantId);
+      expect(req.headers['x-wiser-project-id']).toBe(projectId);
+      expect(req.headers['x-wiser-purpose']).toBe('web-console');
+      req.on('data', (chunk: Buffer) => {
+        received += chunk.toString();
+      });
+      req.on('end', () => json(res, 202, body));
+    };
+    const value = adapter();
+    const reply = await value.send(submit());
+    expect(JSON.parse(received)).toEqual({ expectedVersion: 1 });
+    expect(reply.capabilityId).toBe('data.ingestion.submit');
+    expect(reply.body).toEqual(body);
+    expect(reply.body.operation.capabilityId).toBe('data.ingestion.create');
+    expect(reply.wireBytes).toBe(Buffer.byteLength(JSON.stringify(body)));
+    expect(reply.wireSha256).toBe(sha(JSON.stringify(body)));
+    expect(apiHits).toBe(1);
+    expect(Object.isFrozen(reply.body.operation)).toBe(true);
+    expect(value.diagnostics().activeRequests).toBe(0);
+  });
+
+  it.each([
+    'missing-if-match',
+    'mismatched-if-match',
+    'weak-if-match',
+    'zero-version',
+    'fractional-version',
+    'non-uuid-key',
+  ] as const)('rejects submit %s before acquiring a token', async (kind) => {
+    const request = { ...submit() };
+    if (kind === 'missing-if-match') delete request.ifMatch;
+    if (kind === 'mismatched-if-match') request.ifMatch = '"v2"';
+    if (kind === 'weak-if-match') request.ifMatch = 'W/"v1"';
+    if (kind === 'zero-version')
+      request.input = { ingestionId, expectedVersion: 0 };
+    if (kind === 'fractional-version')
+      request.input = { ingestionId, expectedVersion: 1.5 };
+    if (kind === 'non-uuid-key') request.idempotencyKey = 'private-invalid-key';
+    const token = vi.fn(() => Promise.resolve('synthetic-token'));
+    const value = adapter({ accessToken: token });
+    await failure(value.send(request), 'invalid');
+    expect(token).not.toHaveBeenCalled();
+    expect(apiHits).toBe(0);
+  });
+
+  it.each(['tenantId', 'projectId'] as const)(
+    'rejects a schema-valid submit Operation with a foreign %s',
+    async (field) => {
+      const body = submitted();
+      body.operation[field] = assetId;
+      expect(
+        DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
+          body,
+        ).success,
+      ).toBe(true);
+      apiHandler = (_req, res) => json(res, 202, body);
+      const value = adapter();
+      await failure(value.send(submit()), 'invalid');
+      expect(apiHits).toBe(1);
+      expect(value.diagnostics().activeRequests).toBe(0);
+    },
+  );
+
+  it.each(['bare-operation', 'extra-wrapper-field'] as const)(
+    'rejects a submit response with %s instead of the registered wrapper',
+    async (kind) => {
+      const body =
+        kind === 'bare-operation'
+          ? submitted().operation
+          : { ...submitted(), ingestionId };
+      expect(
+        DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
+          body,
+        ).success,
+      ).toBe(false);
+      apiHandler = (_req, res) => json(res, 202, body);
+      const value = adapter();
+      await failure(value.send(submit()), 'invalid');
+      expect(apiHits).toBe(1);
+      expect(value.diagnostics().activeRequests).toBe(0);
+    },
+  );
+
+  it('redacts the actual submit wrapper Operation error without changing its original capability', async () => {
+    const body = {
+      operation: {
+        ...submitted().operation,
+        status: 'FAILED',
+        completedAt: instant,
+        error: {
+          code: 'SCAN_FAILED',
+          message: 'private-submit-error-path-token',
+          retryable: false,
+        },
+      },
+    };
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
+        body,
+      ).success,
+    ).toBe(true);
+    apiHandler = (_req, res) => json(res, 202, body);
+    const reply = await adapter().send(submit());
+    const projected = redactA12StandardIntakeReply(reply);
+    expect(projected.body.operation).toMatchObject({
+      capabilityId: 'data.ingestion.create',
+      error: { code: 'SCAN_FAILED', message: 'redacted', retryable: false },
+    });
+    expect(projected.redactedFields).toEqual(['body.operation.error.message']);
+    expect(JSON.stringify(projected)).not.toContain('private-submit-');
+    expect(projected.wireSha256).toBe(sha(JSON.stringify(body)));
+    expect(projected.projectionSha256).toBe(sha(JSON.stringify(projected.body)));
+    expect(reply.body).toEqual(body);
+    expect(
+      DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
+        projected.body,
+      ).success,
+    ).toBe(true);
+  });
+
+  it('snapshots the submit path and version before awaiting its token', async () => {
+    let release!: (token: string) => void;
+    const token = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    const value = adapter({ accessToken: () => token });
+    const data = { ingestionId, expectedVersion: 1 };
+    const request = { ...submit(), input: data };
+    let received = '';
+    apiHandler = (req, res) => {
+      expect(req.url).toBe(`/api/data/v1/ingestions/${ingestionId}/submit`);
+      expect(req.headers['if-match']).toBe('"v1"');
+      req.on('data', (chunk: Buffer) => {
+        received += chunk.toString();
+      });
+      req.on('end', () => json(res, 202, submitted()));
+    };
+    const pending = value.send(request);
+    data.ingestionId = assetId;
+    data.expectedVersion = 2;
+    request.ifMatch = '"v2"';
+    release('synthetic-token');
+    await pending;
+    expect(JSON.parse(received)).toEqual({ expectedVersion: 1 });
+    expect(apiHits).toBe(1);
+  });
+
+  it('keeps the submit registry deadline through token wait and rejects a late token', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let release!: (token: string) => void;
+    const token = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    const value = adapter({ accessToken: () => token });
+    const pending = failure(value.send(submit()), 'unavailable');
+    const observed = pending.then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(value.diagnostics().activeRequests).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await observed).toBeUndefined();
+    release('synthetic-token');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(apiHits).toBe(0);
+    expect(value.diagnostics().activeRequests).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

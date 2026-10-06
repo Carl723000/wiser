@@ -12,6 +12,7 @@ import {
   DATA_CAPABILITY_REGISTRY,
   GetIngestionOutputSchema,
   OperationEventPageSchema,
+  OperationOutputSchema,
   OperationSchema,
   UploadTargetSchema,
 } from '@wiser/data-contracts';
@@ -29,6 +30,7 @@ export type A12StandardIntakeCapability =
   | 'data.uploadSession.create'
   | 'data.uploadSession.complete'
   | 'data.ingestion.create'
+  | 'data.ingestion.submit'
   | 'data.ingestion.get'
   | 'data.operation.get'
   | 'data.operation.events';
@@ -36,6 +38,7 @@ const OUTPUT_SCHEMAS = {
   'data.uploadSession.create': CreateUploadSessionOutputSchema,
   'data.uploadSession.complete': CompleteUploadSessionOutputSchema,
   'data.ingestion.create': CreateIngestionOutputSchema,
+  'data.ingestion.submit': OperationOutputSchema,
   'data.ingestion.get': GetIngestionOutputSchema,
   'data.operation.get': OperationSchema,
   'data.operation.events': OperationEventPageSchema,
