@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as monthlyProjection from '../src/candidate-monthly-projection.ts';
 import type {
   IngestionCandidateBatch,
   IngestionCandidateRecord,
@@ -410,5 +411,60 @@ describe('fixed candidate monthly semantic projection', () => {
     expect(
       projectCandidateMonthlyReport({ ...original, pages: fifthTable }),
     ).toMatchObject({ kind: 'NOT_PARSED', reason: 'UNKNOWN_LAYOUT' });
+  });
+});
+
+// The new path must be independently available; legacy expectations above stay intact.
+describe('explicit monthly report-period projection v2', () => {
+  function v2(input = fixture()) {
+    const project = (
+      monthlyProjection as unknown as {
+        projectCandidateMonthlyReportV2: (input: unknown) => any;
+      }
+    ).projectCandidateMonthlyReportV2;
+    expect(typeof project).toBe('function');
+    return project({
+      ...input,
+      fixed: { assetId, sourceHash, sourceLocalWorkId: null },
+    });
+  }
+
+  it('retains the candidate source and raw rows without issuing a catalog identity or dates', () => {
+    const result = v2();
+    expect(result).toMatchObject({
+      kind: 'READY',
+      ruleVersion: 'beijing-monthly-docx-c3/2.0.0',
+      reportPeriod: '2023-04',
+      publicationTime: null,
+      observationTime: null,
+    });
+    expect(result).not.toHaveProperty('publicationMonth');
+    expect(result.records).toHaveLength(4);
+    expect(result.records[0]).toMatchObject({
+      candidateReference: reference,
+      source: { assetId, originalSha256: sourceHash, sourceLocalWorkId: null },
+      time: { value: '2023-04', role: 'REPORT_PERIOD', precision: 'MONTH' },
+      rawCategory: 'Ⅱ',
+    });
+    expect(result.records[0].source).not.toHaveProperty('workId');
+    expect(result.records[1].rawCategory).toBe('无水');
+    expect(result.records[3].rawCategory).toBe('封闭无法监测');
+    expect(projectCandidateMonthlyReport(fixture()).records[0]?.time.role).toBe(
+      'PUBLICATION',
+    );
+  });
+
+  it('keeps incomplete pages closed under the new rule', () => {
+    const original = fixture();
+    const result = v2({ ...original, pages: original.pages.slice(0, 1) });
+    expect(result).toEqual({
+      kind: 'NOT_PARSED',
+      reason: 'INCOMPLETE_RECORD_PAGES',
+      ruleVersion: 'beijing-monthly-docx-c3/2.0.0',
+      reportPeriod: null,
+      publicationTime: null,
+      observationTime: null,
+      records: [],
+    });
   });
 });
