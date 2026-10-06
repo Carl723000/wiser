@@ -472,3 +472,42 @@ it('reapplies a historical emitted location after going back and then forward', 
     JSON.stringify({ recordId: 'r1', positionId: 'area-a' }),
   );
 });
+
+it('opens report-period coverage in the actual shell and retains the role on return to the map', () => {
+  const pack = fixture();
+  pack.schemaVersion = 2;
+  pack.records = pack.records.map((record) => ({
+    ...record,
+    time: { ...record.time, role: 'report-period' },
+  }));
+  const state: WorkspaceReadingUrlState = {
+    ...initial,
+    dateRole: 'REPORT_PERIOD',
+    tab: 'readiness',
+  };
+  show(pack, state);
+  expect(
+    screen.getByRole('region', { name: 'Six-range material readiness matrix' }),
+  ).toBeTruthy();
+  expect(screen.getByLabelText('Date role')).toHaveProperty(
+    'value',
+    'REPORT_PERIOD',
+  );
+  expect(screen.getByTestId('readiness-active-scope').textContent).toContain(
+    'Report month',
+  );
+  fireEvent.click(screen.getByRole('tab', { name: 'Space and evidence' }));
+  expect(readUrl(pack)).toMatchObject({
+    status: 'valid',
+    state: {
+      dateRole: 'REPORT_PERIOD',
+      monthWindow: initial.monthWindow,
+      selection: initial.selection,
+    },
+  });
+  expect(screen.getByTestId('reading-map').getAttribute('data-selection')).toBe(
+    JSON.stringify({ recordId: 'r1', positionId: 'area-b' }),
+  );
+  expect(pack.records[0].time.precision).toBe('month');
+  expect(pack.records[0].value).toBe('Ⅲ');
+});
