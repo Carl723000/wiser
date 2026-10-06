@@ -31,12 +31,13 @@ checkPaths:
   - tests/toolchain/a12-standard-intake-collector.spec.ts
   - tests/toolchain/a12-standard-intake-http-combination.spec.ts
   - tests/toolchain/a12-normal-runtime-window.spec.ts
+  - tests/toolchain/a12-native-runtime-observer.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: c0f62c658fef2aa866c9513b74b04a06931ba747
+lastReviewedCommit: f5fe0e3777dc211e9956fd3b63504e152c8c9ca0
 ---
 
 ## Red → Green → Refactor
@@ -352,3 +353,5 @@ Supabase CI 通道在结构检查后，串行运行真实智能体连接、受�
 `tests/toolchain/a12-standard-intake-http-combination.spec.ts` 使用实际接收、候选分页和二进制原件适配器，对接本次独占的临时回环监听器，核对字节顺序、游标续读、原件后的权限变化与请求清理。公开DTO对照及编译检查用于确认夹具有效性；这些检查不证明真实Auth、RLS、正常扫描来源或正式A12。
 
 任务宿主的观察窗口生命周期由 `tests/toolchain/a12-normal-runtime-window.spec.ts` 单独验证。每项漂移反例先打开自己的窗口并通过一次未变化读取；观测缺失保持未知，已知代次、构建、配置、挂载、迁移或签名变化则拒绝，恢复后仍保留首次失效原因。另核整个观测期限、计时外采样、跨宿主句柄、读取在途关闭及自有定时器完整取消。此组件不签发扫描回执或运行入口的可信通过状态；真实启动归属和同窗口接收成员须通过独立的私有接线及现场证据确认。
+
+任务宿主的原生读取器须采用启动器明确选择并冻结的工作区／运行目录、可执行文件和 Unix 套接字读取策略；组件不内置个人路径、不自动发现环境变量，也不切换 Docker context。路径、文件身份、服务代次、已执行迁移及签名来源回执均为读取输入，不是启动证明。文件和命令的累计消耗及取消覆盖完整观测；已知漂移拒绝，缺少原生观察保留未知。`tests/toolchain/a12-native-runtime-observer.spec.ts` 使用任务专属临时文件、明确合成的 Docker 形式可执行夹具及被动 Unix IPC 文件身份验证完整读取器，不连接该文件、不启动 Docker、不登录或查询 SQL，也不证明正常扫描。真实源码／构建绑定、正常启动和同窗口接收发行仍须通过独立的私有接线门禁。

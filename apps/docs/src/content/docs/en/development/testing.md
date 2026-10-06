@@ -31,12 +31,13 @@ checkPaths:
   - tests/toolchain/a12-standard-intake-collector.spec.ts
   - tests/toolchain/a12-standard-intake-http-combination.spec.ts
   - tests/toolchain/a12-normal-runtime-window.spec.ts
+  - tests/toolchain/a12-native-runtime-observer.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: c0f62c658fef2aa866c9513b74b04a06931ba747
+lastReviewedCommit: f5fe0e3777dc211e9956fd3b63504e152c8c9ca0
 ---
 
 ## Red → Green → Refactor
@@ -352,3 +353,5 @@ The Supabase CI lane also runs the live Agent connection, managed MCP consent, r
 The owned synthetic HTTP composition in `tests/toolchain/a12-standard-intake-http-combination.spec.ts` uses the actual intake, candidate-page and binary-original adapters against task-only ephemeral loopback listeners. It verifies ordered bytes, cursor continuation, post-original authority changes and owned cleanup. Public DTO controls and compiler checks establish fixture validity; these tests do not establish actual Auth, RLS, normal scan provenance or formal A12.
 
 Task-host observation lifecycle is tested separately in `tests/toolchain/a12-normal-runtime-window.spec.ts`. Each drift variant must first open its own window and pass an unchanged read. Missing observation remains unknown; a known generation, build, configuration, mount, migration or signature change rejects and remains terminal after recovery. Check bounded observation deadlines, out-of-band sampling, cross-owner handles, close during pending reads, and complete owned timer cancellation. This lifecycle helper cannot issue a scanner receipt or runner verified: actual native launch ownership and same-window intake membership require their own private composition and live evidence.
+
+The task-host native reader must use a launcher-selected immutable workspace/runtime, executable and Unix-socket read policy; no personal paths, environment discovery or Docker context changes belong in the utility. Selected paths, file identities, service generations, applied-migration and signature-source receipts are read inputs, not launch evidence. Keep bounded file/command consumption and cancellation across the complete observation; known drift rejects and missing native observations stay unknown. `tests/toolchain/a12-native-runtime-observer.spec.ts` exercises the complete reader with task-owned temporary files, an explicit synthetic Docker-shaped executable and a passive Unix IPC inode. It must not connect that inode, start Docker, authenticate, query SQL or prove normal scanning. Real source/build binding, normal startup and same-window intake issuance remain separate private-composition gates.
