@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: e18d8725c8e3f5a20137fd560f280f92b1047807
 ---
 
 ## What runs today
@@ -606,3 +606,7 @@ The Web Operation page continues the existing authorized event stream in explici
 The shared API host removes the existing event GET `after` parameter only from the request-log URL copy, including encoded/repeated keys and encoded Operation IDs. The real request, authorization, cursor validation and all other query encodings remain unchanged. Default and explicit request serializers receive the safe URL/raw-URL/original-URL copy, while disabled logging stays disabled. External proxy logs and independent custom logging remain outside this check.
 
 Registered `RESUMED` events retain their event type in API and Web reads and display as “Resumed” / “已恢复”. The event does not change the independent Operation status. Internal `PROJECTION_COMPLETED` and `PUBLISHED` milestones still normalize to `PROGRESS_REPORTED`; the Web reader continues to reject unregistered event types.
+
+### Candidate topic version boundary
+
+The independent complete-topic v2 contract checkpoint fixes explicit question/time role, record selections, rule versions, asset/record/whole-record geometry dependencies and relation revision/decision pins. It preserves the existing 100-reference and 128 KiB limits and does not alter versionless candidate-view v1 or published exploration saves. Pure shape validation never establishes current source authority or trustworthy conversion. See the [contract checkpoint](/en/protocols/data-rest/#complete-candidate-topic-specification-v2--contract-checkpoint); runtime version filtering, new capability registration, existing-table migration and real Auth/SQL recovery remain separate integration gates.

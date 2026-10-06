@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: e18d8725c8e3f5a20137fd560f280f92b1047807
 ---
 
 ## 当前可运行能力
@@ -606,3 +606,7 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 共享API宿主仅从既有事件GET的请求日志URL副本移除`after`参数，包含编码／重复键和编码任务编号；真实请求、授权、游标校验与其他查询参数原编码保持不变。默认与显式请求serializer收到安全URL／raw URL／original URL副本，关闭日志仍保持关闭。外部代理日志和独立自定义日志不在本项验收内。
 
 已登记的 `RESUMED` 事件在 API 和网页读取中保留事件类型，显示为“已恢复 / Resumed”；事件标签不改变独立的任务状态。内部 `PROJECTION_COMPLETED` 与 `PUBLISHED` 里程碑仍归一为 `PROGRESS_REPORTED`，网页读取器继续拒收未登记的事件类型。
+
+### 候选专题版本边界
+
+独立完整专题v2合同检查点固定明确的问题／时间角色、记录选择、规则版本、原件／记录／整记录几何依赖及关系修订／决定pin。保持100个引用和128 KiB原上限，无版本候选视图v1及已发布探索保存不变。纯形状校验不证明当前来源授权或转换可信。详见[合同检查点](/protocols/data-rest/#完整候选专题规格-v2合同检查点)；运行时版本过滤、新能力注册、原保存表迁移及真实Auth／SQL恢复须在后续集成分别验收。
