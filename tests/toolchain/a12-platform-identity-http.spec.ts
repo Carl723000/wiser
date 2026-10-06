@@ -149,6 +149,9 @@ it('rejects mutated selector accessors without evaluating them', () => {
 });
 it.each([
   ['newline', { accessToken: 'bad\nheader' }],
+  ['NUL', { accessToken: 'bad\u0000header' }],
+  ['DEL', { accessToken: 'bad\u007fheader' }],
+  ['non-Latin-1', { accessToken: 'bad\u0100header' }],
   ['empty', { accessToken: '' }],
   ['oversized', { accessToken: 'x'.repeat(16385) }],
   ['tenant', { tenantId: 'invalid' }],
