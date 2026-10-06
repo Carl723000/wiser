@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
+import type * as ActualHostModule from '../../apps/web/e2e-live/support/a12-actual-collector-host.ts';
 import {
   constructActualCollectorOptions,
   type ActualCollectorConfiguration,
@@ -256,7 +257,7 @@ test(
       'removeEventListener',
     )!;
     let cleanupFaultCalls = 0;
-    let fresh: typeof import('../../apps/web/e2e-live/support/a12-actual-collector-host.ts');
+    let fresh: typeof ActualHostModule;
     // Capture one controlled cleanup fault in the actual host module. Restore the
     // global before constructing SDK/server objects. No factory/port/SDK is faked.
     try {
@@ -271,9 +272,7 @@ test(
         '../../apps/web/e2e-live/support/a12-actual-collector-host.ts?cleanup-fault-candidate=1',
         import.meta.url,
       ).href;
-      fresh = (await import(
-        moduleUrl
-      )) as typeof import('../../apps/web/e2e-live/support/a12-actual-collector-host.ts');
+      fresh = (await import(moduleUrl)) as typeof ActualHostModule;
     } finally {
       Object.defineProperty(
         EventTarget.prototype,

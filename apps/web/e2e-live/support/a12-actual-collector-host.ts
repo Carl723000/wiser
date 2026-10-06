@@ -183,10 +183,13 @@ const sourceMetadataSchema = SourceRegistrationSchema.omit({
   manifestAssetId: true,
   manifestSha256: true,
 });
-const nativeAborted = Object.getOwnPropertyDescriptor(
+const abortedDescriptor = Object.getOwnPropertyDescriptor(
   AbortSignal.prototype,
   'aborted',
-)?.get;
+);
+const nativeAborted: unknown = abortedDescriptor
+  ? Reflect.get(abortedDescriptor, 'get')
+  : undefined;
 const nativeAdd = Object.getOwnPropertyDescriptor(
   EventTarget.prototype,
   'addEventListener',
@@ -268,6 +271,7 @@ export async function constructActualCollectorOptions(
   let condition: CandidateLoadAuthCondition | null = null;
   let closed = false;
   let configurationAdmitted = false;
+  let constructionFailure: TransportFailure | null = null;
   let listenerAttached = false;
   const cancellation = new AbortController();
   const releases: Array<() => void> = [];
@@ -446,10 +450,12 @@ export async function constructActualCollectorOptions(
       const { manifestPreparedOrdinal: _ordinal, ...metadataFields } =
         sourceFields;
       const metadata = sourceMetadataSchema.parse(snapshot(metadataFields));
+      const manifestPrepared = prepared[ordinal as number];
+      if (!manifestPrepared) invalid();
       source = {
         metadata,
         ordinal: ordinal as number,
-        sha256: prepared[ordinal as number]!.sha256,
+        sha256: manifestPrepared.sha256,
       };
     }
     for (const bound of [raw.maximumStatusReads, raw.maximumEventPages])
@@ -497,16 +503,27 @@ export async function constructActualCollectorOptions(
     if (aborted(signal)) close();
     if (closed) throw new CandidateLoadTransportError('cancelled');
     const ownedFetch = globalThis.fetch.bind(globalThis);
-    const boundedAuthFetch: typeof fetch = (input, init) => {
+    const boundedAuthFetch: typeof fetch = async (input, init) => {
       const requestSignal = input instanceof Request ? input.signal : undefined;
       const signals = [cancellation.signal, AbortSignal.timeout(30_000)];
       if (init?.signal) signals.push(init.signal);
       if (requestSignal) signals.push(requestSignal);
-      return ownedFetch(input, {
-        ...init,
-        signal: AbortSignal.any(signals),
-        redirect: 'error',
-      });
+      try {
+        const response = await ownedFetch(input, {
+          ...init,
+          signal: AbortSignal.any(signals),
+          redirect: 'error',
+        });
+        // Preserve the existing Auth guard's rejection classification once a
+        // failed Auth response is observed, even if cleanup later aborts.
+        if (!response.ok) constructionFailure ??= 'denied';
+        return response;
+      } catch (error) {
+        constructionFailure ??= aborted(cancellation.signal)
+          ? 'cancelled'
+          : 'unavailable';
+        throw error;
+      }
     };
     const authenticated = await authenticateCandidateLoad({
       authOrigin,
@@ -518,7 +535,20 @@ export async function constructActualCollectorOptions(
       createClient: (origin, key, options) =>
         createClient(origin, key, options),
       authFetch: boundedAuthFetch,
-      readMe: identity.readMe,
+      readMe: async (input) => {
+        try {
+          const response = await identity.readMe(input);
+          if (response.status !== 200)
+            constructionFailure ??=
+              response.status === 401 || response.status === 403
+                ? 'denied'
+                : 'unavailable';
+          return response;
+        } catch (error) {
+          constructionFailure ??= boundedFailure(error, true);
+          throw error;
+        }
+      },
     });
     if (closed) {
       safely(authenticated.close);
@@ -582,7 +612,11 @@ export async function constructActualCollectorOptions(
     });
     return Object.freeze({ options, close });
   } catch (error) {
-    const reason = boundedFailure(error, configurationAdmitted);
+    // The installed SDK wraps cancellation as authentication failure; retain
+    // the cause observed by our own transport before that translation.
+    const reason =
+      constructionFailure ??
+      (closed ? 'cancelled' : boundedFailure(error, configurationAdmitted));
     close();
     throw new CandidateLoadTransportError(reason);
   }

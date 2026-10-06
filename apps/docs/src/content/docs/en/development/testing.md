@@ -40,7 +40,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: c98778b9
+lastReviewedCommit: f313897f
 ---
 
 ## Red → Green → Refactor
