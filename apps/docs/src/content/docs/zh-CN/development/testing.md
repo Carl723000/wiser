@@ -33,7 +33,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: f1ac926a50c428619ab7099305f0677d48b78d8b
+lastReviewedCommit: fac1e397d4abadd79cc050e09645bf85ca7918b5
 ---
 
 ## Red → Green → Refactor
@@ -328,7 +328,7 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 
 真实 DTO 和签名上传目标仅留内存。`redactA12StandardIntakeReply` 生成明确的持久化投影：签名 URL 替换为 `https://redacted.invalid/`，移除上传请求头，脱敏错误／消息文字，分别保存实际响应流与投影摘要。脱敏 JSON 文件不能自证扫描执行或取得可信接收准入。使用 `pnpm exec vitest run tests/toolchain/a12-candidate-original-http.spec.ts tests/toolchain/a12-standard-intake-http.spec.ts` 运行合成回环检查；这些消费者不启动服务、不改权限，也不批准或发布接收资料。真实正常栈来源、Auth／SQL 和正式 A12 仍是独立门禁。
 
-候选清单采集须对照准备好的资产／哈希清单读取既有资产、记录和几何分页，保留来源顺序、严格递增的记录索引、有序列键与标签，以及不依赖分页大小的内容摘要。已知零保留为零，未知数量记为 `not_run`，已知 `PARTIAL` 仍为部分解析；正式负载准入继续要求既有完整 `READY` 门禁。`tests/toolchain/a12-candidate-inventory-collector.spec.ts` 使用合成分页核对这项消费者契约，覆盖外来资产、元数据／列／数量漂移、游标回环、取消和首因清理。这些检查不证明正常栈来源、扫描、真实权限或正式 A12。
+候选清单采集须对照准备好的资产／哈希清单读取既有资产、记录和几何分页，保留来源顺序、严格递增的记录索引、有序列键与标签，以及不依赖分页大小的内容摘要。几何的记录身份、索引和来源标识须与标为包含几何的记录对应。已知零保留为零，未知数量记为 `not_run`，已知 `PARTIAL` 仍为部分解析；正式负载准入继续要求既有完整 `READY` 门禁。空续页仍按无效回应拒绝；回应已判为无权访问后，后续取消或清理失败不得覆盖首个结果。`tests/toolchain/a12-candidate-inventory-collector.spec.ts` 使用合成分页核对这项消费者契约，覆盖外来资产、元数据／列／数量漂移、游标回环、取消和首因清理。这些检查不证明正常栈来源、扫描、真实权限或正式 A12。
 
 #### 固定候选同标签返回案例
 

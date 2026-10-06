@@ -114,6 +114,7 @@ const CAPABILITIES: readonly A12StandardIntakeCapability[] = [
   'data.uploadSession.create',
   'data.uploadSession.complete',
   'data.ingestion.create',
+  'data.ingestion.submit',
   'data.ingestion.get',
   'data.operation.get',
   'data.operation.events',
@@ -342,7 +343,10 @@ function apiPlan<C extends A12StandardIntakeCapability>(
     headers['Idempotency-Key'] = data.idempotencyKey as string;
   } else if (data.idempotencyKey !== undefined || data.ifMatch !== undefined)
     return fail('invalid');
-  if (capabilityId === 'data.uploadSession.complete') {
+  if (
+    capabilityId === 'data.uploadSession.complete' ||
+    capabilityId === 'data.ingestion.submit'
+  ) {
     if (
       typeof data.ifMatch !== 'string' ||
       !/^"v[1-9]\d*"$/.test(data.ifMatch) ||
@@ -492,7 +496,8 @@ function scopeMatches(
       ? body.uploadSession
       : plan.capabilityId === 'data.ingestion.get'
         ? body.ingestion
-        : plan.capabilityId === 'data.ingestion.create'
+        : plan.capabilityId === 'data.ingestion.create' ||
+            plan.capabilityId === 'data.ingestion.submit'
           ? body.operation
           : body
   ) as Record<string, unknown>;
@@ -886,7 +891,8 @@ export function redactA12StandardIntakeReply<
     const operation =
       capabilityId === 'data.operation.get'
         ? body
-        : capabilityId === 'data.ingestion.create'
+        : capabilityId === 'data.ingestion.create' ||
+            capabilityId === 'data.ingestion.submit'
           ? (body.operation as Record<string, unknown>)
           : undefined;
     if (operation?.error !== undefined) {

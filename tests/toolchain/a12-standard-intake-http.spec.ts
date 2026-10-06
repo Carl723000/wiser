@@ -1038,9 +1038,9 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
       const body = submitted();
       body.operation[field] = assetId;
       expect(
-        DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
-          body,
-        ).success,
+        DATA_CAPABILITY_REGISTRY[
+          'data.ingestion.submit'
+        ].outputSchema.safeParse(body).success,
       ).toBe(true);
       apiHandler = (_req, res) => json(res, 202, body);
       const value = adapter();
@@ -1058,9 +1058,9 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
           ? submitted().operation
           : { ...submitted(), ingestionId };
       expect(
-        DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(
-          body,
-        ).success,
+        DATA_CAPABILITY_REGISTRY[
+          'data.ingestion.submit'
+        ].outputSchema.safeParse(body).success,
       ).toBe(false);
       apiHandler = (_req, res) => json(res, 202, body);
       const value = adapter();
@@ -1098,7 +1098,9 @@ describe('task-private standard intake HTTP evidence, never scanner certificatio
     expect(projected.redactedFields).toEqual(['body.operation.error.message']);
     expect(JSON.stringify(projected)).not.toContain('private-submit-');
     expect(projected.wireSha256).toBe(sha(JSON.stringify(body)));
-    expect(projected.projectionSha256).toBe(sha(JSON.stringify(projected.body)));
+    expect(projected.projectionSha256).toBe(
+      sha(JSON.stringify(projected.body)),
+    );
     expect(reply.body).toEqual(body);
     expect(
       DATA_CAPABILITY_REGISTRY['data.ingestion.submit'].outputSchema.safeParse(

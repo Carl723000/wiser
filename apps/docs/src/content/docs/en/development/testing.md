@@ -33,7 +33,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: f1ac926a50c428619ab7099305f0677d48b78d8b
+lastReviewedCommit: fac1e397d4abadd79cc050e09645bf85ca7918b5
 ---
 
 ## Red → Green → Refactor
@@ -328,7 +328,7 @@ The private original-content adapter in `apps/web/e2e-live/support/a12-candidate
 
 Live DTOs and signed upload targets remain in memory. `redactA12StandardIntakeReply` produces an explicit persistence projection: signed URLs become `https://redacted.invalid/`, upload headers are removed, error/message text is redacted, and actual wire and projection digests remain distinct. A redacted JSON file cannot establish scanner execution or mint trusted intake admission. Run `pnpm exec vitest run tests/toolchain/a12-candidate-original-http.spec.ts tests/toolchain/a12-standard-intake-http.spec.ts` for synthetic loopback checks; these consumers do not start services, change permissions or approve/publish intake. Real normal-stack provenance, Auth/SQL and formal A12 remain separate gates.
 
-Candidate inventory collection must read the existing asset, record and geometry pages against a prepared asset/hash manifest, retaining source order, strict increasing record indices, ordered column keys and labels, and page-independent content digests. Known zero remains zero, unknown counts produce `not_run`, and known `PARTIAL` status stays partial; formal load admission still requires the existing complete `READY` gate. `tests/toolchain/a12-candidate-inventory-collector.spec.ts` checks this consumer contract with synthetic pages, including foreign assets, drifting metadata, columns and counts, cursor loops, cancellation and first-cause cleanup. Such checks do not establish normal-stack provenance, scanner execution, actual authority or formal A12.
+Candidate inventory collection must read the existing asset, record and geometry pages against a prepared asset/hash manifest, retaining source order, strict increasing record indices, ordered column keys and labels, and page-independent content digests. Geometry record identity, index and source ID must match the records marked as having geometry. Known zero remains zero, unknown counts produce `not_run`, and known `PARTIAL` status stays partial; formal load admission still requires the existing complete `READY` gate. Empty continuation pages remain invalid; after a response has been classified as denied, a later abort or cleanup failure cannot overwrite that first outcome. `tests/toolchain/a12-candidate-inventory-collector.spec.ts` checks this consumer contract with synthetic pages, including foreign assets, drifting metadata, columns and counts, cursor loops, cancellation and first-cause cleanup. Such checks do not establish normal-stack provenance, scanner execution, actual authority or formal A12.
 
 #### Fixed candidate same-tab Back case
 

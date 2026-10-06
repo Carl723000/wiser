@@ -718,6 +718,35 @@ it.each(['get', 'records', 'geometry'] as const)(
   },
 );
 
+it.each(['get', 'records', 'geometry'] as const)(
+  'classifies terminal empty %s continuation as invalid, matching the existing traversal',
+  async (action) => {
+    const f = fixture();
+    const { result } = await collect(f, (reply, request) => {
+      if (request.action === action && request.after !== undefined) {
+        const body = reply.body as Record<string, unknown>;
+        body[
+          action === 'get'
+            ? 'assets'
+            : action === 'records'
+              ? 'records'
+              : 'features'
+        ] = [];
+        body['nextCursor'] = null;
+        const schema = {
+          get: IngestionCandidateAssetPageSchema,
+          records: IngestionCandidateRecordPageSchema,
+          geometry: IngestionCandidateGeometryPageSchema,
+        }[action];
+        expect(schema.safeParse(body).success).toBe(true);
+      }
+      return reply;
+    });
+    expect(result).toEqual({ status: 'not_run', reason: 'invalid' });
+    expect(f.close).toHaveBeenCalledTimes(1);
+  },
+);
+
 it.each(['echo', 'cycle', 'overlong', 'after-count'] as const)(
   'rejects %s cursor instead of unbounded reads',
   async (change) => {
@@ -790,6 +819,37 @@ it('rejects content changes in the independently requested first-50 prefix', asy
   });
   expect(result).toEqual({ status: 'not_run', reason: 'drift' });
 });
+
+it.each(['recordId', 'index', 'sourceId', 'hasGeometry'] as const)(
+  'rejects geometry identity drift in %s despite independently schema-valid pages',
+  async (field) => {
+    const f = fixture(200);
+    const material = f.materials[0]!;
+    if (field === 'recordId') material.features[0]!.recordId = uuid(9998);
+    if (field === 'index') material.features[0]!.index = 4;
+    if (field === 'sourceId')
+      material.features[0]!.sourceId = 'OTHER-SOURCE-LOCAL';
+    if (field === 'hasGeometry') material.records[1]!.hasGeometry = false;
+    for (const action of ['records', 'geometry'] as const) {
+      const page = f.page(
+        immutableLoadRequest({
+          method: 'GET',
+          action,
+          first: 200,
+          reference,
+          assetId: f.assets[0]!.assetId,
+        }),
+      );
+      const schema =
+        action === 'records'
+          ? IngestionCandidateRecordPageSchema
+          : IngestionCandidateGeometryPageSchema;
+      expect(schema.safeParse(page).success).toBe(true);
+    }
+    const { result } = await collect(f);
+    expect(result).toEqual({ status: 'not_run', reason: 'drift' });
+  },
+);
 
 it.each(['wire', 'dto', 'content-type', 'boundary'] as const)(
   'retains the 3 MiB and HTTP envelope guard for %s',
@@ -1105,4 +1165,45 @@ it('does not claim collection success if its own terminal cleanup fails', async 
     closed: true,
   });
   expect(JSON.stringify(result)).not.toContain('SECRET');
+});
+
+it('retains an already classified denied response when abort is queued before the upper await catch', async () => {
+  const f = fixture();
+  const controller = new AbortController();
+  const input = f.options();
+  // A bounded native-Promise ordering regression. The actual Red diagnostic
+  // and its separately marked trace copy establish validation:denied before
+  // this queued abort; no timer, fake clock or mutated error object is used.
+  const tick = (left: number): void => {
+    if (left === 0) controller.abort();
+    else queueMicrotask(() => tick(left - 1));
+  };
+  const collector = createCandidateInventoryCollector({
+    ...input,
+    signal: controller.signal,
+    adapter: {
+      send: (request) => {
+        f.requests.push(request);
+        queueMicrotask(() => tick(3));
+        return Promise.resolve({
+          boundary: 'api-http',
+          status: 401,
+          contentType: 'application/json',
+          wireBytes: 0,
+          body: null,
+        });
+      },
+      close: f.close,
+      diagnostics: () => ({ activeRequests: 0, closed: false }),
+    },
+  });
+  expect(await collector.collect()).toEqual({
+    status: 'not_run',
+    reason: 'denied',
+  });
+  expect(f.close).toHaveBeenCalledTimes(1);
+  expect(collector.diagnostics()).toEqual({
+    activeCollections: 0,
+    closed: true,
+  });
 });
