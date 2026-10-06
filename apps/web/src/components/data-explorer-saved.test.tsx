@@ -134,7 +134,9 @@ it('does not report an empty saved-view list when the first read is forbidden', 
   await user.click(screen.getByText('Save, share and export'));
   await screen.findByRole('alert');
   expect(
-    screen.queryByText('No saved views yet. Save your current view to return later.'),
+    screen.queryByText(
+      'No saved views yet. Save your current view to return later.',
+    ),
   ).toBeNull();
   expect(screen.queryByRole('link', { name: 'River review' })).toBeNull();
 });
@@ -145,12 +147,16 @@ it('withdraws the previous saved views and selected link when a later list read 
     .mockResolvedValueOnce(new Response(null, { status: 403 }));
   vi.stubGlobal('fetch', fetch);
   const user = userEvent.setup();
-  render(<DataExplorerSaved locale="zh-CN" queryId={id} capture={() => spec} />);
+  render(
+    <DataExplorerSaved locale="zh-CN" queryId={id} capture={() => spec} />,
+  );
   const summary = screen.getByText('保存、分享与导出');
   await user.click(summary);
   await screen.findByRole('link', { name: 'River review' });
   await user.click(screen.getByRole('button', { name: '视图链接' }));
-  expect(screen.getByLabelText('视图链接').getAttribute('value')).toContain(viewId);
+  expect(screen.getByLabelText('视图链接').getAttribute('value')).toContain(
+    viewId,
+  );
   await user.click(summary);
   await user.click(summary);
   await screen.findByRole('alert');
@@ -172,20 +178,26 @@ it('shows a genuinely empty successful list and recovers after a failed retry', 
   render(<DataExplorerSaved locale="en" queryId={id} capture={() => spec} />);
   const summary = screen.getByText('Save, share and export');
   await user.click(summary);
-  await screen.findByText('No saved views yet. Save your current view to return later.');
+  await screen.findByText(
+    'No saved views yet. Save your current view to return later.',
+  );
   expect(screen.queryByRole('alert')).toBeNull();
   await user.click(summary);
   await user.click(summary);
   await screen.findByRole('alert');
   expect(
-    screen.queryByText('No saved views yet. Save your current view to return later.'),
+    screen.queryByText(
+      'No saved views yet. Save your current view to return later.',
+    ),
   ).toBeNull();
   await user.click(summary);
   await user.click(summary);
   await screen.findByRole('link', { name: 'River review' });
   expect(screen.queryByRole('alert')).toBeNull();
   expect(
-    screen.queryByText('No saved views yet. Save your current view to return later.'),
+    screen.queryByText(
+      'No saved views yet. Save your current view to return later.',
+    ),
   ).toBeNull();
 });
 it.each(['rejects', 'resolves'] as const)(
@@ -212,7 +224,9 @@ it.each(['rejects', 'resolves'] as const)(
     const earlierSignal = fetch.mock.calls[0]?.[1]?.signal;
     await user.click(summary);
     await user.click(summary);
-    await screen.findByText('No saved views yet. Save your current view to return later.');
+    await screen.findByText(
+      'No saved views yet. Save your current view to return later.',
+    );
     expect(earlierSignal?.aborted).toBe(true);
     await user.type(screen.getByLabelText('View name'), 'Current saved view');
     await user.click(screen.getByRole('button', { name: 'Save view' }));
@@ -222,7 +236,9 @@ it.each(['rejects', 'resolves'] as const)(
       else resolveList(Response.json({ items: [savedView] }));
       await earlierList.catch(() => undefined);
     });
-    expect(screen.getByRole('link', { name: 'Current saved view' })).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Current saved view' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'River review' })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText('View saved.')).toBeTruthy();

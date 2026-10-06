@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: b94435fdcd2bc0142438d7e2e711dd4d7e116f4b
+lastReviewedCommit: 3f3b8f2023d531741689595c4c3c13a098e3e752
 ---
 
 ## What this guide governs
@@ -155,6 +155,8 @@ Every product UI change verifies:
 A user can distinguish source content from quality review, publication, and access permission. Parsed record counts describe indexed content, not deduplicated observations. A map can display geometry without proving positional accuracy; source, derivation, time, and scale remain available beside the result. Relations keep their source and review state; pending candidates are never presented as approved knowledge.
 
 An empty list names the current scope and gives an available action. A failure says what is affected, whether the user's work is retained, and how to retry or contact the right administrator. A permission denial names the project or data scope without exposing internal policy code. Progress text and completion text use the same action name as the initiating control.
+
+The exploration saved-view list shows an empty state only after a successful empty read. Reopening its disclosure retries the list and withdraws previous entries and the selected share link while the new read is pending. A failed read retains the failure state; a late response or failure from a cancelled request cannot replace a newer action's result. This UI state handling does not establish present access to every saved view's sources or a complete activity history.
 
 The specialist behavior and exact versioned query contracts live in [Data Foundation architecture](/en/architecture/data-foundation/) and the [Data REST reference](/en/protocols/data-rest/). Route structure, session-bound data reads, and browser verification live in [Frontend development](/en/development/frontend/). These technical references may use protocol vocabulary; the ordinary workspace follows the writing rules above.
 

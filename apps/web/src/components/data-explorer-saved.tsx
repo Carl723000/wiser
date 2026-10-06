@@ -25,6 +25,7 @@ export function DataExplorerSaved({
     'private',
   );
   const [items, setItems] = useState<ExplorationSavedView[]>([]);
+  const [listLoaded, setListLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);
@@ -65,21 +66,28 @@ export function DataExplorerSaved({
       if (controller.signal.aborted)
         throw new DOMException('Aborted', 'AbortError');
       return value;
+    } catch (error) {
+      if (controller.signal.aborted)
+        throw new DOMException('Aborted', 'AbortError');
+      throw error;
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
   }
   function failure(error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') return;
-    if (pending.current?.signal.aborted) return;
     setFailed(true);
     setMessage(copy.failed);
   }
   async function list() {
+    setListLoaded(false);
+    setItems([]);
+    setLink('');
     try {
       setItems(
         ListExplorationViewsOutputSchema.parse(await request('list', {})).items,
       );
+      setListLoaded(true);
     } catch (error) {
       failure(error);
     }
@@ -231,7 +239,7 @@ export function DataExplorerSaved({
           </li>
         ))}
       </ul>
-      {!busy && items.length === 0 ? <p>{copy.empty}</p> : null}
+      {!busy && listLoaded && items.length === 0 ? <p>{copy.empty}</p> : null}
     </details>
   );
 }
