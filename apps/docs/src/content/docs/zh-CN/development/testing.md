@@ -33,7 +33,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: fac1e397d4abadd79cc050e09645bf85ca7918b5
+lastReviewedCommit: ce4cfe5b04ae7f31c10bef4b0ad0026ef9a96411
 ---
 
 ## Red → Green → Refactor
@@ -329,6 +329,8 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 真实 DTO 和签名上传目标仅留内存。`redactA12StandardIntakeReply` 生成明确的持久化投影：签名 URL 替换为 `https://redacted.invalid/`，移除上传请求头，脱敏错误／消息文字，分别保存实际响应流与投影摘要。脱敏 JSON 文件不能自证扫描执行或取得可信接收准入。使用 `pnpm exec vitest run tests/toolchain/a12-candidate-original-http.spec.ts tests/toolchain/a12-standard-intake-http.spec.ts` 运行合成回环检查；这些消费者不启动服务、不改权限，也不批准或发布接收资料。真实正常栈来源、Auth／SQL 和正式 A12 仍是独立门禁。
 
 候选清单采集须对照准备好的资产／哈希清单读取既有资产、记录和几何分页，保留来源顺序、严格递增的记录索引、有序列键与标签，以及不依赖分页大小的内容摘要。几何的记录身份、索引和来源标识须与标为包含几何的记录对应。已知零保留为零，未知数量记为 `not_run`，已知 `PARTIAL` 仍为部分解析；正式负载准入继续要求既有完整 `READY` 门禁。空续页仍按无效回应拒绝；回应已判为无权访问后，后续取消或清理失败不得覆盖首个结果。`tests/toolchain/a12-candidate-inventory-collector.spec.ts` 使用合成分页核对这项消费者契约，覆盖外来资产、元数据／列／数量漂移、游标回环、取消和首因清理。这些检查不证明正常栈来源、扫描、真实权限或正式 A12。
+
+任务私有的完整接收采集器须把同一准备顺序贯穿上传目标、上传完成、创建接收任务、实际当前资料读取及提交处理。提交版本取自资料而非Operation；全部回应须保留原创建任务身份。随后有界读取状态与事件分页，采集同一候选清单，并将每个完整原件与准备字节核对。负载入口的接收回执保持六键；提交、提交前读取及字节校验留在私有持有者的捕获记录中。合成DTO、READY或可复制JSON不能生成可信正常栈来源；缺可信证据仍为未知，禁止派发正式负载。使用 `pnpm exec vitest run tests/toolchain/a12-standard-intake-collector.spec.ts` 核对消费者契约，不代替实际Auth／SQL或扫描验收。
 
 #### 固定候选同标签返回案例
 

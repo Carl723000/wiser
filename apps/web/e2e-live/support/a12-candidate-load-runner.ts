@@ -214,7 +214,11 @@ function dataSnapshot(value: unknown, ancestors = new Set<object>()): unknown {
     return preflight('configuration');
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Object.keys(descriptors);
-  if (keys.some((key) => !Object.hasOwn(descriptors[key], 'value')))
+  if (
+    Object.values(descriptors).some(
+      (descriptor) => !Object.hasOwn(descriptor, 'value'),
+    )
+  )
     return preflight('configuration');
   ancestors.add(value);
   try {
@@ -231,13 +235,13 @@ function dataSnapshot(value: unknown, ancestors = new Set<object>()): unknown {
       }
       return Object.freeze(array);
     }
-    if (keys.some((key) => !descriptors[key].enumerable))
+    if (Object.values(descriptors).some((descriptor) => !descriptor.enumerable))
       return preflight('configuration');
     return Object.freeze(
       Object.fromEntries(
-        keys.map((key) => [
+        Object.entries(descriptors).map(([key, descriptor]) => [
           key,
-          dataSnapshot(descriptors[key].value, ancestors),
+          dataSnapshot(descriptor.value, ancestors),
         ]),
       ),
     );
