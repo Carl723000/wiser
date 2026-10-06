@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: e68d19be
+lastReviewedCommit: daf82f94
 ---
 
 ## Protocol boundary
@@ -464,7 +464,7 @@ Error responses do not wait for audit observation. The existing non-stream clean
 
 ### Complete candidate topic specification v2 — contract checkpoint
 
-The independent `candidate-topic.ts` contract checkpoint reserves explicit `schemaVersion: 2`; the existing versionless candidate-view v1 contract, registered endpoints and consumers remain unchanged. The strict shape and legacy dispatch are implemented at this contract checkpoint; dependency-consistency regression is still Red. This is not an enabled HTTP API, a migration or persistent recovery acceptance.
+The independent `candidate-topic.ts` contract checkpoint reserves explicit `schemaVersion: 2`; the existing versionless candidate-view v1 contract, registered endpoints and consumers remain unchanged. The strict shape, dependency consistency and legacy dispatch are implemented at this contract checkpoint; validation is pure and does not enable topic persistence. This is not an enabled HTTP API, a migration or persistent recovery acceptance.
 
 The fixed configuration includes the existing page, focus and map bounds; an explicit month/day window with calendar-valid boundaries, `timeRole`, `displayUnit` and `includeUndated`; a question, region/need IDs and exact candidate/asset/record pins; projection, readiness, requirement and impact rule versions; exact asset, record or whole-record geometry dependencies; and relation content revision plus decision version. It contains no raw values, geometry coordinates or client-issued authority. Content and permissions are always obtained afresh by the server.
 

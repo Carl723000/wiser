@@ -195,14 +195,25 @@ export const IngestionCandidateTopicSpecSchema = z
       value.dependencyPins.filter((pin) => pin.kind !== 'asset').map(recordKey),
     );
     const selections = new Set(value.topic.recordPins.map(recordKey));
+    const recordHashes = new Map<string, string>();
     const consistent = value.dependencyPins.every((pin) => {
       const asset = assets.get(assetKey(pin));
-      return (
-        asset !== undefined &&
-        asset.sourceHash === pin.sourceHash &&
-        asset.parserVersion === pin.parserVersion &&
-        (pin.kind === 'asset' || selections.has(recordKey(pin)))
-      );
+      if (
+        asset === undefined ||
+        asset.sourceHash !== pin.sourceHash ||
+        asset.parserVersion !== pin.parserVersion
+      )
+        return false;
+      if (pin.kind === 'asset') return true;
+      const key = recordKey(pin);
+      const previous = recordHashes.get(key);
+      if (
+        !selections.has(key) ||
+        (previous !== undefined && previous !== pin.recordHash)
+      )
+        return false;
+      recordHashes.set(key, pin.recordHash);
+      return true;
     });
     const page = value.page;
     const pageBound =
