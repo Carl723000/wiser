@@ -29,7 +29,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 2f5c1066b971ab296932158d67d91059135ce232
+lastReviewedCommit: 2eb9466b95c82afeeea237ab4018e8822e7f1aba
 ---
 
 ## Red → Green → Refactor
@@ -296,6 +296,8 @@ The Data API PostgreSQL integration command runs its test files sequentially. Th
 
 #### Candidate API load driver
 
+Admission rejects malformed input without exposing its exception. Dispatched requests and fixed references are immutable to the transport, and failure classifications cannot be rewritten into unredacted result values.
+
 `pnpm exec vitest run tests/toolchain/a12-candidate-load-driver.spec.ts tests/toolchain/a12-candidate-load-traversal.spec.ts` validates the deterministic load utility in `apps/web/e2e-live/support/a12-candidate-load-driver.ts` with synthetic responses. This unit gate proves the driver and assertions only; it does not prove current Auth, HTTP latency, complete real pagination, memory, sustained load or cold reconstruction.
 
 Freeze complete standard-intake receipts, candidate references, per-asset counts, ordered columns and content digests before sampling. Unknown counts or incomplete inventory prevent the run; drift after measured work starts fails that run. Keep real and synthetic datasets separate. Each dataset has eighteen conditions: three existing candidate GET capabilities, first-page sizes 50/200 and client concurrency 1/4/8. Every condition retains five warmups and one hundred measured attempts, including errors and slow responses; a failed attempt is not a completed strict response and is never replaced by a retry. Sort all observed elapsed times, use the upper middle element for median and nearest rank for p95; targets remain median ≤300 ms and p95 ≤800 ms, with one hundred complete responses and no failed attempt required.
@@ -303,6 +305,8 @@ Freeze complete standard-intake receipts, candidate references, per-asset counts
 The public REST GET boundary and same-origin Web BFF POST boundary are distinct. Reject wrong fixed references, per-asset count drift, schema failures, non-JSON replies, the existing 3 MiB material budget, oversized/echoed cursors and empty continuing pages. Preserve original missing/null/empty values and source-index gaps; a GeometryCollection is one original geometry record, not the number of drawing parts. Reports contain only condition labels, ordinals, timings, byte/count checks and sanitized outcomes. Do not persist bodies, original values, coordinates, URLs, cursors, headers, credentials or raw errors. Formal execution still requires the independently registered runtime/resource/privacy gates, twenty complete traversals, actual current authorization, and the separate sustained/memory/cold tests.
 
 The three version-bound business/record navigation regressions use admitted local source data, including a TCI band and independently checked observation counts. An unfiltered `pnpm --filter @wiser/web test:e2e:data-case --reporter=list` run requires `WISER_WEB_LIVE_BASE_URL`, the existing live credentials, `WISER_WEB_LIVE_RELATION_URL`, `WISER_WEB_LIVE_RECORD_URL`, `WISER_WEB_LIVE_OBSERVATION_COUNT`, and `WISER_WEB_LIVE_CANDIDATE_VIEW_URL`. The relation URL must identify the fixed catalog version and relation view; the record URL must carry its fixed record focus; the candidate URL must satisfy the real saved-view contract below. Use the file-filtered command below when running only the candidate return case. Missing or invalid case inputs fail explicitly. These `e2e-live/*.case.ts` tests retain all assertions and are collected by `playwright.case.config.ts`; they are not portable CI fixtures. `test:e2e:data-live` continues to collect all existing `*.spec.ts` suites against the CI smoke stack. The discovery regression invokes Playwright with synthetic inputs and `--list` only; it does not claim a real-case browser run. Docpact routes live browser cases, browser configuration and discovery fixtures to this bilingual testing contract.
+
+The full-traversal utility uses a domain-separated SHA256 chain with ordered entries and column definitions, independent of page boundaries. Every one of twenty traversals must match the pre-frozen inventory, including full assets, row and geometry counts, identity uniqueness and order; matching only another traversal is insufficient. It rejects duplicate/cyclic cursors and bounds reads by the frozen counts, without retaining original content in results.
 
 #### Fixed candidate same-tab Back case
 
