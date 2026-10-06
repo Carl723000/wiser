@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-05
-lastReviewedCommit: 0cb3903212a1e1d2e87d3ab362359b79d7dc97d1
+lastReviewedAt: 2026-10-06
+lastReviewedCommit: daf82f94
 ---
 
 ## Protocol boundary
@@ -461,3 +461,13 @@ The API now appends a separate internal `data.ingestion.candidate.original.outpu
 Only the trusted download adapter's opaque in-process receipt can append an outcome. It snapshots the signing actor/delegator, tenant/project, candidate reference and asset security policy before asynchronous signing; outcome writes do not reread or grant content. No client JSON input, public Capability, permission enumeration or migration is added. The separate SQL transaction retains the ten-second statement timeout. Each append Promise is observed once, using the existing 120-second original-operation duration as its observation limit; expiry or module shutdown records an unconfirmed observation without waiting indefinitely. A failed append emits one fixed sanitized diagnostic with its server attempt ID. Observation expiry does not cancel SQL, establish rollback or release an active connection; late settlement is handled without a second diagnostic, and uncertain writes are not retried or rewritten. The existing shared pool shutdown is unchanged and is not proven to have a global deadline by this slice. These events count bytes offered to the API response stream, not browser receipt, user disk downloads or later Web-proxy output. The management read view, real Auth/SQL/storage validation and product acceptance remain separate gates.
 
 Error responses do not wait for audit observation. The existing non-stream cleanup releases an original reservation after the awaited original work settles; an unresolved non-cooperative fetch still retains its reservation. Streaming authorization stops output on either current denial or temporary failure, retaining the offered-byte prefix: forbidden or missing access records `AUTHORITY_CHANGED`, while other failures record `UNAVAILABLE`. Audit SQL retains its own connection until actual settlement. Existing stream-close cleanup is unchanged and does not prove every pending authorization query or generator has completed; neither does the observation deadline prove a global pool shutdown deadline.
+
+### Complete candidate topic specification v2 — contract checkpoint
+
+The independent `candidate-topic.ts` contract checkpoint reserves explicit `schemaVersion: 2`; the existing versionless candidate-view v1 contract, registered endpoints and consumers remain unchanged. The strict shape, dependency consistency and legacy dispatch are implemented at this contract checkpoint; validation is pure and does not enable topic persistence. This is not an enabled HTTP API, a migration or persistent recovery acceptance.
+
+The fixed configuration includes the existing page, focus and map bounds; an explicit month/day window with calendar-valid boundaries, `timeRole`, `displayUnit` and `includeUndated`; a question, region/need IDs and exact candidate/asset/record pins; projection, readiness, requirement and impact rule versions; exact asset, record or whole-record geometry dependencies; and relation content revision plus decision version. It contains no raw values, geometry coordinates or client-issued authority. Content and permissions are always obtained afresh by the server.
+
+The manifest remains 1–100 unique candidate references and the whole create envelope remains at most 128 KiB of UTF-8 JSON. Planned bounded fields are: question 2,000 characters; region IDs 32; need IDs 64; record/dependency pins 200 each; rule pins 32; relation pins 100; source-local object keys 256 characters and rule/parser identifiers/versions 128 characters. Rule pins must cover all four adopted rule categories, while relations may be empty. A decision version of zero means no appended candidate decision in this new specification, not approval; a relation revision starts at one. The server must verify actual source hashes, processing versions, record/geometry hashes, relationship source dependencies and decision history before saving.
+
+Version dispatch accepts strict versionless v1 or complete v2 only. An unknown or incomplete version is rejected rather than stripped into v1; v1 period remains display state, and legacy month/year fields are not reinterpreted as day windows. Compatibility list filtering, safe old-open rejection, the existing-table v2 constraint migration and the three separately registered topic capabilities are subsequent integration work. The legacy published-view contract is independent.
