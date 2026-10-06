@@ -307,6 +307,11 @@ describe('report-period explicit format compatibility', () => {
       expect(
         other.cells.find(
           (cell) => cell.regionId === 'bth' && cell.needId === 'K5-001',
+        )?.ruleVersion,
+      ).toBe('wiser.project-readiness.v3');
+      expect(
+        other.cells.find(
+          (cell) => cell.regionId === 'bth' && cell.needId === 'K5-001',
         )?.windowRecordIds,
       ).toEqual([]);
     }
