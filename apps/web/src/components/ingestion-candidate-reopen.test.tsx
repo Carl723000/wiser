@@ -816,6 +816,108 @@ it('ignores hidden visibility and nonpersisted pageshow without starting a new r
   fireEvent(window, new Event('pageshow'));
   expect(fetch.mock.calls.length).toBe(before);
 });
+it.each(['click', 'keyboard'] as const)(
+  'does not interrupt a pending save with %s tab navigation',
+  async (navigation) => {
+    savedReplies('records');
+    await persisted('records');
+    const held = deferred();
+    let mutationSignal: AbortSignal | null = null;
+    fetch.mockImplementation((value, init) => {
+      if (url(value).endsWith('/create')) {
+        mutationSignal = init?.signal ?? null;
+        return held.promise;
+      }
+      if (url(value).endsWith('/open'))
+        return Promise.resolve(Response.json(saved('records', 'saved-start')));
+      return Promise.resolve(pageReply(value, init));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+    await waitFor(() => expect(mutationSignal).not.toBeNull());
+    const before = fetch.mock.calls.length;
+    if (navigation === 'click')
+      fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+    else
+      fireEvent.keyDown(screen.getByRole('tab', { name: 'Records' }), {
+        key: 'ArrowRight',
+      });
+    expect(mutationSignal!.aborted).toBe(false);
+    expect(fetch.mock.calls.length).toBe(before);
+    expect(
+      screen
+        .getByRole('tab', { name: 'Records' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.getByText(rawValue)).toBeDefined();
+    act(() =>
+      held.resolve(
+        Response.json({ savedView: saved('records', 'saved-start').savedView }),
+      ),
+    );
+    await screen.findByText('View saved.');
+    await idle();
+    expect(mutationSignal!.aborted).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+    await idle();
+    expect(
+      screen.getByRole('tab', { name: 'Map' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(
+      fetch.mock.calls
+        .slice(before)
+        .some(([value]) => url(value).endsWith('/geometry')),
+    ).toBe(true);
+  },
+);
+it.each(['click', 'keyboard'] as const)(
+  'does not interrupt a pending current-view revoke with %s tab navigation',
+  async (navigation) => {
+    const held = deferred();
+    let mutationSignal: AbortSignal | null = null;
+    fetch.mockImplementation((value, init) => {
+      if (url(value).endsWith('/open'))
+        return Promise.resolve(Response.json(saved('records', 'saved-start')));
+      if (url(value).endsWith('/list'))
+        return Promise.resolve(
+          Response.json({
+            items: [saved('records', 'saved-start').savedView],
+            nextCursor: null,
+          }),
+        );
+      if (url(value).endsWith('/revoke')) {
+        mutationSignal = init?.signal ?? null;
+        return held.promise;
+      }
+      return Promise.resolve(pageReply(value, init));
+    });
+    await persisted('records');
+    fireEvent.click(screen.getByRole('button', { name: 'Load saved views' }));
+    await screen.findByRole('button', { name: 'Revoke view' });
+    await idle();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke view' }));
+    await waitFor(() => expect(mutationSignal).not.toBeNull());
+    const before = fetch.mock.calls.length;
+    if (navigation === 'click')
+      fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+    else
+      fireEvent.keyDown(screen.getByRole('tab', { name: 'Records' }), {
+        key: 'ArrowRight',
+      });
+    expect(mutationSignal!.aborted).toBe(false);
+    expect(fetch.mock.calls.length).toBe(before);
+    expect(
+      screen
+        .getByRole('tab', { name: 'Records' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    act(() => held.resolve(Response.json({ viewId, revoked: true })));
+    await screen.findByText('View revoked.');
+    await idle();
+    expect(fetch.mock.calls.length).toBe(before);
+    expect(mutationSignal!.aborted).toBe(false);
+    expect(screen.queryByText(rawValue)).toBeNull();
+  },
+);
 it('defers recovery until the current save finishes, preserving its signal and delivered bytes', async () => {
   savedReplies('records');
   await persisted('records');
