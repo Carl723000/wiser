@@ -455,7 +455,7 @@ it('accepts the independent complete synthetic frozen input shape as a fixture c
     'ready',
   );
 });
-it('performs fresh create/PUT/complete/create/current-get/submit/poll/events/inventory/original in owned order', async () => {
+it('performs fresh create/PUT/complete/create/current-get/submit/poll/events/inventory/original/final-current-read in owned order', async () => {
   const f = fixture();
   const value = createA12StandardIntakeCollector(f.options);
   const result = await value.collect();
@@ -474,6 +474,8 @@ it('performs fresh create/PUT/complete/create/current-get/submit/poll/events/inv
     'inventory',
     'original',
     'original',
+    'data.ingestion.get',
+    'data.operation.get',
   ]);
   const submit = f.calls.find(({ id }) => id === 'data.ingestion.submit');
   expect(submit).toMatchObject({

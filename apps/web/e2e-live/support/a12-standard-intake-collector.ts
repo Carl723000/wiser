@@ -845,15 +845,19 @@ export function createA12StandardIntakeCollector(
           capabilityId: 'data.operation.get',
           input: { operationId: operation.operationId },
         });
+      let lastIngestionVersion = preSubmit.body.ingestion.version;
+      let lastOperationVersion = submit.body.operation.version;
       for (let round = 0; round < fixed.maximumStatusReads; round++) {
         const latest = await current();
         checkIngestion(latest.body);
-        if (latest.body.ingestion.version < preSubmit.body.ingestion.version)
+        if (latest.body.ingestion.version < lastIngestionVersion)
           return fail('drift');
+        lastIngestionVersion = latest.body.ingestion.version;
         const latestOperation = await readOperation();
         checkOperation(latestOperation.body, operation.operationId);
-        if (latestOperation.body.version < submit.body.operation.version)
+        if (latestOperation.body.version < lastOperationVersion)
           return fail('drift');
+        lastOperationVersion = latestOperation.body.version;
         if (latest.body.candidateReference !== null) {
           finalGet = latest;
           finalOperation = latestOperation;
@@ -1013,6 +1017,22 @@ export function createA12StandardIntakeCollector(
           sha256: asset.sha256,
         });
       }
+      const recheckedIngestion = await current();
+      checkIngestion(recheckedIngestion.body);
+      if (
+        recheckedIngestion.body.ingestion.version < lastIngestionVersion ||
+        recheckedIngestion.body.candidateReference === null ||
+        candidateSavedReferenceKey(
+          recheckedIngestion.body.candidateReference,
+        ) !== candidateSavedReferenceKey(reference)
+      )
+        return fail('drift');
+      const recheckedOperation = await readOperation();
+      checkOperation(recheckedOperation.body, operation.operationId);
+      if (recheckedOperation.body.version < lastOperationVersion)
+        return fail('drift');
+      finalGet = recheckedIngestion;
+      finalOperation = recheckedOperation;
       guard();
       const receipt = freeze({
         createUpload: { input: uploadInput, output: upload.projected },
