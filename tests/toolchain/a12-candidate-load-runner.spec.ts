@@ -623,6 +623,19 @@ it.each([
   },
 );
 
+it('a consistent Operation for another capability cannot prove standard ingestion', async () => {
+  const f = fixture(),
+    receipt = f.members[0]!.receipt;
+  receipt.createIngestion.output.operation.capabilityId = 'data.upload.create';
+  receipt.operation.capabilityId = 'data.upload.create';
+  f.repinReceipt(0);
+  expect(await admitA12RunInput(f.input, f.ports)).toEqual({
+    status: 'not_run',
+    reason: 'receipt_link_mismatch',
+  });
+  expectNoDispatch(f);
+});
+
 it('receipt association permits normal pending-to-waiting progress and an approved readable candidate without requiring publication', async () => {
   const f = fixture();
   f.members[0]!.receipt.createIngestion.output.operation.status = 'PENDING';
@@ -1108,4 +1121,70 @@ it('a port accessor is rejected without reading it or invoking standard intake a
   expect(getter).not.toHaveBeenCalled();
   expect(f.ports.readArtifact).not.toHaveBeenCalled();
   expectNoDispatch(f);
+});
+
+it('a cleanup exception preserves the first denial and its measured sample', async () => {
+  const f = fixture();
+  f.fail(6);
+  f.guard.close.mockImplementation(() => {
+    throw Error(rawMarker);
+  });
+  const result = await runA12CandidateMatrix(f.input, f.ports);
+  expect(result).toMatchObject({ status: 'failed', reason: 'denied' });
+  expect(f.requests).toHaveLength(6);
+  expect(result.conditions).toHaveLength(1);
+  expect(result.conditions[0]!.result.measured).toMatchObject([
+    { ordinal: 1, outcome: 'denied' },
+  ]);
+  expect(f.guard.close).toHaveBeenCalledOnce();
+  expect(JSON.stringify(result)).not.toContain(rawMarker);
+});
+
+it('a malformed returned Auth guard releases its own close without invoking its accessor', async () => {
+  const f = fixture(),
+    getter = vi.fn(() => {
+      throw Error(rawMarker);
+    });
+  const ownGuard = { ...f.guard };
+  Object.defineProperty(ownGuard, 'verifyCondition', {
+    enumerable: true,
+    get: getter,
+  });
+  const result = await runA12CandidateMatrix(f.input, {
+    ...f.ports,
+    authenticate: () => Promise.resolve(ownGuard),
+  });
+  expect(result).toMatchObject({ status: 'not_run', reason: 'configuration' });
+  expect(getter).not.toHaveBeenCalled();
+  expect(f.guard.verifyCondition).not.toHaveBeenCalled();
+  expect(f.guard.close).toHaveBeenCalledOnce();
+  expect(f.requests).toHaveLength(0);
+  expect(f.ports.createTransport).not.toHaveBeenCalled();
+  expect(JSON.stringify(result)).not.toContain(rawMarker);
+});
+
+it('a malformed returned transport releases its own close without invoking its send accessor', async () => {
+  const f = fixture(),
+    create = f.ports.createTransport,
+    getter = vi.fn(() => {
+      throw Error(rawMarker);
+    });
+  const result = await runA12CandidateMatrix(f.input, {
+    ...f.ports,
+    createTransport: (condition, location) => {
+      const ownAdapter = create(condition, location);
+      Object.defineProperty(ownAdapter, 'send', {
+        enumerable: true,
+        get: getter,
+      });
+      return ownAdapter;
+    },
+  });
+  expect(result).toMatchObject({ status: 'not_run', reason: 'configuration' });
+  expect(getter).not.toHaveBeenCalled();
+  expect(f.requests).toHaveLength(0);
+  expect(f.transports).toHaveLength(1);
+  expect(f.transports[0]!.close).toHaveBeenCalledOnce();
+  expect(f.guard.close).toHaveBeenCalledOnce();
+  expect(JSON.stringify(result)).not.toContain(rawMarker);
 });

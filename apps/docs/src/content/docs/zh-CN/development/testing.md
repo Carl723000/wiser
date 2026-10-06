@@ -30,7 +30,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: d9e4ad3cf489cfa4310ffbcdcbba4e7a1fec1671
+lastReviewedCommit: 0169facc0dbdc1689721c899bf778b3fb83eda7b
 ---
 
 ## Red → Green → Refactor
@@ -315,9 +315,9 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 
 通过 `pnpm exec vitest run tests/toolchain/a12-candidate-load-http.spec.ts tests/toolchain/a12-candidate-load-auth.spec.ts` 运行适配器检查。合成 HTTP 服务仅绑定系统为自身分配的回环端口，并只关闭自己的监听器，不占用真实 API 端口。组合检查调用实际认证守卫、HTTP 适配器和驱动器：令牌过期按失权停止新尝试，旧条件按失效停止，守卫关闭按取消停止。已开始的尝试保留在结果中，不发替补请求；配置异常及错误分类均限定范围并脱敏。
 
-`apps/web/e2e-live/support/a12-candidate-load-runner.ts` 中的私有运行入口在登录前核对独立固定的接收回执、候选清单、准备原件及标准服务执行证据。它按实际文件字节重新计算哈希，核对既有上传、接收和 Operation 的关联及每条数据轨道的完整计数，并冻结输入快照。上传时提交的哈希、普通 Operation 消息和声明 READY 都不能证明已完成扫描或指纹核验；须由本任务可信执行证据校验器确认，证据缺失或未知时记为 `not_run`。既有接收契约中的来源登记是可选项；带清单的 PARTIAL 批次仍须保留部分可用状态，不得删去清单或改成 READY 来通过测试。
+`apps/web/e2e-live/support/a12-candidate-load-runner.ts` 中的私有运行入口在登录前核对独立固定的接收回执、候选清单、准备原件及标准服务执行证据。它按实际文件字节重新计算哈希，核对既有上传、接收和 Operation 的关联及每条数据轨道的完整计数，并冻结输入快照。关联的 Operation 必须属于 `data.ingestion.create`；两份无关能力标识相同不足以证明标准接收。上传时提交的哈希、普通 Operation 消息和声明 READY 都不能证明已完成扫描或指纹核验；须由本任务可信执行证据校验器确认，证据缺失或未知时记为 `not_run`。既有接收契约中的来源登记是可选项；带清单的 PARTIAL 批次仍须保留部分可用状态，不得删去清单或改成 READY 来通过测试。
 
-运行入口调用既有驱动器完成三十六组固定条件，并在每条轨道的二十轮中按冻结顺序遍历全部成员。每种操作的代表成员在采样前固定，不把不同成员的性能尝试混成一个样本。遍历页只记录序号、操作、耗时、实际消耗字节和限定结果；每组条件或成员遍历前在计时外重新核权，结束后关闭自身传输，终止性失败停止后续工作，不替换已开始的尝试。`pnpm exec vitest run tests/toolchain/a12-candidate-load-runner.spec.ts` 仅验证合成编排；假时钟、执行证据校验器和传输不能证明真实 Auth／SQL、数据规模或正式性能。候选矩阵完成后，整体 `formalA12` 仍为 `not_run`，连续运行、内存、首屏和冷重建须另有预登记的实际出口证据。
+运行入口调用既有驱动器完成三十六组固定条件，并在每条轨道的二十轮中按冻结顺序遍历全部成员。每种操作的代表成员在采样前固定，不把不同成员的性能尝试混成一个样本。遍历页只记录序号、操作、耗时、实际消耗字节和限定结果；每组条件或成员遍历前在计时外重新核权，结束后关闭自身传输，终止性失败停止后续工作，不替换已开始的尝试。清理异常保留已有终止原因及其样本；返回的守卫或传输对象不合规时，仍调用自身直接保存的关闭方法，不读取访问器。`pnpm exec vitest run tests/toolchain/a12-candidate-load-runner.spec.ts` 仅验证合成编排；假时钟、执行证据校验器和传输不能证明真实 Auth／SQL、数据规模或正式性能。候选矩阵完成后，整体 `formalA12` 仍为 `not_run`，连续运行、内存、首屏和冷重建须另有预登记的实际出口证据。
 
 #### 固定候选同标签返回案例
 
