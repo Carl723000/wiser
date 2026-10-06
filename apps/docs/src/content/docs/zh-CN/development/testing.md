@@ -33,6 +33,8 @@ checkPaths:
   - tests/toolchain/a12-normal-runtime-window.spec.ts
   - tests/toolchain/a12-native-runtime-observer.spec.ts
   - tests/toolchain/a12-platform-identity-http.spec.ts
+  - tests/toolchain/a12-actual-collector-host.spec.ts
+  - tests/toolchain/support/a12-actual-collector-fixture.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
@@ -358,3 +360,5 @@ Supabase CI 通道在结构检查后，串行运行真实智能体连接、受�
 任务宿主的原生读取器须采用启动器明确选择并冻结的规范工作区／运行目录、可执行文件和 Unix 套接字读取策略；组件不内置个人路径、不自动发现环境变量，也不切换 Docker context。目录别名不能扩大获准的规范目标；读取输入必须保留宿主选定的根目录。路径、文件身份、服务代次、已执行迁移及签名来源回执均为读取输入，不是启动证明。文件和命令的累计消耗及取消覆盖完整观测；已知漂移拒绝，缺少原生观察保留未知。`tests/toolchain/a12-native-runtime-observer.spec.ts` 使用任务专属临时文件、明确合成的 Docker 形式可执行夹具及被动 Unix IPC 文件身份验证完整读取器，不连接该文件、不启动 Docker、不登录或查询 SQL，也不证明正常扫描。真实源码／构建绑定、正常启动和同窗口接收发行仍须通过独立的私有接线门禁。
 
 任务私有身份 HTTP 消费者仅调用现有 `GET /api/platform/v1/me`，地址固定为选定的任务回环 API。发送前复制地址及凭据／范围的数据属性；Node 无法编码为请求头的值须在创建请求前判为输入无效。非200回应只保留状态，不读取错误正文或跟随重定向。成功 JSON 限于32 KiB，沿用30秒总传输期限；取消与关闭只清理自身连接和定时器。`tests/toolchain/a12-platform-identity-http.spec.ts` 使用临时合成监听器验证实际请求；既有Auth守卫仍须核验声明、同一会话及身份回应，各候选GET仍承担完整当前资源授权。此传输不执行登录或签发可信正常运行准入。
+
+私有接收宿主 `a12-actual-collector-host.ts` 组合已安装的 Supabase 客户端、当前身份 GET，以及既有标准接收、原件和候选清单消费者。输入明确指定任务回环地址、私有凭据、四个固定 UUID 命令键、原件顺序和有限分配预算；不发现环境文件，也不接受调用方提供的 SDK 或网络工厂。来源登记仍为可选项，其清单序号须绑定实际生成的资产标识和原件哈希。认证前冻结输入数据、拒绝共享可变字节，并核对已知字节副本的分配预算；这项守卫不构成正常栈资源准入。密码登录、签名公钥加载或身份读取期间的主动取消须保留为取消；已成立的无权访问或内容漂移不得被清理异常覆盖。使用 `pnpm exec vitest run tests/toolchain/a12-actual-collector-host.spec.ts` 核对真实已装客户端与合成隔离监听器的组合，以及记录和几何的对应。成功结果保留未知标准执行权威，不能生成扫描、当前 SQL／RLS 或正式负载验收结论；正常启动、同窗接收及预登记资料规模仍需独立证据。
