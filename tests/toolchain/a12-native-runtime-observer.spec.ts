@@ -9,6 +9,7 @@ import {
   realpath,
   rename,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
@@ -65,11 +66,14 @@ interface SyntheticState {
   marker: 'synthetic-cli-not-docker';
   inspections: Record<string, SyntheticInspection>;
   ready: boolean;
+  inspectDelayMs?: number;
+  inspectDelayForId?: string;
 }
 interface SyntheticCall {
   marker: 'synthetic-cli-not-docker';
   kind: 'inspect' | 'signature-hash' | 'readiness';
   argv: string[];
+  pid: number;
 }
 interface SyntheticFixture {
   base: string;
@@ -163,7 +167,7 @@ const fixed = ${JSON.stringify(fixed)};
 const args = process.argv.slice(2);
 function refuse() { process.stderr.write('synthetic fixture argv refused\n'); process.exitCode = 2; }
 async function record(kind) {
-  await appendFile(fixed.callPath, JSON.stringify({ marker: 'synthetic-cli-not-docker', kind, argv: args }) + '\n');
+  await appendFile(fixed.callPath, JSON.stringify({ marker: 'synthetic-cli-not-docker', kind, argv: args, pid: process.pid }) + '\n');
 }
 async function main() {
   const state = JSON.parse(await readFile(fixed.statePath, 'utf8'));
@@ -173,6 +177,10 @@ async function main() {
   if (tail.length === 6 && tail[0] === 'inspect' && tail[1] === '--type' && tail[2] === 'container' &&
       tail[3] === '--format' && tail[4] === fixed.inspectTemplate && Object.hasOwn(state.inspections, tail[5])) {
     await record('inspect');
+    if (tail[5] === state.inspectDelayForId) {
+      if (!Number.isSafeInteger(state.inspectDelayMs) || state.inspectDelayMs < 1 || state.inspectDelayMs > 5000) return refuse();
+      await new Promise((resolve) => setTimeout(resolve, state.inspectDelayMs));
+    }
     process.stdout.write(JSON.stringify(state.inspections[tail[5]]) + '\n');
     return;
   }
@@ -453,6 +461,79 @@ const observedFixture = async (fixture: SyntheticFixture) => {
   });
   return read;
 };
+
+// Only inspect fixture-owned PID records. Signal 0 is a read-only existence probe;
+// there is no manual termination signal or enumeration of unrelated processes.
+function syntheticPidExists(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid < 1 || pid === process.pid)
+    throw new Error('Invalid task-owned synthetic subprocess PID');
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    throw error;
+  }
+}
+const pause = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+async function bounded<T>(
+  pending: Promise<T>,
+  maximumMs: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error(label + ' did not settle within fixture bound')),
+          maximumMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+async function startedInspect(
+  fixture: SyntheticFixture,
+  previousCalls: number,
+): Promise<SyntheticCall> {
+  const deadline = performance.now() + 1_500;
+  while (performance.now() < deadline) {
+    const started = (await fixture.calls()).slice(previousCalls);
+    if (started.length > 0) {
+      expect(started).toHaveLength(1);
+      const call = started[0]!;
+      expect(call.marker).toBe('synthetic-cli-not-docker');
+      expect(call.kind).toBe('inspect');
+      expect(call.argv[9]).toBe(fakeId(1));
+      expect(syntheticPidExists(call.pid)).toBe(true);
+      return call;
+    }
+    await pause(15);
+  }
+  throw new Error(
+    'Synthetic inspect did not record a running PID before the fixture bound',
+  );
+}
+async function waitSyntheticPidGone(
+  pid: number,
+  maximumMs = 1_000,
+): Promise<void> {
+  const deadline = performance.now() + maximumMs;
+  while (performance.now() < deadline) {
+    if (!syntheticPidExists(pid)) return;
+    await pause(15);
+  }
+  expect(
+    syntheticPidExists(pid),
+    'task-owned CLI must exit before its natural 5-second fixture delay',
+  ).toBe(false);
+}
 
 test(
   'full reader hashes real selected fs and runs only synthetic narrow inspect/hash/clamdcheck argv',
@@ -739,6 +820,179 @@ test(
         activeWatchers: 0,
         closed: true,
       });
+    });
+  },
+  testTimeoutMs,
+);
+
+test(
+  'full reader mid-inspect abort returns unknown, stops dispatch and terminates its recorded synthetic child',
+  async () => {
+    await withFixture(async (fixture) => {
+      const read = await observedFixture(fixture);
+      const before = (await fixture.calls()).length;
+      fixture.state.inspectDelayForId = fakeId(1);
+      fixture.state.inspectDelayMs = 5_000;
+      await fixture.persistState();
+      const controller = new AbortController();
+      const pending = read(controller.signal);
+      let started: SyntheticCall | undefined;
+      try {
+        started = await startedInspect(fixture, before);
+        controller.abort();
+        expect(
+          await bounded(pending, 1_000, 'native observation cancellation'),
+        ).toEqual({
+          status: 'unknown',
+          reason: 'observation_unavailable',
+        });
+        await waitSyntheticPidGone(started.pid);
+        expect((await fixture.calls()).slice(before)).toEqual([started]);
+        await pause(75);
+        expect((await fixture.calls()).slice(before)).toEqual([started]);
+      } finally {
+        controller.abort();
+        // On a failing cancellation regression the synthetic delay still ends
+        // naturally. Drain only this observation/PID; never manually kill a PID.
+        await bounded(pending, 7_000, 'synthetic observation cleanup');
+        if (started) await waitSyntheticPidGone(started.pid, 6_000);
+      }
+    });
+  },
+  testTimeoutMs,
+);
+
+test(
+  'full reader obeys an outer window deadline, stops dispatch and terminates its recorded synthetic child',
+  async () => {
+    await withFixture(async (fixture) => {
+      const windows = createA12RuntimeObservationWindows(readFixture(fixture), {
+        maximumObservationMs: 2_500,
+        sampleIntervalMs: 60_000,
+        maximumWindows: 1,
+      });
+      let started: SyntheticCall | undefined;
+      try {
+        const opened = await windows.openWindow();
+        expect(opened.status).toBe('open');
+        if (opened.status !== 'open')
+          throw new Error('Missing synthetic observation window');
+        const before = (await fixture.calls()).length;
+        fixture.state.inspectDelayForId = fakeId(1);
+        fixture.state.inspectDelayMs = 5_000;
+        await fixture.persistState();
+        const pending = windows.checkpoint(opened.window);
+        started = await startedInspect(fixture, before);
+        const unavailable = {
+          status: 'unknown',
+          reason: 'observation_unavailable',
+        };
+        expect(
+          await bounded(pending, 3_000, 'outer observation-window deadline'),
+        ).toEqual(unavailable);
+        expect(windows.signal(opened.window).aborted).toBe(true);
+        await waitSyntheticPidGone(started.pid);
+        expect((await fixture.calls()).slice(before)).toEqual([started]);
+        await pause(75);
+        expect(await windows.checkpoint(opened.window)).toEqual(unavailable);
+        expect((await fixture.calls()).slice(before)).toEqual([started]);
+      } finally {
+        windows.close();
+        if (started) await waitSyntheticPidGone(started.pid, 6_000);
+      }
+      expect(windows.diagnostics()).toEqual({
+        activeWindows: 0,
+        activeObservations: 0,
+        activeWatchers: 0,
+        closed: true,
+      });
+    });
+  },
+  testTimeoutMs,
+);
+
+test(
+  'full reader refuses host-policy root/executable/socket path mismatch before process dispatch',
+  async () => {
+    await withFixture(async (fixture) => {
+      await observedFixture(fixture);
+      const before = await fixture.calls();
+      const candidates: A12NativeRuntimePolicy[] = [
+        {
+          ...fixture.policy,
+          workspaceRoot: join(fixture.base, 'unselected-workspace'),
+        },
+        {
+          ...fixture.policy,
+          runtimeRoots: [join(fixture.base, 'unselected-runtime')],
+        },
+        {
+          ...fixture.policy,
+          dockerExecutablePaths: [
+            join(fixture.workspace, 'unselected-cli.mjs'),
+          ],
+        },
+        {
+          ...fixture.policy,
+          daemonSocketPaths: [join(fixture.base, 'unselected.sock')],
+        },
+      ];
+      for (const policy of candidates) {
+        expect(
+          await createA12NativeRuntimeObserver(
+            fixture.selectors,
+            policy,
+          )(new AbortController().signal),
+        ).toEqual({ status: 'unknown', reason: 'observation_missing' });
+        expect(await fixture.calls()).toEqual(before);
+      }
+    });
+  },
+  testTimeoutMs,
+);
+
+test(
+  'full reader refuses a selected root alias whose canonical target lies outside the host policy before reading or dispatch',
+  async () => {
+    await withFixture(async (fixture) => {
+      await observedFixture(fixture);
+      const before = await fixture.calls();
+      const outside = join(fixture.base, 'outside-selected-workspace');
+      await rename(fixture.workspace, outside);
+      await symlink(outside, fixture.workspace, 'dir');
+      expect((await lstat(fixture.workspace)).isSymbolicLink()).toBe(true);
+      const metadata = await lstat(outside);
+      (fixture.selectors.rootPins as A12NativeRootPin[])[0] = {
+        path: fixture.workspace,
+        realPath: outside,
+        dev: metadata.dev,
+        ino: metadata.ino,
+      };
+      (fixture.selectors.sourceBuildFiles as A12NativeFilePin[])[0] =
+        await filePin(fixture.sourcePath);
+      const configuration = fixture.selectors.configurationFiles[0]!;
+      (fixture.selectors.configurationFiles as A12NativeFilePin[])[0] =
+        await filePin(configuration.path);
+      const executablePath = fixture.selectors.executablePin.path;
+      const executableRealPath = await realpath(executablePath);
+      (
+        fixture.selectors as {
+          executablePin: A12NativeRuntimeSelectors['executablePin'];
+        }
+      ).executablePin = {
+        path: executablePath,
+        realPath: executableRealPath,
+        identity: identity(await lstat(executablePath)),
+      };
+      // Executable permission is explicit and separate; it cannot widen allowed source roots.
+      (fixture.policy.dockerExecutablePaths as string[]).push(
+        executableRealPath,
+      );
+      expect(await readFixture(fixture)(new AbortController().signal)).toEqual({
+        status: 'unknown',
+        reason: 'observation_missing',
+      });
+      expect(await fixture.calls()).toEqual(before);
     });
   },
   testTimeoutMs,
