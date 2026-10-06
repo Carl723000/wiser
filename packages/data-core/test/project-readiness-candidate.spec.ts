@@ -221,4 +221,28 @@ describe('candidate readiness identity and separate grains', () => {
       1,
     );
   });
+  it('keeps source-local geometry keys distinct across candidate batches', () => {
+    const original = candidate();
+    const other = candidate({
+      candidateReference: {
+        ...(original as { candidateReference: object }).candidateReference,
+        processingBatchId: '20000000-0000-4000-8000-000000000002',
+      },
+    });
+    const facts = input([original, other]);
+    const result = calculateProjectReadiness({
+      ...facts,
+      records: facts.records.map((record) => ({
+        ...record,
+        spatial: {
+          state: 'LOCATED',
+          role: 'study-area',
+          geometryKey: 'source-local-geometry-1',
+          geometryKind: 'AREA',
+        },
+      })),
+    });
+    expect(result.counts.knownGeometries).toBe(0);
+    expect(result.candidateCounts?.knownGeometries).toBe(2);
+  });
 });

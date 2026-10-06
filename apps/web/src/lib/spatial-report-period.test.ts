@@ -5,6 +5,8 @@ import { buildReadiness } from './spatial-readiness';
 import { buildReadinessMatrix } from './spatial-readiness-matrix';
 import { materialReference } from './spatial-readiness-facts';
 import { buildMonthlyReadout } from './spatial-monthly-readout';
+import { parseLocalReadinessFacts } from './spatial-readiness-input';
+import { calculateProjectReadiness } from '@wiser/data-core';
 import { parseWorkspacePack } from './spatial-workspace-pack';
 import {
   decodeWorkspaceReadingUrl,
@@ -308,5 +310,62 @@ describe('report-period explicit format compatibility', () => {
         )?.windowRecordIds,
       ).toEqual([]);
     }
+  });
+  it('parses explicit report roles and candidate identity without rewriting either into a catalog source', () => {
+    const facts = declaredFacts(fixture(2));
+    expect(parseLocalReadinessFacts(facts)).toEqual(facts);
+    const source = {
+      candidateReference: {
+        kind: 'ingestion-candidate' as const,
+        ingestionId: '10000000-0000-4000-8000-000000000001',
+        processingBatchId: '10000000-0000-4000-8000-000000000002',
+        reviewHash: 'a'.repeat(64),
+      },
+      assetId: '10000000-0000-4000-8000-000000000003',
+      sourceLocalWorkId: null,
+    };
+    const candidate = {
+      ...facts,
+      sources: [
+        {
+          ...source,
+          track: 'REAL',
+          kind: 'MONTHLY_REPORT',
+          needIds: ['K5-001'],
+          regionIds: ['bth'],
+        },
+      ],
+      records: facts.records.map((record) => ({
+        ...record,
+        source,
+        evidence: record.evidence.map((entry) => ({ ...entry, source })),
+      })),
+      series: facts.series.map((series) => ({
+        ...series,
+        sources: [source],
+        evidence: series.evidence.map((entry) => ({ ...entry, source })),
+      })),
+    };
+    const read = parseLocalReadinessFacts(candidate);
+    expect(read.sources[0]).toEqual(candidate.sources[0]);
+    expect(read.sources[0]).not.toHaveProperty('workId');
+    expect(calculateProjectReadiness(read).candidateCounts?.records).toBe(1);
+  });
+
+  it('rejects mixed local candidate references rather than silently stripping the candidate identity', () => {
+    const facts = declaredFacts(fixture());
+    const mixed = {
+      ...facts.sources[0],
+      candidateReference: {
+        kind: 'ingestion-candidate',
+        ingestionId: '10000000-0000-4000-8000-000000000001',
+        processingBatchId: '10000000-0000-4000-8000-000000000002',
+        reviewHash: 'a'.repeat(64),
+      },
+      sourceLocalWorkId: null,
+    };
+    expect(() =>
+      parseLocalReadinessFacts({ ...facts, sources: [mixed] }),
+    ).toThrow();
   });
 });
