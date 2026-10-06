@@ -23,12 +23,13 @@ checkPaths:
   - tests/toolchain/*browser*.spec.ts
   - tests/toolchain/candidate-backflow-fixture.spec.ts
   - tests/toolchain/a12-candidate-load-driver.spec.ts
+  - tests/toolchain/a12-candidate-load-traversal.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 725458e9474ed18f283850c80fa55a804f41499d
+lastReviewedCommit: 2f5c1066b971ab296932158d67d91059135ce232
 ---
 
 ## Red → Green → Refactor
@@ -295,7 +296,7 @@ Data API 的 PostgreSQL 集成命令依次运行各测试文件。临时角色�
 
 #### 候选 API 负载驱动器
 
-`pnpm exec vitest run tests/toolchain/a12-candidate-load-driver.spec.ts` 使用合成响应验证 `apps/web/e2e-live/support/a12-candidate-load-driver.ts` 中的确定性测量工具。这个单元门禁只证明驱动器与断言，不证明当前 Auth、真实 HTTP 耗时、完整分页、内存、连续负载或冷重建。
+`pnpm exec vitest run tests/toolchain/a12-candidate-load-driver.spec.ts tests/toolchain/a12-candidate-load-traversal.spec.ts` 使用合成响应验证 `apps/web/e2e-live/support/a12-candidate-load-driver.ts` 中的确定性测量工具。这个单元门禁只证明驱动器与断言，不证明当前 Auth、真实 HTTP 耗时、完整分页、内存、连续负载或冷重建。
 
 采样前固定标准接收回执、候选引用、各原件计数、有序列定义及内容摘要。未知计数或不完整清单使任务未运行；正式采样后出现漂移使本轮失败。真实与合成数据分开统计。每个数据集有十八个条件：三项既有候选 GET 能力、首段 50/200 条和客户端并发 1/4/8。每个条件保留五次预热、一百次正式尝试及所有错误和慢请求；失败不算严格完成响应，不能用重试替换。全部已测耗时排序后，中位数取上中间项，p95 取最近秩；目标保持中位数 ≤300 毫秒、p95 ≤800 毫秒，同时须有一百个完整响应且没有失败尝试。
 

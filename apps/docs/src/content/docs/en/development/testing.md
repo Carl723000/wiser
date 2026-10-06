@@ -23,12 +23,13 @@ checkPaths:
   - tests/toolchain/*browser*.spec.ts
   - tests/toolchain/candidate-backflow-fixture.spec.ts
   - tests/toolchain/a12-candidate-load-driver.spec.ts
+  - tests/toolchain/a12-candidate-load-traversal.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 725458e9474ed18f283850c80fa55a804f41499d
+lastReviewedCommit: 2f5c1066b971ab296932158d67d91059135ce232
 ---
 
 ## Red → Green → Refactor
@@ -295,7 +296,7 @@ The Data API PostgreSQL integration command runs its test files sequentially. Th
 
 #### Candidate API load driver
 
-`pnpm exec vitest run tests/toolchain/a12-candidate-load-driver.spec.ts` validates the deterministic load utility in `apps/web/e2e-live/support/a12-candidate-load-driver.ts` with synthetic responses. This unit gate proves the driver and assertions only; it does not prove current Auth, HTTP latency, complete real pagination, memory, sustained load or cold reconstruction.
+`pnpm exec vitest run tests/toolchain/a12-candidate-load-driver.spec.ts tests/toolchain/a12-candidate-load-traversal.spec.ts` validates the deterministic load utility in `apps/web/e2e-live/support/a12-candidate-load-driver.ts` with synthetic responses. This unit gate proves the driver and assertions only; it does not prove current Auth, HTTP latency, complete real pagination, memory, sustained load or cold reconstruction.
 
 Freeze complete standard-intake receipts, candidate references, per-asset counts, ordered columns and content digests before sampling. Unknown counts or incomplete inventory prevent the run; drift after measured work starts fails that run. Keep real and synthetic datasets separate. Each dataset has eighteen conditions: three existing candidate GET capabilities, first-page sizes 50/200 and client concurrency 1/4/8. Every condition retains five warmups and one hundred measured attempts, including errors and slow responses; a failed attempt is not a completed strict response and is never replaced by a retry. Sort all observed elapsed times, use the upper middle element for median and nearest rank for p95; targets remain median ≤300 ms and p95 ≤800 ms, with one hundred complete responses and no failed attempt required.
 
