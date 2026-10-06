@@ -24,12 +24,13 @@ checkPaths:
   - tests/toolchain/candidate-backflow-fixture.spec.ts
   - tests/toolchain/a12-candidate-load-driver.spec.ts
   - tests/toolchain/a12-candidate-load-traversal.spec.ts
+  - tests/toolchain/a12-candidate-load-runner.spec.ts
   - scripts/data-foundation/**
   - infrastructure/observability/**
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 5808d6e1bafbd489489834cf477b51677634b9fd
+lastReviewedCommit: 18502d03bd6f18dd1f7b3348d849b8f0163389da
 ---
 
 ## Red → Green → Refactor
