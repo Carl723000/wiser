@@ -52,7 +52,7 @@ const columns = [
   { key: 'original', label: '原值' },
   { key: 'missing', label: '来源缺项' },
 ];
-function fixture() {
+function fixture(pagedRecords = false) {
   const artifacts = new Map<string, Uint8Array>();
   const pin = (path: string, bytes: Uint8Array): A12ArtifactPin => {
     artifacts.set(path, bytes);
@@ -135,8 +135,8 @@ function fixture() {
         reference,
         assetId,
         columns,
-        records,
-        nextCursor: null,
+        records: pagedRecords ? records.slice(0, 1) : records,
+        nextCursor: pagedRecords ? 'synthetic-page-2' : null,
       }),
       geometry: IngestionCandidateGeometryPageSchema.parse({
         reference,
@@ -285,6 +285,7 @@ function fixture() {
       inventory: jsonPin(`inventory-${ordinal}`, inventory),
       standardCapture: jsonPin(`capture-${ordinal}`, {
         scope: 'synthetic-tool-only',
+        ordinal,
       }),
       preparedAssets: [
         {
@@ -299,6 +300,13 @@ function fixture() {
       assetId,
       reference,
       pages,
+      secondRecordsPage: IngestionCandidateRecordPageSchema.parse({
+        reference,
+        assetId,
+        columns,
+        records: records.slice(1),
+        nextCursor: null,
+      }),
       receipt,
       inventory,
       definition,
@@ -325,29 +333,48 @@ function fixture() {
   } satisfies A12RunInput;
   const requests: { location: A12DispatchLocation; request: LoadRequest }[] =
     [];
-  const transports: { close: ReturnType<typeof vi.fn>; active: number }[] = [];
+  const transports: {
+    close: ReturnType<typeof vi.fn>;
+    active: number;
+    peak: number;
+    location: A12DispatchLocation;
+  }[] = [];
   let ticks = 0,
     dispatches = 0;
   let failAt: number | null = null,
     failKind: 'denied' | 'unavailable' = 'denied';
   let failedTraversalMember: number | null = null;
-  const condition = {
-    accessToken: () => Promise.resolve('synthetic-tool-token-never-report'),
-    summary: {
-      identityDigest: 'a'.repeat(64),
-      authorityDigest: 'b'.repeat(64),
-      claimsVerified: true as const,
-      sessionTokenMatched: true as const,
-      identityMatched: true as const,
-      necessaryCandidateScopes: true as const,
-      maintainerScope: false,
-      reviewerScope: false,
-      candidateAuthority: 'requires-current-candidate-get' as const,
-    },
+  let generation = 0;
+  let guardClosed = false;
+  let tokenReads = 0;
+  const summary = {
+    identityDigest: 'a'.repeat(64),
+    authorityDigest: 'b'.repeat(64),
+    claimsVerified: true as const,
+    sessionTokenMatched: true as const,
+    identityMatched: true as const,
+    necessaryCandidateScopes: true as const,
+    maintainerScope: false,
+    reviewerScope: false,
+    candidateAuthority: 'requires-current-candidate-get' as const,
   };
   const guard = {
-    verifyCondition: vi.fn(() => Promise.resolve(condition)),
-    close: vi.fn(),
+    verifyCondition: vi.fn(() => {
+      const ownGeneration = ++generation;
+      return Promise.resolve({
+        summary,
+        accessToken: async () => {
+          tokenReads += 1;
+          if (guardClosed) throw new CandidateLoadTransportError('cancelled');
+          if (generation !== ownGeneration)
+            throw new CandidateLoadTransportError('stale');
+          return 'synthetic-tool-token-never-report';
+        },
+      });
+    }),
+    close: vi.fn(() => {
+      guardClosed = true;
+    }),
   };
   const ports: A12RunnerPorts = {
     readArtifact: vi.fn((artifact) => {
@@ -357,34 +384,55 @@ function fixture() {
     }),
     verifyStandardIntake: vi.fn(() => Promise.resolve('verified' as const)),
     authenticate: vi.fn(() => Promise.resolve(guard)),
-    createTransport: vi.fn((_condition, location) => {
-      const state = { close: vi.fn(), active: 0 };
+    createTransport: vi.fn((currentCondition, location) => {
+      const state = {
+        close: vi.fn(),
+        active: 0,
+        peak: 0,
+        location: structuredClone(location),
+      };
       transports.push(state);
       return {
-        send: (request) => {
-          requests.push({ location, request });
-          dispatches += 1;
-          if (
-            dispatches === failAt ||
-            (location.phase === 'traversal' &&
-              location.trackOrdinal === 1 &&
-              location.roundOrdinal === 1 &&
-              location.memberOrdinal === failedTraversalMember)
-          )
-            return Promise.reject(new CandidateLoadTransportError(failKind));
-          const selected = members.find(
-            (item) =>
-              item.reference.ingestionId === request.reference.ingestionId,
-          );
-          if (selected === undefined) return Promise.reject(Error(rawMarker));
-          const body = structuredClone(selected.pages[request.action]);
-          return Promise.resolve({
-            boundary: 'api-http' as const,
-            status: 200,
-            contentType: 'application/json',
-            wireBytes: Buffer.byteLength(JSON.stringify(body)),
-            body,
-          });
+        send: async (request) => {
+          state.active += 1;
+          state.peak = Math.max(state.peak, state.active);
+          try {
+            if (state.close.mock.calls.length !== 0)
+              throw new CandidateLoadTransportError('cancelled');
+            await currentCondition.accessToken();
+            requests.push({ location: structuredClone(location), request });
+            dispatches += 1;
+            await Promise.resolve();
+            if (
+              dispatches === failAt ||
+              (location.phase === 'traversal' &&
+                location.trackOrdinal === 1 &&
+                location.roundOrdinal === 1 &&
+                location.memberOrdinal === failedTraversalMember)
+            )
+              throw new CandidateLoadTransportError(failKind);
+            const selected = members.find(
+              (item) =>
+                item.reference.ingestionId === request.reference.ingestionId,
+            );
+            if (selected === undefined) throw Error(rawMarker);
+            const body = structuredClone(
+              pagedRecords &&
+                request.action === 'records' &&
+                request.after !== undefined
+                ? selected.secondRecordsPage
+                : selected.pages[request.action],
+            );
+            return {
+              boundary: 'api-http' as const,
+              status: 200,
+              contentType: 'application/json',
+              wireBytes: Buffer.byteLength(JSON.stringify(body)),
+              body,
+            };
+          } finally {
+            state.active -= 1;
+          }
         },
         close: state.close,
         diagnostics: () => ({
@@ -417,6 +465,7 @@ function fixture() {
     requests,
     transports,
     guard,
+    tokenReadCount: () => tokenReads,
     artifacts,
     repinReceipt,
     repinInventory,
@@ -463,6 +512,21 @@ it('admits all independently pinned receipts/inventories/prepared bytes before A
     2, 2,
   ]);
   expect(f.ports.verifyStandardIntake).toHaveBeenCalledTimes(4);
+  for (const [index, member] of f.members.entries()) {
+    const check = vi.mocked(f.ports.verifyStandardIntake).mock.calls[index]![0];
+    expect(check.receipt).toEqual(member.receipt);
+    expect(Array.from(check.captureBytes)).toEqual(
+      Array.from(f.artifacts.get(member.definition.standardCapture.path)!),
+    );
+    expect(check.prepared).toEqual([
+      {
+        assetId: member.assetId,
+        sha256: member.definition.preparedAssets[0]!.artifact.sha256,
+        sizeBytes: member.definition.preparedAssets[0]!.sizeBytes,
+      },
+    ]);
+    expect(check.inventory.batch).toEqual(member.inventory.batch);
+  }
   expect(Object.isFrozen(result.input)).toBe(true);
   expect(
     Object.isFrozen(result.input.tracks[0]!.members[0]!.batch.reference),
@@ -475,7 +539,7 @@ it('admits all independently pinned receipts/inventories/prepared bytes before A
   expectNoDispatch(f);
 });
 
-it.each(['receipt', 'inventory', 'prepared'] as const)(
+it.each(['receipt', 'inventory', 'prepared', 'standardCapture'] as const)(
   'rejects changed actual %s bytes despite valid 64-hex declaration',
   async (kind) => {
     const f = fixture(),
@@ -680,6 +744,29 @@ it('runs 18 fixed conditions per track with the existing 5+100 driver; uses all 
       expect(item.memberOrdinal).toBe(
         item.result.condition.action === 'geometry' ? 2 : 1,
       );
+      const actual = f.requests.filter(
+        (request) =>
+          request.location.phase === 'condition' &&
+          request.location.trackOrdinal === trackOrdinal &&
+          request.location.conditionOrdinal === item.ordinal,
+      );
+      expect(actual).toHaveLength(105);
+      for (const request of actual) {
+        expect(request.request.action).toBe(item.result.condition.action);
+        expect(request.request.first).toBe(item.result.condition.first);
+        expect(request.request.after).toBeUndefined();
+        expect(request.request.reference).toEqual(
+          f.members[(trackOrdinal - 1) * 2 + item.memberOrdinal - 1]!.reference,
+        );
+      }
+      const transport = f.transports.find(
+        (entry) =>
+          entry.location.phase === 'condition' &&
+          entry.location.trackOrdinal === trackOrdinal &&
+          entry.location.conditionOrdinal === item.ordinal,
+      );
+      expect(transport?.peak).toBe(item.result.condition.concurrency);
+      expect(transport?.active).toBe(0);
     }
     expect(
       result.rounds
@@ -740,6 +827,8 @@ it('runs 18 fixed conditions per track with the existing 5+100 driver; uses all 
     f.requests.filter((item) => item.location.phase === 'condition'),
   ).toHaveLength(3780);
   expect(f.requests).toHaveLength(4020);
+  expect(f.tokenReadCount()).toBe(4020);
+  expect(f.transports.every((transport) => transport.active === 0)).toBe(true);
   expect(f.guard.verifyCondition).toHaveBeenCalledTimes(116); // 36 conditions + 80 member traversals.
   expect(
     f.transports.every((transport) => transport.close.mock.calls.length === 1),
@@ -863,5 +952,160 @@ it('raw read errors are fixed not_run failures with no private cause/path/body i
     pageSamples: [],
   });
   expect(JSON.stringify(result)).not.toContain(rawMarker);
+  expectNoDispatch(f);
+});
+
+it('two-page member traversals actually consume continuation pages within every round', async () => {
+  const f = fixture(true),
+    result = await runA12CandidateMatrix(f.input, f.ports);
+  expect(result.status).toBe('passed');
+  const continued = f.requests.filter(
+    (entry) =>
+      entry.location.phase === 'traversal' &&
+      entry.request.action === 'records' &&
+      entry.request.after !== undefined,
+  );
+  expect(continued).toHaveLength(80);
+  expect(
+    continued.every((entry) => entry.request.after === 'synthetic-page-2'),
+  ).toBe(true);
+  expect(result.pageSamples).toHaveLength(320);
+  expect(f.requests).toHaveLength(4100);
+  expect(
+    result.rounds.every((round) =>
+      round.members.every((member) => member.result.counts.records === 2),
+    ),
+  ).toBe(true);
+  expect(
+    f.transports.every(
+      (entry) => entry.active === 0 && entry.close.mock.calls.length === 1,
+    ),
+  ).toBe(true);
+});
+
+it.each(['denied', 'stale', 'cancelled'] as const)(
+  'a later Auth verification %s preserves completed work and closes its guard',
+  async (kind) => {
+    const f = fixture();
+    f.guard.verifyCondition.mockImplementationOnce(() =>
+      Promise.resolve({
+        summary: {
+          identityDigest: 'a'.repeat(64),
+          authorityDigest: 'b'.repeat(64),
+          claimsVerified: true,
+          sessionTokenMatched: true,
+          identityMatched: true,
+          necessaryCandidateScopes: true,
+          maintainerScope: false,
+          reviewerScope: false,
+          candidateAuthority: 'requires-current-candidate-get',
+        },
+        accessToken: () => Promise.resolve('synthetic-tool-token-never-report'),
+      }),
+    );
+    f.guard.verifyCondition.mockImplementationOnce(() =>
+      Promise.reject(new CandidateLoadTransportError(kind)),
+    );
+    const result = await runA12CandidateMatrix(f.input, f.ports);
+    expect(result).toMatchObject({ status: 'failed', reason: kind });
+    expect(result.conditions).toHaveLength(1);
+    expect(result.conditions[0]!.result.status).toBe('passed');
+    expect(f.requests).toHaveLength(105);
+    expect(f.transports).toHaveLength(1);
+    expect(f.transports[0]!.close).toHaveBeenCalledOnce();
+    expect(f.guard.close).toHaveBeenCalledOnce();
+    expect(JSON.stringify(result)).not.toContain('synthetic-tool-token');
+  },
+);
+
+it('a transport constructor exception is sanitized and releases the already acquired Auth guard', async () => {
+  const f = fixture();
+  const result = await runA12CandidateMatrix(f.input, {
+    ...f.ports,
+    createTransport: () => {
+      throw Error(rawMarker);
+    },
+  });
+  expect(result).toMatchObject({
+    status: 'not_run',
+    reason: 'unavailable',
+    conditions: [],
+    rounds: [],
+  });
+  expect(f.requests).toHaveLength(0);
+  expect(f.guard.close).toHaveBeenCalledOnce();
+  expect(JSON.stringify(result)).not.toContain(rawMarker);
+});
+
+it('invalid material DTOs keep actual page timing and bytes and stop the current traversal', async () => {
+  const f = fixture(),
+    create = f.ports.createTransport;
+  const result = await runA12CandidateMatrix(f.input, {
+    ...f.ports,
+    createTransport: (condition, location) => {
+      const adapter = create(condition, location);
+      return {
+        ...adapter,
+        send: async (request) => {
+          const reply = await adapter.send(request);
+          if (location.phase === 'traversal' && request.action === 'records') {
+            const body = {
+              ...(reply.body as Record<string, unknown>),
+              records: 'invalid-private-fixture',
+            };
+            return {
+              ...reply,
+              body,
+              wireBytes: Buffer.byteLength(JSON.stringify(body)),
+            };
+          }
+          return reply;
+        },
+      };
+    },
+  });
+  expect(result.status).toBe('failed');
+  expect(result.rounds).toHaveLength(1);
+  expect(result.rounds[0]!.members[0]!.result.outcome).toBe('invalid');
+  expect(result.pageSamples).toHaveLength(2);
+  expect(result.pageSamples.at(-1)).toMatchObject({
+    trackOrdinal: 1,
+    roundOrdinal: 1,
+    memberOrdinal: 1,
+    pageOrdinal: 2,
+    action: 'records',
+    outcome: 'invalid',
+    elapsedMs: expect.any(Number),
+    wireBytes: expect.any(Number),
+  });
+  const started = f.requests.filter(
+    (entry) => entry.location.phase === 'traversal',
+  );
+  expect(started.map((entry) => entry.request.action)).toEqual([
+    'get',
+    'records',
+  ]);
+  expect(JSON.stringify(result)).not.toContain('invalid-private-fixture');
+  expect(
+    f.transports.every(
+      (entry) => entry.active === 0 && entry.close.mock.calls.length === 1,
+    ),
+  ).toBe(true);
+});
+
+it('a port accessor is rejected without reading it or invoking standard intake and Auth', async () => {
+  const f = fixture(),
+    getter = vi.fn(() => {
+      throw Error(rawMarker);
+    });
+  const ports = { ...f.ports };
+  Object.defineProperty(ports, 'authenticate', {
+    enumerable: true,
+    get: getter,
+  });
+  const result = await runA12CandidateMatrix(f.input, ports);
+  expect(result).toMatchObject({ status: 'not_run', reason: 'configuration' });
+  expect(getter).not.toHaveBeenCalled();
+  expect(f.ports.readArtifact).not.toHaveBeenCalled();
   expectNoDispatch(f);
 });

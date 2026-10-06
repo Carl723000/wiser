@@ -30,7 +30,7 @@ checkPaths:
   - examples/agent-excon/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-06
-lastReviewedCommit: 18502d03bd6f18dd1f7b3348d849b8f0163389da
+lastReviewedCommit: d9e4ad3cf489cfa4310ffbcdcbba4e7a1fec1671
 ---
 
 ## Red → Green → Refactor
@@ -314,6 +314,10 @@ The test-side HTTP adapter uses the registered method, route and input schema fo
 The in-memory Auth guard signs in once using the existing Supabase client, then rechecks verified claims, the same session token and the existing platform identity response before each condition. These checks are outside measured GET timing. It disables persisted sessions and refresh, rejects token replacement, and invalidates old condition closures after a new check or failure. The identity endpoint proves only identity and necessary scopes: it does not expose every candidate resource, delegation or validity condition. Complete current candidate authority remains the responsibility of the actual public GET. Fake Auth tests and synthetic loopback tests do not establish actual Auth, RLS, standard intake provenance or formal A12 results.
 
 Run the adapter checks with `pnpm exec vitest run tests/toolchain/a12-candidate-load-http.spec.ts tests/toolchain/a12-candidate-load-auth.spec.ts`. Their synthetic HTTP fixtures bind only their own system-assigned loopback ports and close only their own listeners, so they do not reserve the live API port. Composition checks exercise the actual Auth guard, HTTP adapter and driver together: token expiry stops new attempts as denied, an obsolete condition stops them as stale, and a closed guard cancels them. Already started attempts remain in the results; no replacement requests are made. Configuration exceptions and error classifications remain bounded and sanitized.
+
+The private matrix runner in `apps/web/e2e-live/support/a12-candidate-load-runner.ts` admits independently pinned receipt, inventory, prepared-asset and standard-stack capture files before signing in. It recomputes hashes from actual bytes, checks existing upload/ingestion/Operation associations and complete per-track totals, then snapshots the admitted input immutably. Submitted upload hashes, generic Operation messages and a declared READY label cannot certify scanning or fingerprinting. A task-owned trusted capture verifier must confirm that evidence; absent or unknown evidence is `not_run`. Source registration is optional in the existing intake contract. A manifest-bearing PARTIAL batch remains partial; do not drop its manifest or relabel it READY to satisfy this test.
+
+The runner invokes the existing driver for all thirty-six fixed conditions and traverses every member in frozen order within each of twenty rounds per track. A fixed representative member is selected per action before sampling; performance attempts are not pooled across members. Traversal page samples retain only ordinals, action, elapsed time, consumed bytes and bounded outcomes. Current authority is checked outside timing before each condition or member traversal, owned transports are closed afterward, and terminal failures stop later work without replacing started attempts. Run `pnpm exec vitest run tests/toolchain/a12-candidate-load-runner.spec.ts` for synthetic orchestration checks. Its fake clocks, capture verifier and transports do not prove actual Auth/SQL, dataset scale or formal performance. Even a completed candidate matrix keeps overall `formalA12` as `not_run` until the separately registered sustained, memory, first-screen and cold-rebuild exits have actual evidence.
 
 #### Fixed candidate same-tab Back case
 
