@@ -1322,6 +1322,12 @@ export function createIngestionPipelineHandler(
 
     const assetManifest = Object.freeze({
       ...(reviewPolicy === undefined ? {} : { reviewGovernance: reviewPolicy }),
+      ...(registered?.candidateConversionDeclarations === undefined
+        ? {}
+        : {
+            candidateConversionDeclarations:
+              registered.candidateConversionDeclarations,
+          }),
       ...(sourceRegistration === undefined
         ? {}
         : { sourceRegistration, validationScope: 'SOURCE_REGISTRATION' }),

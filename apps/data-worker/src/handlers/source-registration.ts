@@ -3,6 +3,10 @@ import {
   SourceRegistrationManifestSchema,
   SourceRegistrationSchema,
 } from '@wiser/data-contracts';
+import {
+  CandidateConversionDeclarationSchema,
+  CandidateConversionPairClaimsSchema,
+} from '@wiser/data-contracts/candidate-conversion';
 
 interface RegistrationAsset {
   readonly assetId: string;
@@ -75,6 +79,41 @@ export function parseSourceRegistration(input: {
       matched.add(file.assetId);
     }
     if (matched.size !== assets.size) throw new Error('unlisted asset');
+    const candidateConversionDeclarations =
+      manifest.record['candidateConversionPairs'] === undefined
+        ? undefined
+        : CandidateConversionPairClaimsSchema.parse(
+            manifest.record['candidateConversionPairs'],
+          ).pairs.map((pair) => {
+            const member = (claim: typeof pair.original, mediaType: string) => {
+              const actual = input.assets.find(
+                (asset) =>
+                  asset.assetId.toLowerCase() === claim.assetId.toLowerCase(),
+              );
+              if (
+                !actual ||
+                actual.mediaType !== mediaType ||
+                actual.sourceHash !== claim.sha256 ||
+                actual.size !== claim.byteSize
+              )
+                throw new Error('conversion member');
+              return { ...claim, assetId: actual.assetId };
+            };
+            return CandidateConversionDeclarationSchema.parse({
+              schemaVersion: 'wiser.candidate-conversion-pair.v1',
+              original: member(pair.original, 'application/msword'),
+              prepared: member(
+                pair.prepared,
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              ),
+              manifest: {
+                assetId: manifestAsset.assetId,
+                sha256: manifestHash,
+              },
+              sourceLocalWorkId: pair.sourceLocalWorkId,
+              historicalToolVersion: pair.historicalToolVersion,
+            });
+          });
     const parsedAssets = input.assets.map((asset) => {
       const files = manifest.files.filter(
         (candidate) => candidate.assetId === asset.assetId,
@@ -96,6 +135,9 @@ export function parseSourceRegistration(input: {
       validationScope: 'SOURCE_REGISTRATION' as const,
       sourceRegistration,
       parsedAssets,
+      ...(candidateConversionDeclarations === undefined
+        ? {}
+        : { candidateConversionDeclarations }),
     };
   } catch {
     throw new Error('SOURCE_REGISTRATION_INVALID');

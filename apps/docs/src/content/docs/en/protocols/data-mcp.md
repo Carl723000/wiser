@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## HTTP adapter only
@@ -329,7 +329,7 @@ Open returns a fresh input for `data_ingestion_candidate_get/records/geometry`; 
 
 ## Conversion provenance admission
 
-Registered tool `data_ingestion_candidate_provenance_get` calls the standard HTTP mapping for `data.ingestion.candidate.provenance.get` and returns only its validated, bounded summary. Arguments contain the strict fixed candidate reference and `preparedAssetId`; the trusted connection supplies identity, tenant/project and purpose. Current candidate authority, managed admission and strict validation remain the same as REST, with no direct database access or new scopes. The conversion declaration is not an authorization or a trusted result, and MCP must never provide a bypass to Worker-only conversion writes or raw private manifests. Trusted O → R′ conversion, Worker integration, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified.
+Registered tool `data_ingestion_candidate_provenance_get` calls the standard HTTP mapping for `data.ingestion.candidate.provenance.get` and returns only its validated, bounded summary. Arguments contain the strict fixed candidate reference and `preparedAssetId`; the trusted connection supplies identity, tenant/project and purpose. Current candidate authority, managed admission and strict validation remain the same as REST, with no direct database access or new scopes. The conversion declaration is not an authorization or a trusted result, and MCP must never provide a bypass to Worker-only conversion writes or raw private manifests. The Worker wires declaration freezing, independent manifest reconciliation and same-transaction writes through a private conversion port; without a trusted adapter the default remains `UNVERIFIABLE/TOOL_UNAVAILABLE`. Actual trusted O → R′ conversion, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified.
 
 ### Candidate relationship carrier boundary
 

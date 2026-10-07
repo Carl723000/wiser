@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## Endpoint and authority contract
@@ -327,7 +327,7 @@ Both read fields bypass per-request memoization, so repeated aliases recheck cur
 
 ## Conversion trust transport boundary
 
-The candidate conversion declaration, server-check and fixed provenance-read schemas are exported through `@wiser/data-contracts/candidate-conversion`. Query `dataIngestionCandidateProvenance(input: JSON!): JSON!` maps to the registered `data.ingestion.candidate.provenance.get` reader with the same strict fixed reference, current candidate authority and bounded output as REST. Repeated aliases bypass per-request memoization so every execution rechecks visibility; transport delivery also rechecks authority and returns `no-store`. Uploaded verification flags, private storage keys and unrestricted manifests are not accepted or exposed. Trusted O → R′ conversion, Worker integration, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified.
+The candidate conversion declaration, server-check and fixed provenance-read schemas are exported through `@wiser/data-contracts/candidate-conversion`. Query `dataIngestionCandidateProvenance(input: JSON!): JSON!` maps to the registered `data.ingestion.candidate.provenance.get` reader with the same strict fixed reference, current candidate authority and bounded output as REST. Repeated aliases bypass per-request memoization so every execution rechecks visibility; transport delivery also rechecks authority and returns `no-store`. Uploaded verification flags, private storage keys and unrestricted manifests are not accepted or exposed. The Worker wires declaration freezing, independent manifest reconciliation and same-transaction writes through a private conversion port; without a trusted adapter the default remains `UNVERIFIABLE/TOOL_UNAVAILABLE`. Actual trusted O → R′ conversion, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified.
 
 ### Candidate relationship carrier boundary
 

@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## 协议边界
@@ -482,7 +482,7 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 
 `createCandidateConversionProvenanceReader` 经标准 PostgreSQL 读取运行时提供已注册的固定引用窄读 `data.ingestion.candidate.provenance.get`，严格输入为 `{kind, ingestionId, reviewHash, processingBatchId, preparedAssetId}`。当前可读、已完成的指定成员返回固定身份及有界核验结果，尚无核验时返回 `check: null`；不可读或跨身份成员返回 NOT_FOUND。沿用候选维护者／独立审核者权限；等待只读事务提交后，返回前再次核对同一上下文的主体／范围期限及取消。实时 Auth 撤权仍须单独验收，响应不返回存储键、内部地址、任务载荷或自由清单。
 
-Registry 将这一严格查询映射为 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`，`kind` 与 `reviewHash` 保留为查询参数。受管准入仅增加该能力 ID。标准处理器保留仅含哈希的审计，传输返回前再次核对当前权限，并使用 `no-store` 响应。窄读沿用维护者（`data.operation.read` 与 `data.ingestion.write`）或独立人类审核者（`data.operation.read` 与 `data.publish`）资格，不新增 scope。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；本地注册接线不等于服务已运行。
+Registry 将这一严格查询映射为 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`，`kind` 与 `reviewHash` 保留为查询参数。受管准入仅增加该能力 ID。标准处理器保留仅含哈希的审计，传输返回前再次核对当前权限，并使用 `no-store` 响应。窄读沿用维护者（`data.operation.read` 与 `data.ingestion.write`）或独立人类审核者（`data.operation.read` 与 `data.publish`）资格，不新增 scope。Worker 已接入声明冻结、独立清单核对及同事务写入的私有转换端口；默认没有受信适配器时保留 `UNVERIFIABLE/TOOL_UNAVAILABLE`。真实受信 O → R′ 转换、Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；本地注册接线不等于服务已运行。
 
 ### 候选关系载体：内部检查点
 

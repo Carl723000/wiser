@@ -29,6 +29,7 @@ import {
 } from '../adapters/analysis-parser.js';
 import { createAnalysisHandler } from '../handlers/analysis.js';
 import { createIngestionCandidateProcessor } from '../handlers/ingestion-candidate.js';
+import type { CandidateConversionRunner } from '../handlers/candidate-conversion.js';
 import { DataWorkerScheduler, type DataWorkerLogger } from '../scheduler.js';
 import {
   DataWorkerRuntime,
@@ -56,6 +57,9 @@ export interface DefaultDataWorkerComposition {
 export function createDefaultDataWorkerRuntime(
   config: DataWorkerRuntimeConfig,
   logger: DataWorkerLogger,
+  trustedPorts: {
+    readonly candidateConversionRunner?: CandidateConversionRunner;
+  } = {},
 ): DefaultDataWorkerComposition {
   const s3Client = createSeaweedFsS3Client(config.objectStore);
   const objectStore = createS3AuthorityObjectStore({
@@ -96,6 +100,11 @@ export function createDefaultDataWorkerRuntime(
     pendingCandidate: {
       process: createIngestionCandidateProcessor({
         pool: ingestionPool,
+        ...(trustedPorts.candidateConversionRunner === undefined
+          ? {}
+          : {
+              conversionRunner: trustedPorts.candidateConversionRunner,
+            }),
         ...(config.analysisParserUrl
           ? {
               parseExternal: createExternalIngestionCandidateParser({

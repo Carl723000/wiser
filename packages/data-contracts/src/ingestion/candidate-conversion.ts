@@ -20,6 +20,38 @@ const declarationShape = {
   historicalToolVersion: z.string().min(1).max(128).nullable(),
 };
 
+/** Stored inside the hashed source manifest; M identity is derived by the server. */
+export const CandidateConversionPairClaimsSchema = z
+  .strictObject({
+    schemaVersion: z.literal('wiser.candidate-conversion-claims.v1'),
+    pairs: z
+      .array(
+        z.strictObject({
+          original: AssetIdentitySchema,
+          prepared: AssetIdentitySchema,
+          sourceLocalWorkId: declarationShape.sourceLocalWorkId,
+          historicalToolVersion: declarationShape.historicalToolVersion,
+        }),
+      )
+      .min(1)
+      .max(128),
+  })
+  .superRefine((value, context) => {
+    const prepared = new Set<string>();
+    for (const pair of value.pairs) {
+      const id = pair.prepared.assetId.toLowerCase();
+      if (pair.original.assetId.toLowerCase() === id || prepared.has(id))
+        context.addIssue({
+          code: 'custom',
+          message: 'Pairs require distinct members and unique prepared assets',
+        });
+      prepared.add(id);
+    }
+  });
+export type CandidateConversionPairClaims = z.infer<
+  typeof CandidateConversionPairClaimsSchema
+>;
+
 function distinctMembers(
   value: {
     original: { assetId: string };

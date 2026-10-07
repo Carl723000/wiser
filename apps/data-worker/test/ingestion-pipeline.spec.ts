@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { wordPairFixture } from './candidate-conversion-fixture.js';
 import { createHash } from 'node:crypto';
 import type { SourceRegistration } from '@wiser/data-contracts';
 
@@ -803,5 +804,93 @@ describe('Agent-native ingestion pipeline', () => {
     });
     expect(String(failure)).not.toContain('tika:9998');
     expect(String(failure)).not.toContain('secret');
+  });
+});
+
+describe('historical Word claims at the real freeze producer', () => {
+  it('derives from actual registered M before reviewHash and candidate dispatch', async () => {
+    const fixture = setup();
+    const pair = wordPairFixture(job.tenantId!, job.projectId!);
+    const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+    fixture.authority.assets = pair.assets;
+    fixture.authority.sourceRegistration = pair.registration;
+    fixture.authority.reviewGovernance = { frozen: policy, current: policy };
+    let dispatched = false;
+    await createIngestionPipelineHandler({
+      ...fixture.options,
+      fingerprint: {
+        sha256: ({ objectRef }) =>
+          Promise.resolve(
+            pair.assets.find((a) => a.objectRef === objectRef)!.sourceHash,
+          ),
+      },
+      sourceRegistration: { readManifest: () => Promise.resolve(pair.body) },
+      pendingCandidate: {
+        async process() {
+          await Promise.resolve();
+          dispatched = true;
+          return { status: 'PARTIAL' };
+        },
+      },
+    })(job);
+    expect(dispatched).toBe(true);
+    const saved = fixture.authority.frozenCheckpoint!;
+    expect(saved.assetManifest['candidateConversionDeclarations']).toEqual([
+      pair.declaration,
+    ]);
+    const { reviewHash, ...base } = saved;
+    expect(reviewHash).toBe(canonicalPipelineHash(base));
+    const withoutDeclaration = Object.fromEntries(
+      Object.entries(base.assetManifest).filter(
+        ([key]) => key !== 'candidateConversionDeclarations',
+      ),
+    );
+    expect(
+      canonicalPipelineHash({ ...base, assetManifest: withoutDeclaration }),
+    ).not.toBe(reviewHash);
+  });
+  it.each([
+    'unknown-version',
+    'verified',
+    'external-member',
+    'swapped-role',
+    'wrong-size',
+    'duplicate-prepared',
+  ])('rejects %s claims before freezing', async (change) => {
+    const fixture = setup();
+    const seed = wordPairFixture(job.tenantId!, job.projectId!);
+    const claims: Record<string, unknown> = structuredClone(seed.claims);
+    const pairs = claims['pairs'] as Array<Record<string, unknown>>;
+    if (change === 'unknown-version') claims['schemaVersion'] = 'future';
+    if (change === 'verified') pairs[0]!['verified'] = true;
+    if (change === 'external-member')
+      (pairs[0]!['original'] as Record<string, unknown>)['assetId'] =
+        'd1000000-0000-4000-8000-000000000099';
+    if (change === 'swapped-role')
+      [pairs[0]!['original'], pairs[0]!['prepared']] = [
+        pairs[0]!['prepared'],
+        pairs[0]!['original'],
+      ];
+    if (change === 'wrong-size')
+      (pairs[0]!['original'] as Record<string, unknown>)['byteSize'] = 1;
+    if (change === 'duplicate-prepared') pairs.push(structuredClone(pairs[0]!));
+    const pair = wordPairFixture(job.tenantId!, job.projectId!, {
+      candidateConversionPairs: claims,
+    });
+    fixture.authority.assets = pair.assets;
+    fixture.authority.sourceRegistration = pair.registration;
+    await expect(
+      createIngestionPipelineHandler({
+        ...fixture.options,
+        fingerprint: {
+          sha256: ({ objectRef }) =>
+            Promise.resolve(
+              pair.assets.find((a) => a.objectRef === objectRef)!.sourceHash,
+            ),
+        },
+        sourceRegistration: { readManifest: () => Promise.resolve(pair.body) },
+      })(job),
+    ).rejects.toMatchObject({ category: 'SOURCE_REGISTRATION_INVALID' });
+    expect(fixture.authority.frozenCheckpoint).toBeUndefined();
   });
 });

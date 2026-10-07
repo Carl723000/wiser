@@ -25,8 +25,15 @@ import {
   type S3QuarantineObjectReference,
 } from '@wiser/data-infra';
 import { resolveAnalysisSource } from '../analysis-source.js';
+import type { CandidateConversionDeclaration } from '@wiser/data-contracts/candidate-conversion';
 import type { ExternalIngestionCandidateInput } from '../adapters/analysis-parser.js';
 import { canonicalPipelineHash } from './ingestion-pipeline.js';
+import {
+  insertCandidateConversionCheck,
+  verifyCandidateConversion,
+  type CandidateConversionRunner,
+} from './candidate-conversion.js';
+import { parseSourceRegistration } from './source-registration.js';
 import { DataJobHandlerError } from './registry.js';
 
 const MAX_BYTES = 64 * 1024 * 1024;
@@ -149,6 +156,7 @@ export function createIngestionCandidateProcessor(options: {
   readonly parseExternal?: (
     input: ExternalIngestionCandidateInput,
   ) => AsyncIterable<AnalysisContentEvent>;
+  readonly conversionRunner?: CandidateConversionRunner;
 }) {
   return async (
     job: ClaimedDataJob,
@@ -400,6 +408,8 @@ export function createIngestionCandidateProcessor(options: {
       let files: ReturnType<
         typeof SourceRegistrationManifestSchema.parse
       >['files'] = [];
+      let conversionDeclarations: readonly CandidateConversionDeclaration[] =
+        [];
       if (sourceRegistration) {
         const sourceManifest = assets.find(
           (asset) => asset.assetId === sourceRegistration.manifestAssetId,
@@ -410,13 +420,36 @@ export function createIngestionCandidateProcessor(options: {
           sourceManifest.sourceHash !== sourceRegistration.manifestSha256
         )
           throw failure('CANDIDATE_MANIFEST_CONFLICT');
-        files = SourceRegistrationManifestSchema.parse(
-          JSON.parse(
-            new TextDecoder('utf-8', { fatal: true }).decode(
-              await read(sourceManifest),
-            ),
-          ),
-        ).files;
+        const manifestText = new TextDecoder('utf-8', { fatal: true }).decode(
+          await read(sourceManifest),
+        );
+        const actualManifest = SourceRegistrationManifestSchema.parse(
+          JSON.parse(manifestText),
+        );
+        files = actualManifest.files;
+        if (
+          actualManifest.record['candidateConversionPairs'] !== undefined ||
+          manifest['candidateConversionDeclarations'] !== undefined
+        ) {
+          let derived: ReturnType<typeof parseSourceRegistration>;
+          try {
+            derived = parseSourceRegistration({
+              registration: sourceRegistration,
+              assets,
+              manifestText,
+            });
+          } catch {
+            throw failure('CANDIDATE_MANIFEST_CONFLICT');
+          }
+          if (
+            derived.candidateConversionDeclarations === undefined ||
+            manifest['candidateConversionDeclarations'] === undefined ||
+            canonicalPipelineHash(derived.candidateConversionDeclarations) !==
+              canonicalPipelineHash(manifest['candidateConversionDeclarations'])
+          )
+            throw failure('CANDIDATE_CHECKPOINT_CONFLICT');
+          conversionDeclarations = derived.candidateConversionDeclarations;
+        }
         if (
           files.some(
             (file) =>
@@ -429,7 +462,8 @@ export function createIngestionCandidateProcessor(options: {
           )
         )
           throw failure('CANDIDATE_ORIGINAL_CONFLICT');
-      }
+      } else if (manifest['candidateConversionDeclarations'] !== undefined)
+        throw failure('CANDIDATE_MANIFEST_CONFLICT');
       const outcomes: CandidateAsset[] = [];
       for (const asset of assets) {
         let status: CandidateAsset['status'] = 'UNSUPPORTED';
@@ -637,6 +671,60 @@ export function createIngestionCandidateProcessor(options: {
             JSON.stringify(columns),
           ],
         );
+      }
+      // This read deliberately does not acquire the final job-row lock. The
+      // existing completion fence below and 0043 deferred guard retain it.
+      const checkConversionAuthority = async () => {
+        const live = await client.query(
+          `/* candidate.conversion-authority */
+          select job_id from ingestion.job where tenant_id=$1::uuid and project_id=$2::uuid
+          and job_id=$3::uuid and operation_id=$4::uuid and ingestion_id=$5::uuid
+          and job_type='data.ingestion.process' and status='RUNNING' and lease_owner=$6
+          and attempt_count=$7 and lease_expires_at>clock_timestamp() and cancel_requested_at is null
+          and (timeout_at is null or timeout_at>clock_timestamp())
+          and security_level=$8 and policy_version=$9::bigint`,
+          [
+            job.tenantId,
+            job.projectId,
+            job.jobId,
+            job.operationId,
+            ingestionId,
+            job.leaseOwner,
+            job.attemptCount,
+            job.securityLevel,
+            job.policyVersion,
+          ],
+        );
+        if (!live.rows.length) throw failure('JOB_LEASE_LOST');
+      };
+      for (const declaration of conversionDeclarations) {
+        const check = await verifyCandidateConversion({
+          declaration,
+          reference,
+          maximumBytes: MAX_BYTES,
+          ...(options.conversionRunner === undefined
+            ? {}
+            : { runner: options.conversionRunner }),
+          read: async (assetId) => {
+            const asset = assets.find((member) => member.assetId === assetId);
+            if (!asset) throw failure('CANDIDATE_ORIGINAL_CONFLICT');
+            return read(asset);
+          },
+          checkAuthority: checkConversionAuthority,
+        });
+        await checkConversionAuthority();
+        await insertCandidateConversionCheck({
+          client,
+          job,
+          check,
+          submittedByActorId: uuid(row['submitted_by_actor_id']),
+          submittedActorType: text(row['submitted_actor_type']),
+          submittedDelegatorActorId:
+            row['submitted_delegator_actor_id'] === null
+              ? null
+              : uuid(row['submitted_delegator_actor_id']),
+          reviewGovernance: governance.frozen,
+        });
       }
       const all = outcomes.every((asset) =>
         ['READY', 'EMPTY'].includes(asset.status),

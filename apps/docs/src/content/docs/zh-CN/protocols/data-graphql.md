@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## 入口与权威契约
@@ -327,7 +327,7 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 
 ## 转换信任传输边界
 
-候选转换声明、服务端核验及固定来源窄读契约通过 `@wiser/data-contracts/candidate-conversion` 导出。查询 `dataIngestionCandidateProvenance(input: JSON!): JSON!` 映射到已注册的 `data.ingestion.candidate.provenance.get` 窄读，与 REST 复用严格固定引用、当前候选权限和有界输出。重复别名不使用请求内记忆缓存，每次执行均重新核对可见性；传输返回前再次核对权限并使用 `no-store`。不接收上传的核验标志，不暴露私有存储键或自由清单。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。
+候选转换声明、服务端核验及固定来源窄读契约通过 `@wiser/data-contracts/candidate-conversion` 导出。查询 `dataIngestionCandidateProvenance(input: JSON!): JSON!` 映射到已注册的 `data.ingestion.candidate.provenance.get` 窄读，与 REST 复用严格固定引用、当前候选权限和有界输出。重复别名不使用请求内记忆缓存，每次执行均重新核对可见性；传输返回前再次核对权限并使用 `no-store`。不接收上传的核验标志，不暴露私有存储键或自由清单。Worker 已接入声明冻结、独立清单核对及同事务写入的私有转换端口；默认没有受信适配器时保留 `UNVERIFIABLE/TOOL_UNAVAILABLE`。真实受信 O → R′ 转换、Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。
 
 ### 候选关系载体边界
 

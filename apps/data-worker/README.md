@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-core/**
   - packages/data-infra/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-03
-lastReviewedCommit: 8225f4a98fce0d98099df96d0f6c13293fee0589
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 854d4833d8fa72087bcd175aac44e197fcc33d3b
 ---
 
 # WISER Data Worker / 数据基座 Worker
@@ -77,6 +77,10 @@ Worker 的 authority 写入必须沿合法状态边且每次精确推进一个 `
 受管待审入库在冻结检查点后，使用同一已领取Job和默认候选处理器保存原值、定位及几何；恢复时复用同一输入与批次，成功后仍等待独立审核。迁移0037必须先通过校验和Runner执行，再重跑runtime provisioning，使批次／原件只允许更新完成字段、记录保持不可改。原件哈希、当前策略、完整资产集合和提交前租约均须匹配；临时失败回滚，格式／容量缺项保留未知数量和原因。候选不会创建正式版本或进入检索投影；带Auth的HTTP读取与真实数据库／浏览器验收单独执行。/ Governed intake processes the frozen candidate with the same claimed Job and default processor, retaining original values, locators and geometry. Recovery uses the same inputs and batch; success still waits for independent review. Apply migration 0037 through the checked-sum runner and rerun runtime provisioning before this runtime: batches/assets can update only completion fields and records remain immutable. Original hashes, current policy, the complete asset set and the final lease must match. Temporary failure rolls back; format/capacity gaps retain unknown counts and reasons. Candidates create neither published versions nor search projections; authenticated HTTP readback and real database/browser acceptance are separate gates.
 
 来源登记通过现有入库 Handler 执行扫描、指纹与严格清单核对，保留声明的样本/部分/空文件状态，生成 `METADATA_QUALITY` / `DECLARED` 版本；其质量只评价登记完整性。该流程不调用 Tika 或 AI 映射计划，受限来源仍等待有权限的复核，临时清单读取失败可以重试。 / Source registration uses the existing ingestion Handler for scanning, fingerprints and exact manifest reconciliation. It retains sample/partial/empty states and creates `METADATA_QUALITY` / `DECLARED` versions whose quality measures registration integrity. It calls neither Tika nor an AI mapping planner; restricted sources still require authorized review, and temporary manifest reads remain retryable.
+
+严格的 `wiser.candidate-conversion-claims.v1` 声明只放在 `M.record.candidateConversionPairs` 保留键，含1–128对 O/P、源内作品编号及可空的历史工具版本，不含 M 身份、已核验标志或工具摘要。来源登记入口核实际成员哈希、大小及 DOC/DOCX 角色，从已核字节补齐 M 身份，在 `reviewHash` 前冻结完整声明；候选端从实际 M 独立派生声明，差异即拒绝。受信宿主端口读取实际 O/P 字节、发现工具身份并比较 P/R′ 完整 Word 结构，摘要哈希覆盖完整结构。实际资产结果保存后、批次仍为 PENDING 时写入核验，随后执行原提交前租约锁及完成操作。权限或数据库错误整事务回滚，明确工具失败保留有界原因；无键旧输入沿用原流程，已完成批次不补写。宿主端口须限制工具执行时间并透传取消／失租检查错误；单元调用顺序不能证明 PostgreSQL 并发验收。 / Strict `wiser.candidate-conversion-claims.v1` claims live only in the reserved `M.record.candidateConversionPairs` key: 1–128 O/P pairs with source-local work ID and nullable historical tool version. They contain no M identity, verification flag or tool digest. Source registration checks actual member hashes, sizes and DOC/DOCX roles, derives M identity from verified bytes, and freezes full declarations before `reviewHash`. The candidate independently derives declarations from actual M and rejects drift. A trusted host port receives actual O/P bytes, discovers tool identity, and compares complete P/R′ Word structures; its digest covers the full structures. Results are inserted after actual asset outcomes while the batch is PENDING, before the unchanged final lease fence and completion. Authority/DB errors roll back; explicit tool failure is bounded and honest. No-key legacy inputs retain their path, and completed batches are never backfilled. The host port must bound tool time and propagate cancellation/lease-check errors; unit call-order evidence is not PostgreSQL concurrency acceptance.
+
+`createDefaultDataWorkerRuntime` 的第三个参数接受受信宿主注入的 `candidateConversionRunner`，默认缺失时保存工具不可用；不接受公开请求或环境中的工具身份声明。 / The third `createDefaultDataWorkerRuntime` argument accepts a trusted host-injected `candidateConversionRunner`; its absent default retains tool unavailability and never accepts tool identity claims from public requests or environment fields.
 
 不同来源路径可在逐项匹配大小和哈希后引用同一个内容资产，清单与证据保留这些路径别名；重复路径、未列出的资产或不匹配的别名会失败。 / Distinct source paths may reference one content asset after individual size/hash checks; the manifest and evidence retain those aliases. Duplicate paths, unlisted assets and mismatched aliases fail validation.
 
