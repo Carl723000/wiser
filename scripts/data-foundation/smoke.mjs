@@ -4,6 +4,7 @@ import {
   assertMigrationsApplied,
   assertPgStacMigrated,
   assertRuntimeRoles,
+  runtimeRoleFailureDiagnostics,
   assertSeedFixture,
   composeHealthCheck,
   isDirectExecution,
@@ -53,7 +54,13 @@ function safeErrorName(error) {
 class PreflightSmokeError extends Error {
   constructor(phase, error) {
     super('Data Foundation preflight failed safely.', {
-      cause: Object.freeze({ phase, errorName: safeErrorName(error) }),
+      cause: Object.freeze({
+        phase,
+        errorName: safeErrorName(error),
+        ...(phase === PREFLIGHT_PHASES.roles
+          ? runtimeRoleFailureDiagnostics(error)
+          : undefined),
+      }),
     });
   }
 }

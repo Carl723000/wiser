@@ -6,7 +6,8 @@ import { inspect } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import * as vm from 'node:vm';
 
-import { DATA_ALL_SERVICES } from './operations.mjs';
+import { DATA_ALL_SERVICES, assertRuntimeRoles } from './operations.mjs';
+import * as actualOperations from './operations.mjs';
 import { VerticalSmokeError } from './vertical-smoke.mjs';
 
 const MOCK_FLAG = '--experimental-vm-modules';
@@ -75,6 +76,8 @@ if (!process.execArgv.includes(MOCK_FLAG)) {
     );
     const operations = {
       DATA_ALL_SERVICES,
+      runtimeRoleFailureDiagnostics: (error) =>
+        actualOperations.runtimeRoleFailureDiagnostics?.(error),
       isDirectExecution: () => false,
       ...checks,
       runCompose: async (args, options) => {
@@ -277,6 +280,48 @@ if (!process.execArgv.includes(MOCK_FLAG)) {
         });
         return true;
       });
+    });
+  }
+
+  for (const [stage, reasonCode, values] of [
+    ['role-flags', 'ROLE_FLAGS_INVALID', ['invalid']],
+    [
+      'wrong-scope',
+      'RLS_SCOPE_CROSSED',
+      [
+        'wiser_data_api|false|false|true\nwiser_data_gis|false|false|true\nwiser_data_runtime|false|false|false\nwiser_data_worker|false|false|true',
+        '1',
+      ],
+    ],
+    [
+      'fixture-scope',
+      'SEEDED_SCOPE_UNREADABLE',
+      [
+        'wiser_data_api|false|false|true\nwiser_data_gis|false|false|true\nwiser_data_runtime|false|false|false\nwiser_data_worker|false|false|true',
+        '0',
+        '0',
+      ],
+    ],
+  ]) {
+    test(`preflight retains only the owned fixed runtime diagnosis for ${stage}`, async () => {
+      const h = await harness({
+        assertRuntimeRoles: () =>
+          assertRuntimeRoles({ runPostgresSql: async () => values.shift() }),
+        runCompose: async () => {
+          throw new Error(SECRET);
+        },
+      });
+      await assert.rejects(h.run(), (error) => {
+        assertSafe(h, error);
+        assert.deepEqual(plain(error.cause), {
+          phase: 'runtime-roles',
+          errorName: 'Error',
+          stage,
+          reasonCode,
+        });
+        return true;
+      });
+      assert.equal(h.calls.includes('vertical'), false);
     });
   }
 

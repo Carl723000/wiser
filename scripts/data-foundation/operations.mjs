@@ -402,26 +402,52 @@ select (
   }
 }
 
-export async function assertRuntimeRoles() {
-  const roles = await runPostgresSql(`
+const runtimeRoleDiagnoses = new WeakMap();
+
+function runtimeRoleFailure(stage, reasonCode) {
+  const error = operationError('runtime role check failed');
+  runtimeRoleDiagnoses.set(error, Object.freeze({ stage, reasonCode }));
+  return error;
+}
+
+/** Only diagnostics created by this module may cross the smoke boundary. */
+export function runtimeRoleFailureDiagnostics(error) {
+  return runtimeRoleDiagnoses.get(error);
+}
+
+async function runtimeRoleProbe(stage, sql, executeSql) {
+  try {
+    return await executeSql(sql);
+  } catch {
+    throw runtimeRoleFailure(stage, 'ROLE_CHECK_EXECUTION_FAILED');
+  }
+}
+
+export async function assertRuntimeRoles(dependencies = {}) {
+  const executeSql = dependencies.runPostgresSql ?? runPostgresSql;
+  const roles = await runtimeRoleProbe(
+    'role-flags',
+    `
 select rolname || '|' || rolsuper || '|' || rolbypassrls || '|' || rolcanlogin
 from pg_catalog.pg_roles
 where rolname in ('wiser_data_runtime', 'wiser_data_api', 'wiser_data_worker', 'wiser_data_gis')
 order by rolname;
-`);
+`,
+    executeSql,
+  );
   const expected = [
     'wiser_data_api|false|false|true',
     'wiser_data_gis|false|false|true',
     'wiser_data_runtime|false|false|false',
     'wiser_data_worker|false|false|true',
   ].join('\n');
-  if (roles.trim() !== expected) {
-    throw operationError(
-      'least-privilege Data Foundation runtime roles are invalid',
-    );
+  if (typeof roles !== 'string' || roles.trim() !== expected) {
+    throw runtimeRoleFailure('role-flags', 'ROLE_FLAGS_INVALID');
   }
 
-  const wrongScope = await runPostgresSql(`
+  const wrongScope = await runtimeRoleProbe(
+    'wrong-scope',
+    `
 begin;
 set local role wiser_data_worker;
 set local wiser.tenant_id = '11111111-1111-4111-8111-111111111111';
@@ -430,12 +456,16 @@ set local wiser.max_security_level = 'L3_CONFIDENTIAL';
 set local wiser.policy_version = '1';
 select count(*) from catalog.data_item;
 rollback;
-`);
-  if (!/^0(?:\s|$)/.test(wrongScope.trim())) {
-    throw operationError('Data Foundation runtime role crossed its RLS scope');
+`,
+    executeSql,
+  );
+  if (typeof wrongScope !== 'string' || !/^0(?:\s|$)/.test(wrongScope.trim())) {
+    throw runtimeRoleFailure('wrong-scope', 'RLS_SCOPE_CROSSED');
   }
 
-  const fixtureScope = await runPostgresSql(`
+  const fixtureScope = await runtimeRoleProbe(
+    'fixture-scope',
+    `
 begin;
 set local role wiser_data_worker;
 set local wiser.tenant_id = '${SEED_IDENTIFIERS.tenantId}';
@@ -446,11 +476,14 @@ select count(*)
 from catalog.data_item
 where data_item_id = '${SEED_IDENTIFIERS.dataItemId}'::uuid;
 rollback;
-`);
-  if (!/^1(?:\s|$)/.test(fixtureScope.trim())) {
-    throw operationError(
-      'Data Foundation runtime role cannot read its seeded scope',
-    );
+`,
+    executeSql,
+  );
+  if (
+    typeof fixtureScope !== 'string' ||
+    !/^1(?:\s|$)/.test(fixtureScope.trim())
+  ) {
+    throw runtimeRoleFailure('fixture-scope', 'SEEDED_SCOPE_UNREADABLE');
   }
   return Object.freeze({ api: true, worker: true, rls: true });
 }
