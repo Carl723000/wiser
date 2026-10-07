@@ -187,8 +187,8 @@ select is(
     where tenant_id = 'b1000000-0000-4000-8000-000000000001'
       and status = 'active'
   ),
-  5::bigint,
-  'all five seeded users belong to the WISER tenant'
+  6::bigint,
+  'all six seeded users belong to the WISER tenant'
 );
 select is(
   (
@@ -197,8 +197,8 @@ select is(
     where project_id = 'b2000000-0000-4000-8000-000000000001'
       and status = 'active'
   ),
-  5::bigint,
-  'all five seeded users belong to the Yongding project'
+  6::bigint,
+  'all six seeded users belong to the Yongding project'
 );
 select is(
   (

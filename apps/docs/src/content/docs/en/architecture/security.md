@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: ce7c39fbcc4aebc5bca1f67ee80634b7ce544c4d
+lastReviewedAt: 2026-10-07
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 ## Separate four data classes
@@ -39,6 +39,8 @@ This page covers WISER-wide identity, database, secret, and telemetry boundaries
 Never send full fact objects to a browser or participant and rely on the UI to hide fields. Isolation starts in the server-side query.
 
 ## Supabase and RLS
+
+Data ingestion approval requires a human reviewer independent of the immutable submitting actor and any delegator. The local Data smoke uses two verified humans; its separate reviewer has only the existing `data-steward` role in the fixed synthetic project. Token inequality is insufficient: preflight checks the current `/api/platform/v1/me` identities and scope. This fixture adds no production review exception, cross-project authority, resource grant or account-provisioning policy.
 
 Public self-registration is disabled with `[auth] enable_signup=false` and the deployed `GOTRUE_DISABLE_SIGNUP=true`. Email authentication stays enabled for existing accounts. Account provisioning and invitations require an authorized maintenance workflow; creating an account never grants Project membership by itself.
 

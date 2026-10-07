@@ -36,6 +36,10 @@ const ZH_EVIDENCE_ASSET_ID = 'a1000000-0000-4000-8000-000000000007';
 const INGESTION_ID = 'a1000000-0000-4000-8000-000000000004';
 const OPERATION_ID = 'a1000000-0000-4000-8000-000000000005';
 const VERSION_ID = 'a1000000-0000-4000-8000-000000000006';
+const SUBMITTER_ACTOR_ID = '10000000-0000-4000-8000-000000000005';
+const REVIEWER_ACTOR_ID = '10000000-0000-4000-8000-000000000006';
+const SUBMITTER_TOKEN = 'test-operator-access-token-with-safe-length';
+const REVIEWER_TOKEN = 'test-reviewer-access-token-with-safe-length';
 
 const projectionKinds = ['NEO4J', 'OPENSEARCH', 'POSTGIS', 'STAC', 'WEAVIATE'];
 
@@ -101,10 +105,35 @@ function createHarness() {
   const sql = [];
   let ingestionReads = 0;
   let operationReads = 0;
+  // These are trusted identity endpoint fixtures, not decoded JWT claims.
+  const identities = {
+    [SUBMITTER_TOKEN]: {
+      actorType: 'human',
+      actorId: SUBMITTER_ACTOR_ID,
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'data-foundation-smoke',
+      scopes: ['data.ingestion.write', 'data.operation.read'],
+    },
+    [REVIEWER_TOKEN]: {
+      actorType: 'human',
+      actorId: REVIEWER_ACTOR_ID,
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      purpose: 'data-foundation-smoke',
+      scopes: ['data.publish'],
+    },
+  };
 
   const fetch = async (input, init = {}) => {
     const url = new URL(String(input));
     requests.push({ url, init });
+    if (url.pathname === '/api/platform/v1/me') {
+      const token = init.headers.Authorization.replace(/^Bearer /, '');
+      return jsonResponse(identities[token] ?? {}, {
+        status: identities[token] === undefined ? 403 : 200,
+      });
+    }
 
     if (url.origin === 'https://upload.invalid') {
       return new Response('', { status: 200, headers: { etag: 'fixture' } });
@@ -282,12 +311,19 @@ function createHarness() {
     requests,
     waits,
     sql,
+    identities,
     options: {
       fetch,
       wait: async (milliseconds) => waits.push(milliseconds),
       postgresSql,
       auth: {
-        bearerToken: 'test-operator-access-token-with-safe-length',
+        bearerToken: SUBMITTER_TOKEN,
+        tenantId: TENANT_ID,
+        projectId: PROJECT_ID,
+        purpose: 'data-foundation-smoke',
+      },
+      reviewerAuth: {
+        bearerToken: REVIEWER_TOKEN,
         tenantId: TENANT_ID,
         projectId: PROJECT_ID,
         purpose: 'data-foundation-smoke',
@@ -347,6 +383,172 @@ test('executes the exact 18-step authenticated vertical slice and proves replay 
     ),
   );
   assert.ok(harness.waits.length >= 1);
+});
+
+test('only approval uses the independent verified human while retaining its fixed request contract', async () => {
+  const harness = createHarness();
+  await runDataFoundationVerticalSmoke(harness.options);
+  const approval = harness.requests.find(({ url }) =>
+    url.pathname.endsWith('/approve'),
+  );
+  assert.equal(approval.init.headers.Authorization, `Bearer ${REVIEWER_TOKEN}`);
+  for (const request of harness.requests.filter(
+    ({ url }) =>
+      url.pathname.startsWith('/api/data/v1/') &&
+      !url.pathname.endsWith('/approve'),
+  )) {
+    assert.equal(
+      request.init.headers.Authorization,
+      `Bearer ${SUBMITTER_TOKEN}`,
+    );
+  }
+  assert.equal(approval.init.headers['X-Wiser-Tenant-Id'], TENANT_ID);
+  assert.equal(approval.init.headers['X-Wiser-Project-Id'], PROJECT_ID);
+  assert.equal(
+    approval.init.headers['X-Wiser-Purpose'],
+    'data-foundation-smoke',
+  );
+  assert.equal(approval.init.headers['If-Match'], '"v11"');
+  assert.match(approval.init.headers['Idempotency-Key'], /^[0-9a-f-]{36}$/);
+  assert.deepEqual(JSON.parse(approval.init.body), {
+    reviewNote: 'Approved by the deterministic vertical smoke.',
+  });
+  const identities = harness.requests.filter(
+    ({ url }) => url.pathname === '/api/platform/v1/me',
+  );
+  assert.equal(identities.length, 2);
+  assert.ok(
+    harness.requests.indexOf(identities[1]) <
+      harness.requests.findIndex(
+        ({ url }) => url.pathname === '/api/data/v1/upload-sessions',
+      ),
+  );
+});
+
+test('different tokens for the same verified actor never permit self-review or upload', async () => {
+  const harness = createHarness();
+  harness.identities[REVIEWER_TOKEN].actorId = SUBMITTER_ACTOR_ID;
+  await assert.rejects(runDataFoundationVerticalSmoke(harness.options), {
+    code: 'REVIEWER_IDENTITY_REQUIRED',
+  });
+  assert.equal(
+    harness.requests.some(
+      ({ url }) => url.pathname === '/api/data/v1/upload-sessions',
+    ),
+    false,
+  );
+});
+
+test('an explicit submitter requires explicit reviewer credentials before any request', async () => {
+  const harness = createHarness();
+  delete harness.options.reviewerAuth;
+  harness.options.environment = {};
+  await assert.rejects(runDataFoundationVerticalSmoke(harness.options), {
+    code: 'REVIEWER_AUTH_CONTEXT_UNAVAILABLE',
+  });
+  assert.equal(harness.requests.length, 0);
+});
+
+test('invalid reviewer credentials fail with a reviewer-specific diagnostic', async () => {
+  for (const injected of [true, false]) {
+    const harness = createHarness();
+    harness.options.environment = {};
+    if (injected) harness.options.reviewerAuth.bearerToken = '';
+    else {
+      delete harness.options.reviewerAuth;
+      harness.options.environment.DATA_API_REVIEWER_BEARER_TOKEN = '';
+    }
+    await assert.rejects(runDataFoundationVerticalSmoke(harness.options), {
+      code: 'INVALID_REVIEWER_AUTH_CONTEXT',
+    });
+    assert.equal(harness.requests.length, 0);
+  }
+});
+
+test('an explicit reviewer environment token is verified through the current identity endpoint', async () => {
+  const harness = createHarness();
+  delete harness.options.reviewerAuth;
+  harness.options.environment = {
+    DATA_API_REVIEWER_BEARER_TOKEN: REVIEWER_TOKEN,
+  };
+  const result = await runDataFoundationVerticalSmoke(harness.options);
+  assert.equal(result.dataItemId, INGESTION_ID);
+  assert.equal(
+    harness.requests.find(({ url }) => url.pathname.endsWith('/approve')).init
+      .headers.Authorization,
+    `Bearer ${REVIEWER_TOKEN}`,
+  );
+});
+
+test('rejects a non-human or insufficiently scoped reviewer before uploading', async () => {
+  for (const changed of [
+    { actorType: 'agent' },
+    { scopes: ['data.operation.read'] },
+  ]) {
+    const harness = createHarness();
+    Object.assign(harness.identities[REVIEWER_TOKEN], changed);
+    await assert.rejects(runDataFoundationVerticalSmoke(harness.options), {
+      code: 'REVIEWER_IDENTITY_REQUIRED',
+    });
+    assert.equal(
+      harness.requests.some(
+        ({ url }) => url.pathname === '/api/data/v1/upload-sessions',
+      ),
+      false,
+    );
+  }
+});
+
+test('reviewer authority cannot change the fixed tenant, project or purpose', async () => {
+  const harness = createHarness();
+  harness.options.reviewerAuth.projectId =
+    'b2000000-0000-4000-8000-000000000002';
+  await assert.rejects(runDataFoundationVerticalSmoke(harness.options), {
+    code: 'REVIEWER_IDENTITY_REQUIRED',
+  });
+  assert.equal(
+    harness.requests.some(
+      ({ url }) => url.pathname === '/api/data/v1/upload-sessions',
+    ),
+    false,
+  );
+});
+
+test('an approval denial and publication without observed review remain failures', async () => {
+  for (const denyApproval of [true, false]) {
+    const harness = createHarness();
+    const originalFetch = harness.options.fetch;
+    harness.options.fetch = async (input, init) => {
+      const pathname = new URL(String(input)).pathname;
+      if (denyApproval && pathname.endsWith('/approve'))
+        return jsonResponse({ code: 'FORBIDDEN' }, { status: 403 });
+      if (
+        !denyApproval &&
+        pathname === `/api/data/v1/ingestions/${INGESTION_ID}`
+      )
+        return jsonResponse({
+          ingestion: {
+            ingestionId: INGESTION_ID,
+            operationId: OPERATION_ID,
+            state: 'PUBLISHED',
+            version: 16,
+          },
+        });
+      if (
+        !denyApproval &&
+        pathname === `/api/data/v1/operations/${OPERATION_ID}`
+      )
+        return jsonResponse({
+          operationId: OPERATION_ID,
+          status: 'SUCCEEDED',
+          version: 6,
+        });
+      return originalFetch(input, init);
+    };
+    await assert.rejects(runDataFoundationVerticalSmoke(harness.options), {
+      code: denyApproval ? 'HTTP_REQUEST_REJECTED' : 'REVIEW_GATE_NOT_OBSERVED',
+    });
+  }
 });
 
 test('bounds responses and never leaks a remote failure body', async () => {

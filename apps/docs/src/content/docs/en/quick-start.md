@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-07
-lastReviewedCommit: 2f9f5af29d3473d64c24c51789950a46e3708ed4
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 Use this page when running WISER in your own development environment for the first time. For public data access or external-client connection, see the [public use guide](/en/development/wiser-data-guide/). For standalone applications, ports, configuration, and troubleshooting, see the [local development environment](/en/development/local-environment/).
@@ -75,6 +75,8 @@ Sign in with the local test account:
 operator@agent-excon.test
 WiserLocalOperator-2026!
 ```
+
+The Data smoke uploads and reads as the operator, then approves as the separate local `reviewer@agent-excon.test` fixture. Before uploading, it verifies two distinct human actor IDs through the current API identity endpoint in the same tenant, project and purpose. See the [local environment guide](/en/development/local-environment/) for reviewer credentials and diagnostics.
 
 This account exists only in local test data. After sign-in, choose Data Foundation or Agent EXCON; the current account determines visible projects and content. Agents joining an exercise over MCP need a separate exercise participant identity; see [Agent EXCON MCP](/en/protocols/mcp/).
 

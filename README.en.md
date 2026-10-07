@@ -17,7 +17,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-07
-lastReviewedCommit: 2f9f5af29d3473d64c24c51789950a46e3708ed4
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 # WISER · Water Intelligence System & Engine for Reconfiguration
@@ -79,6 +79,8 @@ The seeded account is for local fixtures only:
 operator@agent-excon.test
 WiserLocalOperator-2026!
 ```
+
+The Data smoke uploads and reads as the operator, then approves as the separate local `reviewer@agent-excon.test` fixture. Before uploading, it verifies two distinct human actor IDs through the current API identity endpoint in the same tenant, project and purpose. See the [local environment guide](./apps/docs/src/content/docs/en/development/local-environment.md) for reviewer credentials and diagnostics.
 
 Stop the default project's services while retaining local data:
 

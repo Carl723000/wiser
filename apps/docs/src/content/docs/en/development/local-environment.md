@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-07
-lastReviewedCommit: 2f9f5af29d3473d64c24c51789950a46e3708ed4
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 ## Runtime modes
@@ -202,6 +202,10 @@ After rebuilding, switch the Worker first, let its profile checkpoint catch up t
 The official AMap adapter reads `WISER_AMAP_KEY` and `WISER_AMAP_SECURITY_CODE` from the Web server environment. Keep both in local `.env` or deployment secrets. `/api/maps/amap/config` returns the public JS API key only after session verification. The same-origin proxy permits only map styles and coordinate conversion, injects the security code server-side, bounds responses and disables caching. The security code is never placed in `NEXT_PUBLIC_*` variables. Existing local Compose overrides remain mandatory.
 
 The Data vertical smoke gives authenticated Web catalog GETs a separate 60-second request budget for cold Next.js development compilation. API/login requests retain the 10-second default and every request remains bounded by the 180-second overall smoke deadline. The programmatic `webRequestTimeoutMs` option may narrow this budget (100–60,000 ms); timeout never counts as a successful page assertion.
+
+The smoke uses the operator for upload, submission, polling and read checks, and a second human reviewer only for the approval POST. The local seed provides `reviewer@agent-excon.test` with password `WiserLocalReviewer-2026!`; both are public synthetic fixture values, never production credentials. Override local sign-in with `WISER_LOCAL_REVIEWER_EMAIL` and `WISER_LOCAL_REVIEWER_PASSWORD`, or supply `DATA_API_REVIEWER_BEARER_TOKEN`. Programmatic callers that supply `auth` must also supply `reviewerAuth` or the reviewer token, with identical tenant/project/purpose.
+
+Before creating an upload, the script calls authenticated `GET /api/platform/v1/me` for both credentials, requires two distinct canonical human actor IDs in the fixed scope, and checks the reviewer's current `data.publish` scope. Different token strings or decoded JWT claims are not identity proof. Missing reviewer authentication produces `REVIEWER_AUTH_CONTEXT_UNAVAILABLE`; invalid credentials/context produce `INVALID_REVIEWER_AUTH_CONTEXT`, and failed independence/scope checks produce `REVIEWER_IDENTITY_REQUIRED`. An unseeded local reviewer requires loading the synthetic seed in disposable state, not granting a real account more authority. Production still rejects self/delegator review and retains plan hashes, optimistic versions, RLS and publication checks. Mock request tests do not replace real Auth/SQL and live smoke verification.
 
 ## Object storage restart safety
 

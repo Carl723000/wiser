@@ -21,8 +21,8 @@ checkPaths:
   - packages/platform-auth/**
   - packages/data-infra/**
   - infrastructure/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: ce7c39fbcc4aebc5bca1f67ee80634b7ce544c4d
+lastReviewedAt: 2026-10-07
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 ## 四类数据必须分开
@@ -39,6 +39,8 @@ lastReviewedCommit: ce7c39fbcc4aebc5bca1f67ee80634b7ce544c4d
 浏览器和参训智能体永远不能接收完整事实对象，再依赖前端隐藏字段。服务端必须从查询源头隔离数据。
 
 ## Supabase 与 RLS
+
+Data 入库审批要求人类评审者独立于不可变的提交主体及委托者。本机 Data smoke 使用两个已核验的人类身份，独立评审者仅在固定合成项目中持有既有 `data-steward` 角色。Token 字符串不同不足以证明独立性；预检读取当前 `/api/platform/v1/me` 身份与范围。此测试身份不增加生产审批例外、跨项目权限、资源授权或账户开通策略。
 
 通过 `[auth] enable_signup=false` 和现网 `GOTRUE_DISABLE_SIGNUP=true` 关闭公众自行注册，已有账户的邮箱认证保持开启。账户开通与邀请须经授权的维护流程；创建账户本身不授予项目成员权限。
 

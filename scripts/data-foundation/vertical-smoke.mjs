@@ -57,6 +57,8 @@ const DEFAULT_TENANT_ID = 'b1000000-0000-4000-8000-000000000001';
 const DEFAULT_PROJECT_ID = 'b2000000-0000-4000-8000-000000000001';
 const DEFAULT_OPERATOR_EMAIL = 'operator@agent-excon.test';
 const DEFAULT_OPERATOR_PASSWORD = 'WiserLocalOperator-2026!';
+const DEFAULT_REVIEWER_EMAIL = 'reviewer@agent-excon.test';
+const DEFAULT_REVIEWER_PASSWORD = 'WiserLocalReviewer-2026!';
 const DEFAULT_MCP_BEARER_TOKEN = 'wiser-local-mcp-bearer-74cc91ef';
 const MAX_JSON_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_WEB_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -361,11 +363,29 @@ async function jsonRequest(
   return parseJson(text, stepId);
 }
 
-async function resolveAuth(options, runtime, stepId) {
+async function resolveAuth(options, runtime, stepId, identity = 'submitter') {
   const environment = runtime.environment;
-  let auth = options.auth;
+  const reviewing = identity === 'reviewer';
+  let auth = reviewing ? options.reviewerAuth : options.auth;
   if (auth === undefined) {
-    const environmentToken = environment['DATA_API_BEARER_TOKEN'];
+    const environmentToken =
+      environment[
+        reviewing ? 'DATA_API_REVIEWER_BEARER_TOKEN' : 'DATA_API_BEARER_TOKEN'
+      ];
+    if (
+      reviewing &&
+      environmentToken === undefined &&
+      options.auth !== undefined
+    ) {
+      fail(stepId, 'REVIEWER_AUTH_CONTEXT_UNAVAILABLE');
+    }
+    if (
+      reviewing &&
+      environmentToken !== undefined &&
+      !safeToken(environmentToken, 24, 16_384)
+    ) {
+      fail(stepId, 'INVALID_REVIEWER_AUTH_CONTEXT');
+    }
     if (safeToken(environmentToken, 24, 16_384)) {
       auth = {
         bearerToken: environmentToken,
@@ -396,14 +416,27 @@ async function resolveAuth(options, runtime, stepId) {
         assertLocalSupabaseStatus(status, target);
         bearerToken = await signInLocalOperator(status, {
           email:
-            environment['WISER_LOCAL_OPERATOR_EMAIL'] ?? DEFAULT_OPERATOR_EMAIL,
+            environment[
+              reviewing
+                ? 'WISER_LOCAL_REVIEWER_EMAIL'
+                : 'WISER_LOCAL_OPERATOR_EMAIL'
+            ] ?? (reviewing ? DEFAULT_REVIEWER_EMAIL : DEFAULT_OPERATOR_EMAIL),
           password:
-            environment['WISER_LOCAL_OPERATOR_PASSWORD'] ??
-            DEFAULT_OPERATOR_PASSWORD,
+            environment[
+              reviewing
+                ? 'WISER_LOCAL_REVIEWER_PASSWORD'
+                : 'WISER_LOCAL_OPERATOR_PASSWORD'
+            ] ??
+            (reviewing ? DEFAULT_REVIEWER_PASSWORD : DEFAULT_OPERATOR_PASSWORD),
           fetch: runtime.fetch,
         });
       } catch {
-        fail(stepId, 'AUTH_CONTEXT_UNAVAILABLE');
+        fail(
+          stepId,
+          reviewing
+            ? 'REVIEWER_AUTH_CONTEXT_UNAVAILABLE'
+            : 'AUTH_CONTEXT_UNAVAILABLE',
+        );
       }
       auth = {
         bearerToken,
@@ -419,7 +452,10 @@ async function resolveAuth(options, runtime, stepId) {
     !UUID_PATTERN.test(auth?.projectId ?? '') ||
     !PURPOSE_PATTERN.test(auth?.purpose ?? '')
   ) {
-    fail(stepId, 'INVALID_AUTH_CONTEXT');
+    fail(
+      stepId,
+      reviewing ? 'INVALID_REVIEWER_AUTH_CONTEXT' : 'INVALID_AUTH_CONTEXT',
+    );
   }
   return Object.freeze({ ...auth });
 }
@@ -433,6 +469,39 @@ function apiHeaders(auth, extra = {}) {
     'X-Wiser-Purpose': auth.purpose,
     ...extra,
   };
+}
+
+async function assertIndependentSmokeReviewer(
+  runtime,
+  auth,
+  reviewerAuth,
+  apiOrigin,
+  stepId,
+) {
+  const scope = ['tenantId', 'projectId', 'purpose'];
+  if (scope.some((field) => auth[field] !== reviewerAuth[field])) {
+    fail(stepId, 'REVIEWER_IDENTITY_REQUIRED');
+  }
+  const [submitter, reviewer] = await Promise.all([
+    apiJson(runtime, auth, apiOrigin, stepId, '/api/platform/v1/me'),
+    apiJson(runtime, reviewerAuth, apiOrigin, stepId, '/api/platform/v1/me'),
+  ]);
+  // Identity comes from the current API resolver, never token text or decoded
+  // claims. This synthetic smoke uses two humans; /me does not expose a
+  // delegator, and the production command retains its full responsibility guard.
+  if (
+    ![submitter, reviewer].every(
+      (principal) =>
+        principal?.actorType === 'human' &&
+        UUID_PATTERN.test(principal?.actorId ?? '') &&
+        scope.every((field) => principal[field] === auth[field]),
+    ) ||
+    submitter.actorId.toLowerCase() === reviewer.actorId.toLowerCase() ||
+    !Array.isArray(reviewer.scopes) ||
+    !reviewer.scopes.includes('data.publish')
+  ) {
+    fail(stepId, 'REVIEWER_IDENTITY_REQUIRED');
+  }
 }
 
 async function apiJson(runtime, auth, apiOrigin, stepId, path, options = {}) {
@@ -645,6 +714,7 @@ async function boundedWork(runtime, stepId, work) {
 async function waitForPublication(
   runtime,
   auth,
+  reviewerAuth,
   apiOrigin,
   ingestionId,
   operationId,
@@ -684,7 +754,7 @@ async function waitForPublication(
     ) {
       const approval = await apiJson(
         runtime,
-        auth,
+        reviewerAuth,
         apiOrigin,
         stepId,
         `/api/data/v1/ingestions/${ingestionId}/approve`,
@@ -1422,12 +1492,25 @@ export async function runDataFoundationVerticalSmoke(options = {}) {
   }
   const runtime = createRuntime(selectedOptions);
   const auth = await resolveAuth(options, runtime, firstStep);
+  const reviewerAuth = await resolveAuth(
+    options,
+    runtime,
+    firstStep,
+    'reviewer',
+  );
   const apiOrigin = origin(
     options.apiOrigin ??
       runtime.environment['DATA_API_ORIGIN'] ??
       'http://127.0.0.1:3101',
     firstStep,
     'INVALID_API_ORIGIN',
+  );
+  await assertIndependentSmokeReviewer(
+    runtime,
+    auth,
+    reviewerAuth,
+    apiOrigin,
+    firstStep,
   );
   const mcpOrigin = origin(
     options.mcpOrigin ??
@@ -1613,6 +1696,7 @@ export async function runDataFoundationVerticalSmoke(options = {}) {
   await waitForPublication(
     runtime,
     auth,
+    reviewerAuth,
     apiOrigin,
     ingestionId,
     operationId,

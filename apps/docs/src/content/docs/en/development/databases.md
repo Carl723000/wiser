@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: 31b88955f0ba66cc4608e161bea2a2cb3e6a0eb3
+lastReviewedAt: 2026-10-07
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -41,6 +41,8 @@ Data Foundation stores only scoped subject, tenant, and project references suppl
 - S3, Weaviate, OpenSearch, Neo4j, and STAC are object or projection targets, not identity or publication authorities. Their writes must not be presented as an atomically committed part of a PostgreSQL transaction.
 
 ## Supabase change workflow
+
+The local Auth seed includes a sixth human, `reviewer@agent-excon.test`, for independent Data smoke approval. It has active membership only in the fixed synthetic tenant/project and only the existing project `data-steward` role; it is excluded from the EXCON binding generator even when seed runs again. The operator retains its three role bindings, and managed resource settings/grants remain unseeded. The local Auth pgTAP cases assert the reviewer login fixture, human membership, exact role list and six-member counts. Those assertions still require execution on a disposable Supabase instance; script mocks do not prove Auth/SQL authorization.
 
 Keep all four Supabase artifacts synchronized: ordered migrations are replayable history, declarative schemas describe the current shape, seeds establish deterministic local identities and cases, and pgTAP proves structure, security, and data invariants.
 

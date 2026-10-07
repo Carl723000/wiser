@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: 31b88955f0ba66cc4608e161bea2a2cb3e6a0eb3
+lastReviewedAt: 2026-10-07
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -41,6 +41,8 @@ Data Foundation 只保存经过授权上下文限定的主体、Tenant 和 Proje
 - S3、Weaviate、OpenSearch、Neo4j、STAC 等外部存储是对象或投影目标，不是身份或发布权威；它们的写入不应被包装成 PostgreSQL 已经原子提交的一部分。
 
 ## Supabase 变更流程
+
+本机 Auth seed 增加第六个人类测试身份 `reviewer@agent-excon.test`，用于 Data smoke 独立审批。它仅在固定合成租户、项目中拥有有效成员资格与既有 `data-steward` 项目角色；重复运行 seed 时，EXCON 角色生成也明确排除它。操作员保留三个角色绑定，seed 仍不启用受管资源设置或发出资源授权。本机 Auth pgTAP 断言评审登录测试值、人类成员关系、准确角色列表与六人成员数量；这些断言须在可丢弃 Supabase 实例实际执行，脚本 mock 不能证明 Auth/SQL 授权。
 
 Supabase 的四类文件必须同步：顺序 migration 是可重放历史，declarative schema 描述当前结构，seed 建立确定性本机身份与案例，pgTAP 证明结构、安全和数据不变量。
 

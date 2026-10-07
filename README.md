@@ -17,7 +17,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-07
-lastReviewedCommit: 2f9f5af29d3473d64c24c51789950a46e3708ed4
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 # WISER · 水地图
@@ -79,6 +79,8 @@ Data 运维脚本仅在 `compose.override.yaml` 缺失时创建空覆盖文件�
 operator@agent-excon.test
 WiserLocalOperator-2026!
 ```
+
+Data smoke 以操作员上传和读取，再由独立的本机 `reviewer@agent-excon.test` 测试身份审批。上传前，脚本通过当前 API 身份接口核验两个不同的人类主体，且租户、项目和用途一致。评审身份的配置与失败诊断见[本机环境配置](./apps/docs/src/content/docs/zh-CN/development/local-environment.md)。
 
 停止默认项目的服务并保留本机数据：
 

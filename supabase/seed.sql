@@ -407,6 +407,12 @@ values
     'operator@agent-excon.test',
     '{"provider":"email","providers":["email"]}'::jsonb,
     '{}'::jsonb
+  ),
+  (
+    '10000000-0000-4000-8000-000000000006',
+    'reviewer@agent-excon.test',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -418,7 +424,11 @@ set instance_id = '00000000-0000-0000-0000-000000000000',
     aud = 'authenticated',
     role = 'authenticated',
     encrypted_password = extensions.crypt(
-      'WiserLocalOperator-2026!',
+      case id
+        when '10000000-0000-4000-8000-000000000005'::uuid
+          then 'WiserLocalOperator-2026!'
+        else 'WiserLocalReviewer-2026!'
+      end,
       extensions.gen_salt('bf')
     ),
     confirmation_token = '',
@@ -435,7 +445,10 @@ set instance_id = '00000000-0000-0000-0000-000000000000',
     email_confirmed_at = coalesce(email_confirmed_at, clock_timestamp()),
     created_at = coalesce(created_at, clock_timestamp()),
     updated_at = clock_timestamp()
-where id = '10000000-0000-4000-8000-000000000005';
+where id in (
+  '10000000-0000-4000-8000-000000000005',
+  '10000000-0000-4000-8000-000000000006'
+);
 
 insert into auth.identities (
   id,
@@ -453,6 +466,19 @@ values (
   jsonb_build_object(
     'sub', '10000000-0000-4000-8000-000000000005',
     'email', 'operator@agent-excon.test',
+    'email_verified', true,
+    'phone_verified', false
+  ),
+  'email',
+  clock_timestamp(),
+  clock_timestamp()
+), (
+  '10000000-0000-4000-8000-000000000106',
+  '10000000-0000-4000-8000-000000000006',
+  '10000000-0000-4000-8000-000000000006',
+  jsonb_build_object(
+    'sub', '10000000-0000-4000-8000-000000000006',
+    'email', 'reviewer@agent-excon.test',
     'email_verified', true,
     'phone_verified', false
   ),
@@ -1422,6 +1448,44 @@ select
 from platform.project_memberships as member
 where member.project_id = 'b2000000-0000-4000-8000-000000000001'
   and member.actor_id <> '10000000-0000-4000-8000-000000000005'
+  and member.actor_id <> '10000000-0000-4000-8000-000000000006'
+on conflict (id) do nothing;
+
+-- Local synthetic Data reviewer only: separate from the submitter, scoped to
+-- the existing project and Data role. The EXCON query excludes it on reruns.
+insert into platform.tenant_memberships (
+  tenant_id, actor_id, status, membership_version
+)
+values (
+  'b1000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000006',
+  'active', 1
+)
+on conflict (tenant_id, actor_id) do nothing;
+
+insert into platform.project_memberships (
+  project_id, tenant_id, actor_id, status, membership_version
+)
+values (
+  'b2000000-0000-4000-8000-000000000001',
+  'b1000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000006',
+  'active', 1
+)
+on conflict (project_id, actor_id) do nothing;
+
+insert into platform.role_bindings (
+  id, actor_id, tenant_id, project_id, role_id, status, created_by_actor_id
+)
+values (
+  'b4000000-0000-4000-8000-000000000004',
+  '10000000-0000-4000-8000-000000000006',
+  'b1000000-0000-4000-8000-000000000001',
+  'b2000000-0000-4000-8000-000000000001',
+  'b3000000-0000-4000-8000-000000000004',
+  'active',
+  '10000000-0000-4000-8000-000000000005'
+)
 on conflict (id) do nothing;
 
 -- Local synthetic owner only. Production enables management through an explicit maintenance grant.

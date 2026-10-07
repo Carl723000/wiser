@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-07
-lastReviewedCommit: 2f9f5af29d3473d64c24c51789950a46e3708ed4
+lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
 ---
 
 本页适合第一次在自己的开发环境运行 WISER。现网资料查阅与外部客户端连接请使用[现网使用指南](/development/wiser-data-guide/)；单独启动应用、端口、配置和排障见[本机开发环境](/development/local-environment/)。
@@ -75,6 +75,8 @@ Data 运维脚本会创建缺失的本地覆盖文件，保留已有人工修改
 operator@agent-excon.test
 WiserLocalOperator-2026!
 ```
+
+Data smoke 以操作员上传和读取，再由独立的本机 `reviewer@agent-excon.test` 测试身份审批。上传前，脚本通过当前 API 身份接口核验两个不同的人类主体，且租户、项目和用途一致。评审身份的配置与失败诊断见[本机环境配置](/development/local-environment/)。
 
 这个账号只存在于本机测试资料中。登录后，选择数据基座或智能体演练场；可查看的项目和内容由当前账号权限决定。智能体通过 MCP 参加演练还需要单独的演练参与身份，详见 [Agent EXCON MCP](/protocols/mcp/)。
 
