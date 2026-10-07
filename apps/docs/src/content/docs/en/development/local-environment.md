@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-10-07
-lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 99ff0b9336a05910edf94856e6b44987412cbfbe
 ---
 
 ## Runtime modes
@@ -155,6 +155,16 @@ pnpm stack:down
 ```
 
 Narrow `docker compose logs` to only the failed services; use `docker compose ps -a` when a container did not stay running. Supabase is CLI-managed and is not part of the root Compose project. `supabase status` confirms services and ports; inspect the named containers through the local Docker runtime for their logs.
+
+`pnpm data:smoke` first checks `fixture-bundle`, then concurrently checks
+`authority-migrations`, `pgstac-schema`, `runtime-roles`, `compose-health`,
+`api-contract` and `seed-fixture`. A preflight failure prevents vertical smoke
+and reports a fixed `{ phase, errorName }` cause. The exception name is an
+allowlisted built-in name or `unknown`; this diagnostic excludes the original
+message, SQL, response bodies and environment values. Failure logs remain
+best-effort, and a collection failure cannot replace the smoke failure. Vertical
+failures retain their original step and code. The phase identifies a failed
+check; it does not establish the root cause or authorize weaker permissions.
 
 | Operation                                 | Removes                                                      | Retains                                                    |
 | ----------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- |

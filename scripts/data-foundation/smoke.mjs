@@ -19,6 +19,53 @@ const FAILURE_LOG_SERVICES = Object.freeze([
   ...new Set([...DATA_ALL_SERVICES, 'api', 'web']),
 ]);
 
+const PREFLIGHT_PHASES = Object.freeze({
+  fixture: 'fixture-bundle',
+  migrations: 'authority-migrations',
+  pgstac: 'pgstac-schema',
+  roles: 'runtime-roles',
+  services: 'compose-health',
+  api: 'api-contract',
+  seed: 'seed-fixture',
+});
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'URIError',
+  'EvalError',
+  'AggregateError',
+  'AbortError',
+  'TimeoutError',
+]);
+
+function safeErrorName(error) {
+  try {
+    const name = error instanceof Error ? error.name : 'unknown';
+    return SAFE_ERROR_NAMES.has(name) ? name : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+class PreflightSmokeError extends Error {
+  constructor(phase, error) {
+    super('Data Foundation preflight failed safely.', {
+      cause: Object.freeze({ phase, errorName: safeErrorName(error) }),
+    });
+  }
+}
+
+async function preflight(phase, check) {
+  try {
+    return await check();
+  } catch (error) {
+    throw new PreflightSmokeError(phase, error);
+  }
+}
+
 export async function printDataFoundationSmokeFailureLogs() {
   try {
     await runCompose(
@@ -34,14 +81,17 @@ export async function printDataFoundationSmokeFailureLogs() {
 
 export async function smokeDataFoundation(options = {}) {
   try {
-    const fixture = await verifyFixtureBundle();
+    const fixture = await preflight(
+      PREFLIGHT_PHASES.fixture,
+      verifyFixtureBundle,
+    );
     const [migrations, , roles, services, api, seed] = await Promise.all([
-      assertMigrationsApplied(),
-      assertPgStacMigrated(),
-      assertRuntimeRoles(),
-      composeHealthCheck(),
-      apiContractCheck(),
-      assertSeedFixture(fixture),
+      preflight(PREFLIGHT_PHASES.migrations, assertMigrationsApplied),
+      preflight(PREFLIGHT_PHASES.pgstac, assertPgStacMigrated),
+      preflight(PREFLIGHT_PHASES.roles, assertRuntimeRoles),
+      preflight(PREFLIGHT_PHASES.services, composeHealthCheck),
+      preflight(PREFLIGHT_PHASES.api, apiContractCheck),
+      preflight(PREFLIGHT_PHASES.seed, () => assertSeedFixture(fixture)),
     ]);
     const vertical = await runDataFoundationVerticalSmoke(
       options.vertical ?? {},
@@ -61,10 +111,23 @@ export async function smokeDataFoundation(options = {}) {
   } catch (error) {
     const printFailureLogs =
       options.printFailureLogs ?? printDataFoundationSmokeFailureLogs;
-    await printFailureLogs();
+    try {
+      await printFailureLogs();
+    } catch {
+      try {
+        process.stderr.write(
+          'Data Foundation smoke logs could not be collected safely.\n',
+        );
+      } catch {
+        // A failed diagnostic sink must not replace the original smoke cause.
+      }
+    }
     if (error instanceof VerticalSmokeError) throw error;
     const sanitized = new Error('Data Foundation smoke failed safely.', {
-      cause: error instanceof Error ? error.name : 'unknown',
+      cause:
+        error instanceof PreflightSmokeError
+          ? error.cause
+          : safeErrorName(error),
     });
     throw sanitized;
   }

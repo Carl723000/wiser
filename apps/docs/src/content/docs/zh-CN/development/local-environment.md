@@ -16,8 +16,8 @@ checkPaths:
   - compose.yaml
   - .env.example
   - scripts/data-foundation/**
-lastReviewedAt: 2026-10-07
-lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 99ff0b9336a05910edf94856e6b44987412cbfbe
 ---
 
 ## 运行模式
@@ -149,6 +149,8 @@ pnpm stack:down
 ```
 
 `docker compose logs` 可以只保留本次失败的 service 名；服务未创建时先用 `docker compose ps -a`。Supabase 由 CLI 管理而不属于根 Compose project；`supabase status` 用于确认服务/端口，具体容器日志从本机 Docker runtime 查看。
+
+`pnpm data:smoke` 先检查 `fixture-bundle`，再并发检查 `authority-migrations`、`pgstac-schema`、`runtime-roles`、`compose-health`、`api-contract` 和 `seed-fixture`。预检失败会阻止进入 vertical，并仅在 cause 中保留固定 `{ phase, errorName }`；异常名限定为安全内置名称，其他情况记为 `unknown`，不带出原异常消息、SQL、响应体或环境值。失败日志仍会尽力收集，收集失败不覆盖 smoke 原因；vertical 的阶段与错误码保持原样。阶段码只指出哪项检查拒绝，不代表已确定根因或可以放宽权限。
 
 | 操作                                      | 删除什么                                             | 保留什么                                                 |
 | ----------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
