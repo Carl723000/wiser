@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: a89b26dd1997fa6fac1f62f62ce1837286c1ee19
+lastReviewedCommit: bc7730a30d7724ea80dc450fd2bde1f8fc2a35c1
 ---
 
 ## What runs today
@@ -636,6 +636,8 @@ Migration 0043 adds the private, immutable `ingestion.candidate_conversion_check
 Strict `wiser.candidate-conversion-claims.v1` claims live only in the reserved `M.record.candidateConversionPairs` key: 1–128 O/P pairs with source-local work ID and nullable historical tool version. They contain no M identity, verification flag or tool digest. Source registration checks actual member hashes, sizes and DOC/DOCX roles, derives M identity from verified bytes, and freezes full declarations before `reviewHash`. The candidate independently derives declarations from actual M and rejects drift. A trusted host port receives actual O/P bytes, discovers tool identity, and compares complete P/R′ Word structures; its digest covers the full structures. Results are inserted after actual asset outcomes while the batch is PENDING, before the unchanged final lease fence and completion. Authority/DB errors roll back; explicit tool failure is bounded and honest. No-key legacy inputs retain their path, and completed batches are never backfilled. The host port must bound tool time and propagate cancellation/lease-check errors; unit call-order evidence is not PostgreSQL concurrency acceptance.
 
 The private `word_structure.py` reader consumes actual DOCX ZIP/XML bytes with existing `defusedxml` and emits every supported physical table, including nested tables, cell locators, column/span/vMerge, explicit cell/table widths, grid widths, empty text and all paragraphs. Main document, headers, footers, footnotes, endnotes and comments use stable part locators; month titles are a literal subset of preserved paragraph text. Unsafe archives, DTD/entities, unsupported revision/legacy-merge/alternate content, excessive depth or budgets fail without partial structures. The legacy record parser and HTTP request remain unchanged. The optional `createCandidateConversionHostRunner` requires explicit executable/source hashes, exact observed stable tool version and platform; it uses private temporary profiles, a clean process environment, bounded output and per-process deadlines of at most 120 seconds. Its authority callbacks propagate errors, and strict private `UNVERIFIABLE` outcomes retain the existing four reasons. The factory is not enabled by default and does not certify the tool's source, license, dependent libraries or operating-system sandbox. Synthetic DOCX/schema and executable process tests are not real O → R′ conversion, PostgreSQL concurrency or A13 acceptance.
+
+`structure.pythonPath` is checked only for an absolute path; the factory does not pin the interpreter digest. A pinned extractor script does not establish the interpreter or dependency closure. Use the factory only within a complete task runtime image, or a host interpreter and its complete dependency closure, that the core task has actually admitted. The existing parser base-image digest does not cover arbitrary host Python. That complete runtime has not yet been admitted; obtaining and hashing a stable converter package is not installation or runtime admission. The unsupported-construct inventory and original-value/A13 checks for the eight real DOCX files remain future acceptance work, not completed checks.
 
 ## Private candidate relationship carrier
 
