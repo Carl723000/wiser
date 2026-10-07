@@ -14,6 +14,7 @@ import {
 } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import type { Server } from 'node:net';
 import { dirname, join } from 'node:path';
 import { createA12NativeRuntimeObserver } from '../../apps/web/e2e-live/support/a12-native-runtime-observer.ts';
@@ -31,7 +32,7 @@ import type { RuntimeObservationBinding } from '../../apps/web/e2e-live/support/
 // Real temporary fs + a task-owned AF_UNIX inode + an explicit synthetic CLI.
 // No TCP, socket connection, Docker daemon, Auth, SQL, scan, launch or authority.
 // The AF_UNIX listener only creates a socket inode. The CLI never connects to it.
-const fixturePrefix = '/private/tmp/g101-af-';
+const fixtureName = 'g101-af-';
 const digest = (bytes: string | Uint8Array) =>
   createHash('sha256').update(bytes).digest('hex');
 const jsonDigest = (value: unknown) => digest(JSON.stringify(value));
@@ -212,11 +213,17 @@ async function closeUnixFixture(server: Server | undefined): Promise<void> {
 async function withFixture(
   run: (fixture: SyntheticFixture) => Promise<void>,
 ): Promise<void> {
+  const fixtureRoot = await realpath(tmpdir());
+  const fixturePrefix = join(fixtureRoot, fixtureName);
   const base = await mkdtemp(fixturePrefix);
   let server: Server | undefined;
   let connections = 0;
   try {
-    expect(dirname(base)).toBe('/private/tmp');
+    expect(dirname(base)).toBe(fixtureRoot);
+    const baseMetadata = await lstat(base);
+    expect(baseMetadata.isDirectory()).toBe(true);
+    expect(baseMetadata.mode & 0o777).toBe(0o700);
+    if (process.getuid) expect(baseMetadata.uid).toBe(process.getuid());
     const workspace = join(base, 'w');
     const runtime = join(base, 'r');
     const configPath = join(runtime, 'docker-observer-empty-config');
@@ -445,7 +452,7 @@ async function withFixture(
       await closeUnixFixture(server);
     } finally {
       // Remove only the mkdtemp directory created by this exact invocation.
-      if (base.startsWith(fixturePrefix) && dirname(base) === '/private/tmp') {
+      if (base.startsWith(fixturePrefix) && dirname(base) === fixtureRoot) {
         await rm(base, { recursive: true, force: true });
       }
     }
