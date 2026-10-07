@@ -31,6 +31,7 @@ const RESOURCE_AWARE = new Set<DataCapabilityId>([
   'data.ingestion.candidate.get',
   'data.ingestion.candidate.records',
   'data.ingestion.candidate.geometry',
+  'data.ingestion.candidate.provenance.get',
   'data.ingestion.candidate.view.create',
   'data.ingestion.candidate.view.list',
   'data.ingestion.candidate.view.open',

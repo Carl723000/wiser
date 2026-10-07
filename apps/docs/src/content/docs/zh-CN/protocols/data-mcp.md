@@ -326,3 +326,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 注册映射通过同一受权HTTP契约提供`data_ingestion_candidate_view_create/list/open/revoke`。创建／撤回为幂等命令，撤回标记destructiveHint true；列表／打开为只读工具。身份、租户／项目及用途来自可信连接，不进入工具参数。固定引用、严格显示状态、全部成员权限、委托、期限、分页及128 KiB结果上限均沿用REST。
 
 打开返回`data_ingestion_candidate_get/records/geometry`的新输入，只调用对应HTTP工具读取同一页。不持久保存权限游标、不直接访问存储、不把接收编号当作versionId，也不将保存当作专业批准。旧记录责任不明或任一成员不可读时拒绝。已发布保存工具与早期传输映射保持原行为；合成Gateway检查不等于真实持久／页面恢复或受控导出验收。
+
+## 转换来源准入
+
+已注册工具 `data_ingestion_candidate_provenance_get` 经标准 HTTP 映射调用 `data.ingestion.candidate.provenance.get`，仅返回通过严格契约校验的有界摘要。参数包含固定候选引用和 `preparedAssetId`；身份、租户／项目及用途由受信连接提供。当前候选权限、受管准入和严格校验与 REST 相同，不直接访问数据库或新增 scope。转换声明不是授权或受信结果，MCP 不得绕过 Worker 专用写入或读取私有原始清单。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。

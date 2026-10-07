@@ -14,6 +14,10 @@ import {
   IngestionCandidateGeometryPageSchema,
 } from '../ingestion/index.ts';
 import {
+  GetCandidateConversionProvenanceInputSchema,
+  GetCandidateConversionProvenanceOutputSchema,
+} from '../ingestion/candidate-conversion.ts';
+import {
   ExternalMetadataInputSchema,
   ExternalMetadataOutputSchema,
 } from '../external-metadata/index.ts';
@@ -180,6 +184,7 @@ export const DATA_CAPABILITY_IDS = [
   'data.ingestion.candidate.get',
   'data.ingestion.candidate.records',
   'data.ingestion.candidate.geometry',
+  'data.ingestion.candidate.provenance.get',
   'data.ingestion.candidate.view.create',
   'data.ingestion.candidate.view.list',
   'data.ingestion.candidate.view.open',
@@ -1006,6 +1011,30 @@ const capabilityRegistry = {
     },
     mcpMapping: { toolName: 'data_ingestion_candidate_geometry' },
     skillMapping: { operation: 'data.ingestion.candidate.geometry' },
+  }),
+  'data.ingestion.candidate.provenance.get': defineCapability({
+    id: 'data.ingestion.candidate.provenance.get',
+    version: '1.0.0',
+    kind: 'query',
+    inputSchema: GetCandidateConversionProvenanceInputSchema,
+    outputSchema: GetCandidateConversionProvenanceOutputSchema,
+    requiredScopes: ['data.operation.read'],
+    maxSecurityLevel: 'L3_CONFIDENTIAL',
+    executionMode: 'SYNCHRONOUS',
+    timeout: 30_000,
+    idempotent: true,
+    auditLevel: 'STANDARD',
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateProvenance',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_provenance_get' },
+    skillMapping: { operation: 'data.ingestion.candidate.provenance.get' },
   }),
   'data.ingestion.candidate.view.create': defineCapability({
     id: 'data.ingestion.candidate.view.create',

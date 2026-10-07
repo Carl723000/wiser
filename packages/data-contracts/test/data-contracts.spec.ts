@@ -160,6 +160,10 @@ const savedCandidateReference = {
   reviewHash: 'a'.repeat(64),
 };
 const validCapabilityInputs = {
+  'data.ingestion.candidate.provenance.get': {
+    ...savedCandidateReference,
+    preparedAssetId: ASSET_ID,
+  },
   'data.ingestion.candidate.view.create': {
     title: 'Fixed candidate',
     references: [savedCandidateReference],
@@ -431,6 +435,19 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.ingestion.candidate.provenance.get': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateProvenance',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_provenance_get' },
+    skillMapping: { operation: 'data.ingestion.candidate.provenance.get' },
+  },
   'data.ingestion.candidate.view.create': {
     restMapping: {
       method: 'POST',
@@ -1002,6 +1019,7 @@ const expectedCapabilityScopes = {
   'data.ingestion.candidate.get': ['data.operation.read'],
   'data.ingestion.candidate.records': ['data.operation.read'],
   'data.ingestion.candidate.geometry': ['data.operation.read'],
+  'data.ingestion.candidate.provenance.get': ['data.operation.read'],
 
   'data.external.metadata.read': ['data.catalog.read'],
   'data.knowledge.relations.import': [
@@ -1070,6 +1088,10 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.ingestion.candidate.provenance.get': {
+    input: 'ca21bb4e802ac05c10d7a6bdaa2e11b9b24125d33430fce66ddef5b12d3296a9',
+    output: 'd96fe9f9748fe8ff457eaaf5bd949a40172fc4bfc347d2ff8bf7391f713dbe85',
+  },
   'data.ingestion.candidate.view.create': {
     input: '2b28d33a1738d2b34edadc81975d5044ad756712e863be6652a1700c8ffd8f96',
     output: '3bf5251b63772e50b6d73f3741f52132178211e7aacf88d8e324b842578ea346',
@@ -1609,6 +1631,7 @@ describe('Data Foundation capability registry', () => {
       'data.ingestion.candidate.get',
       'data.ingestion.candidate.records',
       'data.ingestion.candidate.geometry',
+      'data.ingestion.candidate.provenance.get',
       'data.ingestion.candidate.view.create',
       'data.ingestion.candidate.view.list',
       'data.ingestion.candidate.view.open',

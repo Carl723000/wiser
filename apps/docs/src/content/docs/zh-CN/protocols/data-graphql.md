@@ -320,3 +320,7 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 旧列表／打开字段共用REST执行器的版本隔离，不增加GraphQL字段，也不改变有效无版本v1输入。列表在SQL的游标筛选、排序和`LIMIT`之前排除所有带`schemaVersion`字段的保存规格。打开对明确版本（包括完整v2及未知版本）返回安全的`NOT_FOUND`，不暴露标题、候选引用或规格，不将其降级成v1，也不启用完整专题持久保存。定向执行器回归不代表真实PostgreSQL混合版本分页或Auth／RLS已经验收。
 
 两个读取字段不使用请求内缓存，同一请求的重复别名也重新核候选权限，不重放旧标题或清单。列表显式限定1–100条，不返回全库总数；打开核实稳定锚点，返回按当前身份重建的原候选get/records/geometry请求。私有归属、委托责任及项目分享沿用REST边界；撤回不改变原候选。既有接收及已发布保存字段保持不变。真实认证恢复、SQL／RLS及浏览器验收与模式／合成接口检查分别记录。
+
+## 转换信任传输边界
+
+候选转换声明、服务端核验及固定来源窄读契约通过 `@wiser/data-contracts/candidate-conversion` 导出。查询 `dataIngestionCandidateProvenance(input: JSON!): JSON!` 映射到已注册的 `data.ingestion.candidate.provenance.get` 窄读，与 REST 复用严格固定引用、当前候选权限和有界输出。重复别名不使用请求内记忆缓存，每次执行均重新核对可见性；传输返回前再次核对权限并使用 `no-store`。不接收上传的核验标志，不暴露私有存储键或自由清单。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。

@@ -87,6 +87,10 @@ const validInputs = {
   'data.ingestion.candidate.view.list': { first: 2 },
   'data.ingestion.candidate.view.open': { viewId: OPERATION_ID },
   'data.ingestion.candidate.view.revoke': { viewId: OPERATION_ID },
+  'data.ingestion.candidate.provenance.get': {
+    ...savedCandidateReference,
+    preparedAssetId: ASSET_ID,
+  },
   'data.ingestion.candidate.get': {
     kind: 'ingestion-candidate',
     ingestionId: INGESTION_ID,

@@ -48,6 +48,7 @@ const EXPECTED_DATA_TOOLS = [
   'data_ingestion_candidate_get',
   'data_ingestion_candidate_records',
   'data_ingestion_candidate_geometry',
+  'data_ingestion_candidate_provenance_get',
   'data_ingestion_candidate_view_create',
   'data_ingestion_candidate_view_list',
   'data_ingestion_candidate_view_open',
@@ -154,6 +155,48 @@ describe('Data Foundation MCP module', () => {
     ]);
     expect(JSON.stringify(result.structuredContent)).not.toContain('versionId');
   });
+  it('reads a fixed conversion summary only through the standard HTTP tool', async () => {
+    const http = new RecordingDataHttpClient();
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'e'.repeat(64),
+    };
+    const input = { ...reference, preparedAssetId: EVIDENCE_ID };
+    http.next = { reference, preparedAssetId: EVIDENCE_ID, check: null };
+    const client = await connect(http);
+    const result = await client.callTool({
+      name: 'data_ingestion_candidate_provenance_get',
+      arguments: input,
+    });
+    expect(result.structuredContent).toMatchObject({
+      ok: true,
+      data: http.next,
+    });
+    expect(http.requests).toEqual([
+      {
+        method: 'GET',
+        path: `/ingestions/${INGESTION_ID}/candidates/${VERSION_ID}/${EVIDENCE_ID}/provenance`,
+        headers: {
+          'X-Wiser-Tenant-Id': TENANT_ID,
+          'X-Wiser-Project-Id': PROJECT_ID,
+          'X-Wiser-Purpose': 'analysis',
+        },
+        query: {
+          kind: 'ingestion-candidate',
+          reviewHash: reference.reviewHash,
+        },
+      },
+    ]);
+    const invalid = await client.callTool({
+      name: 'data_ingestion_candidate_provenance_get',
+      arguments: { ...input, verified: true },
+    });
+    expect(invalid.isError).toBe(true);
+    expect(http.requests).toHaveLength(1);
+  });
+
   it('registers every static Capability mapping and no arbitrary execution tool', async () => {
     const client = await connect(new RecordingDataHttpClient());
     const names = (await client.listTools()).tools.map(({ name }) => name);

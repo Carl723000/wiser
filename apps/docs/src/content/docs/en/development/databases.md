@@ -255,3 +255,18 @@ Apply additive `0040_managed_intake_access.sql` after 0039, then reprovision run
 Apply additive `0042_ingestion_candidate_saved_views.sql` after 0037–0041 with the existing checked-sum Data runner, then reprovision runtime roles. The new `service.ingestion_candidate_saved_view` contains immutable scoped creator/delegator/purpose and exact candidate references plus strict display state, not a second source/Auth database. Invoker helpers read existing candidate RLS without a saved-table recursion; API-only live authority and every member intersect tenant/project/security/policy. Private ownership or explicit project sharing never grants material access. Configuration is immutable; only the current responsible owner may set revoked_at once.
 
 Runtime provisioning must retain SELECT/INSERT plus column-only UPDATE(revoked_at), denying broad UPDATE/DELETE and Worker writes. `packages/data-infra/test/migrations/ingestion-candidate-saved.spec.ts` runs in the existing isolated PostgreSQL CI step with `WISER_DATA_PG_INTEGRATION=1`: cumulative legal FINGERPRINTED/CLEAN/versionless originals, all references, owner/delegator versus independent reviewer, stale checkpoint, scope/expiry/purpose withdrawal, immutable state, revoke and provisioning regression. Fixtures roll back. An ordinary-unit skip is unverified SQL, not a pass. Do not reset preview data or alter applied checksums. Disable the new capabilities or restore a compatible build to recover, preserving candidate/saved history; actual Auth/Worker/browser recovery and export gates remain separate.
+
+## Candidate conversion carrier (0043)
+
+`0043_candidate_conversion_trust.sql` adds one private single-purpose result table without rewriting old migrations or candidate outcomes. FORCE RLS reuses the scoped candidate authority. INSERT requires the current processing job/attempt/lease, exact O/P/manifest members and sizes/hashes, current review governance and immutable submission responsibility. UPDATE/DELETE are denied; a deferred constraint requires result and completed candidate in the same transaction. Old completed batches cannot acquire a new result through this insert path. The fixed purpose identifies conversion verification and does not invent the original business authorization purpose.
+
+Runtime provisioning now restores this exception after its generic table grants and role creation: inherited runtime writes are revoked, API has SELECT only, and Worker has SELECT/INSERT only. No metadata-reader or GIS grant is added. The static order regression checks the exception placement; the conditional isolated PostgreSQL fixture verifies effective privileges after two reprovisioning passes, and remains unverified when skipped:
+
+```sql
+revoke all on ingestion.candidate_conversion_check
+  from wiser_data_runtime, wiser_data_api, wiser_data_worker;
+grant select on ingestion.candidate_conversion_check to wiser_data_api;
+grant select, insert on ingestion.candidate_conversion_check to wiser_data_worker;
+```
+
+Public read output excludes internal responsibility/job data. The new conditional migration test exercises real role/lease/member/immutability/commit denials when the isolated PostgreSQL harness enables it; skipped unit execution is not RLS proof. Actual sandbox conversion and Worker same-transaction integration remain required.

@@ -180,6 +180,12 @@ do $$ begin
     grant update(status,reason,record_count,feature_count,columns) on ingestion.candidate_asset to wiser_data_runtime;
     revoke update on ingestion.candidate_record from wiser_data_runtime;
   end if;
+  if to_regclass('ingestion.candidate_conversion_check') is not null then
+    revoke all on ingestion.candidate_conversion_check
+      from wiser_data_runtime,wiser_data_api,wiser_data_worker;
+    grant select on ingestion.candidate_conversion_check to wiser_data_api;
+    grant select,insert on ingestion.candidate_conversion_check to wiser_data_worker;
+  end if;
   if to_regclass('ingestion.project_review_policy') is not null then
     revoke insert,update,delete on ingestion.project_review_policy from wiser_data_runtime;
   end if;

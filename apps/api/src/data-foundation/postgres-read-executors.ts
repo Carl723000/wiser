@@ -3,6 +3,7 @@ import {
   setCandidateReadAuthority,
 } from './candidate-read-authority.js';
 import { applyResourceReadScope } from './resource-read-scope.js';
+import { createCandidateConversionProvenanceReader } from './ingestion-candidate-provenance.js';
 import {
   pendingIntakeAuthority,
   canReadPendingSubmission,
@@ -1455,6 +1456,7 @@ export function createPostgresDataReadRuntime(
 
   const executors = Object.freeze([
     ...candidateReadExecutors(transactions),
+    createCandidateConversionProvenanceReader(pool),
     define('data.catalog.search', async (raw, context) => {
       const input = parsedInput('data.catalog.search', raw);
       const scope = cursorScope('data.catalog.search', context, input);

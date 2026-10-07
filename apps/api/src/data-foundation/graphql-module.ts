@@ -165,6 +165,7 @@ type Query {
   dataIngestionCandidate(input: JSON!): JSON!
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
+  dataIngestionCandidateProvenance(input: JSON!): JSON!
   dataIngestion(id: ID!): JSON
   dataIngestionDetail(id: ID!): JSON!
   dataOperationEvents(id: ID!, first: Int, after: String): JSON!
@@ -235,6 +236,7 @@ export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   dataIngestionCandidate: 'data.ingestion.candidate.get',
   dataIngestionCandidateRecords: 'data.ingestion.candidate.records',
   dataIngestionCandidateGeometry: 'data.ingestion.candidate.geometry',
+  dataIngestionCandidateProvenance: 'data.ingestion.candidate.provenance.get',
   dataOperationEvents: 'data.operation.events',
   createDataAnalysis: 'data.analysis.create',
   createDataIngestion: 'data.ingestion.create',
@@ -350,7 +352,8 @@ class CapabilityLoader {
     }
     if (
       capabilityId === 'data.ingestion.candidate.view.list' ||
-      capabilityId === 'data.ingestion.candidate.view.open'
+      capabilityId === 'data.ingestion.candidate.view.open' ||
+      capabilityId === 'data.ingestion.candidate.provenance.get'
     ) {
       return this.#handler.execute({
         capabilityId,
@@ -789,6 +792,16 @@ const resolvers = {
       args: { input: unknown },
       context: GraphqlContext,
     ) => executeQuery(context, 'data.ingestion.candidate.geometry', args.input),
+    dataIngestionCandidateProvenance: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(
+        context,
+        'data.ingestion.candidate.provenance.get',
+        args.input,
+      ),
     dataOperationEvents: (
       _: unknown,
       args: { id: string; first?: number; after?: string },

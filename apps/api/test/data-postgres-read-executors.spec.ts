@@ -345,12 +345,13 @@ describe('data-postgres RLS read executors', () => {
     expect(output).toEqual({ totalCount: 0, items: [] });
   });
 
-  it('provides the seven existing reads and three scoped candidate reads', () => {
+  it('provides existing reads, scoped candidate reads and fixed conversion provenance', () => {
     const runtime = createPostgresDataReadRuntime(new FakePool());
     expect(runtime.executors.map(({ id }) => id)).toEqual([
       'data.ingestion.candidate.get',
       'data.ingestion.candidate.records',
       'data.ingestion.candidate.geometry',
+      'data.ingestion.candidate.provenance.get',
       'data.catalog.search',
       'data.catalog.get',
       'data.catalog.versions.list',

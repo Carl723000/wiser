@@ -144,3 +144,35 @@ test('restores only the business-membership validator after roles are provisione
   );
   assert.doesNotMatch(sql, /grant execute on all functions in schema service/);
 });
+
+// Bootstrap grants must not undo the approved Worker-only conversion carrier.
+// This checks provisioning order; real role privileges are independently tested
+// by the conditional isolated PostgreSQL fixture.
+test('narrows conversion result roles after inherited common grants', async () => {
+  const sql = (await readFile(sqlPath, 'utf8')).toLowerCase();
+  const common = sql.indexOf('grant select, insert, update on all tables');
+  const start = sql.indexOf(
+    "if to_regclass('ingestion.candidate_conversion_check') is not null then",
+  );
+  assert.ok(
+    start > common,
+    'conversion grants must narrow common inherited writes',
+  );
+  const end = sql.indexOf('end if;', start);
+  assert.ok(end > start);
+  const block = sql.slice(start, end);
+  assert.match(
+    block,
+    /revoke all on ingestion\.candidate_conversion_check\s+from wiser_data_runtime,\s*wiser_data_api,\s*wiser_data_worker;/,
+  );
+  assert.match(
+    block,
+    /grant select on ingestion\.candidate_conversion_check to wiser_data_api;/,
+  );
+  assert.match(
+    block,
+    /grant select,\s*insert on ingestion\.candidate_conversion_check to wiser_data_worker;/,
+  );
+  assert.doesNotMatch(block, /grant[^;]+to wiser_data_runtime/);
+  assert.doesNotMatch(block, /grant[^;]+\b(update|delete|truncate)\b/);
+});

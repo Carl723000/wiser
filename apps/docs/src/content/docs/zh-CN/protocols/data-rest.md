@@ -473,3 +473,9 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 清单保持1–100个唯一候选引用，完整创建结果保持UTF-8 JSON最多128 KiB。拟固定字段上限为：问题2,000字，区域编号32个，需求编号64个，记录／依赖pin各200个，规则pin32个，关系pin100个，源内对象key256字，规则／解析器标识及版本128字。规则须包含实际采用的四种类别，关系可为空。新规格中决定版本0表示尚无追加候选决定，不能代表批准；关系修订从1开始。服务器保存前仍须核对真实原件哈希、处理版本、记录／几何哈希、关系来源依赖及决定历史。
 
 版本分派只接受严格的无版本v1或完整v2；未知、不完整规格拒绝，不能删字段伪装v1。v1时段保持显示状态，旧月／年字段不重新解释成日时窗。旧列表已在SQL `LIMIT`之前过滤版本，旧打开入口已安全拒绝明确版本，具体见上文。原保存表v2约束迁移及三个分别注册的专题能力仍留给后续集成；定向回归未证明混合版本SQL分页或真实Auth／RLS恢复。已发布视图仍沿独立原合同。
+
+## 转换来源窄读接线边界
+
+`createCandidateConversionProvenanceReader` 经标准 PostgreSQL 读取运行时提供已注册的固定引用窄读 `data.ingestion.candidate.provenance.get`，严格输入为 `{kind, ingestionId, reviewHash, processingBatchId, preparedAssetId}`。当前可读、已完成的指定成员返回固定身份及有界核验结果，尚无核验时返回 `check: null`；不可读或跨身份成员返回 NOT_FOUND。沿用候选维护者／独立审核者权限；等待只读事务提交后，返回前再次核对同一上下文的主体／范围期限及取消。实时 Auth 撤权仍须单独验收，响应不返回存储键、内部地址、任务载荷或自由清单。
+
+Registry 将这一严格查询映射为 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`，`kind` 与 `reviewHash` 保留为查询参数。受管准入仅增加该能力 ID。标准处理器保留仅含哈希的审计，传输返回前再次核对当前权限，并使用 `no-store` 响应。窄读沿用维护者（`data.operation.read` 与 `data.ingestion.write`）或独立人类审核者（`data.operation.read` 与 `data.publish`）资格，不新增 scope。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；本地注册接线不等于服务已运行。

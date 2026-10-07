@@ -255,3 +255,18 @@ WISER_DATA_RESET_CONFIRM=reset-wiser-data-foundation pnpm data:reset
 沿用Data校验和迁移器，在0037–0041后追加`0042_ingestion_candidate_saved_views.sql`并重新配置运行角色。新`service.ingestion_candidate_saved_view`保存不可变的范围、创建／委托／用途事实、固定候选引用及严格显示状态，不形成第二套来源或账号数据库。invoker辅助函数读取已有候选RLS，不递归查保存表；API角色的当前权限与全部成员共同核租户／项目、密级及策略。私有归属或明确项目分享不授予资料权限。配置不可变，仅当前责任所有人可一次设置revoked_at。
 
 角色重新配置须保留SELECT／INSERT及仅`UPDATE(revoked_at)`的列权限，禁止宽UPDATE／DELETE与Worker写入。`packages/data-infra/test/migrations/ingestion-candidate-saved.spec.ts`接入既有隔离PostgreSQL CI步骤，以`WISER_DATA_PG_INTEGRATION=1`检查累积迁移下合法FINGERPRINTED／CLEAN／无版本原件、全部引用、所有人／委托与独立审核者、失效检查点、范围／期限／用途撤回、不可变配置、撤回和角色配置回归；用例全部回滚。普通单元阶段跳过代表SQL未验证，不算通过。不重置预览数据、不改既有迁移校验和。恢复可关闭新能力或回退兼容构建，候选与保存历史保留；真实Auth、Worker、浏览器恢复及导出仍独立验收。
+
+## 候选转换载体（0043）
+
+`0043_candidate_conversion_trust.sql` 增加单用途私有结果表，不改旧迁移或候选结果。FORCE RLS 复用候选范围权限。INSERT 要求当前处理任务、尝试次数及租约，核对 O／P／清单的真实成员、大小与哈希、当前审核治理及不可变提交责任。禁止 UPDATE／DELETE，延迟约束要求结果与候选完成同事务提交；旧已完成批次不能通过该写入路径追加核验。固定用途只表示转换核验，不补造原业务授权用途。
+
+运行角色配置已在角色创建和通用表授权之后恢复此例外：撤回继承的runtime写入，仅给API SELECT、Worker SELECT／INSERT，不增加元数据读者或GIS授权。静态回归检查例外的顺序；隔离PostgreSQL用例核对两次重新配置后的实际权限，条件跳过时仍为未验证：
+
+```sql
+revoke all on ingestion.candidate_conversion_check
+  from wiser_data_runtime, wiser_data_api, wiser_data_worker;
+grant select on ingestion.candidate_conversion_check to wiser_data_api;
+grant select, insert on ingestion.candidate_conversion_check to wiser_data_worker;
+```
+
+公开窄读不返回内部任务与责任字段。新增条件迁移测试仅在隔离 PostgreSQL 栈启用后实际验证角色、租约、成员、不可变及提交拒绝；单元运行中的跳过不是 RLS 证据。真实沙箱转换与 Worker 同事务接线仍须完成。
