@@ -1,5 +1,10 @@
 """Actual synthetic DOCX ZIP/XML bytes, never a converter or SQL substitute."""
 import io
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 import unittest
 import zipfile
 
@@ -87,6 +92,33 @@ class FullWordStructureTest(unittest.TestCase):
         content = docx(paragraph("unchanged"))
         with self.assertRaises(WordStructureError) as caught:
             extract_word_structure(content, maximum_bytes=len(content)-1)
+        self.assertEqual(caught.exception.reason, "BUDGET_EXCEEDED")
+
+    def test_private_cli_reads_actual_bytes_and_emits_only_the_strict_envelope(self):
+        content = docx(paragraph("2023年4月")+table('<w:tr>'+cell("")+cell("0")+'</w:tr>'))
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/"source.docx"
+            source.write_bytes(content)
+            command = [sys.executable, str(Path(__file__).with_name("word_structure.py")), str(source), str(len(content))]
+            process = subprocess.run(command, capture_output=True, timeout=5, check=True)
+            response = json.loads(process.stdout)
+            self.assertEqual(response, {"kind": "STRUCTURE", "structure": extract_word_structure(content)})
+            self.assertEqual(process.stderr, b"")
+            source.write_bytes(b"invalid DOCX")
+            response = json.loads(subprocess.run(command, capture_output=True, timeout=5, check=True).stdout)
+            self.assertEqual(response, {"kind": "UNVERIFIABLE", "reason": "INVALID_STRUCTURE"})
+
+    def test_rejects_unsafe_archive_and_excessive_xml_depth_instead_of_omitting_content(self):
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("../unexpected.xml", "outside")
+            archive.writestr("word/document.xml", "unused")
+        with self.assertRaises(WordStructureError) as caught:
+            extract_word_structure(output.getvalue())
+        self.assertEqual(caught.exception.reason, "INVALID_STRUCTURE")
+        body = "<w:p>" + "<w:r>"*130 + "<w:t>deep</w:t>" + "</w:r>"*130 + "</w:p>"
+        with self.assertRaises(WordStructureError) as caught:
+            extract_word_structure(docx(body))
         self.assertEqual(caught.exception.reason, "BUDGET_EXCEEDED")
 
 

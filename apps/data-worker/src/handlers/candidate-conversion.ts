@@ -19,6 +19,31 @@ type UnverifiableReason = Exclude<
   'STRUCTURE_DIFFERENT'
 >;
 
+const StructureFailureReasonSchema =
+  CandidateConversionCheckSchema.shape.failureReason
+    .unwrap()
+    .exclude(['STRUCTURE_DIFFERENT']);
+
+/** Strict private shape and enum; unknown kinds/errors never become tool failures. */
+export function candidateStructureFailure(
+  value: unknown,
+): UnverifiableReason | null {
+  if (value === null || typeof value !== 'object') return null;
+  const fields = Object.getOwnPropertyDescriptors(value);
+  if (!Object.hasOwn(fields, 'kind')) return null;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (
+    (prototype !== Object.prototype && prototype !== null) ||
+    Reflect.ownKeys(fields).length !== 2 ||
+    !Object.hasOwn(fields, 'reason') ||
+    !Object.hasOwn(fields['kind']!, 'value') ||
+    !Object.hasOwn(fields['reason']!, 'value') ||
+    fields['kind']!.value !== 'UNVERIFIABLE'
+  )
+    throw new Error('Invalid private structure runner outcome');
+  return StructureFailureReasonSchema.parse(fields['reason']!.value);
+}
+
 /** Host-only port: discover actual tool identity; never accept it from claims. */
 export interface CandidateConversionRunner {
   reconvert(input: {
@@ -99,12 +124,17 @@ export async function verifyCandidateConversion(input: {
     checkAuthority: input.checkAuthority,
   });
   await input.checkAuthority();
+  const preparedFailure = candidateStructureFailure(prepared);
+  if (preparedFailure) return unverifiable(preparedFailure, converted.tool);
   const reconverted = await input.runner.extractStructure({
     bytes: converted.bytes,
     maximumBytes: input.maximumBytes,
     checkAuthority: input.checkAuthority,
   });
   await input.checkAuthority();
+  const reconvertedFailure = candidateStructureFailure(reconverted);
+  if (reconvertedFailure)
+    return unverifiable(reconvertedFailure, converted.tool);
   const comparison = compareCandidateConversionStructure(prepared, reconverted);
   if (comparison.kind === 'UNVERIFIABLE')
     return unverifiable(comparison.reason, converted.tool);

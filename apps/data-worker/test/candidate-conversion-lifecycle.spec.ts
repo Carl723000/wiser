@@ -178,7 +178,8 @@ function fixture(
       await Promise.resolve();
       extracted.push(input.bytes.slice());
       if (options.extractionError) throw options.extractionError;
-      if (options.extractionResult !== undefined) return options.extractionResult;
+      if (options.extractionResult !== undefined)
+        return options.extractionResult;
       const structure = structuredClone(wordStructure);
       if (options.invalidStructure) return { tables: [] };
       if (options.alternateWidth) structure.tables[0]!.width.value = '10000';
@@ -234,30 +235,44 @@ function fixture(
 }
 
 describe('historical conversion in the actual pending candidate handler', () => {
-  it.each(['TOOL_UNAVAILABLE', 'CONVERSION_FAILED', 'INVALID_STRUCTURE', 'BUDGET_EXCEEDED'])(
-    'preserves explicit private structure failure %s', async (reason) => {
-      const f = fixture({ extractionResult: { kind: 'UNVERIFIABLE', reason } });
-      await f.process(job);
-      const values = f.calls.find((c) => c.sql.includes('candidate.insert-conversion-check'))!.values;
-      expect(values[17]).toBe('UNVERIFIABLE');
-      expect(values[26]).toBe(reason);
-      expect(values[25]).toBeNull();
-      expect(f.extracted).toHaveLength(1);
-      expect(f.calls.at(-1)!.sql).toBe('commit');
-    },
-  );
+  it.each([
+    'TOOL_UNAVAILABLE',
+    'CONVERSION_FAILED',
+    'INVALID_STRUCTURE',
+    'BUDGET_EXCEEDED',
+  ])('preserves explicit private structure failure %s', async (reason) => {
+    const f = fixture({ extractionResult: { kind: 'UNVERIFIABLE', reason } });
+    await f.process(job);
+    const values = f.calls.find((c) =>
+      c.sql.includes('candidate.insert-conversion-check'),
+    )!.values;
+    expect(values[17]).toBe('UNVERIFIABLE');
+    expect(values[26]).toBe(reason);
+    expect(values[25]).toBeNull();
+    expect(f.extracted).toHaveLength(1);
+    expect(f.calls.at(-1)!.sql).toBe('commit');
+  });
   it.each([
     { kind: 'UNKNOWN', reason: 'INVALID_STRUCTURE' },
     { kind: 'UNVERIFIABLE', reason: 'STRUCTURE_DIFFERENT' },
     { kind: 'UNVERIFIABLE', reason: 'INVALID_STRUCTURE', extra: true },
-  ])('rejects malformed private structure outcomes and rolls back', async (extractionResult) => {
-    const f = fixture({ extractionResult });
-    await expect(f.process(job)).rejects.toMatchObject({ category: 'CANDIDATE_PROCESSING_TEMPORARY' });
-    expect(f.calls.at(-1)!.sql).toBe('rollback');
-  });
+  ])(
+    'rejects malformed private structure outcomes and rolls back',
+    async (extractionResult) => {
+      const f = fixture({ extractionResult });
+      await expect(f.process(job)).rejects.toMatchObject({
+        category: 'CANDIDATE_PROCESSING_TEMPORARY',
+      });
+      expect(f.calls.at(-1)!.sql).toBe('rollback');
+    },
+  );
   it('propagates an unexpected authority or adapter exception during structure extraction', async () => {
-    const f = fixture({ extractionError: new Error('synthetic authority failure') });
-    await expect(f.process(job)).rejects.toMatchObject({ category: 'CANDIDATE_PROCESSING_TEMPORARY' });
+    const f = fixture({
+      extractionError: new Error('synthetic authority failure'),
+    });
+    await expect(f.process(job)).rejects.toMatchObject({
+      category: 'CANDIDATE_PROCESSING_TEMPORARY',
+    });
     expect(f.calls.at(-1)!.sql).toBe('rollback');
   });
   it('uses actual O/P bytes and writes the immutable result after asset outcomes before same-client completion', async () => {
