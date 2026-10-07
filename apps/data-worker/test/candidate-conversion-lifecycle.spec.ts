@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   AnalysisContentError,
+  ANALYSIS_PARSER_VERSION,
   createIngestionCandidateRecordBinder,
   type ClaimedDataJob,
   type DataPostgresPool,
 } from '@wiser/data-infra';
 import { canonicalPipelineHash } from '../src/handlers/ingestion-pipeline.js';
 import { createIngestionCandidateProcessor } from '../src/handlers/ingestion-candidate.js';
+import type { CandidateConversionRunner } from '../src/handlers/candidate-conversion.js';
 import {
   wordHash,
   wordPairFixture,
@@ -47,9 +49,19 @@ function fixture(
     difference?: boolean;
     leaseLost?: boolean;
     sqlFailure?: string;
+    noClaims?: boolean;
+    toolFailure?: 'CONVERSION_FAILED' | 'BUDGET_EXCEEDED';
+    toolError?: Error;
+    invalidStructure?: boolean;
+    alternateWidth?: boolean;
+    corruptPrepared?: boolean;
   } = {},
 ) {
-  const pair = wordPairFixture(tenant, project);
+  const pair = wordPairFixture(
+    tenant,
+    project,
+    options.noClaims ? { candidateConversionPairs: undefined } : {},
+  );
   const declarations = [structuredClone(pair.declaration)];
   if (options.drift) declarations[0]!.sourceLocalWorkId = 'producer-drift';
   const base = {
@@ -57,7 +69,9 @@ function fixture(
     assetManifest: {
       reviewGovernance: policy,
       sourceRegistration: pair.registration,
-      candidateConversionDeclarations: declarations,
+      ...(options.noClaims
+        ? {}
+        : { candidateConversionDeclarations: declarations }),
       assets: pair.assets.map((a) => ({
         ...a,
         quarantineObjectRef: a.objectRef,
@@ -70,11 +84,15 @@ function fixture(
   const calls: { sql: string; values: readonly unknown[] }[] = [];
   const conversions: Uint8Array[] = [];
   const extracted: Uint8Array[] = [];
+  const reads: string[] = [];
+  let completedBatch: unknown;
   let toolFinished = false;
   const pool: DataPostgresPool = {
     async connect() {
+      await Promise.resolve();
       return {
         async query(sql, values = []) {
+          await Promise.resolve();
           calls.push({ sql, values });
           if (options.sqlFailure && sql.includes(options.sqlFailure))
             throw new Error('synthetic SQL failure');
@@ -108,7 +126,11 @@ function fixture(
                 byte_size: a.size,
               })),
             };
-          if (sql.includes('candidate.load-batch')) return { rows: [] };
+          if (sql.includes('candidate.load-batch'))
+            return {
+              rows:
+                completedBatch === undefined ? [] : [{ batch: completedBatch }],
+            };
           if (
             sql.includes('candidate.lease-fence') ||
             sql.includes('candidate.conversion-authority')
@@ -124,9 +146,11 @@ function fixture(
         release() {},
       };
     },
-    async end() {},
+    end() {
+      return Promise.resolve();
+    },
   };
-  const conversionRunner = {
+  const conversionRunner: CandidateConversionRunner = {
     async reconvert(input: {
       originalBytes: Uint8Array;
       maximumBytes: number;
@@ -134,7 +158,10 @@ function fixture(
     }) {
       conversions.push(input.originalBytes.slice());
       await input.checkAuthority();
+      if (options.toolError) throw options.toolError;
       toolFinished = true;
+      if (options.toolFailure)
+        return { kind: 'UNVERIFIABLE', reason: options.toolFailure };
       return {
         kind: 'CONVERTED',
         bytes: new TextEncoder().encode('synthetic reconverted DOCX'),
@@ -146,8 +173,11 @@ function fixture(
       };
     },
     async extractStructure(input: { bytes: Uint8Array }) {
+      await Promise.resolve();
       extracted.push(input.bytes.slice());
       const structure = structuredClone(wordStructure);
+      if (options.invalidStructure) return { tables: [] };
+      if (options.alternateWidth) structure.tables[0]!.width.value = '10000';
       if (options.difference && extracted.length === 2)
         structure.tables[0]!.rows[0]!.cells[1]!.text = ' ';
       return structure;
@@ -157,11 +187,16 @@ function fixture(
     pool,
     ...(options.tool === false ? {} : { conversionRunner }),
     async read(input) {
+      await Promise.resolve();
+      reads.push(input.uploadId);
       const index = pair.assets.findIndex((a) => a.uploadId === input.uploadId);
       if (index < 0) throw Error('unknown byte stream');
+      if (options.corruptPrepared && index === 1)
+        return new TextEncoder().encode('corrupted bytes');
       return pair.contents[index]!.slice();
     },
     async *parseExternal(input) {
+      await Promise.resolve();
       if (input.assetId === pair.pair.original.assetId)
         throw new AnalysisContentError('PARSING_FAILED');
       const bind = createIngestionCandidateRecordBinder(input);
@@ -181,7 +216,17 @@ function fixture(
       };
     },
   });
-  return { pair, calls, conversions, extracted, process };
+  return {
+    pair,
+    calls,
+    conversions,
+    extracted,
+    reads,
+    process,
+    setCompleted: (batch: unknown) => {
+      completedBatch = batch;
+    },
+  };
 }
 
 describe('historical conversion in the actual pending candidate handler', () => {
@@ -251,12 +296,14 @@ describe('historical conversion in the actual pending candidate handler', () => 
     async (failure) => {
       const f = fixture({
         leaseLost: failure === 'lease',
-        sqlFailure:
-          failure === 'insert'
-            ? 'candidate.insert-conversion-check'
-            : failure === 'commit'
-              ? 'commit'
-              : undefined,
+        ...(failure === 'lease'
+          ? {}
+          : {
+              sqlFailure:
+                failure === 'insert'
+                  ? 'candidate.insert-conversion-check'
+                  : 'commit',
+            }),
       });
       await expect(f.process(job)).rejects.toMatchObject({
         category:
@@ -267,4 +314,134 @@ describe('historical conversion in the actual pending candidate handler', () => 
       expect(f.calls.at(-1)!.sql).toBe('rollback');
     },
   );
+  it('preserves the no-key path without invoking conversion or adding a result', async () => {
+    const f = fixture({ noClaims: true });
+    expect(await f.process(job)).toMatchObject({
+      status: 'PARTIAL',
+      parsedRecordCount: 1,
+    });
+    expect(f.conversions).toEqual([]);
+    expect(
+      f.calls.some((c) => c.sql.includes('candidate.insert-conversion-check')),
+    ).toBe(false);
+    expect(
+      f.calls.some((c) => c.sql.includes('candidate.conversion-authority')),
+    ).toBe(false);
+  });
+  it('replays a completed claimed batch without rereading bytes or backfilling checks', async () => {
+    const f = fixture();
+    const result = await f.process(job);
+    f.setCompleted({
+      reference: result['reference'],
+      parserVersion: ANALYSIS_PARSER_VERSION,
+      status: 'PARTIAL',
+      createdAt: '2026-10-08T00:00:00.000Z',
+      assets: f.pair.assets.map((asset, index) => ({
+        assetId: asset.assetId,
+        sourceHash: asset.sourceHash,
+        status: index === 1 ? 'READY' : 'UNSUPPORTED',
+        reason:
+          index === 1
+            ? null
+            : index === 0
+              ? 'PARSING_FAILED'
+              : 'SOURCE_MANIFEST',
+        recordCount: index === 1 ? 1 : null,
+        featureCount: index === 1 ? 0 : null,
+      })),
+    });
+    const before = {
+      reads: f.reads.length,
+      conversions: f.conversions.length,
+      queries: f.calls.length,
+    };
+    expect(await f.process(job)).toMatchObject({
+      status: 'PARTIAL',
+      parsedRecordCount: 1,
+    });
+    expect(f.reads).toHaveLength(before.reads);
+    expect(f.conversions).toHaveLength(before.conversions);
+    expect(
+      f.calls
+        .slice(before.queries)
+        .some((c) => c.sql.includes('candidate.insert-conversion-check')),
+    ).toBe(false);
+  });
+  it.each(['CONVERSION_FAILED', 'BUDGET_EXCEEDED'] as const)(
+    'retains explicit ordinary tool failure %s',
+    async (reason) => {
+      const f = fixture({ toolFailure: reason });
+      await f.process(job);
+      const values = f.calls.find((c) =>
+        c.sql.includes('candidate.insert-conversion-check'),
+      )!.values;
+      expect(values[17]).toBe('UNVERIFIABLE');
+      expect(values[25]).toBeNull();
+      expect(values[26]).toBe(reason);
+      expect(f.calls.at(-1)!.sql).toBe('commit');
+    },
+  );
+  it('rejects invalid full structures without claiming equivalence', async () => {
+    const f = fixture({ invalidStructure: true });
+    await f.process(job);
+    const values = f.calls.find((c) =>
+      c.sql.includes('candidate.insert-conversion-check'),
+    )!.values;
+    expect(values[17]).toBe('UNVERIFIABLE');
+    expect(values[26]).toBe('INVALID_STRUCTURE');
+    expect(values[25]).toBeNull();
+  });
+  it('hashes the full compared structure even when summary counts are unchanged', async () => {
+    const a = fixture(),
+      b = fixture({ alternateWidth: true });
+    await a.process(job);
+    await b.process(job);
+    const av = a.calls.find((c) =>
+      c.sql.includes('candidate.insert-conversion-check'),
+    )!.values;
+    const bv = b.calls.find((c) =>
+      c.sql.includes('candidate.insert-conversion-check'),
+    )!.values;
+    expect(av[17]).toBe('VERIFIED_EQUIVALENT');
+    expect(bv[17]).toBe('VERIFIED_EQUIVALENT');
+    expect(av[25]).toBe(bv[25]);
+    expect(av[24]).not.toBe(bv[24]);
+  });
+  it.each([
+    {
+      toolError: new Error('synthetic unexpected adapter failure'),
+      category: 'CANDIDATE_PROCESSING_TEMPORARY',
+    },
+    { corruptPrepared: true, category: 'CANDIDATE_OBJECT_INTEGRITY' },
+  ])(
+    'rolls back unexpected runner or actual-byte integrity failure',
+    async (options) => {
+      const f = fixture(options);
+      await expect(f.process(job)).rejects.toMatchObject({
+        category: options.category,
+      });
+      expect(f.calls.at(-1)!.sql).toBe('rollback');
+      expect(
+        f.calls.some((c) =>
+          c.sql.includes('candidate.insert-conversion-check'),
+        ),
+      ).toBe(false);
+    },
+  );
+  it('keeps the first job FOR UPDATE after the long runner and all asset outcomes', async () => {
+    const f = fixture();
+    await f.process(job);
+    const firstLock = f.calls.findIndex(
+      (c) => c.sql.includes('ingestion.job') && c.sql.includes('for update'),
+    );
+    const lastRead = f.calls.findLastIndex((c) =>
+      c.sql.includes('candidate.conversion-authority'),
+    );
+    expect(firstLock).toBeGreaterThan(lastRead);
+    expect(
+      f.calls
+        .filter((c) => c.sql.includes('candidate.conversion-authority'))
+        .every((c) => !c.sql.includes('for update')),
+    ).toBe(true);
+  });
 });

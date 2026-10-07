@@ -810,7 +810,7 @@ describe('Agent-native ingestion pipeline', () => {
 describe('historical Word claims at the real freeze producer', () => {
   it('derives from actual registered M before reviewHash and candidate dispatch', async () => {
     const fixture = setup();
-    const pair = wordPairFixture(job.tenantId, job.projectId);
+    const pair = wordPairFixture(job.tenantId!, job.projectId!);
     const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
     fixture.authority.assets = pair.assets;
     fixture.authority.sourceRegistration = pair.registration;
@@ -827,6 +827,7 @@ describe('historical Word claims at the real freeze producer', () => {
       sourceRegistration: { readManifest: () => Promise.resolve(pair.body) },
       pendingCandidate: {
         async process() {
+          await Promise.resolve();
           dispatched = true;
           return { status: 'PARTIAL' };
         },
@@ -839,9 +840,14 @@ describe('historical Word claims at the real freeze producer', () => {
     ]);
     const { reviewHash, ...base } = saved;
     expect(reviewHash).toBe(canonicalPipelineHash(base));
-    const changed = structuredClone(base);
-    delete changed.assetManifest['candidateConversionDeclarations'];
-    expect(canonicalPipelineHash(changed)).not.toBe(reviewHash);
+    const withoutDeclaration = Object.fromEntries(
+      Object.entries(base.assetManifest).filter(
+        ([key]) => key !== 'candidateConversionDeclarations',
+      ),
+    );
+    expect(
+      canonicalPipelineHash({ ...base, assetManifest: withoutDeclaration }),
+    ).not.toBe(reviewHash);
   });
   it.each([
     'unknown-version',
@@ -852,7 +858,7 @@ describe('historical Word claims at the real freeze producer', () => {
     'duplicate-prepared',
   ])('rejects %s claims before freezing', async (change) => {
     const fixture = setup();
-    const seed = wordPairFixture(job.tenantId, job.projectId);
+    const seed = wordPairFixture(job.tenantId!, job.projectId!);
     const claims: Record<string, unknown> = structuredClone(seed.claims);
     const pairs = claims['pairs'] as Array<Record<string, unknown>>;
     if (change === 'unknown-version') claims['schemaVersion'] = 'future';
@@ -868,7 +874,7 @@ describe('historical Word claims at the real freeze producer', () => {
     if (change === 'wrong-size')
       (pairs[0]!['original'] as Record<string, unknown>)['byteSize'] = 1;
     if (change === 'duplicate-prepared') pairs.push(structuredClone(pairs[0]!));
-    const pair = wordPairFixture(job.tenantId, job.projectId, {
+    const pair = wordPairFixture(job.tenantId!, job.projectId!, {
       candidateConversionPairs: claims,
     });
     fixture.authority.assets = pair.assets;

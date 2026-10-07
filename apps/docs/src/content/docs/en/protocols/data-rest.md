@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: 854d4833d8fa72087bcd175aac44e197fcc33d3b
 ---
 
 ## Protocol boundary
@@ -482,7 +482,7 @@ Version dispatch accepts strict versionless v1 or complete v2 only. An unknown o
 
 `createCandidateConversionProvenanceReader` supplies the registered fixed-reference read `data.ingestion.candidate.provenance.get` through the standard PostgreSQL read runtime. Its strict input is `{kind, ingestionId, reviewHash, processingBatchId, preparedAssetId}`. A currently readable, completed prepared member returns the same fixed identity and either a bounded conversion check or `check: null`; an unreadable or foreign member returns NOT_FOUND. Existing candidate maintainer/independent-reviewer authority is reused. After awaiting the read-only COMMIT, the executor checks the same context deadlines and cancellation again before returning; live Auth revocation remains a separate integration check. The response exposes no storage key, internal URL, job payload or free-form manifest.
 
-The registry maps this strict query to `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`; `kind` and `reviewHash` remain query parameters. Managed admission adds only this capability ID. The standard handler retains hash-only audit, and transport delivery rechecks current authority with a `no-store` response. The reader reuses maintenance (`data.operation.read` plus `data.ingestion.write`) or independent human review (`data.operation.read` plus `data.publish`) authority without new scopes. Trusted O → R′ conversion, Worker integration, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified; registered local wiring is not evidence of a live service.
+The registry maps this strict query to `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`; `kind` and `reviewHash` remain query parameters. Managed admission adds only this capability ID. The standard handler retains hash-only audit, and transport delivery rechecks current authority with a `no-store` response. The reader reuses maintenance (`data.operation.read` plus `data.ingestion.write`) or independent human review (`data.operation.read` plus `data.publish`) authority without new scopes. The Worker wires declaration freezing, independent manifest reconciliation and same-transaction writes through a private conversion port; without a trusted adapter the default remains `UNVERIFIABLE/TOOL_UNAVAILABLE`. Actual trusted O → R′ conversion, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified; registered local wiring is not evidence of a live service.
 
 ### Candidate relationship carrier: internal checkpoint
 

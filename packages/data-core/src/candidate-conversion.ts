@@ -167,8 +167,6 @@ export function candidateConversionEligibility(
   if (prepared.status !== 'READY' || prepared.recordCount === null)
     return { eligible: false, reason: 'SOURCE_NOT_READY' };
   if (
-    original.status !== 'UNSUPPORTED' ||
-    original.reason !== 'FORMAT_COMPANION' ||
     manifest.status !== 'UNSUPPORTED' ||
     manifest.reason !== 'SOURCE_MANIFEST' ||
     b.assets.some(

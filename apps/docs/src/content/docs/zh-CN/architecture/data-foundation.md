@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: 854d4833d8fa72087bcd175aac44e197fcc33d3b
 ---
 
 ## 当前可运行能力
@@ -631,7 +631,9 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 
 历史原件 O 与上传转换件 P 保留各自身份。转换声明与服务端核验结果分开，调用方的“已核验”标志不能赋予可信状态，历史 P 也不称平台生成。纯函数比较原始表宽、网格、物理单元格、合并、空文本、段落、月份标题及定位，不用文本归一化掩盖差异。限定资格判断可识别仍为 PARTIAL 的批次中已核验且 READY 的 P，不修改真实批次或原件状态；当前权限和完整记录分页仍须调用链核实。
 
-0043 迁移增加私有、不可变的 `ingestion.candidate_conversion_check` 载体，要求有效处理租约、精确冻结成员、不可变提交责任及当前治理，核验结果与候选完成须同事务提交。固定来源窄读已注册为 `data.ingestion.candidate.provenance.get`，使用严格输入／输出契约、受管准入和标准 PostgreSQL 读取运行时。REST、GraphQL 及经 HTTP 调用的 MCP 映射复用当前候选权限，只返回有界摘要。受信 O → R′ 转换执行、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；公开读取接线不等于转换闭环可用。
+0043 迁移增加私有、不可变的 `ingestion.candidate_conversion_check` 载体，要求有效处理租约、精确冻结成员、不可变提交责任及当前治理，核验结果与候选完成须同事务提交。固定来源窄读已注册为 `data.ingestion.candidate.provenance.get`，使用严格输入／输出契约、受管准入和标准 PostgreSQL 读取运行时。REST、GraphQL 及经 HTTP 调用的 MCP 映射复用当前候选权限，只返回有界摘要。Worker 已接入声明冻结、独立清单核对及同事务写入的私有转换端口；默认没有受信适配器时保留 `UNVERIFIABLE/TOOL_UNAVAILABLE`。真实受信 O → R′ 转换、Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；公开读取接线不等于转换闭环可用。
+
+严格的 `wiser.candidate-conversion-claims.v1` 声明只放在 `M.record.candidateConversionPairs` 保留键，含1–128对 O/P、源内作品编号及可空的历史工具版本，不含 M 身份、已核验标志或工具摘要。来源登记入口核实际成员哈希、大小及 DOC/DOCX 角色，从已核字节补齐 M 身份，在 `reviewHash` 前冻结完整声明；候选端从实际 M 独立派生声明，差异即拒绝。受信宿主端口读取实际 O/P 字节、发现工具身份并比较 P/R′ 完整 Word 结构，摘要哈希覆盖完整结构。实际资产结果保存后、批次仍为 PENDING 时写入核验，随后执行原提交前租约锁及完成操作。权限或数据库错误整事务回滚，明确工具失败保留有界原因；无键旧输入沿用原流程，已完成批次不补写。宿主端口须限制工具执行时间并透传取消／失租检查错误；单元调用顺序不能证明 PostgreSQL 并发验收。
 
 ## 候选关系私有载体
 

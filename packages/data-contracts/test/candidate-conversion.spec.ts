@@ -1,9 +1,91 @@
 import { describe, expect, it } from 'vitest';
 import {
   CandidateConversionDeclarationSchema,
+  CandidateConversionPairClaimsSchema,
   CandidateConversionCheckSchema,
   GetCandidateConversionProvenanceOutputSchema,
 } from '../src/ingestion/candidate-conversion.ts';
+
+describe('versioned source manifest pair claims', () => {
+  const pair = {
+    original: {
+      assetId: 'a1000000-0000-4000-8000-000000000001',
+      sha256: 'a'.repeat(64),
+      byteSize: 12,
+    },
+    prepared: {
+      assetId: 'a1000000-0000-4000-8000-000000000002',
+      sha256: 'b'.repeat(64),
+      byteSize: 18,
+    },
+    sourceLocalWorkId: 'monthly-2023-04',
+    historicalToolVersion: null,
+  };
+  const claims = {
+    schemaVersion: 'wiser.candidate-conversion-claims.v1',
+    pairs: [pair],
+  };
+  it('accepts only partial claims, leaving actual M identity to the server', () => {
+    expect(CandidateConversionPairClaimsSchema.parse(claims)).toEqual(claims);
+  });
+  it.each(['manifest', 'verified', 'toolDigest'])(
+    'rejects caller %s authority fields',
+    (field) => {
+      expect(
+        CandidateConversionPairClaimsSchema.safeParse({
+          ...claims,
+          pairs: [
+            { ...pair, [field]: field === 'verified' ? true : 'untrusted' },
+          ],
+        }).success,
+      ).toBe(false);
+    },
+  );
+  it('rejects unsupported versions, empty/oversized lists and duplicate case-folded P', () => {
+    for (const value of [
+      { ...claims, schemaVersion: 'wiser.candidate-conversion-claims.v2' },
+      { ...claims, pairs: [] },
+      {
+        ...claims,
+        pairs: Array.from({ length: 129 }, (_, index) => ({
+          ...pair,
+          prepared: {
+            ...pair.prepared,
+            assetId: `a2000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+          },
+        })),
+      },
+      {
+        ...claims,
+        pairs: [
+          pair,
+          {
+            ...pair,
+            prepared: {
+              ...pair.prepared,
+              assetId: pair.prepared.assetId.toUpperCase(),
+            },
+          },
+        ],
+      },
+      {
+        ...claims,
+        pairs: [
+          {
+            ...pair,
+            prepared: {
+              ...pair.prepared,
+              assetId: pair.original.assetId.toUpperCase(),
+            },
+          },
+        ],
+      },
+    ])
+      expect(CandidateConversionPairClaimsSchema.safeParse(value).success).toBe(
+        false,
+      );
+  });
+});
 
 const id = (suffix: number) =>
   `10000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`;

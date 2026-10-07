@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: 854d4833d8fa72087bcd175aac44e197fcc33d3b
 ---
 
 ## 只做 HTTP 适配
@@ -329,7 +329,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 
 ## 转换来源准入
 
-已注册工具 `data_ingestion_candidate_provenance_get` 经标准 HTTP 映射调用 `data.ingestion.candidate.provenance.get`，仅返回通过严格契约校验的有界摘要。参数包含固定候选引用和 `preparedAssetId`；身份、租户／项目及用途由受信连接提供。当前候选权限、受管准入和严格校验与 REST 相同，不直接访问数据库或新增 scope。转换声明不是授权或受信结果，MCP 不得绕过 Worker 专用写入或读取私有原始清单。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。
+已注册工具 `data_ingestion_candidate_provenance_get` 经标准 HTTP 映射调用 `data.ingestion.candidate.provenance.get`，仅返回通过严格契约校验的有界摘要。参数包含固定候选引用和 `preparedAssetId`；身份、租户／项目及用途由受信连接提供。当前候选权限、受管准入和严格校验与 REST 相同，不直接访问数据库或新增 scope。转换声明不是授权或受信结果，MCP 不得绕过 Worker 专用写入或读取私有原始清单。Worker 已接入声明冻结、独立清单核对及同事务写入的私有转换端口；默认没有受信适配器时保留 `UNVERIFIABLE/TOOL_UNAVAILABLE`。真实受信 O → R′ 转换、Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。
 
 ### 候选关系载体边界
 

@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: 854d4833d8fa72087bcd175aac44e197fcc33d3b
 ---
 
 ## What runs today
@@ -631,7 +631,9 @@ An internal preparatory validator now reuses current candidate scope, immutable 
 
 Historical original O and uploaded prepared P retain different identities. The dedicated conversion contract records a declaration separately from a server check; it does not accept a caller verification flag or describe historical P as platform-generated. A pure comparator checks raw table widths, grids, physical cells, merges, empty text, paragraphs, month titles and locators without text normalization. The narrow eligibility helper can recognize a verified prepared READY member in a still-PARTIAL batch; it never changes the real batch or source status. Current authority and complete record pages remain caller responsibilities.
 
-Migration 0043 adds the private, immutable `ingestion.candidate_conversion_check` carrier. An active processing lease, exact frozen members, immutable submission responsibility and current governance are required, and its result must commit with candidate completion. The fixed provenance reader is registered as `data.ingestion.candidate.provenance.get` with strict input/output schemas, managed admission and the standard PostgreSQL read runtime. REST, GraphQL and HTTP-backed MCP mappings reuse current candidate authority and expose only a bounded summary. Trusted O → R′ conversion execution, Worker integration, real Auth/PostgreSQL/RLS/HTTP acceptance and original A13 acceptance remain unverified; public read wiring alone does not make the conversion chain usable.
+Migration 0043 adds the private, immutable `ingestion.candidate_conversion_check` carrier. An active processing lease, exact frozen members, immutable submission responsibility and current governance are required, and its result must commit with candidate completion. The fixed provenance reader is registered as `data.ingestion.candidate.provenance.get` with strict input/output schemas, managed admission and the standard PostgreSQL read runtime. REST, GraphQL and HTTP-backed MCP mappings reuse current candidate authority and expose only a bounded summary. The Worker wires declaration freezing, independent manifest reconciliation and same-transaction writes through a private conversion port; without a trusted adapter the default remains `UNVERIFIABLE/TOOL_UNAVAILABLE`. Actual trusted O → R′ conversion, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified; public read wiring alone does not make the conversion chain usable.
+
+Strict `wiser.candidate-conversion-claims.v1` claims live only in the reserved `M.record.candidateConversionPairs` key: 1–128 O/P pairs with source-local work ID and nullable historical tool version. They contain no M identity, verification flag or tool digest. Source registration checks actual member hashes, sizes and DOC/DOCX roles, derives M identity from verified bytes, and freezes full declarations before `reviewHash`. The candidate independently derives declarations from actual M and rejects drift. A trusted host port receives actual O/P bytes, discovers tool identity, and compares complete P/R′ Word structures; its digest covers the full structures. Results are inserted after actual asset outcomes while the batch is PENDING, before the unchanged final lease fence and completion. Authority/DB errors roll back; explicit tool failure is bounded and honest. No-key legacy inputs retain their path, and completed batches are never backfilled. The host port must bound tool time and propagate cancellation/lease-check errors; unit call-order evidence is not PostgreSQL concurrency acceptance.
 
 ## Private candidate relationship carrier
 
