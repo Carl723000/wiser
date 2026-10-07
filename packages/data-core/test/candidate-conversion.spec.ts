@@ -221,3 +221,27 @@ describe('narrow PARTIAL eligibility', () => {
     },
   );
 });
+
+it.each(['UNSUPPORTED', 'INVALID', 'PARTIAL', 'READY'])(
+  'retains actual DOC status %s while verified P is eligible',
+  (status) => {
+    const actual = structuredClone(batch);
+    actual.assets[0]!.status = status;
+    actual.assets[0]!.reason =
+      status === 'UNSUPPORTED'
+        ? 'PARSER_NOT_CONFIGURED'
+        : status === 'READY'
+          ? (null as never)
+          : 'PARSING_FAILED';
+    if (status === 'PARTIAL' || status === 'READY') {
+      actual.assets[0]!.recordCount = 1;
+      actual.assets[0]!.featureCount = 0;
+    }
+    const before = structuredClone(actual);
+    expect(candidateConversionEligibility(actual, check, check.rule)).toEqual({
+      eligible: true,
+      preparedAssetId: id(4),
+    });
+    expect(actual).toEqual(before);
+  },
+);
