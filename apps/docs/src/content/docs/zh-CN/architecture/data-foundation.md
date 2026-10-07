@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
+lastReviewedCommit: 82f2dcbc194c226f667572e1f670533c76dd3083
 ---
 
 ## 当前可运行能力
@@ -634,6 +634,10 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 0043 迁移增加私有、不可变的 `ingestion.candidate_conversion_check` 载体，要求有效处理租约、精确冻结成员、不可变提交责任及当前治理，核验结果与候选完成须同事务提交。固定来源窄读已注册为 `data.ingestion.candidate.provenance.get`，使用严格输入／输出契约、受管准入和标准 PostgreSQL 读取运行时。REST、GraphQL 及经 HTTP 调用的 MCP 映射复用当前候选权限，只返回有界摘要。Worker 已接入声明冻结、独立清单核对及同事务写入的私有转换端口；默认没有受信适配器时保留 `UNVERIFIABLE/TOOL_UNAVAILABLE`。真实受信 O → R′ 转换、Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；公开读取接线不等于转换闭环可用。
 
 严格的 `wiser.candidate-conversion-claims.v1` 声明只放在 `M.record.candidateConversionPairs` 保留键，含1–128对 O/P、源内作品编号及可空的历史工具版本，不含 M 身份、已核验标志或工具摘要。来源登记入口核实际成员哈希、大小及 DOC/DOCX 角色，从已核字节补齐 M 身份，在 `reviewHash` 前冻结完整声明；候选端从实际 M 独立派生声明，差异即拒绝。受信宿主端口读取实际 O/P 字节、发现工具身份并比较 P/R′ 完整 Word 结构，摘要哈希覆盖完整结构。实际资产结果保存后、批次仍为 PENDING 时写入核验，随后执行原提交前租约锁及完成操作。权限或数据库错误整事务回滚，明确工具失败保留有界原因；无键旧输入沿用原流程，已完成批次不补写。宿主端口须限制工具执行时间并透传取消／失租检查错误；单元调用顺序不能证明 PostgreSQL 并发验收。
+
+私有 `word_structure.py` 读取器用已有 `defusedxml` 直接处理实际 DOCX ZIP/XML 字节，返回支持范围内的全部物理表格，包括嵌套表格、单元格定位、列位／跨度／纵向合并、明确的单元格／表宽、网格宽度、空文本和全部段落。主文档、页眉、页脚、脚注、尾注及批注保留稳定的部分定位；月份标题只是段落原文中的字面子集。危险归档、DTD／实体、不支持的修订／旧式合并／替代内容、过深结构或超限均明确失败，不返回部分结构。旧记录解析器及 HTTP 请求不改。可选 `createCandidateConversionHostRunner` 必须显式核对可执行文件／提取器源码哈希、实际稳定工具版本及平台，使用独立临时 profile、清洁进程环境、有界输出及每个子进程最多120秒的期限。权限回调错误直接传播，严格的私有 `UNVERIFIABLE` 结果保留原四类原因。默认不启用该工厂；它不证明工具来源、许可、依赖库或操作系统沙箱合格。合成 DOCX／schema 及测试可执行程序的进程检查不代表真实 O → R′ 转换、PostgreSQL 并发或 A13 验收。
+
+`structure.pythonPath` 只校验绝对路径，工厂不固定解释器摘要；提取器脚本哈希不能证明解释器及依赖闭包可信。只有核心会话已实际准入的完整任务运行镜像，或已准入的宿主解释器及全部依赖闭包，才可使用该工厂；已有 parser 基础镜像摘要不覆盖任意宿主 Python。当前完整运行环境尚未准入，稳定转换包的取得及哈希核实不等于安装或运行准入。真实八份 DOCX 的不支持构造清单、原值及 A13 核对仍是后续验收，未完成这些核验。
 
 ## 候选关系私有载体
 

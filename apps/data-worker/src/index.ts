@@ -1,5 +1,6 @@
 export * from './config.js';
 export * from './adapters/ingestion-runtime.js';
+export * from './adapters/candidate-conversion-host.js';
 export * from './handlers/ingestion-pipeline.js';
 export type { CandidateConversionRunner } from './handlers/candidate-conversion.js';
 export * from './handlers/registry.js';
