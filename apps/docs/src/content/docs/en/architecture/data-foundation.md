@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
+lastReviewedCommit: 4a1ce822
 ---
 
 ## What runs today
@@ -645,7 +645,7 @@ The internal fixed-pin reader uses the caller's scoped PostgreSQL client and cur
 
 The server topic validator installs its complete strictly parsed candidate selection. Its relation provider receives the same bounded list on the caller-owned client, without beginning, committing or releasing another transaction; returned dependencies must remain within that selection. The validator reapplies its original parsed selection before the post-provider manifest check. Fixed selection narrows historical RLS; it is not source authorization. Current authority, every actual manifest member and all material/rule guards remain required.
 
-Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden legacy historical saved row still returns NOT_FOUND. V2 saved-row bootstrap and the minimal owner receipt use 0046 below; default rule/object providers and trusted conversion remain separate integration work. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.
+Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden legacy historical saved row still returns NOT_FOUND. V2 saved-row bootstrap and the minimal owner receipt use 0046 below; Unconfigured rule authority remains closed; source-object mappings and trusted conversion require separate integration work. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.
 
 ## Complete candidate topic server interfaces (0046)
 

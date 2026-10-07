@@ -9,8 +9,11 @@ import {
 } from '@wiser/data-contracts';
 import {
   CANDIDATE_MONTHLY_RULE_VERSION,
+  CANDIDATE_MONTHLY_RULE_VERSION_V2,
   projectCandidateMonthlyReport,
+  projectCandidateMonthlyReportV2,
   type CandidateMonthlyProjectedRecord,
+  type CandidateMonthlyProjectedRecordV2,
   type CandidateMonthlyUnparsedReason,
 } from '@wiser/data-core/candidate-monthly-projection';
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
@@ -42,11 +45,11 @@ export interface CandidateMonthlyReadInput {
 }
 
 export type CandidateMonthlySemanticRecord = Omit<
-  CandidateMonthlyProjectedRecord,
+  CandidateMonthlyProjectedRecord | CandidateMonthlyProjectedRecordV2,
   'source'
 > & {
   readonly source: {
-    readonly sourceLocalWorkId: string;
+    readonly sourceLocalWorkId: string | null;
     readonly assetId: string;
     /** Hash of the original work, never inferred from a converted candidate asset. */
     readonly originalSha256: string;
@@ -68,8 +71,12 @@ export type CandidateMonthlySemanticRead =
       readonly reason: null;
       readonly candidateReference: IngestionCandidateReference;
       readonly assetId: string;
-      readonly publicationMonth: string;
-      readonly processingRuleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION;
+      readonly publicationMonth: string | null;
+      /** Present only on the explicit v2 producer path; never inferred publication. */
+      readonly reportPeriod?: string;
+      readonly processingRuleVersion:
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
       readonly records: readonly CandidateMonthlySemanticRecord[];
     }
   | {
@@ -78,7 +85,9 @@ export type CandidateMonthlySemanticRead =
       readonly candidateReference: IngestionCandidateReference;
       readonly assetId: string;
       readonly publicationMonth: null;
-      readonly processingRuleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION;
+      readonly processingRuleVersion:
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
       readonly records: readonly [];
     };
 
@@ -92,6 +101,9 @@ function notParsed(
   reference: IngestionCandidateReference,
   assetId: string,
   reason: CandidateMonthlySemanticReason,
+  version:
+    | typeof CANDIDATE_MONTHLY_RULE_VERSION
+    | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2 = CANDIDATE_MONTHLY_RULE_VERSION,
 ): CandidateMonthlySemanticRead {
   return {
     kind: 'NOT_PARSED',
@@ -99,7 +111,7 @@ function notParsed(
     candidateReference: reference,
     assetId,
     publicationMonth: null,
-    processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
+    processingRuleVersion: version,
     records: [],
   };
 }
@@ -299,40 +311,38 @@ export async function readCandidateMonthlySemantics(
   )
     invalid();
   const fixed = raw.fixed;
+  const v2 = fixed.processingRuleVersion === CANDIDATE_MONTHLY_RULE_VERSION_V2;
+  const version = v2
+    ? CANDIDATE_MONTHLY_RULE_VERSION_V2
+    : CANDIDATE_MONTHLY_RULE_VERSION;
+  const refused = (reason: CandidateMonthlySemanticReason) =>
+    notParsed(reference.data, assetId.data, reason, version);
   const initialSaved = await checkedSavedOpen(raw, signal, fetch);
   const { batch, firstPage } = await completeBatch(raw, signal, fetch);
   const asset = batch.assets.find(
     (entry) => entry.assetId.toLowerCase() === assetId.data.toLowerCase(),
   );
   if (!asset || asset.sourceHash !== fixed.preparedSha256)
-    return notParsed(reference.data, assetId.data, 'SOURCE_CHANGED');
+    return refused('SOURCE_CHANGED');
   if (
     batch.status !== 'READY' ||
     asset.status !== 'READY' ||
     asset.recordCount === null
   )
-    return notParsed(reference.data, assetId.data, 'SOURCE_NOT_READY');
-  if (fixed.processingRuleVersion !== CANDIDATE_MONTHLY_RULE_VERSION)
-    return notParsed(reference.data, assetId.data, 'RULE_VERSION_CHANGED');
+    return refused('SOURCE_NOT_READY');
+  if (!v2 && fixed.processingRuleVersion !== CANDIDATE_MONTHLY_RULE_VERSION)
+    return refused('RULE_VERSION_CHANGED');
   if (
-    fixed.sourceLocalWorkId === null ||
-    typeof fixed.sourceLocalWorkId !== 'string' ||
-    !fixed.sourceLocalWorkId.trim() ||
-    fixed.sourceLocalWorkId.length > 256
+    (!v2 && fixed.sourceLocalWorkId === null) ||
+    (fixed.sourceLocalWorkId !== null &&
+      (typeof fixed.sourceLocalWorkId !== 'string' ||
+        !fixed.sourceLocalWorkId.trim() ||
+        fixed.sourceLocalWorkId.length > 256))
   )
-    return notParsed(
-      reference.data,
-      assetId.data,
-      'MISSING_SOURCE_LOCAL_IDENTITY',
-    );
-  if (fixed.originalSha256 === null)
-    return notParsed(reference.data, assetId.data, 'MISSING_ORIGINAL_HASH');
+    return refused('MISSING_SOURCE_LOCAL_IDENTITY');
+  if (fixed.originalSha256 === null) return refused('MISSING_ORIGINAL_HASH');
   if (fixed.originalSha256 !== fixed.preparedSha256)
-    return notParsed(
-      reference.data,
-      assetId.data,
-      'CONVERSION_PROVENANCE_UNAVAILABLE',
-    );
+    return refused('CONVERSION_PROVENANCE_UNAVAILABLE');
   const pages = await completeRecords(raw, asset.recordCount, signal, fetch);
 
   // A fresh authorized read closes the collect/convert window as far as the current API can prove.
@@ -349,29 +359,42 @@ export async function readCandidateMonthlySemantics(
     if (currentSaved !== initialSaved) throw new CandidateReaderError('stale');
   }
   current(signal);
-  const projection = projectCandidateMonthlyReport({
-    batch,
-    pages,
-    fixed: {
-      workId: fixed.sourceLocalWorkId,
-      assetId: assetId.data,
-      sourceHash: fixed.preparedSha256,
-    },
-  });
+  const projection = v2
+    ? projectCandidateMonthlyReportV2({
+        batch,
+        pages,
+        fixed: {
+          sourceLocalWorkId: fixed.sourceLocalWorkId,
+          assetId: assetId.data,
+          sourceHash: fixed.preparedSha256,
+        },
+      })
+    : projectCandidateMonthlyReport({
+        batch,
+        pages,
+        fixed: {
+          workId: fixed.sourceLocalWorkId!,
+          assetId: assetId.data,
+          sourceHash: fixed.preparedSha256,
+        },
+      });
   current(signal);
-  if (projection.kind !== 'READY')
-    return notParsed(reference.data, assetId.data, projection.reason);
+  if (projection.kind !== 'READY') return refused(projection.reason);
   return {
     kind: 'READY',
     reason: null,
     candidateReference: reference.data,
     assetId: assetId.data,
-    publicationMonth: projection.publicationMonth,
+    publicationMonth:
+      'publicationMonth' in projection ? projection.publicationMonth : null,
+    ...('reportPeriod' in projection
+      ? { reportPeriod: projection.reportPeriod }
+      : {}),
     processingRuleVersion: projection.ruleVersion,
     records: projection.records.map((record) => ({
       ...record,
       source: {
-        sourceLocalWorkId: fixed.sourceLocalWorkId!,
+        sourceLocalWorkId: fixed.sourceLocalWorkId,
         assetId: record.source.assetId,
         originalSha256: fixed.originalSha256!,
         preparedSha256: fixed.preparedSha256,

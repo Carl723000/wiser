@@ -89,6 +89,41 @@ class Source {
 }
 
 describe('bounded engineering topic host adoption', () => {
+  it('keeps the monthly producer role consistent with the registered fixed bundle', async () => {
+    const host = createCandidateTopicHost(config)!;
+    const period: Spec['period'] = {
+      windowMode: 'month',
+      from: '2026-01',
+      to: '2026-02',
+      timeRole: 'PUBLICATION',
+      displayUnit: 'month',
+      includeUndated: false,
+    };
+    await expect(
+      host.loadRules(
+        new Source().client,
+        context(),
+        selection,
+        pins('beijing-monthly-docx-c3/2.0.0'),
+        period,
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      host.loadRules(new Source().client, context(), selection, pins(), {
+        ...period,
+        timeRole: 'REPORT_PERIOD',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      host.loadRules(
+        new Source().client,
+        context(),
+        selection,
+        pins('beijing-monthly-docx-c3/2.0.0'),
+        { ...period, timeRole: 'REPORT_PERIOD' },
+      ),
+    ).resolves.toEqual(pins('beijing-monthly-docx-c3/2.0.0'));
+  });
   it('loads only complete explicit startup binding and keeps absent configuration closed', () => {
     expect(createCandidateTopicHost()).toBeUndefined();
     expect(loadCandidateTopicHostConfig({})).toBeUndefined();
@@ -270,11 +305,31 @@ describe('bounded engineering topic host adoption', () => {
 
   it('offers the whole-record provider set but refuses unproven sourceObjectKey', () => {
     const host = createCandidateTopicHost(config)!;
-    expect(host.sourceObjectKey).toBeUndefined();
-    const spec = {
+    expect('sourceObjectKey' in host).toBe(false);
+    const spec: Spec = {
+      schemaVersion: 2,
+      page: { kind: 'assets', reference, first: 1 },
+      period: {
+        windowMode: 'month',
+        from: '2026-01',
+        to: '2026-02',
+        timeRole: 'PUBLICATION',
+        displayUnit: 'month',
+        includeUndated: false,
+      },
+      rulePins: pins(),
+      dependencyPins: [
+        {
+          kind: 'asset',
+          reference,
+          assetId: uuid(3),
+          sourceHash: 'b'.repeat(64),
+          parserVersion: 'fixture-parser/1.0.0',
+        },
+      ],
       relationPins: [{ relationId: uuid(30), revision: 1, decisionVersion: 0 }],
       topic: selection,
-    } as Spec;
+    };
     expect(() => assertCandidateTopicPinProviders(spec, host)).not.toThrow();
     expect(() =>
       assertCandidateTopicPinProviders(

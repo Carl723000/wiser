@@ -79,6 +79,7 @@ import {
 import { createKnowledgeRelationExecutors } from './knowledge-relations-runtime.js';
 import { createAssessmentExecutors } from './assessment-runtime.js';
 import { createReconciliationExecutors } from './reconciliation-runtime.js';
+import { createCandidateTopicHost } from './ingestion-candidate-topic-host.js';
 import type { PlatformAuthRuntime } from '../platform/auth-runtime.js';
 import type { WiserApiModule } from '../platform/modules.js';
 
@@ -287,7 +288,10 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       }),
       new PostgresExplorationExecutor(pg),
       ...createExplorationSavedExecutors(pg),
-      ...createIngestionCandidateSavedExecutors(pg),
+      ...createIngestionCandidateSavedExecutors(
+        pg,
+        createCandidateTopicHost(config.candidateTopicHost),
+      ),
       ...createReconciliationExecutors(pg),
       ...createAssessmentExecutors(pg),
       ...createKnowledgeRelationExecutors(pg),

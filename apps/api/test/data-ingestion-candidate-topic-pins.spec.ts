@@ -7,6 +7,10 @@ import type { DataCapabilityExecutionContext } from '../src/data-foundation/capa
 import type { QueryAdapterPgClient } from '../src/data-foundation/query-adapters.js';
 import type { CandidateTopicPinAuthorities } from '../src/data-foundation/ingestion-candidate-topic-pins.js';
 import { setCandidateReadAuthority } from '../src/data-foundation/candidate-read-authority.js';
+import {
+  createCandidateTopicHost,
+  CANDIDATE_TOPIC_ENGINEERING_ADOPTION,
+} from '../src/data-foundation/ingestion-candidate-topic-host.js';
 
 const uuid = (n: number) =>
   `6abcdef0-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -94,6 +98,55 @@ const input = (): CreateIngestionCandidateTopicInput =>
       relationPins: [],
     },
   });
+
+it('uses the production host for actual whole-record pins and retains the post-provider manifest recheck', async () => {
+  const source = new Source();
+  const value = input();
+  value.viewSpec.topic.regionIds = ['bth'];
+  value.viewSpec.topic.needIds = ['K5-001'];
+  value.viewSpec.rulePins = [
+    {
+      kind: 'projection',
+      ruleId: 'beijing-monthly-docx-c3',
+      version: 'beijing-monthly-docx-c3/2.0.0',
+    },
+    {
+      kind: 'readiness',
+      ruleId: 'wiser.project-readiness',
+      version: 'wiser.project-readiness.v3',
+    },
+    {
+      kind: 'requirement',
+      ruleId: 'wiser.candidate-topic.requirement-inspection',
+      version: `sha256:${CANDIDATE_TOPIC_ENGINEERING_ADOPTION.requirement.sha256}`,
+    },
+    {
+      kind: 'impact',
+      ruleId: 'wiser.candidate-topic.version-impact',
+      version: `sha256:${CANDIDATE_TOPIC_ENGINEERING_ADOPTION.impact.sha256}`,
+    },
+  ];
+  const host = createCandidateTopicHost({
+    profile: 'goal101-engineering-inspection/1',
+    tenantId: uuid(20),
+    projectId: uuid(21),
+    purpose: 'candidate-review',
+  })!;
+  await expect(
+    validator()(source.client, value, context(), host),
+  ).resolves.toEqual(value);
+  const revoked: CandidateTopicPinAuthorities = {
+    ...host,
+    async loadRules(...args) {
+      const result = await host.loadRules(...args);
+      source.visible = false;
+      return result;
+    },
+  };
+  await expect(
+    validator()(source.client, value, context(), revoked),
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+});
 const context = (): DataCapabilityExecutionContext => ({
   principal: {
     actorId: uuid(10),

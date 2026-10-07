@@ -202,7 +202,7 @@ it('dispatches the fixed v2 producer to report period while retaining v1 publica
     publicationMonth: '2023-04',
     processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
   });
-  expect(legacy.records[0]!.time.role).toBe('PUBLICATION');
+  expect(legacy.records[0].time.role).toBe('PUBLICATION');
 });
 
 function savedOpen() {

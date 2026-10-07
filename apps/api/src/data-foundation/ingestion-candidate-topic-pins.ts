@@ -37,6 +37,8 @@ export interface CandidateTopicPinAuthorities {
     // Lookup only: the provider must read the actual complete adopted set.
     // New rule availability must not replace still-applicable fixed versions.
     pins: readonly Spec['rulePins'][number][],
+    /** Internal producer applicability; legacy host implementations may omit it. */
+    period?: Spec['period'],
   ): Promise<readonly Spec['rulePins'][number][]>;
   loadRelations?(
     client: QueryAdapterPgClient,
@@ -333,6 +335,7 @@ export async function validateCandidateTopicMaterialPins(
         context,
         structuredClone(spec.topic),
         structuredClone(spec.rulePins),
+        structuredClone(spec.period),
       ),
     );
   assertCurrent();

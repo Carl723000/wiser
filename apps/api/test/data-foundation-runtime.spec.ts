@@ -68,8 +68,8 @@ it('injects the configured topic authority into the real default saved executor 
     expect(create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        loadRules: expect.any(Function),
-        loadRelations: expect.any(Function),
+        loadRules: expect.any(Function) as unknown,
+        loadRelations: expect.any(Function) as unknown,
       }),
     );
   } finally {
