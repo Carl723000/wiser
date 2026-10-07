@@ -780,6 +780,18 @@ interface StoredCommandLedger {
   readonly result: unknown;
 }
 
+/** Internal signal; PostgreSQL details must never escape the command boundary. */
+class CancellationDeadlock extends Error {}
+
+function isPostgresDeadlock(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === '40P01'
+  );
+}
+
 function commandError(code: PostgresDataCommandErrorCode) {
   return new PostgresDataCommandError(code);
 }
@@ -1252,6 +1264,39 @@ export class CommandTransactions {
       ledger: StoredCommandLedger,
     ) => Promise<unknown>,
   ): Promise<unknown> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await this.runTransaction(
+          capabilityId,
+          input,
+          context,
+          action,
+          replay,
+        );
+      } catch (error) {
+        if (!(error instanceof CancellationDeadlock)) throw error;
+        if (attempt === 1) throw commandError('PERSISTENCE_FAILED');
+      }
+    }
+    throw commandError('PERSISTENCE_FAILED');
+  }
+
+  private async runTransaction(
+    capabilityId: DataCapabilityId,
+    input: unknown,
+    context: DataCapabilityExecutionContext,
+    action: (
+      client: PostgresDataCommandClient,
+      timestamp: string,
+      idempotencyKey: string,
+      hash: string,
+    ) => Promise<CommandOutcome>,
+    replay?: (
+      client: PostgresDataCommandClient,
+      timestamp: string,
+      ledger: StoredCommandLedger,
+    ) => Promise<unknown>,
+  ): Promise<unknown> {
     const managedIntake =
       context.authorization.resourceAccess !== undefined &&
       MANAGED_INTAKE_COMMANDS.has(capabilityId);
@@ -1451,9 +1496,11 @@ export class CommandTransactions {
       await this.query(client, context, 'commit');
       return parsedOutput.data;
     } catch (error) {
+      let rolledBack = false;
       if (began) {
         try {
           await client.query('rollback');
+          rolledBack = true;
         } catch {
           // Preserve only the sanitized command error below.
         }
@@ -1466,6 +1513,16 @@ export class CommandTransactions {
         }
       }
       if (error instanceof PostgresDataCommandError) throw error;
+      // Cancel has only database effects. A definitive deadlock abort, including
+      // at COMMIT, may restart after rollback and finally-release. Re-entering
+      // runTransaction repeats scope expiry, owner, version and receipt checks.
+      if (
+        capabilityId === 'data.operation.cancel' &&
+        rolledBack &&
+        outcome?.rollbackCompensation === undefined &&
+        isPostgresDeadlock(error)
+      )
+        throw new CancellationDeadlock();
       if (isAssetAlreadyBoundError(error)) throw commandError('STATE_CONFLICT');
       throw commandError('PERSISTENCE_FAILED');
     } finally {

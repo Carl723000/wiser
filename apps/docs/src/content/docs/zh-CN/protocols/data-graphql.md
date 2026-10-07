@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 314c6b0e
 ---
 
 ## 入口与权威契约
@@ -342,3 +342,7 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 ## 完整候选专题字段
 
 mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTopics`、`dataIngestionCandidateTopic` 经共同 Handler 映射三个专题 1.0.0 能力。创建沿用 mutation 幂等策略，每个 query 别名独立解析当前权限。JSON 输入／输出沿用严格 REST 模式：明确 v2、逐行 specVersion、版本一致的 READABLE 分支及原保存者限定的两字段 UNAVAILABLE。JSON scalar 或别名不能绕过固定来源／规则／关系检查；旧保存字段及 DTO 保持。缺少受信宿主提供者时安全拒绝，SDL／传输测试不证明真实持久化或权限验收。
+
+### 取消命令恢复
+
+`cancelDataOperation`复用共用取消执行器：死锁回滚已确认后重试一次完整事务，再核身份范围、责任、版本及同键回执；字段、输入、输出、准入与错误契约不变，其他变更操作不增加重试。详见[取消命令死锁恢复](/architecture/data-foundation/#取消命令死锁恢复)。

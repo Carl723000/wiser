@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 314c6b0e
 ---
 
 ## 当前可运行能力
@@ -654,3 +654,9 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 旧 DTO、旧列表和旧行不自动升级。专题列表逐行标明 `specVersion: 1|2`，重开返回相应 READABLE 分支，v1 不补造问题或规则。既有撤销能力按存储版本明确分派。v2 创建、重放和重开在同一限定连接核实际资料与宿主权威；缺少规则、所需关系或来源对象提供者时安全拒绝，默认接线不从调用方 pin 补造权威。规则或决定变动不会静默替换固定版本。
 
 0046 先按该不可变 v2 保存行自身的完整引用，复用当前候选 FORCE RLS 核历史读取，再恢复原事务选择；不建立历史候选枚举，不放宽一般 PARTIAL。内容失效后，仅当前原保存者或责任委托人，在相同项目、用途、密级／策略及有效身份期限内，可取得严格 `{status:'UNAVAILABLE',viewId}`。已有受限元数据角色仅有该表 `SELECT(view_id)`，回执策略另限定一个请求 ID；无标题、配置、引用列权限，无 BYPASSRLS 或 definer。列表遇到迟到的失权时整页拒绝，不泄露标题或续页身份。条件 PostgreSQL、真实 Auth 和浏览器验收与合成事务／传输测试分别记录。
+
+## 取消命令死锁恢复
+
+共用命令执行器仅在`data.operation.cancel`收到PostgreSQL的`40P01`且回滚成功后重试一次。先释放连接，再重开完整事务，重新检查请求身份与范围的有效期、待审维护权限、行可见性、提交责任、乐观版本及同键回执；这不等于重新向Supabase解析身份。其他SQL错误、回滚失败和带对象存储副作用的命令不重试，第二次死锁返回既有脱敏持久化错误。公开准入、生命周期SQL、锁顺序、限额及旧迁移保持不变。
+
+公共执行器先锁入库会话，再锁任务和操作；原生直接辅助函数探针采用不同入口。执行器故障注入验证的是有界恢复，不证明HTTP已复现死锁，也不表示锁环已根除。真实Auth／HTTP与数据库并发验收分别记录。

@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 314c6b0e
 ---
 
 ## 协议边界
@@ -507,3 +507,7 @@ candidate-relations 契约／载体固定范围内的 relationId、lineageId、�
 三项沿用当前候选维护者或独立人工审核者准入，不新增 scope 或角色。创建要求严格 v2 配置、完整引用和幂等键；同一事务按受信宿主核实际四类已采用规则、资料哈希、整记录／几何及可选关系修订／决定。缺少提供者直接失败，不伪造空的权威集合。列表使用有限 `first/after`、专题专用的身份／用途／资源游标，逐行标明 `specVersion: 1|2`；旧列表仍只读 v1。
 
 重开的严格联合为 READABLE（相同版本的元数据、引用、配置和新分页请求），或仅向当前获准的原保存者返回 UNAVAILABLE 与 viewId；不返回失效标题、数量、来源 pin 或坐标。v1 不补造 v2 字段，未知或混合版本拒绝，新解析器／规则／决定不替换固定状态。既有 `data.ingestion.candidate.view.revoke` 及 DTO 按两个版本明确处理。默认运行时仍缺完整宿主规则／来源对象权威，依赖这些提供者的 v2 操作安全拒绝；能力注册不等于实际数据库或浏览器验收。
+
+### 取消命令恢复
+
+既有取消命令在PostgreSQL死锁回滚已确认后，可重试一次完整事务，保留同一幂等键并重新检查当前请求范围、责任与版本。第二次死锁及其他数据库错误沿用既有脱敏错误，不改变路由、请求、响应、准入或SQL契约。详见[取消命令死锁恢复](/architecture/data-foundation/#取消命令死锁恢复)。
