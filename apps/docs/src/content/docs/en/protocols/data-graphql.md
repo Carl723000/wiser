@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
+lastReviewedCommit: f28d2a3a2573405570825629a9e4483810b356c6
 ---
 
 ## Endpoint and authority contract
@@ -342,3 +342,7 @@ Versionless saved create uses the complete parsed references. For list/open/repl
 ## Complete candidate topic fields
 
 Mutation `createDataIngestionCandidateTopic` and queries `dataIngestionCandidateTopics` / `dataIngestionCandidateTopic` map to the three topic 1.0.0 capabilities through the shared Handler. The creation mutation uses the existing mutation idempotency policy; each query alias independently resolves current authority. JSON input/output follows the strict REST schemas: explicit v2 input, per-row `specVersion`, matching READABLE v1/v2 branches and the original-saver-only two-field UNAVAILABLE receipt. Neither JSON scalars nor aliases bypass fixed source/rule/relation checks. Old saved-view fields and DTOs remain unchanged. Missing trusted runtime providers fail closed; SDL/transport tests do not prove live persistence or authorization.
+
+### Cancellation recovery
+
+`cancelDataOperation` uses the shared cancellation executor's single complete-transaction retry after a confirmed deadlock rollback. Identity context, responsibility, version and same-key receipt checks repeat; no field, input, output, admission or error contract changes. Other mutations do not gain retries. See [cancellation deadlock recovery](/architecture/data-foundation/#cancellation-deadlock-recovery).

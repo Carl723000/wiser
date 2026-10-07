@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
+lastReviewedCommit: f28d2a3a2573405570825629a9e4483810b356c6
 ---
 
 ## Protocol boundary
@@ -507,3 +507,7 @@ Versionless saved create uses the complete parsed references. For list/open/repl
 All three retain current candidate maintenance or independent-human-review admission; no scope or role is added. Create requires the exact v2 spec, fixed references and an idempotency key. It checks actual four-category adopted rules, material hashes, complete selected records/geometries and optional relation revisions/decisions using trusted providers in the same transaction. Missing authority providers return failure, not an empty adopted set. List accepts bounded `first/after`, uses a topic-specific identity/purpose/resource-bound cursor and marks each currently readable row `specVersion: 1|2`. Legacy list stays v1-only.
 
 Open's strict union is `READABLE` with matching specVersion/metadata/references/viewSpec/fresh page request, or exactly `UNAVAILABLE` plus viewId for the currently authorized original saver. It never returns unavailable titles, counts, source pins or coordinates. V1 open has no fabricated v2 fields. Unknown/mixed versions fail validation; a new parser/rule/decision is not substituted into fixed state. Existing `data.ingestion.candidate.view.revoke` and its DTO handle both versions explicitly. The default runtime still lacks complete host rule/source-object authorities and fails closed for dependent v2 work; registered endpoints are not evidence of live database or browser acceptance.
+
+### Cancellation recovery
+
+The existing cancellation command may retry one complete transaction after a confirmed PostgreSQL deadlock rollback, retaining the same idempotency key and repeating current context, ownership and version checks. A second deadlock and other database failures keep the existing sanitized error. No route, request, response, admission or SQL contract changes; see [cancellation deadlock recovery](/architecture/data-foundation/#cancellation-deadlock-recovery).

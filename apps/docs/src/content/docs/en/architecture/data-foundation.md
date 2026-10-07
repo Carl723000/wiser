@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
+lastReviewedCommit: f28d2a3a2573405570825629a9e4483810b356c6
 ---
 
 ## What runs today
@@ -656,3 +656,9 @@ Complete topics now use the existing immutable candidate saved-view table with e
 Legacy DTOs, list behavior and saved rows are not upgraded. The topic list marks each readable row `specVersion: 1|2`; topic open returns the matching `READABLE` branch, with no invented topic fields for v1. The existing revoke capability dispatches explicitly by storage version. V2 save, replay and restore validate actual material and host authority on the same scoped connection. Missing rule, required relation or source-object providers fail closed; default host wiring does not synthesize these authorities from request pins. A changed pin does not silently adopt a newer rule or decision.
 
 Migration 0046 reuses current candidate forced RLS for each saved v2 manifest before returning a historical row, then restores the prior transaction-local selection. It does not enumerate candidate history or relax general PARTIAL eligibility. When content is unavailable, only the current original saver/responsible delegator, within the same project, purpose, security/policy and live authority deadlines, may receive exactly `{status:'UNAVAILABLE',viewId}`. The existing limited metadata role has only `SELECT(view_id)` on this table, and its receipt policy additionally fixes one requested ID. It has no saved title/spec/reference grant, no BYPASSRLS and no definer function. Late authority loss rejects a list page before exposing its titles or continuation. Conditional PostgreSQL, live Auth and browser acceptance remain separate from synthetic transaction/transport tests.
+
+## Cancellation deadlock recovery
+
+The shared command executor retries `data.operation.cancel` once only after PostgreSQL reports `40P01` and rollback succeeds. The connection is released before a new complete transaction repeats request-context expiry, pending-maintenance scope, row visibility, submission responsibility, optimistic version and same-key receipt checks. This is not a new Supabase identity-resolution step. Other SQL failures, failed rollback and commands with object-store effects do not retry; a second deadlock returns the existing sanitized persistence error. Public admission, lifecycle SQL, lock ordering, limits and old migrations are unchanged.
+
+The public executor locks the ingestion session before jobs and the operation. A native direct-helper deadlock probe has a different entry path; fault-injected executor tests establish bounded recovery, not HTTP deadlock reproduction or removal of the lock cycle. Live Auth/HTTP and concurrent database acceptance remain separate.

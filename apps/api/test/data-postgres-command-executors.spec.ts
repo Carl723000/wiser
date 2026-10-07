@@ -4791,3 +4791,319 @@ describe('managed pending intake ownership and fresh authority', () => {
     ).toBe(false);
   });
 });
+
+/** Transport/executor fault injection, not a PostgreSQL or HTTP deadlock proof. */
+describe('cancellation whole-transaction deadlock recovery', () => {
+  const input = { operationId: OPERATION_ID, expectedVersion: 2 };
+  const requestMarker = 'data.operation.job-cancellation.request';
+
+  function retryFixture(
+    options: {
+      code?: string;
+      attempts?: number;
+      failAt?: string;
+      afterRelease?: () => void;
+      rollbackFails?: boolean;
+    } = {},
+  ) {
+    class AttemptPool extends FakePool {
+      readonly clients = [this.client, new FakeClient(), new FakeClient()];
+      acquired = 0;
+      readonly order: string[] = [];
+      override connect() {
+        this.order.push(`connect:${this.acquired}`);
+        return Promise.resolve(this.clients[this.acquired++]!);
+      }
+    }
+    const pool = new AttemptPool();
+    for (const [index, client] of pool.clients.entries()) {
+      client.submittedActorId = ACTOR_ID;
+      client.cancellationJobStatus = 'RUNNING';
+      const original = client.query.bind(client);
+      let aborted = false;
+      client.query = async (sql, values = []) => {
+        const command = sql.toLowerCase();
+        pool.order.push(`${index}:${command.trim()}`);
+        if (command === 'rollback') {
+          if (options.rollbackFails) throw new Error('rollback unavailable');
+          aborted = false;
+          client.replay.clear();
+          return original(sql, values);
+        }
+        if (aborted)
+          throw Object.assign(new Error('aborted transaction'), {
+            code: '25P02',
+          });
+        if (
+          index < (options.attempts ?? 1) &&
+          sql.includes(options.failAt ?? requestMarker)
+        ) {
+          client.calls.push({ text: sql, values });
+          aborted = true;
+          throw Object.assign(new Error('private PostgreSQL detail'), {
+            code: options.code ?? '40P01',
+          });
+        }
+        return original(sql, values);
+      };
+      const release = client.release.bind(client);
+      client.release = () => {
+        pool.order.push(`release:${index}`);
+        release();
+        if (index === 0) options.afterRelease?.();
+      };
+    }
+    return { ...runtime(pool), pool };
+  }
+
+  it('rolls back and releases before borrowing a new transaction and reruns scope, responsibility and idempotency', async () => {
+    const value = retryFixture();
+    const actor = managedIntakeContext();
+    const output = await executor(
+      value.runtime,
+      'data.operation.cancel',
+    ).execute(input, actor);
+    expect(output).toMatchObject({
+      operationId: OPERATION_ID,
+      status: 'RUNNING',
+      version: 3,
+    });
+    expect(value.pool.acquired).toBe(2);
+    expect(value.pool.order.indexOf('0:rollback')).toBeLessThan(
+      value.pool.order.indexOf('release:0'),
+    );
+    expect(value.pool.order.indexOf('release:0')).toBeLessThan(
+      value.pool.order.indexOf('connect:1'),
+    );
+    const [first, second] = value.pool.clients;
+    for (const client of [first!, second!]) {
+      const sql = client.calls.map((call) => call.text).join('\n');
+      expect(sql).toContain('begin');
+      expect(sql).toContain('data.command.scope');
+      expect(sql).toContain('data.resource.read-scope');
+      expect(sql).toContain('data.intake.scope');
+      expect(sql).toContain('data.command.idempotency.read');
+      expect(sql.indexOf('data.operation.ingestion.lock')).toBeLessThan(
+        sql.indexOf('data.operation.jobs.lock'),
+      );
+      expect(sql.indexOf('data.operation.jobs.lock')).toBeLessThan(
+        sql.indexOf('data.operation.lock'),
+      );
+    }
+    expect(first!.calls.some(({ text }) => text === 'commit')).toBe(false);
+    expect(first!.replay.size).toBe(0);
+    expect(
+      second!.calls.filter(({ text }) =>
+        text.includes('data.command.audit.insert'),
+      ),
+    ).toHaveLength(1);
+    expect(second!.replay.size).toBe(1);
+    expect(second!.calls.at(-1)?.text).toBe('commit');
+    const keys = [first!, second!].map(
+      (client) =>
+        client.calls.find(({ text }) =>
+          text.includes('data.command.idempotency.lock'),
+        )!.values,
+    );
+    expect(keys).toEqual([[IDEMPOTENCY_KEY], [IDEMPOTENCY_KEY]]);
+    expect(value.store.calls).toEqual([]);
+  });
+
+  it('bounds a repeated 40P01 to two fully rolled-back attempts and sanitizes its detail', async () => {
+    const value = retryFixture({ attempts: 3 });
+    await expect(
+      executor(value.runtime, 'data.operation.cancel').execute(input, context),
+    ).rejects.toMatchObject({
+      code: 'PERSISTENCE_FAILED',
+      message: 'Data command failed: PERSISTENCE_FAILED.',
+    });
+    expect(value.pool.acquired).toBe(2);
+    for (const client of value.pool.clients.slice(0, 2)) {
+      expect(client.calls.at(-1)?.text).toBe('rollback');
+      expect(client.released).toBe(true);
+      expect(client.replay.size).toBe(0);
+    }
+  });
+
+  it.each(['55P03', '40001', '08006', undefined])(
+    'does not retry another SQL failure (%s)',
+    async (code) => {
+      const value = retryFixture({ code: code ?? 'UNKNOWN' });
+      await expect(
+        executor(value.runtime, 'data.operation.cancel').execute(
+          input,
+          context,
+        ),
+      ).rejects.toMatchObject({ code: 'PERSISTENCE_FAILED' });
+      expect(value.pool.acquired).toBe(1);
+    },
+  );
+
+  it('does not retry if rollback cannot be confirmed', async () => {
+    const value = retryFixture({ rollbackFails: true });
+    await expect(
+      executor(value.runtime, 'data.operation.cancel').execute(input, context),
+    ).rejects.toMatchObject({ code: 'PERSISTENCE_FAILED' });
+    expect(value.pool.acquired).toBe(1);
+    expect(value.pool.client.released).toBe(true);
+  });
+
+  it('rechecks abort before borrowing the replacement connection', async () => {
+    const abort = new AbortController();
+    const value = retryFixture({ afterRelease: () => abort.abort() });
+    await expect(
+      executor(value.runtime, 'data.operation.cancel').execute(input, {
+        ...context,
+        signal: abort.signal,
+      }),
+    ).rejects.toMatchObject({ code: 'COMMAND_ABORTED' });
+    expect(value.pool.acquired).toBe(1);
+  });
+
+  it.each(['maintenance', 'principal-expiry', 'scope-expiry'] as const)(
+    'rechecks %s before the replacement transaction',
+    async (reason) => {
+      const actor = managedIntakeContext();
+      const scopes = [...actor.authorization.scopes];
+      let time = Date.now();
+      const spy = vi.spyOn(Date, 'now').mockImplementation(() => time);
+      const deadline = new Date(time + 1000).toISOString();
+      const baseScope = actor.authorization.resourceAccess!;
+      const current = {
+        ...actor,
+        principal: {
+          ...actor.principal,
+          ...(reason === 'principal-expiry' ? { expiresAt: deadline } : {}),
+        },
+        authorization: {
+          ...actor.authorization,
+          scopes,
+          resourceAccess: {
+            ...baseScope,
+            scope: {
+              ...baseScope.scope,
+              validUntil:
+                reason === 'scope-expiry' ? deadline : '2099-01-01T00:00:00Z',
+            },
+          },
+        },
+      };
+      const value = retryFixture({
+        afterRelease: () => {
+          time += 1001;
+          if (reason === 'maintenance')
+            scopes.splice(scopes.indexOf('data.ingestion.write'), 1);
+        },
+      });
+      try {
+        await expect(
+          executor(value.runtime, 'data.operation.cancel').execute(
+            input,
+            current,
+          ),
+        ).rejects.toMatchObject({ code: 'INTAKE_FORBIDDEN' });
+        expect(value.pool.acquired).toBe(1);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it.each(['hidden', 'responsibility', 'version'] as const)(
+    'rechecks current %s and denies lifecycle writes on the second connection',
+    async (reason) => {
+      const value = retryFixture();
+      const second = value.pool.clients[1]!;
+      if (reason === 'hidden')
+        second.zeroRowCountFor = 'data.operation.ingestion.lock';
+      if (reason === 'responsibility')
+        second.submittedActorId = 'd2000000-0000-4000-8000-000000000090';
+      if (reason === 'version') second.operationVersion = 3;
+      await expect(
+        executor(value.runtime, 'data.operation.cancel').execute(
+          input,
+          managedIntakeContext(),
+        ),
+      ).rejects.toMatchObject({
+        code:
+          reason === 'hidden'
+            ? 'NOT_FOUND'
+            : reason === 'responsibility'
+              ? 'INTAKE_FORBIDDEN'
+              : 'VERSION_CONFLICT',
+      });
+      expect(value.pool.acquired).toBe(2);
+      expect(
+        second.calls.filter(({ text }) =>
+          /data\.ingestion\.cancel\.update|data\.operation\.job-cancellation\.request|data\.command\.(audit|outbox)/.test(
+            text,
+          ),
+        ),
+      ).toEqual([]);
+      expect(second.calls.at(-1)?.text).toBe('rollback');
+    },
+  );
+
+  it('retains same-key replay with current responsibility after a transaction retry', async () => {
+    const value = retryFixture();
+    const actor = managedIntakeContext();
+    const first = await executor(
+      value.runtime,
+      'data.operation.cancel',
+    ).execute(input, actor);
+    const second = value.pool.clients[1]!;
+    value.pool.clients[2]!.replay.set(
+      IDEMPOTENCY_KEY,
+      second.replay.get(IDEMPOTENCY_KEY),
+    );
+    const replay = await executor(
+      value.runtime,
+      'data.operation.cancel',
+    ).execute(input, actor);
+    expect(replay).toEqual(first);
+    expect(
+      value.pool.clients[2]!.calls.some(({ text }) =>
+        text.includes(requestMarker),
+      ),
+    ).toBe(false);
+    expect(
+      value.pool.clients[2]!.calls.some(({ text }) =>
+        text.includes('data.operation.ingestion.lock'),
+      ),
+    ).toBe(true);
+  });
+
+  it('can recover a definitive 40P01 at COMMIT by restarting the whole cancellation', async () => {
+    const value = retryFixture({ failAt: 'commit' });
+    await expect(
+      executor(value.runtime, 'data.operation.cancel').execute(input, context),
+    ).resolves.toMatchObject({ status: 'RUNNING' });
+    expect(value.pool.acquired).toBe(2);
+    expect(value.pool.clients[0]!.replay.size).toBe(0);
+    expect(value.pool.clients[1]!.replay.size).toBe(1);
+  });
+
+  it('does not retry a command with external object-store side effects', async () => {
+    const value = retryFixture({ failAt: 'data.command.outbox' });
+    await expect(
+      executor(value.runtime, 'data.uploadSession.create').execute(
+        {
+          ownerProjectId: PROJECT_ID,
+          objects: [
+            {
+              fileName: 'stations.geojson',
+              sizeBytes: 4096,
+              sha256: SHA256,
+              mediaType: 'application/geo+json',
+            },
+          ],
+        },
+        context,
+      ),
+    ).rejects.toMatchObject({ code: 'PERSISTENCE_FAILED' });
+    expect(value.pool.acquired).toBe(1);
+    expect(
+      value.store.calls.filter(({ method }) => method.startsWith('plan')),
+    ).toHaveLength(1);
+  });
+});
