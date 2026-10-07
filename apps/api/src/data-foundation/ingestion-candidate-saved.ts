@@ -260,13 +260,22 @@ async function readSaved(
   context: DataCapabilityExecutionContext,
   owned = false,
   includeRevoked = false,
+  legacyOnly = false,
 ) {
   const result = await client.query(
     '/* candidate.saved.get */ select * from service.ingestion_candidate_saved_view where view_id=$1::uuid',
     [id],
   );
-  if (!result.rows[0]) throw new DataCapabilityHandlerError('NOT_FOUND');
-  const row = savedSchema.parse(result.rows[0]);
+  const stored = result.rows[0];
+  if (!stored) throw new DataCapabilityHandlerError('NOT_FOUND');
+  if (
+    legacyOnly &&
+    typeof stored['view_spec'] === 'object' &&
+    stored['view_spec'] !== null &&
+    Object.hasOwn(stored['view_spec'], 'schemaVersion')
+  )
+    throw new DataCapabilityHandlerError('NOT_FOUND');
+  const row = savedSchema.parse(stored);
   if (
     row.tenant_id !== context.authorization.tenantId ||
     row.project_id !== context.authorization.projectId ||
@@ -412,7 +421,7 @@ values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::timestamptz
         }
         return read(context, async (client) => {
           const result = await client.query(
-            `/* candidate.saved.list */ select * from service.ingestion_candidate_saved_view where revoked_at is null and ($2::timestamptz is null or (created_at,view_id)<($2::timestamptz,$3::uuid)) order by created_at desc,view_id desc limit $1`,
+            `/* candidate.saved.list */ select * from service.ingestion_candidate_saved_view where revoked_at is null and not (view_spec ? 'schemaVersion') and ($2::timestamptz is null or (created_at,view_id)<($2::timestamptz,$3::uuid)) order by created_at desc,view_id desc limit $1`,
             [input.first + 1, cursor?.[0] ?? null, cursor?.[1] ?? null],
           );
           const rows = result.rows
@@ -448,7 +457,14 @@ values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::timestamptz
       async execute(raw, context) {
         const input = OpenIngestionCandidateViewInputSchema.parse(raw);
         return read(context, async (client) => {
-          const row = await readSaved(client, input.viewId, context);
+          const row = await readSaved(
+            client,
+            input.viewId,
+            context,
+            false,
+            false,
+            true,
+          );
           const position = await validateView(client, row.view_spec);
           return OpenIngestionCandidateViewOutputSchema.parse({
             kind: 'ingestion-candidate-view',

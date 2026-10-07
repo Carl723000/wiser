@@ -317,4 +317,6 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 
 查询`dataIngestionCandidateViews(input: JSON!): JSON!`与`dataIngestionCandidateView(input: JSON!): JSON!`对应列表／打开；变更`createDataIngestionCandidateView(input: JSON!): JSON!`与`revokeDataIngestionCandidateView(input: JSON!): JSON!`对应创建／撤回。共用REST的严格四元候选引用、1–100个固定成员、128 KiB结果上限及每次全成员权限检查。命令沿用UUID幂等请求头，不构造已发布查询／版本身份。
 
+旧列表／打开字段共用REST执行器的版本隔离，不增加GraphQL字段，也不改变有效无版本v1输入。列表在SQL的游标筛选、排序和`LIMIT`之前排除所有带`schemaVersion`字段的保存规格。打开对明确版本（包括完整v2及未知版本）返回安全的`NOT_FOUND`，不暴露标题、候选引用或规格，不将其降级成v1，也不启用完整专题持久保存。定向执行器回归不代表真实PostgreSQL混合版本分页或Auth／RLS已经验收。
+
 两个读取字段不使用请求内缓存，同一请求的重复别名也重新核候选权限，不重放旧标题或清单。列表显式限定1–100条，不返回全库总数；打开核实稳定锚点，返回按当前身份重建的原候选get/records/geometry请求。私有归属、委托责任及项目分享沿用REST边界；撤回不改变原候选。既有接收及已发布保存字段保持不变。真实认证恢复、SQL／RLS及浏览器验收与模式／合成接口检查分别记录。
