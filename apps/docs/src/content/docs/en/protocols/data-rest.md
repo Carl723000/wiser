@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: f28d2a3a2573405570825629a9e4483810b356c6
+lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
 ---
 
 ## Protocol boundary
@@ -494,7 +494,7 @@ The host-only fixed-pin reader resolves exact content revisions and actual curre
 
 The server topic validator installs its complete strictly parsed candidate selection. Its relation provider receives the same bounded list on the caller-owned client, without beginning, committing or releasing another transaction; returned dependencies must remain within that selection. The validator reapplies its original parsed selection before the post-provider manifest check. Fixed selection narrows historical RLS; it is not source authorization. Current authority, every actual manifest member and all material/rule guards remain required.
 
-Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden legacy historical saved row still returns NOT_FOUND. V2 saved-row bootstrap and the minimal owner receipt use 0046 below; default rule/object providers and trusted conversion remain separate integration work. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.
+Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden legacy historical saved row still returns NOT_FOUND. V2 saved-row bootstrap and the minimal owner receipt use 0046 below; Unconfigured rule authority remains closed; source-object mappings and trusted conversion require separate integration work. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.
 
 ## Complete candidate topic endpoints (1.0)
 
@@ -506,7 +506,11 @@ Versionless saved create uses the complete parsed references. For list/open/repl
 
 All three retain current candidate maintenance or independent-human-review admission; no scope or role is added. Create requires the exact v2 spec, fixed references and an idempotency key. It checks actual four-category adopted rules, material hashes, complete selected records/geometries and optional relation revisions/decisions using trusted providers in the same transaction. Missing authority providers return failure, not an empty adopted set. List accepts bounded `first/after`, uses a topic-specific identity/purpose/resource-bound cursor and marks each currently readable row `specVersion: 1|2`. Legacy list stays v1-only.
 
-Open's strict union is `READABLE` with matching specVersion/metadata/references/viewSpec/fresh page request, or exactly `UNAVAILABLE` plus viewId for the currently authorized original saver. It never returns unavailable titles, counts, source pins or coordinates. V1 open has no fabricated v2 fields. Unknown/mixed versions fail validation; a new parser/rule/decision is not substituted into fixed state. Existing `data.ingestion.candidate.view.revoke` and its DTO handle both versions explicitly. The default runtime still lacks complete host rule/source-object authorities and fails closed for dependent v2 work; registered endpoints are not evidence of live database or browser acceptance.
+Open's strict union is `READABLE` with matching specVersion/metadata/references/viewSpec/fresh page request, or exactly `UNAVAILABLE` plus viewId for the currently authorized original saver. It never returns unavailable titles, counts, source pins or coordinates. V1 open has no fabricated v2 fields. Unknown/mixed versions fail validation; a new parser/rule/decision is not substituted into fixed state. Existing `data.ingestion.candidate.view.revoke` and its DTO handle both versions explicitly. Without explicit host configuration, rule authority remains unavailable; v2 operations selecting unproven source-object mappings still fail closed; registered endpoints are not evidence of live database or browser acceptance.
+
+### Bounded topic host configuration
+
+Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. Two monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 calls the REPORT_PERIOD producer. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.
 
 ### Cancellation recovery
 

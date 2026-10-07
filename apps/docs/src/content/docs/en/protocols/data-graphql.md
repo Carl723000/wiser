@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: f28d2a3a2573405570825629a9e4483810b356c6
+lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
 ---
 
 ## Endpoint and authority contract
@@ -342,6 +342,10 @@ Versionless saved create uses the complete parsed references. For list/open/repl
 ## Complete candidate topic fields
 
 Mutation `createDataIngestionCandidateTopic` and queries `dataIngestionCandidateTopics` / `dataIngestionCandidateTopic` map to the three topic 1.0.0 capabilities through the shared Handler. The creation mutation uses the existing mutation idempotency policy; each query alias independently resolves current authority. JSON input/output follows the strict REST schemas: explicit v2 input, per-row `specVersion`, matching READABLE v1/v2 branches and the original-saver-only two-field UNAVAILABLE receipt. Neither JSON scalars nor aliases bypass fixed source/rule/relation checks. Old saved-view fields and DTOs remain unchanged. Missing trusted runtime providers fail closed; SDL/transport tests do not prove live persistence or authorization.
+
+### Bounded topic host configuration
+
+Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. Two monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 calls the REPORT_PERIOD producer. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.
 
 ### Cancellation recovery
 

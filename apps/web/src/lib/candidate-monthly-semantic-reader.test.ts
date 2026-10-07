@@ -4,7 +4,10 @@ import type {
   IngestionCandidateRecord,
   IngestionCandidateRecordPage,
 } from '@wiser/data-contracts';
-import { CANDIDATE_MONTHLY_RULE_VERSION } from '@wiser/data-core/candidate-monthly-projection';
+import {
+  CANDIDATE_MONTHLY_RULE_VERSION,
+  CANDIDATE_MONTHLY_RULE_VERSION_V2,
+} from '@wiser/data-core/candidate-monthly-projection';
 import {
   readCandidateMonthlySemantics,
   type CandidateMonthlyReadInput,
@@ -165,6 +168,42 @@ function fixture() {
   ];
   return { assetPages, recordPages };
 }
+
+it('dispatches the fixed v2 producer to report period while retaining v1 publication semantics', async () => {
+  const result = await readCandidateMonthlySemantics(
+    {
+      ...input,
+      fixed: {
+        ...input.fixed,
+        processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V2,
+      },
+    },
+    new AbortController().signal,
+    transport(),
+  );
+  expect(result).toMatchObject({
+    kind: 'READY',
+    reportPeriod: '2023-04',
+    publicationMonth: null,
+    processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V2,
+  });
+  expect(result.records).toHaveLength(3);
+  expect(result.records[0]).toMatchObject({
+    time: { value: '2023-04', role: 'REPORT_PERIOD', precision: 'MONTH' },
+    processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V2,
+  });
+  const legacy = await readCandidateMonthlySemantics(
+    input,
+    new AbortController().signal,
+    transport(),
+  );
+  expect(legacy).toMatchObject({
+    kind: 'READY',
+    publicationMonth: '2023-04',
+    processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
+  });
+  expect(legacy.records[0].time.role).toBe('PUBLICATION');
+});
 
 function savedOpen() {
   return {

@@ -4,6 +4,10 @@ import {
   type DataEmbeddingConfig,
   type SeaweedFsS3AuthorityConfig,
 } from '@wiser/data-infra';
+import {
+  loadCandidateTopicHostConfig,
+  type CandidateTopicHostConfig,
+} from './ingestion-candidate-topic-host.js';
 
 export type DataFoundationApiRuntimeConfig =
   | { readonly mode: 'off' }
@@ -39,6 +43,7 @@ export type DataFoundationApiRuntimeConfig =
       };
       readonly publicApiOrigin: string;
       readonly embedding: DataEmbeddingConfig;
+      readonly candidateTopicHost?: CandidateTopicHostConfig;
     };
 
 const RUNTIME_FIELDS = [
@@ -177,8 +182,10 @@ export function loadDataFoundationApiRuntimeConfig(
     return { mode: 'off' };
   }
 
+  const candidateTopicHost = loadCandidateTopicHostConfig(environment);
   const config = {
     mode: 'enabled' as const,
+    ...(candidateTopicHost ? { candidateTopicHost } : {}),
     databaseUrl: databaseUrl(required(environment, 'DATA_DATABASE_URL')),
     objectStore: objectStore(environment),
     objectStorePublicEndpoint: endpoint(

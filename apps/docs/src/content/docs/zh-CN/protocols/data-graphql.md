@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: f28d2a3a2573405570825629a9e4483810b356c6
+lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
 ---
 
 ## 入口与权威契约
@@ -342,6 +342,10 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 ## 完整候选专题字段
 
 mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTopics`、`dataIngestionCandidateTopic` 经共同 Handler 映射三个专题 1.0.0 能力。创建沿用 mutation 幂等策略，每个 query 别名独立解析当前权限。JSON 输入／输出沿用严格 REST 模式：明确 v2、逐行 specVersion、版本一致的 READABLE 分支及原保存者限定的两字段 UNAVAILABLE。JSON scalar 或别名不能绕过固定来源／规则／关系检查；旧保存字段及 DTO 保持。缺少受信宿主提供者时安全拒绝，SDL／传输测试不证明真实持久化或权限验收。
+
+### 有限专题宿主配置
+
+启动配置显式采用 `goal101-engineering-inspection/1` 工程检查配方：`DATA_CANDIDATE_TOPIC_PROFILE` 选择固定配方，`DATA_CANDIDATE_TOPIC_TENANT_ID`、`DATA_CANDIDATE_TOPIC_PROJECT_ID` 和 `DATA_CANDIDATE_TOPIC_PURPOSE` 精确绑定已配置的项目及现有 Auth 用途。四字段必须完整，禁止通配或首请求自注册；缺配置时专题权威继续失败关闭。运行时将提供者注入实际候选保存 executor。两套月报规则分别保留：旧 1.0.0 调用原 PUBLICATION 投影，新 2.0.0 调用 REPORT_PERIOD 投影；不能把旧路径称为新版本。需求规则定义摘要与需求输入版本分别记录，登录读取不查本机固定包。六区域与19需求仅为选择目录，不授资料读取权、不生成归属事实或专业批准。关系在同一保存 client 上读取固定修订和当前决定，并重核引用与权限；无可信源内对象映射时 `sourceObjectKey` 继续拒绝，整记录兼容路径保留。私有宿主模块记录定义摘要及本轮工程采用，不创建外部专业标准或公共协议。真实 SQL／Auth／浏览器验收另行记录。
 
 ### 取消命令恢复
 
