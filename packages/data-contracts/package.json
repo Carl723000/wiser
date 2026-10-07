@@ -6,7 +6,8 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./candidate-conversion": "./src/ingestion/candidate-conversion.ts"
+    "./candidate-conversion": "./src/ingestion/candidate-conversion.ts",
+    "./candidate-relations": "./src/ingestion/candidate-relations.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

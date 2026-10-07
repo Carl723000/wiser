@@ -437,6 +437,173 @@ describe('frozen ingestion candidate authority storage', () => {
         await client.query("select set_config('wiser.project_id',$1,true)", [
           project,
         ]);
+        // H1 rollback-only acceptance seam. This is actual migrated FORCE RLS,
+        // not an application mock. Unit execution skips the enclosing PG case.
+        await client.query('savepoint historical_ready_scope');
+        await client.query('reset role');
+        await client.query('set local role wiser_data_worker');
+        const extra = new Map<string, string>();
+        for (const outcome of ['EMPTY', 'PARTIAL', 'PENDING'] as const) {
+          const nextBatch = randomUUID();
+          extra.set(outcome, nextBatch);
+          await client.query(
+            insertBatch.replace("'1.0.0'", `'fixture-history-${outcome}'`),
+            [nextBatch, tenant, project, ingestion, plan, reviewHash],
+          );
+          await client.query(insertAsset, [
+            nextBatch,
+            asset,
+            tenant,
+            project,
+            sourceHash,
+          ]);
+          if (outcome !== 'PENDING') {
+            await client.query(
+              `update ingestion.candidate_asset set status=$3,reason=$4,record_count=0,feature_count=0 where processing_batch_id=$1 and asset_id=$2`,
+              [
+                nextBatch,
+                asset,
+                outcome,
+                outcome === 'PARTIAL' ? 'ROW_LIMIT' : null,
+              ],
+            );
+            await client.query(
+              'update ingestion.candidate_batch set status=$2,completed_at=clock_timestamp() where processing_batch_id=$1',
+              [nextBatch, outcome === 'EMPTY' ? 'READY' : 'PARTIAL'],
+            );
+          }
+        }
+        await client.query('reset role');
+        const newerBase = {
+          ...frozenBase,
+          quality: { fixtureReprocessed: true },
+        };
+        const newerHash = createHash('sha256')
+          .update(JSON.stringify(newerBase))
+          .digest('hex');
+        await client.query(
+          `insert into ingestion.transform_plan(transform_plan_id,tenant_id,project_id,ingestion_id,plan_version,plan,plan_hash,status,security_level)
+          values($1,$2,$3,$4,2,$5::jsonb,decode($6,'hex'),'REVIEW_REQUIRED','L0_PUBLIC')`,
+          [
+            randomUUID(),
+            tenant,
+            project,
+            ingestion,
+            JSON.stringify({ ...newerBase, reviewHash: newerHash }),
+            newerHash,
+          ],
+        );
+        const fixed = (processingBatchId: string) => ({
+          kind: 'ingestion-candidate',
+          ingestionId: ingestion,
+          processingBatchId,
+          reviewHash,
+        });
+        const allRefs = [fixed(batch), ...[...extra.values()].map(fixed)];
+        const selectHistory = async () =>
+          (
+            await client.query<{ processing_batch_id: string }>(
+              'select processing_batch_id from ingestion.candidate_batch where ingestion_id=$1 order by processing_batch_id',
+              [ingestion],
+            )
+          ).rows;
+        const scopeHistory = (refs: unknown) =>
+          client.query(
+            `select set_config('wiser.candidate_fixed_refs',$1,true),set_config('wiser.resource_scope',$2,true)`,
+            [
+              JSON.stringify(refs),
+              JSON.stringify({
+                mode: 'managed',
+                permissions: {},
+                validUntil: '2099-01-01T00:00:00Z',
+              }),
+            ],
+          );
+        await scopeHistory(allRefs);
+        await client.query('set local role wiser_data_worker');
+        expect(await selectHistory()).toEqual([]); // The current-plan Worker guard is retained.
+        await client.query('set local role wiser_data_api');
+        await scopeHistory([]);
+        expect(await selectHistory()).toEqual([]); // No generic history enumeration.
+        await scopeHistory([fixed(batch)]);
+        expect(await selectHistory()).toEqual([{ processing_batch_id: batch }]);
+        expect(
+          (
+            await client.query(
+              'select record_values,source_id from ingestion.candidate_record where processing_batch_id=$1',
+              [batch],
+            )
+          ).rows,
+        ).toEqual([{ record_values: raw, source_id: 'table:1/row:5' }]);
+        expect(
+          (
+            await client.query(
+              "select asset_id,encode(source_hash,'hex') source_hash from ingestion.candidate_asset where processing_batch_id=$1",
+              [batch],
+            )
+          ).rows,
+        ).toEqual([{ asset_id: asset, source_hash: sourceHash }]);
+        expect(await originalRows()).toEqual({
+          assets: [{ asset_id: asset }],
+          blobs: [{ content_blob_id: blob }],
+        });
+        await scopeHistory(allRefs);
+        expect(await selectHistory()).toEqual(
+          [batch, extra.get('EMPTY')!]
+            .sort()
+            .map((processing_batch_id) => ({ processing_batch_id })),
+        ); // EMPTY members qualify only through their actual completed aggregate READY batch.
+        for (const refs of [
+          [{ ...fixed(batch), reviewHash: 'f'.repeat(64) }],
+          [{ ...fixed(batch), processingBatchId: randomUUID() }],
+          [{ ...fixed(batch), eligible: true }],
+          'not-a-reference-array',
+        ]) {
+          await scopeHistory(refs);
+          expect(await selectHistory()).toEqual([]);
+        }
+        await scopeHistory([fixed(batch)]);
+        await client.query('savepoint history_current_authority');
+        for (const sql of [
+          "select set_config('wiser.candidate_maintainer','false',true)",
+          "select set_config('wiser.candidate_purpose','',true)",
+          "select set_config('wiser.actor_type','agent',true)",
+          "select set_config('wiser.policy_version','2',true)",
+          'select set_config(\'wiser.resource_scope\',\'{"mode":"managed","permissions":{},"validUntil":"2000-01-01T00:00:00Z"}\',true)',
+        ]) {
+          await client.query(sql);
+          expect(await selectHistory()).toEqual([]);
+          await client.query('rollback to savepoint history_current_authority');
+        }
+        await setActor(other);
+        expect(await selectHistory()).toEqual([]);
+        await client.query(
+          "select set_config('wiser.candidate_maintainer','false',true),set_config('wiser.candidate_reviewer','true',true)",
+        );
+        expect(await selectHistory()).toEqual([{ processing_batch_id: batch }]);
+        await setActor(actor);
+        expect(await selectHistory()).toEqual([]); // Frozen submitter cannot self-review history.
+        await client.query('rollback to savepoint history_current_authority');
+        for (const terminal of ['FAILED', 'CANCELLED'] as const) {
+          await client.query('reset role');
+          await client.query(
+            'update ingestion.session set state=$2,row_version=row_version+1 where ingestion_id=$1',
+            [ingestion, terminal],
+          );
+          await client.query('set local role wiser_data_api');
+          expect(await selectHistory()).toEqual([]);
+          expect(await originalRows()).toEqual({ assets: [], blobs: [] });
+          await client.query('rollback to savepoint history_current_authority');
+        }
+        await client.query('reset role');
+        await client.query(
+          'update ingestion.project_review_policy set enabled=false,revision=revision+1,row_version=row_version+1 where tenant_id=$1 and project_id=$2',
+          [tenant, project],
+        );
+        await client.query('set local role wiser_data_api');
+        expect(await selectHistory()).toEqual([]);
+        await client.query('rollback to savepoint historical_ready_scope');
+
         await client.query('set local role wiser_data_metadata');
         await denied(
           client,

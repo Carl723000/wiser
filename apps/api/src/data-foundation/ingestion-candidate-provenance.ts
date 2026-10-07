@@ -90,7 +90,7 @@ export function createCandidateConversionProvenanceReader(
           context.authorization,
           context.resourceReadAction,
         );
-        await setCandidateReadAuthority(client, context);
+        await setCandidateReadAuthority(client, context, [canonical.reference]);
         const result = await client.query(fixedSql, [
           canonical.reference.ingestionId,
           canonical.reference.processingBatchId,

@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-10-07
-lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -272,3 +272,17 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 ```
 
 Public read output excludes internal responsibility/job data. The new conditional migration test exercises real role/lease/member/immutability/commit denials when the isolated PostgreSQL harness enables it; skipped unit execution is not RLS proof. Actual sandbox conversion and Worker same-transaction integration remain required.
+
+## Candidate relationship storage (0044)
+
+After 0043, append 0044_ingestion_candidate_relations.sql and rerun runtime provisioning in the isolated migrated database. Four ingestion tables store immutable revisions, fixed evidence, immutable relation/source responsibilities and append-only decision versions. All use FORCE RLS. Current API/source authority, exact candidate tuples, asset hashes, optional record membership and decoded-string excerpts are checked; source responsibilities are copied from frozen ingestion sessions, never guessed from an input actor. A source purpose that was not frozen is not reconstructed.
+
+The provision exception runs after common grants: API receives only SELECT/INSERT on these four tables; shared runtime and Worker grants are removed, and UPDATE/DELETE remain unavailable. Invoker guards have no SECURITY DEFINER bypass. Same tenant/project/relation transaction-level advisory locks serialize revision/decision validation without granting UPDATE just to lock immutable rows. The revision chain, decision primary key, expected decision version and transition guards remain authoritative; locks do not supply authorization. A hash collision only adds contention. Commands touching multiple relations must acquire them in consistent order, retain bounded statement/transaction timeouts, and handle transactional failure rather than assume lock acquisition proves success.
+
+Conditional ingestion-candidate-relations.spec.ts exercises real cumulative migrations, legal FINGERPRINTED/CLEAN/versionless source fixtures, twice-applied role narrowing, independent confirmation/revocation, complete responsibility exclusions, current authority withdrawal, explicit predecessors and immutability. Ordinary unit runs skip these PostgreSQL cases; skips do not prove SQL syntax, RLS, concurrency or live Auth. Do not reset preview data or rewrite an applied checksum. Public relationship write executors are not activated by this storage slice. Recovery disables the new entrypoints while preserving revision/decision history.
+
+## Historical READY candidate reads (0045)
+
+Apply additive `0045_candidate_historical_ready_reads.sql` with the Data checksum runner after 0043 and the reserved 0044 sequence; previous migration bytes stay unchanged. It adds an invoker predicate receiving the actual batch row, a bounded strict fixed-reference filter, exact frozen plan/input membership and current authority through a real newer plan. No table, backfill or authority carrier is introduced. The current `candidate_readable`, Worker lease/write guards and existing catalog restrictive policy remain; only batch SELECT and the original-readable predicate gain the narrow READY branch. Runtime function execution grants remain subject to the explicit API-role check.
+
+The existing rollback-only `ingestion-candidate.spec.ts` now contains P1→P2 READY/EMPTY, general PARTIAL/pending rejection, no selection or forged tuple rejection, current role/purpose/delegation/deadline/policy and failed/cancelled-session counterexamples, original reads and unchanged Worker denial. Run it explicitly with `WISER_DATA_PG_INTEGRATION=1` on an isolated migrated database; the explicit serial CI integration list now includes that file and ingestion-candidate-relations.spec.ts with the same native flag; an actual successful CI run remains required before claiming database coverage. A skipped unit case and structural policy checks are not SQL/RLS acceptance. Do not reset preview data or infer narrow D1 PARTIAL qualification from a conversion result alone. Saved historical recovery remains separate work; recovery disables the new bounded readers while preserving rows and migration history.

@@ -186,6 +186,13 @@ do $$ begin
     grant select on ingestion.candidate_conversion_check to wiser_data_api;
     grant select,insert on ingestion.candidate_conversion_check to wiser_data_worker;
   end if;
+  if to_regclass('ingestion.candidate_relation_revision') is not null then
+    revoke all on ingestion.candidate_relation_revision,ingestion.candidate_relation_evidence,
+      ingestion.candidate_relation_responsibility,ingestion.candidate_relation_decision
+      from wiser_data_runtime,wiser_data_api,wiser_data_worker;
+    grant select,insert on ingestion.candidate_relation_revision,ingestion.candidate_relation_evidence,
+      ingestion.candidate_relation_responsibility,ingestion.candidate_relation_decision to wiser_data_api;
+  end if;
   if to_regclass('ingestion.project_review_policy') is not null then
     revoke insert,update,delete on ingestion.project_review_policy from wiser_data_runtime;
   end if;

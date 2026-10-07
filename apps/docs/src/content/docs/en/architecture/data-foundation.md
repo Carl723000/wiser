@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: b0f89ae3
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## What runs today
@@ -527,6 +527,12 @@ Records and geometry use ordered, reference/view/asset/actor/delegator/purpose/p
 
 Candidate originals use the canonical `FINGERPRINTED` state: no catalog version, a CLEAN scan, equal input/asset/content-blob hashes and byte sizes. `0039_candidate_fingerprinted_original.sql` corrects candidate guard admission without rewriting the 0037/0038 checksums or weakening existing lifecycle constraints. It does not rescan, downgrade to QUARANTINED, create RAW originals or publish versions.
 
+### Bounded historical READY reads
+
+Additive `0045_candidate_historical_ready_reads.sql` admits a replaced, immutable completed READY batch only for the server's strictly parsed fixed reference selection. Forced RLS receives the actual batch row, verifies the exact old plan/hash/governance and current CLEAN input membership/hashes, and reuses the unchanged current-plan authority predicate on a real newer plan. The history predicate does not query candidate children, conversion results or catalog originals, preventing those policy cycles. Current subject/delegator, purpose, security, policy and failed/cancelled-session checks remain effective; Worker latest-plan and leased writes are unchanged.
+
+The existing get/records/geometry, provenance and original adapters set a transaction-local bounded selection; omitted selections clear historical access. No public input, scope, project history list, eligibility assertion, published identity or new state carrier is added. Original delivery retains its separate exact original/hash/size/security checks. General PARTIAL and pending/incomplete outcomes are excluded. The strict D1 PARTIAL exception, saved-view historical lookup/list, minimal unavailable receipt and complete v2 recovery remain separate implementation work. Focused API/static checks and skipped conditional PostgreSQL cases do not prove live Auth/RLS or original delivery.
+
 ### Managed pending intake and candidate discovery
 
 The internal `data.catalog.create` executor checks the same current maintenance authority before opening a transaction or reading a cached receipt, only when a managed resource scope is present. Requiring `data.operation.read` alongside `data.ingestion.write` keeps the maintenance-role definition consistent; operation-read permission is not a functional requirement of catalog creation. Legacy callers with ingestion-write permission retain their draft and replay behavior. Catalog request hashes and SQL are unchanged, and the command does not install pending-intake scope or lock an ingestion session. Public managed catalog creation remains excluded; internal executor controls do not establish live Auth or SQL/RLS acceptance.
@@ -619,8 +625,24 @@ The pure readiness model retains published work/version/asset keys and counts. A
 
 The independent complete-topic v2 contract checkpoint fixes explicit question/time role, record selections, rule versions, asset/record/whole-record geometry dependencies and relation revision/decision pins. It preserves the existing 100-reference and 128 KiB limits and does not alter versionless candidate-view v1 or published exploration saves. Pure shape validation never establishes current source authority or trustworthy conversion. See the [contract checkpoint](/en/protocols/data-rest/#complete-candidate-topic-specification-v2--contract-checkpoint). Legacy list/open now enforce the version boundary described above. New topic capability registration, existing-table migration, mixed-version SQL pagination and real Auth/RLS recovery remain separate integration gates.
 
+An internal preparatory validator now reuses current candidate scope, immutable submission responsibility, the complete manifest and page/focus anchors. It binds actual candidate/source/parser rows and derives domain-separated record and whole-record geometry fingerprints; record JSON keys are sorted, array order and PostgreSQL numeric tokens are retained, and geometry uses the complete EPSG:4326 GeoJSON at precision 15 with the existing size bound. A trusted host provider must supply the complete adopted rule set for the selected region/needs and, for nonempty relation pins, the exact candidate revision, current decision version and every fixed source dependency. Missing providers fail closed; source-local object keys require an explicit authoritative mapping. This helper is not registered as REST or GraphQL, does not save v2, and does not establish live SQL/Auth, conversion trust or H1 history eligibility.
+
 ## Private candidate conversion trust
 
 Historical original O and uploaded prepared P retain different identities. The dedicated conversion contract records a declaration separately from a server check; it does not accept a caller verification flag or describe historical P as platform-generated. A pure comparator checks raw table widths, grids, physical cells, merges, empty text, paragraphs, month titles and locators without text normalization. The narrow eligibility helper can recognize a verified prepared READY member in a still-PARTIAL batch; it never changes the real batch or source status. Current authority and complete record pages remain caller responsibilities.
 
 Migration 0043 adds the private, immutable `ingestion.candidate_conversion_check` carrier. An active processing lease, exact frozen members, immutable submission responsibility and current governance are required, and its result must commit with candidate completion. The fixed provenance reader is registered as `data.ingestion.candidate.provenance.get` with strict input/output schemas, managed admission and the standard PostgreSQL read runtime. REST, GraphQL and HTTP-backed MCP mappings reuse current candidate authority and expose only a bounded summary. Trusted O → R′ conversion execution, Worker integration, real Auth/PostgreSQL/RLS/HTTP acceptance and original A13 acceptance remain unverified; public read wiring alone does not make the conversion chain usable.
+
+## Private candidate relationship carrier
+
+Candidate relationship content lives in the ingestion domain, separately from published assertions. A revision fixes the candidate tuple, source-local endpoints, predicate, full context, source evidence, mapping/rule versions and immutable submitting actor/delegator/purpose. Every predicate requires context, including legacy water predicates; cross-source IDENTITY_MATCH requires two distinct candidate endpoints and evidence for both. No candidate tuple becomes a catalog version or published row_version.
+
+Migration 0044 separates immutable content revisions, fixed evidence, frozen relation/source responsibility and append-only decisions. A revision starts at PENDING_REVIEW; CONFIRMED is a candidate decision, not professional APPROVED or publication. Independent decisions require a non-delegated human who is neither the relation submitter/delegator nor any relevant source submitter/delegator. WITHDRAWN is limited to the responsible proposer while pending; REVOKED follows confirmation. Revision and decisionVersion remain separate, with decisionVersion 0 meaning no decision.
+
+The internal fixed-pin reader uses the caller's scoped PostgreSQL client and current authorization context. It requires the exact historical content revision and its actual latest decision version, then returns bounded fixed candidate/asset/record/hash dependencies. Empty relation selections remain empty; missing, changed or unreadable material is rejected rather than substituted. Existing candidate/source RLS is rechecked for every dependency. This carrier and reader do not activate public relationship commands, grant source access, enable published projection or establish full A7 acceptance. Actual PostgreSQL, current Auth, concurrency, public write execution and browser evidence remain separate requirements.
+
+### Fixed-reference internal composition
+
+The preparatory topic validator installs its complete strictly parsed candidate selection. Its relation provider receives the same bounded list on the caller-owned client, without beginning, committing or releasing another transaction; returned dependencies must remain within that selection. The validator reapplies its original parsed selection before the post-provider manifest check. Fixed selection narrows historical RLS; it is not source authorization. Current authority, every actual manifest member and all material/rule guards remain required.
+
+Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden historical saved row still returns NOT_FOUND: this composition does not implement the unavailable receipt, historical saved enumeration, v2 persistence, default rule/object providers or trusted conversion. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.

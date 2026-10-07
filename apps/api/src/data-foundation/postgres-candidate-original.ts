@@ -156,7 +156,7 @@ export class PostgresCandidateOriginalPort implements CandidateOriginalPort {
         input.assetId,
       ]);
       await applyResourceReadScope(client, authorization, 'original.read');
-      await setCandidateReadAuthority(client, input.context);
+      await setCandidateReadAuthority(client, input.context, [reference.data]);
       const result = await client.query(LOOKUP_SQL, [
         reference.data.processingBatchId,
         reference.data.ingestionId,

@@ -16,8 +16,8 @@ checkPaths:
   - AGENTS.md
   - .docpact/config.yaml
   - .github/workflows/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: c2754d90be5e2658db195bc488c714b972c8783d
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 # Contributing / 贡献指南
@@ -73,3 +73,5 @@ Red commits are recoverable checkpoints / Red 提交是可恢复检查点。允�
 - AI provider 输出必须经过本地 schema 校验，且不能决定确定性评分。
 
 受管标准接收任务的 `data-managed-operation-reads.integration.spec.ts` 与候选固定保存的 `ingestion-candidate-saved.spec.ts` 均纳入上述串行隔离 Data PostgreSQL 通道；本机覆盖率检查中的条件跳过不能替代实际 RLS 验证。 / Managed intake Operation ownership and fixed candidate-view persistence run in the same serial isolated Data PostgreSQL lane; conditional skips in unit coverage are not live RLS evidence.
+
+候选历史 READY 读取的 `ingestion-candidate.spec.ts` 与候选关系载体的 `ingestion-candidate-relations.spec.ts` 采用同一明确的 Data PostgreSQL CI 串行列表，保留 `WISER_DATA_PG_INTEGRATION=1`、所有旧测试与隔离迁移。普通单元执行中的条件跳过不表示已通过 SQL、RLS、并发或真实身份验证。 / Historical READY candidate reads and private candidate relation storage use the same explicitly listed, serial isolated PostgreSQL CI lane; conditional unit skips are not native database acceptance.

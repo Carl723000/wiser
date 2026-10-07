@@ -176,3 +176,31 @@ test('narrows conversion result roles after inherited common grants', async () =
   assert.doesNotMatch(block, /grant[^;]+to wiser_data_runtime/);
   assert.doesNotMatch(block, /grant[^;]+\b(update|delete|truncate)\b/);
 });
+
+test('narrows private candidate relation carriers after the common grants', async () => {
+  const sql = (await readFile(sqlPath, 'utf8')).toLowerCase();
+  const start = sql.indexOf(
+    "if to_regclass('ingestion.candidate_relation_revision') is not null then",
+  );
+  assert.ok(
+    start > sql.indexOf('grant select, insert, update on all tables in schema'),
+  );
+  const end = sql.indexOf('end if;', start);
+  const block = sql.slice(start, end);
+  for (const table of [
+    'candidate_relation_revision',
+    'candidate_relation_evidence',
+    'candidate_relation_responsibility',
+    'candidate_relation_decision',
+  ])
+    assert.ok(block.includes(`ingestion.${table}`));
+  assert.match(
+    block,
+    /revoke all on[\s\S]+from wiser_data_runtime,wiser_data_api,wiser_data_worker/,
+  );
+  assert.match(block, /grant select,insert on[\s\S]+to wiser_data_api/);
+  assert.doesNotMatch(
+    block,
+    /grant[\s\S]+to wiser_data_runtime|grant update|grant delete/,
+  );
+});

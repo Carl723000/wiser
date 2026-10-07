@@ -89,6 +89,14 @@ describe('fixed private candidate provenance reader', () => {
     )!;
     expect(fixed.values).toEqual([id(1), id(2), reference.reviewHash, id(3)]);
     expect(fixed.sql).not.toContain('storage_key');
+    const scope = s.statements.findIndex((statement) =>
+      statement.sql.includes('wiser.candidate_fixed_refs'),
+    );
+    expect(scope).toBeGreaterThan(-1);
+    expect(scope).toBeLessThan(s.statements.indexOf(fixed));
+    expect(JSON.parse(String(s.statements[scope]!.values?.at(-1)))).toEqual([
+      reference,
+    ]);
   });
   it('returns only the exact server check and refuses malformed or foreign evidence', async () => {
     const check = {

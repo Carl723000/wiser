@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   candidateSavedReferenceKey,
+  CreateIngestionCandidateTopicInputSchema,
   CreateIngestionCandidateViewInputSchema,
   CreateIngestionCandidateViewOutputSchema,
   ListIngestionCandidateViewsInputSchema,
@@ -43,6 +44,11 @@ import type {
   QueryAdapterPgClient,
   QueryAdapterPgPool,
 } from './query-adapters.js';
+import {
+  assertCandidateTopicPinProviders,
+  validateCandidateTopicMaterialPins,
+  type CandidateTopicPinAuthorities,
+} from './ingestion-candidate-topic-pins.js';
 
 const savedSchema = z.object({
   view_id: z.uuid(),
@@ -80,6 +86,7 @@ function assertAuthority(context: DataCapabilityExecutionContext) {
 async function scope(
   client: QueryAdapterPgClient,
   context: DataCapabilityExecutionContext,
+  references: IngestionCandidateSavedReferences | readonly [] = [],
 ) {
   assertAuthority(context);
   const deadlines = [
@@ -104,7 +111,7 @@ async function scope(
     context.authorization,
     context.resourceReadAction,
   );
-  await setCandidateReadAuthority(client, context);
+  await setCandidateReadAuthority(client, context, references);
 }
 function metadata(row: Saved) {
   return IngestionCandidateSavedViewSchema.parse({
@@ -220,6 +227,41 @@ async function validateView(
     );
   return position;
 }
+/** Preparatory server validation only: no capability registration or v2 save.
+ * Existing v1 scope, immutable responsibility and anchor guards are reused. */
+export async function validateIngestionCandidateTopicPins(
+  client: QueryAdapterPgClient,
+  raw: unknown,
+  context: DataCapabilityExecutionContext,
+  authorities?: CandidateTopicPinAuthorities,
+) {
+  const input = CreateIngestionCandidateTopicInputSchema.parse(raw);
+  assertAuthority(context);
+  assertCandidateTopicPinProviders(input.viewSpec, authorities);
+  await scope(client, context, input.references);
+  await manifest(client, input.references, context);
+  await validateView(client, {
+    page: input.viewSpec.page,
+    ...(input.viewSpec.focus ? { focus: input.viewSpec.focus } : {}),
+    ...(input.viewSpec.map ? { map: input.viewSpec.map } : {}),
+  });
+  await validateCandidateTopicMaterialPins(
+    client,
+    input.viewSpec,
+    context,
+    authorities,
+    input.references,
+    () => {
+      assertAuthority(context);
+    },
+  );
+  // Reapply only the parsed fixed selection before the post-provider RLS check.
+  await scope(client, context, input.references);
+  // Recheck every manifest member after asynchronous authority providers.
+  await manifest(client, input.references, context);
+  assertAuthority(context);
+  return input;
+}
 function pageRequest(
   view: IngestionCandidateSavedViewSpec,
   context: DataCapabilityExecutionContext,
@@ -284,6 +326,9 @@ async function readSaved(
     ((owned || row.visibility === 'private') && !isOwner(row, context))
   )
     throw new DataCapabilityHandlerError('NOT_FOUND');
+  // Only a row already visible under saved-view RLS supplies this selection.
+  // Hidden historical rows remain NOT_FOUND; this does not enumerate them.
+  await scope(client, context, row.candidate_refs);
   await manifest(client, row.candidate_refs, context);
   return row;
 }
@@ -344,7 +389,7 @@ export function createIngestionCandidateSavedExecutors(
           context,
           (client, timestamp) =>
             commandErrors(async () => {
-              await scope(client, context);
+              await scope(client, context, input.references);
               await manifest(client, input.references, context);
               await validateView(client, input.viewSpec);
               const id = randomUUID();
@@ -436,6 +481,7 @@ values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::timestamptz
               (row.visibility === 'private' && !isOwner(row, context))
             )
               throw new DataCapabilityHandlerError('NOT_FOUND');
+            await scope(client, context, row.candidate_refs);
             await manifest(client, row.candidate_refs, context);
           }
           const last = rows.at(-1);

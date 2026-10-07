@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: daf82f94
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## 协议边界
@@ -428,6 +428,8 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 
 每次续读重查不可变提交者／委托人的当前维护权限，或独立人工审核者的审核权限，同时检查项目、密级和策略。已发布资料授权保持原范围。候选解析与读取不构成批准或发布；原件下载、保存候选流程及真实 Auth／数据库／浏览器仍单独验收。
 
+应用追加迁移 0045 后，同一严格固定读取输入可在当前仍获权时选择被替代且完整完成的 READY 批次。服务器只将该已解析引用写入事务内 RLS 范围，不接收状态／资格标志，不增加项目历史枚举。来源摘要与原件沿用同一有限历史分支，原件哈希／长度／权限检查继续保留。一般 PARTIAL、未完整结果和失败／取消会话仍关闭；D1 窄 PARTIAL、保存后的历史恢复及真实 SQL／Auth 仍须单独验收。
+
 ### 受管待审接收与候选发现
 
 标准`data.uploadSession.create/complete`、`data.ingestion.create/submit`及`data.ingestion.get`通过当前维护权限和归属守卫接入受管项目。写入同时要求`data.ingestion.write`和`data.operation.read`，在返回旧回执或处理对象存储前检查可信身份、用途、期限及当前项目。上传责任由服务器保存于不可变Operation请求信息；原人类提交者或负责委托的人类可继续维护，委托主体须同时匹配原身份类型、身份编号和委托人。旧记录责任不明时拒绝。创建只绑定已完成、自有且处于QUARANTINED的资产，不清除资源范围或扩大已发布内容权限。受管幂等请求同时绑定身份类型、委托人、用途和资源指纹，重试重新检查当前归属。
@@ -468,6 +470,8 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 
 独立的`candidate-topic.ts`合同检查点保留明确的`schemaVersion:2`；无版本候选视图v1合同、既有注册接口和消费者不变。本合同检查点已实现严格形状、依赖一致性与旧规格分派；纯校验不启用专题持久保存。本片不代表HTTP入口已启用、迁移已执行或持久恢复已验收。
 
+内部准备校验器复用当前候选范围、不可变提交责任、完整清单及页码／焦点锚点，核对真实候选、原件及解析器记录，并按不同用途生成记录和整记录几何指纹。记录JSON按key排序，保留数组顺序及PostgreSQL数字原值；几何使用精度15的完整EPSG:4326 GeoJSON和既有大小上限。可信宿主提供器须返回所选区域／需求实际采用的完整规则集；非空关系pin还须返回确切候选修订、当前决定版本和每项固定来源依赖。提供器缺失时拒绝，源内对象key须有明确权威映射。本函数未注册REST或GraphQL入口，不保存v2，也不证明真实SQL／Auth、转换可信或H1历史资格。
+
 固定配置包含原有边界的页码、焦点和地图；具有有效日历边界、`timeRole`、`displayUnit`和`includeUndated`的明确月／日时窗；问题、区域／需求编号与候选／原件／记录pin；投影、就绪、需求及影响规则版本；明确的原件、记录或整记录几何依赖；关系内容修订与决定版本。不保存原始数值、几何坐标或客户端发出的可信声明；内容与权限由服务器按当前条件重新取得。
 
 清单保持1–100个唯一候选引用，完整创建结果保持UTF-8 JSON最多128 KiB。拟固定字段上限为：问题2,000字，区域编号32个，需求编号64个，记录／依赖pin各200个，规则pin32个，关系pin100个，源内对象key256字，规则／解析器标识及版本128字。规则须包含实际采用的四种类别，关系可为空。新规格中决定版本0表示尚无追加候选决定，不能代表批准；关系修订从1开始。服务器保存前仍须核对真实原件哈希、处理版本、记录／几何哈希、关系来源依赖及决定历史。
@@ -479,3 +483,15 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 `createCandidateConversionProvenanceReader` 经标准 PostgreSQL 读取运行时提供已注册的固定引用窄读 `data.ingestion.candidate.provenance.get`，严格输入为 `{kind, ingestionId, reviewHash, processingBatchId, preparedAssetId}`。当前可读、已完成的指定成员返回固定身份及有界核验结果，尚无核验时返回 `check: null`；不可读或跨身份成员返回 NOT_FOUND。沿用候选维护者／独立审核者权限；等待只读事务提交后，返回前再次核对同一上下文的主体／范围期限及取消。实时 Auth 撤权仍须单独验收，响应不返回存储键、内部地址、任务载荷或自由清单。
 
 Registry 将这一严格查询映射为 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`，`kind` 与 `reviewHash` 保留为查询参数。受管准入仅增加该能力 ID。标准处理器保留仅含哈希的审计，传输返回前再次核对当前权限，并使用 `no-store` 响应。窄读沿用维护者（`data.operation.read` 与 `data.ingestion.write`）或独立人类审核者（`data.operation.read` 与 `data.publish`）资格，不新增 scope。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；本地注册接线不等于服务已运行。
+
+### 候选关系载体：内部检查点
+
+candidate-relations 契约／载体固定范围内的 relationId、lineageId、内容修订／supersedesId、映射／规则版本、完整候选来源证据及不可变提交责任。原上限保持：每命令100次修订、每关系64项证据、命令256 KiB、单关系100,000 UTF-8字节。候选决定使用 CONFIRMED／REJECTED／CORRECTION_REQUIRED／REVOKED／WITHDRAWN，不映射为已发布 APPROVED；独立审核排除全部固定关系／来源提交者及委托人。
+
+宿主专用固定 pin 读取器核对确切内容修订与实际当前决定版本，并返回有界固定来源依赖。本片不增加公开路由、Capability ID、scope 或受管白名单；既有 REST 已发布关系及 v1 保存视图不变。公开候选创建／审核／重新绑定、幂等事务写入及真实 Auth／SQL／浏览器仍需后续接线与验收，内部 provider 测试不能证明命令已可调用。
+
+### 固定引用的内部接线
+
+专题预备校验器设置已严格解析的完整候选清单；关系读取适配器在调用方已有的同一数据库连接中接收相同清单，不另起事务、提交或释放连接，返回的来源依赖不得超出该清单。异步适配器返回后，校验器重新设置原解析清单，再核全部实际成员。固定清单仅收窄历史 RLS，并不授予资料访问权；当前身份权限、全部实际清单成员及资料与规则守卫继续生效。
+
+无版本号的保存视图创建采用完整输入引用；列表、打开、重放和撤销只允许已经通过保存行 RLS 的行，以其实际保存的完整引用重新核清单。不同列表行不合并选择范围。初始不可见的历史保存行仍返回 NOT_FOUND；本片不实现不可用回执、历史枚举、v2 持久保存、默认规则或对象提供者、可信转换。合成 GUC／适配器测试与原生测试清单接线不表示已通过 PostgreSQL／真实身份验收。

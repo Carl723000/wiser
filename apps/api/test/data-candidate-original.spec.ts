@@ -1212,6 +1212,17 @@ describe('pending original fixed authority database boundary', () => {
         ?.values?.slice(0, 3),
     ).toEqual([actorId, 'human', '']);
     expect(f.signer).not.toHaveBeenCalled();
+    const fixed = f.queries.findIndex((q) =>
+      q.text.includes('wiser.candidate_fixed_refs'),
+    );
+    const lookup = f.queries.findIndex((q) =>
+      q.text.includes('candidate-original.lookup'),
+    );
+    expect(fixed).toBeGreaterThan(-1);
+    expect(fixed).toBeLessThan(lookup);
+    expect(JSON.parse(String(f.queries[fixed]!.values?.at(-1)))).toEqual([
+      reference,
+    ]);
   });
 
   it('signs only the original upload derived from a current fixed candidate and audits it', async () => {

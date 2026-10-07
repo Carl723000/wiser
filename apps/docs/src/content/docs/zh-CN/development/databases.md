@@ -18,8 +18,8 @@ checkPaths:
   - packages/data-infra/src/migrations/**
   - scripts/data-foundation/**
   - compose.yaml
-lastReviewedAt: 2026-10-07
-lastReviewedCommit: a42aaa9a7e7ca4aa99b2fbe4f829265fb42c9fe9
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -272,3 +272,17 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 ```
 
 公开窄读不返回内部任务与责任字段。新增条件迁移测试仅在隔离 PostgreSQL 栈启用后实际验证角色、租约、成员、不可变及提交拒绝；单元运行中的跳过不是 RLS 证据。真实沙箱转换与 Worker 同事务接线仍须完成。
+
+## 候选关系存储（0044）
+
+在0043之后追加0044_ingestion_candidate_relations.sql，并在已迁移的隔离数据库重新配置运行角色。四张 ingestion 表分别保存不可变修订、固定证据、不可变关系／来源责任和追加式决定版本，均启用 FORCE RLS。守卫核对当前 API／来源权限、确切候选四元、原件哈希、可选记录归属及解码字符串中的摘录；来源责任从冻结的接收会话取得，不采信输入主体，不补造原先未固定的来源用途。
+
+角色例外位于通用授权之后：API仅获四表 SELECT／INSERT，撤回通用 runtime 与 Worker 授权，禁止 UPDATE／DELETE。invoker 守卫不使用 SECURITY DEFINER 绕过。按同一租户／项目／关系取得事务级 advisory lock，串行核对修订与决定，无须为锁定不可变行增加 UPDATE 权限。修订链、决定主键、期望决定版本和状态守卫仍是权威约束；锁不授予权限，哈希碰撞只会增加等待。涉及多条关系的命令须按一致顺序取得锁，保留有界语句／事务期限，并处理事务失败，不能把取得锁当作写入成功。
+
+条件用例 ingestion-candidate-relations.spec.ts 在真实累积迁移下使用合法 FINGERPRINTED／CLEAN／无版本原件，检查两次角色收窄、独立确认／撤销、完整禁止自审、当前权限撤回、显式前序修订及不可变历史。普通单元运行跳过这些 PostgreSQL 用例；跳过不能证明 SQL 语法、RLS、并发或真实 Auth。不得重置预览数据或重写已应用校验和。本存储切片不启用公开关系写执行器；恢复时关闭新增入口，保留修订及决定历史。
+
+## READY 候选历史读取（0045）
+
+在 0043 及已分配的 0044 序列之后，沿 Data 校验和迁移器追加 `0045_candidate_historical_ready_reads.sql`；旧迁移字节不变。invoker 谓词使用真实批次行、严格有限固定引用、冻结计划／输入完整成员，并通过真实较新计划复用当前读取权限。不新增表、回填或权威载体；原 `candidate_readable`、Worker 租约／写入守卫及目录限制型策略保留，只为批次 SELECT 和原件可读谓词追加有限 READY 分支。运行角色的函数执行权限仍受函数内明确 API 身份检查约束。
+
+既有回滚型 `ingestion-candidate.spec.ts` 增加 P1→P2 的 READY／EMPTY、一般 PARTIAL／待处理拒绝、无选择或伪造引用拒绝、当前权限／用途／委托／期限／策略及失败／取消会话反例，并核原件及 Worker 旧计划拒绝。须在已迁移隔离数据库显式启用 `WISER_DATA_PG_INTEGRATION=1` 运行；当前 CI 串行原生集成路径已明确加入该文件与 ingestion-candidate-relations.spec.ts，沿用既有原生标志；实际 CI 通过后才能声称数据库覆盖。单元阶段跳过或策略结构检查不是 SQL／RLS 通过。不重置预览资料，也不从一条转换结果推断 D1 窄 PARTIAL 资格。保存后的历史恢复仍为独立接续；恢复通过关闭新增限界读取入口保留业务行和迁移历史。

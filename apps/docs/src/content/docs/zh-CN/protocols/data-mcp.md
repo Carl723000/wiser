@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: daf82f94
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## 只做 HTTP 适配
@@ -330,3 +330,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 ## 转换来源准入
 
 已注册工具 `data_ingestion_candidate_provenance_get` 经标准 HTTP 映射调用 `data.ingestion.candidate.provenance.get`，仅返回通过严格契约校验的有界摘要。参数包含固定候选引用和 `preparedAssetId`；身份、租户／项目及用途由受信连接提供。当前候选权限、受管准入和严格校验与 REST 相同，不直接访问数据库或新增 scope。转换声明不是授权或受信结果，MCP 不得绕过 Worker 专用写入或读取私有原始清单。受信 O → R′ 转换、Worker 接线、真实 Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实。
+
+### 候选关系载体边界
+
+内部载体不增加 MCP 工具或直接数据库访问，既有已发布关系工具继续使用原严格契约。候选修订／决定 pin 后续须经已核验的 HTTP 能力逐项解析，并核对全部固定来源当前权限，不能原样回显工具参数充当权威。CONFIRMED 不表示关系发布或专业批准，委托智能体不能作独立人类决定。本存储／读取切片尚未接通公开候选命令、受管准入及真实 HTTP／Auth／RLS 验收。

@@ -1236,6 +1236,7 @@ function candidateReadExecutors(
   const requireAuthority = async (
     client: PostgresDataReadClient,
     context: DataCapabilityExecutionContext,
+    reference: unknown,
   ) => {
     const { maintainer, reviewer } = candidateReadAuthority(context);
     if (!maintainer && !reviewer)
@@ -1244,7 +1245,7 @@ function candidateReadExecutors(
         403,
         'The current identity cannot read pending candidates.',
       );
-    await setCandidateReadAuthority(client, context);
+    await setCandidateReadAuthority(client, context, [reference]);
   };
   const loadBatch = async (
     client: PostgresDataReadClient,
@@ -1323,7 +1324,7 @@ function candidateReadExecutors(
         return transactions.run(
           context,
           async (client) => {
-            await requireAuthority(client, context);
+            await requireAuthority(client, context, reference);
             const batch = await loadBatch(client, input);
             if (name === 'get') {
               const result = await client.query(CANDIDATE_ASSETS_SQL, [

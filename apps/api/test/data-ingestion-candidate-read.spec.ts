@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setCandidateReadAuthority } from '../src/data-foundation/candidate-read-authority.js';
 import {
   DATA_CAPABILITY_REGISTRY,
   DATA_CAPABILITY_IDS,
@@ -262,7 +263,15 @@ describe('pending candidate standard read executors', () => {
       client.queries.find((q) =>
         q.text.includes('data.ingestion.candidate.scope'),
       )?.values,
-    ).toEqual([id(8), 'human', '', true, false, 'candidate-review']);
+    ).toEqual([
+      id(8),
+      'human',
+      '',
+      true,
+      false,
+      'candidate-review',
+      JSON.stringify([reference]),
+    ]);
     expect(client.queries.some((q) => q.text === 'COMMIT')).toBe(true);
     expect(client.released).toBe(true);
   });
@@ -445,5 +454,78 @@ describe('pending candidate standard read executors', () => {
     expect(Object.keys(registry)).toContain(
       'data.ingestion.candidate.geometry',
     );
+  });
+});
+
+describe('bounded fixed-reference candidate history scope', () => {
+  it.each(['get', 'records', 'geometry'] as const)(
+    'installs only the strictly parsed reference before %s reads',
+    async (name) => {
+      const client = new Client();
+      await read(client, name, {
+        ...reference,
+        ingestionId: alphaId(1).toUpperCase(),
+        processingBatchId: alphaId(2).toUpperCase(),
+        ...(name === 'get' ? {} : { assetId: id(3) }),
+      });
+      const fixed = client.queries.findIndex((q) =>
+        q.text.includes('wiser.candidate_fixed_refs'),
+      );
+      const batch = client.queries.findIndex((q) =>
+        q.text.includes('data.ingestion.candidate.batch'),
+      );
+      expect(fixed).toBeGreaterThan(-1);
+      expect(fixed).toBeLessThan(batch);
+      expect(JSON.parse(String(client.queries[fixed]!.values?.at(-1)))).toEqual(
+        [
+          {
+            ...reference,
+            ingestionId: alphaId(1),
+            processingBatchId: alphaId(2),
+          },
+        ],
+      );
+    },
+  );
+  it('clears the history filter for callers with no explicit fixed selection', async () => {
+    const client = new Client();
+    await setCandidateReadAuthority(client, context);
+    const fixed = client.queries.find((q) =>
+      q.text.includes('wiser.candidate_fixed_refs'),
+    );
+    expect(fixed).toBeDefined();
+    expect(JSON.parse(String(fixed!.values?.at(-1)))).toEqual([]);
+  });
+  it.each([
+    { ...reference, eligible: true },
+    { ...reference, status: 'READY' },
+    { ...reference, reviewHash: 'F'.repeat(64) },
+  ])(
+    'refuses caller qualification or a malformed fixed tuple before SQL',
+    async (ref) => {
+      const client = new Client();
+      await expect(
+        setCandidateReadAuthority(client, context, [ref]),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(client.queries).toEqual([]);
+    },
+  );
+  it('rejects canonical duplicates and more than 100 fixed references', async () => {
+    for (const refs of [
+      [
+        { ...reference, ingestionId: alphaId(1) },
+        { ...reference, ingestionId: alphaId(1).toUpperCase() },
+      ],
+      Array.from({ length: 101 }, (_, n) => ({
+        ...reference,
+        processingBatchId: id(100 + n),
+      })),
+    ]) {
+      const client = new Client();
+      await expect(
+        setCandidateReadAuthority(client, context, refs),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(client.queries).toEqual([]);
+    }
   });
 });

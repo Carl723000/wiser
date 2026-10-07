@@ -17,8 +17,8 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: daf82f94
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## HTTP adapter only
@@ -330,3 +330,7 @@ Open returns a fresh input for `data_ingestion_candidate_get/records/geometry`; 
 ## Conversion provenance admission
 
 Registered tool `data_ingestion_candidate_provenance_get` calls the standard HTTP mapping for `data.ingestion.candidate.provenance.get` and returns only its validated, bounded summary. Arguments contain the strict fixed candidate reference and `preparedAssetId`; the trusted connection supplies identity, tenant/project and purpose. Current candidate authority, managed admission and strict validation remain the same as REST, with no direct database access or new scopes. The conversion declaration is not an authorization or a trusted result, and MCP must never provide a bypass to Worker-only conversion writes or raw private manifests. Trusted O → R′ conversion, Worker integration, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified.
+
+### Candidate relationship carrier boundary
+
+This internal carrier adds no MCP tool or direct database access. Existing published relationship tools retain their strict contracts. Candidate revision/decision pins must later be resolved through the verified HTTP capability and current authority for all fixed sources, never echoed from tool parameters. CONFIRMED does not publish or professionally approve a relationship; delegated agents cannot perform independent human decisions. Public candidate commands, managed admission and live HTTP/Auth/RLS acceptance remain unwired by this storage/reader slice.

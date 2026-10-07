@@ -17,8 +17,8 @@ checkPaths:
   - .docpact/config.yaml
   - .github/workflows/**
   - package.json
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: c2754d90be5e2658db195bc488c714b972c8783d
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 # WISER repository instructions
@@ -63,3 +63,5 @@ lastReviewedCommit: c2754d90be5e2658db195bc488c714b972c8783d
 - Validate governance changes with `pnpm docpact:validate`. Do not use baselines or waivers as routine suppressions.
 
 Run `pnpm verify` before each green milestone; it includes the complete unit suite with coverage exactly once. All six CI verification lanes and the `CI complete` aggregate must pass before delivery. Database and browser changes require their focused integration and Playwright checks as well.
+
+候选历史 READY 读取的 `ingestion-candidate.spec.ts` 与候选关系载体的 `ingestion-candidate-relations.spec.ts` 采用同一明确的 Data PostgreSQL CI 串行列表，保留 `WISER_DATA_PG_INTEGRATION=1`、所有旧测试与隔离迁移。普通单元执行中的条件跳过不表示已通过 SQL、RLS、并发或真实身份验证。 / Historical READY candidate reads and private candidate relation storage use the same explicitly listed, serial isolated PostgreSQL CI lane; conditional unit skips are not native database acceptance.

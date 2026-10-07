@@ -93,6 +93,8 @@ class Store {
   anchor = true;
   denyRevoke = false;
   statements: string[] = [];
+  fixedSelection: unknown = [];
+  checkedSelections: { requested: unknown; installed: unknown }[] = [];
   events = 0;
   connect() {
     let snapshot:
@@ -102,6 +104,8 @@ class Store {
       query: (sql: string, values: readonly unknown[] = []) =>
         Promise.resolve().then(() => {
           this.statements.push(sql);
+          if (sql.includes('data.ingestion.candidate.scope'))
+            this.fixedSelection = JSON.parse(String(values[6]));
           if (sql.startsWith('begin'))
             snapshot = {
               views: structuredClone(this.views),
@@ -135,6 +139,10 @@ class Store {
             return { rows: [], rowCount: 1 };
           }
           if (sql.includes('candidate.saved.references')) {
+            this.checkedSelections.push({
+              requested: JSON.parse(String(values[0])),
+              installed: structuredClone(this.fixedSelection),
+            });
             const refs = JSON.parse(String(values[0])) as ReturnType<
               typeof reference
             >[];
@@ -281,6 +289,40 @@ const agentContext = (): DataCapabilityExecutionContext => ({
 });
 
 describe('durable fixed pending candidate views', () => {
+  it('uses the full parsed create manifest and the actually visible saved row manifest on reopen', async () => {
+    const store = new Store(),
+      value = input();
+    value.references = [reference(), reference(2)];
+    const created = await call(store, 'create', value);
+    await call(store, 'open', { viewId: savedId(created) });
+    expect(store.checkedSelections).toHaveLength(2);
+    for (const check of store.checkedSelections) {
+      expect(check.requested).toEqual(value.references);
+      expect(check.installed).toEqual(value.references);
+    }
+  });
+  it('narrows each visible saved list row to its own complete references instead of combining unrelated rows', async () => {
+    const store = new Store(),
+      first = input(),
+      second = input();
+    second.references = [reference(2)];
+    second.viewSpec.page.reference = reference(2);
+    second.viewSpec.focus.reference = reference(2);
+    await call(store, 'create', first);
+    await call(store, 'create', second, {
+      ...context,
+      idempotencyKey: uuid(82),
+    });
+    store.checkedSelections = [];
+    const listed = await call(store, 'list', {});
+    expect(listed.items).toHaveLength(2);
+    expect(store.checkedSelections).toHaveLength(2);
+    for (const check of store.checkedSelections) {
+      expect(check.installed).toEqual(check.requested);
+      expect(check.installed).toHaveLength(1);
+    }
+  });
+
   it('registers four distinct contracts without weakening published saved views', () => {
     for (const name of ['create', 'list', 'open', 'revoke'])
       expect(capability(name).version).toBe('1.0.0');

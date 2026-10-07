@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: daf82f94
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 ---
 
 ## Endpoint and authority contract
@@ -301,6 +301,8 @@ Candidate contract types are separate from published-version inputs. The fields 
 
 Current maintenance authority for the immutable submitter/delegator or independent human review authority is checked on each continuation, in addition to scope/security/policy. Published-source grants are unchanged. Candidate parsing and reading do not approve or publish a source. Original download and saved-candidate workflows require their own integration; live Auth/database/browser validation remains a separate gate.
 
+After applying additive 0045, the existing fixed candidate read fields may read an eligible replaced completed READY batch under current authority. Each adapter installs only its strictly parsed reference in transaction-local RLS scope, without a new GraphQL field, client eligibility flag or project history list. Provenance and REST original reads share the bounded branch; actual original hash/size/security checks remain. General PARTIAL and incomplete outcomes remain excluded. Saved historical recovery, the strict D1 exception and live SQL/Auth acceptance remain separate gates.
+
 ### Managed pending intake and candidate discovery
 
 The standard `data.uploadSession.create/complete`, `data.ingestion.create/submit` and `data.ingestion.get` paths now admit managed projects through their own current maintenance/ownership guards. Writes require both `data.ingestion.write` and `data.operation.read`; fresh trusted identity, purpose, expiry and project scope are checked before cached results or object-store work. Upload responsibility is server-generated immutable Operation metadata. A human owner or the responsible human delegator may continue maintenance; a delegated actor must match the original actor type, actor ID and delegator. Unknown legacy responsibility fails closed. Create only binds completed owned QUARANTINED assets; it neither removes resource scope nor grants access to published content. Managed idempotency also binds actor type, delegator, purpose and resource fingerprint; retries recheck current ownership.
@@ -319,8 +321,20 @@ Queries `dataIngestionCandidateViews(input: JSON!): JSON!` and `dataIngestionCan
 
 The legacy list/open fields share the REST executor version boundary without adding GraphQL fields or changing valid versionless v1 inputs. List excludes every saved specification containing `schemaVersion` in SQL before cursor selection, ordering and `LIMIT`. Open returns safe `NOT_FOUND` for explicit versions, including complete v2 and unknown versions, before disclosing a title, references or specification. It does not downgrade those specifications or activate complete-topic persistence. Focused executor regressions do not establish mixed-version PostgreSQL pagination or real Auth/RLS acceptance.
 
+An internal preparatory validator now reuses current candidate scope, immutable submission responsibility, the complete manifest and page/focus anchors. It binds actual candidate/source/parser rows and derives domain-separated record and whole-record geometry fingerprints; record JSON keys are sorted, array order and PostgreSQL numeric tokens are retained, and geometry uses the complete EPSG:4326 GeoJSON at precision 15 with the existing size bound. A trusted host provider must supply the complete adopted rule set for the selected region/needs and, for nonempty relation pins, the exact candidate revision, current decision version and every fixed source dependency. Missing providers fail closed; source-local object keys require an explicit authoritative mapping. This helper is not registered as REST or GraphQL, does not save v2, and does not establish live SQL/Auth, conversion trust or H1 history eligibility.
+
 Both read fields bypass per-request memoization, so repeated aliases recheck current candidate permission rather than returning a cached title or manifest. List has an explicit 1–100 page bound and no global total. Open restores server-verified anchors by returning a fresh request for the existing candidate get/records/geometry reader. Private ownership, responsible delegation and project sharing retain the REST boundaries; revoke never changes the source candidate. Existing ingestion and published saved fields remain unchanged. Live authenticated recovery, SQL/RLS and browser acceptance are separate from schema and synthetic transport checks.
 
 ## Conversion trust transport boundary
 
 The candidate conversion declaration, server-check and fixed provenance-read schemas are exported through `@wiser/data-contracts/candidate-conversion`. Query `dataIngestionCandidateProvenance(input: JSON!): JSON!` maps to the registered `data.ingestion.candidate.provenance.get` reader with the same strict fixed reference, current candidate authority and bounded output as REST. Repeated aliases bypass per-request memoization so every execution rechecks visibility; transport delivery also rechecks authority and returns `no-store`. Uploaded verification flags, private storage keys and unrestricted manifests are not accepted or exposed. Trusted O → R′ conversion, Worker integration, live Auth/PostgreSQL/RLS/HTTP and original A13 acceptance remain unverified.
+
+### Candidate relationship carrier boundary
+
+The private candidate revision/decision carrier and internal fixed-pin authority reader are not new GraphQL fields or mutations. Published relationship inputs, source-version identities and review status stay unchanged. Candidate content revision and actual latest decisionVersion are separate, and 0 means no candidate decision. When public candidate wiring is added, it must traverse the same strict capability handler and current authority for every fixed source; no GraphQL resolver may turn a candidate tuple into a published version or use client pins as authority. Conditional SQL skips and internal reader tests are not GraphQL/Auth acceptance.
+
+### Fixed-reference internal composition
+
+The preparatory topic validator installs its complete strictly parsed candidate selection. Its relation provider receives the same bounded list on the caller-owned client, without beginning, committing or releasing another transaction; returned dependencies must remain within that selection. The validator reapplies its original parsed selection before the post-provider manifest check. Fixed selection narrows historical RLS; it is not source authorization. Current authority, every actual manifest member and all material/rule guards remain required.
+
+Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden historical saved row still returns NOT_FOUND: this composition does not implement the unavailable receipt, historical saved enumeration, v2 persistence, default rule/object providers or trusted conversion. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.
