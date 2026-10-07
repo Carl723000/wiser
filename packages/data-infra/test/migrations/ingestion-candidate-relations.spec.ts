@@ -87,7 +87,7 @@ async function freezeRelationSource(
   );
   await client.query(
     `insert into ingestion.job(job_id,tenant_id,project_id,ingestion_id,operation_id,job_type,status,idempotency_key,payload,lease_owner,lease_expires_at,attempt_count,timeout_at,security_level)
- values($1,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::text,$5::jsonb,'candidate-relation-sql',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '1 hour','L0_PUBLIC')`,
+ values($1,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::uuid::text,$5::jsonb,'candidate-relation-sql',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '1 hour','L0_PUBLIC')`,
     [
       job,
       tenant,

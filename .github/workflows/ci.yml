@@ -293,6 +293,7 @@ jobs:
           apps/api/test/data-resource-scope.integration.spec.ts
           packages/data-infra/test/migrations/managed-intake-access.spec.ts
           packages/data-infra/test/migrations/ingestion-candidate-saved.spec.ts
+          packages/data-infra/test/migrations/ingestion-candidate-topics.spec.ts
           packages/data-infra/test/migrations/ingestion-candidate.spec.ts
           packages/data-infra/test/migrations/ingestion-candidate-relations.spec.ts
           apps/api/test/data-managed-operation-reads.integration.spec.ts

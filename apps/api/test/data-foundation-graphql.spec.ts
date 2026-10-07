@@ -654,3 +654,63 @@ it.each(['dataIngestionCandidateViews', 'dataIngestionCandidateView'])(
     });
   },
 );
+
+it.each([
+  ['list', 'query', 'dataIngestionCandidateTopics'],
+  ['open', 'query', 'dataIngestionCandidateTopic'],
+  ['create', 'mutation', 'createDataIngestionCandidateTopic'],
+])(
+  'dispatches the independent candidate topic %s field',
+  async (operation, kind, field) => {
+    const input = operation === 'open' ? { viewId: OPERATION_ID } : {};
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({ marker: operation }),
+    );
+    const { app } = appWith({ handler: { execute } });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(kind === 'mutation'),
+      payload: {
+        query: `${kind} Topic($input:JSON!){${field}(input:$input)}`,
+        variables: { input },
+      },
+    });
+    expect(responseErrors(response)).toBeUndefined();
+    expect(response.json()).toMatchObject({
+      data: { [field]: { marker: operation } },
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityId: `data.ingestion.candidate.topic.${operation}`,
+        input,
+        ...(kind === 'mutation' ? { idempotencyKey: IDEMPOTENCY_KEY } : {}),
+      }),
+    );
+  },
+);
+it.each(['dataIngestionCandidateTopics', 'dataIngestionCandidateTopic'])(
+  'rechecks topic authority independently for repeated %s aliases',
+  async (field) => {
+    let count = 0;
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({ current: ++count }),
+    );
+    const { app } = appWith({ handler: { execute } });
+    const input = field.endsWith('Topics') ? {} : { viewId: OPERATION_ID };
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(),
+      payload: {
+        query: `query Topic($input:JSON!){a:${field}(input:$input) b:${field}(input:$input)}`,
+        variables: { input },
+      },
+    });
+    expect(responseErrors(response)).toBeUndefined();
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(response.json()).toMatchObject({
+      data: { a: { current: 1 }, b: { current: 2 } },
+    });
+  },
+);

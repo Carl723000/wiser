@@ -159,7 +159,45 @@ const savedCandidateReference = {
   processingBatchId: OPERATION_ID,
   reviewHash: 'a'.repeat(64),
 };
+const candidateTopicCreateInput = {
+  title: 'Fixed candidate topic',
+  references: [savedCandidateReference],
+  viewSpec: {
+    schemaVersion: 2,
+    page: { kind: 'assets', reference: savedCandidateReference },
+    period: {
+      windowMode: 'month',
+      from: '2023-01',
+      to: '2023-11',
+      displayUnit: 'month',
+      timeRole: 'REPORT_PERIOD',
+      includeUndated: false,
+    },
+    topic: {
+      question: 'Which report months are covered?',
+      regionIds: ['CHAObAI'],
+      needIds: ['water-quality'],
+      recordPins: [],
+    },
+    rulePins: ['projection', 'readiness', 'requirement', 'impact'].map(
+      (kind) => ({ kind, ruleId: `${kind}-rule`, version: '1.0.0' }),
+    ),
+    dependencyPins: [
+      {
+        kind: 'asset',
+        reference: savedCandidateReference,
+        assetId: ASSET_ID,
+        sourceHash: 'b'.repeat(64),
+        parserVersion: 'parser/1.0.0',
+      },
+    ],
+    relationPins: [],
+  },
+};
 const validCapabilityInputs = {
+  'data.ingestion.candidate.topic.create': candidateTopicCreateInput,
+  'data.ingestion.candidate.topic.list': { first: 2 },
+  'data.ingestion.candidate.topic.open': { viewId: OPERATION_ID },
   'data.ingestion.candidate.provenance.get': {
     ...savedCandidateReference,
     preparedAssetId: ASSET_ID,
@@ -435,6 +473,46 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.ingestion.candidate.topic.create': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-topics',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'createDataIngestionCandidateTopic',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_topic_create' },
+    skillMapping: { operation: 'data.ingestion.candidate.topic.create' },
+  },
+  'data.ingestion.candidate.topic.list': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestion-candidate-topics',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateTopics',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_topic_list' },
+    skillMapping: { operation: 'data.ingestion.candidate.topic.list' },
+  },
+  'data.ingestion.candidate.topic.open': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-topics/:viewId/open',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateTopic',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_topic_open' },
+    skillMapping: { operation: 'data.ingestion.candidate.topic.open' },
+  },
+
   'data.ingestion.candidate.provenance.get': {
     restMapping: {
       method: 'GET',
@@ -1012,6 +1090,9 @@ const expectedCapabilityMappings = {
 } satisfies Record<DataCapabilityId, unknown>;
 
 const expectedCapabilityScopes = {
+  'data.ingestion.candidate.topic.create': ['data.operation.read'],
+  'data.ingestion.candidate.topic.list': ['data.operation.read'],
+  'data.ingestion.candidate.topic.open': ['data.operation.read'],
   'data.ingestion.candidate.view.create': ['data.operation.read'],
   'data.ingestion.candidate.view.list': ['data.operation.read'],
   'data.ingestion.candidate.view.open': ['data.operation.read'],
@@ -1088,6 +1169,19 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.ingestion.candidate.topic.create': {
+    input: '96f220dd705433e95e4bf74d6fe123d3e51adfa7ce8c7ccd2840c24065b2355e',
+    output: 'd66424cdcca8911275814822b8c1f03853af81685faeccb195c056114385fe54',
+  },
+  'data.ingestion.candidate.topic.list': {
+    input: '192d245f4825d8279c86c14b131d26f432e696430491dbd052608220100362bb',
+    output: 'd462999eb13a3a4b82f8e87be68ee98e1013919147c55c86356c5664a1a2b9c0',
+  },
+  'data.ingestion.candidate.topic.open': {
+    input: '79984f7329c030d9ebe5f8aed58146dee3e374936de3c0bbcbba95045b127cb3',
+    output: 'ed8dfbd2fe61d880cbb7e5f63467de824511e5f0df8169763496626e70ac15f8',
+  },
+
   'data.ingestion.candidate.provenance.get': {
     input: 'ca21bb4e802ac05c10d7a6bdaa2e11b9b24125d33430fce66ddef5b12d3296a9',
     output: 'd96fe9f9748fe8ff457eaaf5bd949a40172fc4bfc347d2ff8bf7391f713dbe85',
@@ -1636,6 +1730,9 @@ describe('Data Foundation capability registry', () => {
       'data.ingestion.candidate.view.list',
       'data.ingestion.candidate.view.open',
       'data.ingestion.candidate.view.revoke',
+      'data.ingestion.candidate.topic.create',
+      'data.ingestion.candidate.topic.list',
+      'data.ingestion.candidate.topic.open',
       'data.ingestion.approve',
       'data.ingestion.reject',
       'data.operation.cancel',
@@ -1899,6 +1996,7 @@ describe('Data Foundation capability registry', () => {
     expect(defaultableCapabilities).toEqual([
       'data.catalog.search',
       'data.ingestion.candidate.view.list',
+      'data.ingestion.candidate.topic.list',
       'data.explore.view.list',
     ]);
     expect(checkedCapabilities).toBe(
@@ -2045,8 +2143,21 @@ describe('Data Foundation JSON Schema generation', () => {
       const definition = DATA_CAPABILITY_REGISTRY[capabilityId];
       for (const schema of [definition.inputSchema, definition.outputSchema]) {
         const generated = z.toJSONSchema(schema, { target: 'draft-7' });
-        expect(generated.type).toBe('object');
-        expect(generated.additionalProperties).toBe(false);
+        if (
+          capabilityId === 'data.ingestion.candidate.topic.open' &&
+          schema === definition.outputSchema
+        ) {
+          // The new public result has two readable versions and one content-free
+          // unavailable result; every branch remains a strict object.
+          expect(generated.anyOf).toHaveLength(3);
+          for (const branch of generated.anyOf ?? []) {
+            expect(branch.type).toBe('object');
+            expect(branch.additionalProperties).toBe(false);
+          }
+        } else {
+          expect(generated.type).toBe('object');
+          expect(generated.additionalProperties).toBe(false);
+        }
       }
       expect({
         input: jsonSchemaHash(definition.inputSchema),

@@ -162,6 +162,8 @@ type Query {
   dataItemVersion(id: ID!, version: ID!): DataItemVersion
   dataIngestionCandidateViews(input: JSON!): JSON!
   dataIngestionCandidateView(input: JSON!): JSON!
+  dataIngestionCandidateTopics(input: JSON!): JSON!
+  dataIngestionCandidateTopic(input: JSON!): JSON!
   dataIngestionCandidate(input: JSON!): JSON!
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
@@ -178,6 +180,7 @@ type Mutation {
   createDataReconciliation(input: JSON!): JSON!
   reviewDataReconciliation(input: JSON!): JSON!
   createDataIngestionCandidateView(input: JSON!): JSON!
+  createDataIngestionCandidateTopic(input: JSON!): JSON!
   revokeDataIngestionCandidateView(input: JSON!): JSON!
   createDataExploreView(input: JSON!): JSON!
   revokeDataExploreView(input: JSON!): JSON!
@@ -229,6 +232,9 @@ export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   dataItemVersion: 'data.catalog.versions.get',
   dataIngestion: 'data.ingestion.get',
   dataIngestionDetail: 'data.ingestion.get',
+  dataIngestionCandidateTopics: 'data.ingestion.candidate.topic.list',
+  dataIngestionCandidateTopic: 'data.ingestion.candidate.topic.open',
+  createDataIngestionCandidateTopic: 'data.ingestion.candidate.topic.create',
   dataIngestionCandidateViews: 'data.ingestion.candidate.view.list',
   dataIngestionCandidateView: 'data.ingestion.candidate.view.open',
   createDataIngestionCandidateView: 'data.ingestion.candidate.view.create',
@@ -351,6 +357,8 @@ class CapabilityLoader {
         });
     }
     if (
+      capabilityId === 'data.ingestion.candidate.topic.list' ||
+      capabilityId === 'data.ingestion.candidate.topic.open' ||
       capabilityId === 'data.ingestion.candidate.view.list' ||
       capabilityId === 'data.ingestion.candidate.view.open' ||
       capabilityId === 'data.ingestion.candidate.provenance.get'
@@ -384,6 +392,8 @@ function complexityRule(maximum: number): ValidationRule {
         const weight = [
           'externalSourceMetadata',
           'dataQuery',
+          'dataIngestionCandidateTopics',
+          'dataIngestionCandidateTopic',
           'dataIngestionCandidateViews',
           'dataIngestionCandidateView',
           'dataExploreViews',
@@ -765,6 +775,18 @@ const resolvers = {
       args: { id: string },
       context: GraphqlContext,
     ) => executeQuery(context, 'data.ingestion.get', { ingestionId: args.id }),
+    dataIngestionCandidateTopics: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(context, 'data.ingestion.candidate.topic.list', args.input),
+    dataIngestionCandidateTopic: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(context, 'data.ingestion.candidate.topic.open', args.input),
     dataIngestionCandidateViews: (
       _: unknown,
       args: { input: unknown },
@@ -844,6 +866,16 @@ const resolvers = {
       context: GraphqlContext,
     ) => executeCommand(context, 'data.reconciliation.review', args.input),
 
+    createDataIngestionCandidateTopic: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.topic.create',
+        args.input,
+      ),
     createDataIngestionCandidateView: (
       _: unknown,
       args: { input: unknown },

@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 ## 只做 HTTP 适配
@@ -334,3 +334,7 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 ### 候选关系载体边界
 
 内部载体不增加 MCP 工具或直接数据库访问，既有已发布关系工具继续使用原严格契约。候选修订／决定 pin 后续须经已核验的 HTTP 能力逐项解析，并核对全部固定来源当前权限，不能原样回显工具参数充当权威。CONFIRMED 不表示关系发布或专业批准，委托智能体不能作独立人类决定。本存储／读取切片尚未接通公开候选命令、受管准入及真实 HTTP／Auth／RLS 验收。
+
+## 完整候选专题工具
+
+Registry 派生 `data_ingestion_candidate_topic_create/list/open`，使用相同鉴权 HTTP 专题接口与严格模式。创建为幂等命令，列表／重开为只读查询；工具参数不提供身份、已采用规则权威或直接存储访问。列表区分 v1／v2，重开保留固定 READABLE 状态或获准原保存者的最小 UNAVAILABLE。新分页请求仍经既有 HTTP get／records／geometry 工具执行。原候选视图撤销工具按两个版本处理，不新增撤销 ID。缺少宿主权威仍失败；工具发现和合成转发测试不等于数据库、Auth 或浏览器验收。

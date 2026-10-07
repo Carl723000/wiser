@@ -78,7 +78,45 @@ const savedCandidateReference = {
   processingBatchId: OPERATION_ID,
   reviewHash: 'a'.repeat(64),
 };
+const candidateTopicCreateInput = {
+  title: 'Fixed candidate topic',
+  references: [savedCandidateReference],
+  viewSpec: {
+    schemaVersion: 2,
+    page: { kind: 'assets', reference: savedCandidateReference },
+    period: {
+      windowMode: 'month',
+      from: '2023-01',
+      to: '2023-11',
+      displayUnit: 'month',
+      timeRole: 'REPORT_PERIOD',
+      includeUndated: false,
+    },
+    topic: {
+      question: 'Which report months are covered?',
+      regionIds: ['CHAObAI'],
+      needIds: ['water-quality'],
+      recordPins: [],
+    },
+    rulePins: ['projection', 'readiness', 'requirement', 'impact'].map(
+      (kind) => ({ kind, ruleId: `${kind}-rule`, version: '1.0.0' }),
+    ),
+    dependencyPins: [
+      {
+        kind: 'asset',
+        reference: savedCandidateReference,
+        assetId: ASSET_ID,
+        sourceHash: 'b'.repeat(64),
+        parserVersion: 'parser/1.0.0',
+      },
+    ],
+    relationPins: [],
+  },
+};
 const validInputs = {
+  'data.ingestion.candidate.topic.create': candidateTopicCreateInput,
+  'data.ingestion.candidate.topic.list': { first: 2 },
+  'data.ingestion.candidate.topic.open': { viewId: OPERATION_ID },
   'data.ingestion.candidate.view.create': {
     title: 'Frozen pending materials',
     references: [savedCandidateReference],

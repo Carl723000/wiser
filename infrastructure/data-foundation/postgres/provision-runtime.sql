@@ -263,4 +263,26 @@ grant execute on function security.current_tenant_id(),
   security.current_policy_version() to wiser_data_metadata;
 grant execute on function security.security_rank(text) to wiser_data_metadata;
 
+-- Complete topics retain immutable v1 storage and source authority. The existing
+-- metadata role receives only a view ID receipt; no title/spec/refs grant exists.
+do $$ begin
+  if to_regprocedure('service.valid_candidate_saved_spec_version(jsonb,jsonb)') is not null then
+    grant execute on function service.candidate_topic_object(jsonb,text[],text[]),
+      service.candidate_topic_text(jsonb,integer),service.candidate_topic_identifiers(jsonb,integer),
+      service.candidate_topic_reference_key(jsonb),service.valid_candidate_topic_spec(jsonb,jsonb),
+      service.valid_candidate_saved_spec_version(jsonb,jsonb),service.candidate_topic_saved_refs_readable(jsonb),
+      service.candidate_topic_receipt_authority_live()
+      to wiser_data_runtime;
+    grant usage on schema service to wiser_data_metadata;
+    grant select(view_id) on service.ingestion_candidate_saved_view to wiser_data_metadata;
+    -- Both SELECT policy expressions remain invoker functions. The ordinary
+    -- API-source branch rejects this limited role before any candidate query.
+    grant execute on function service.candidate_saved_owner(uuid,text,uuid),
+      service.candidate_saved_authority_live(),service.valid_candidate_view_refs(jsonb),
+      service.valid_candidate_view_reference(jsonb),service.candidate_saved_refs_readable(jsonb),
+      service.candidate_topic_saved_refs_readable(jsonb),service.candidate_topic_receipt_authority_live()
+      to wiser_data_metadata;
+  end if;
+end $$;
+
 commit;

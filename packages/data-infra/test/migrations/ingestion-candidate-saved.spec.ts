@@ -86,7 +86,7 @@ async function freezeCandidate(
   );
   await client.query(
     `insert into ingestion.job(job_id,tenant_id,project_id,ingestion_id,operation_id,job_type,status,idempotency_key,payload,lease_owner,lease_expires_at,attempt_count,timeout_at,security_level)
- values($1,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::text,$5::jsonb,'candidate-saved-sql',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '1 hour','L0_PUBLIC')`,
+ values($1,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::uuid::text,$5::jsonb,'candidate-saved-sql',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '1 hour','L0_PUBLIC')`,
     [
       job,
       tenant,
@@ -265,8 +265,18 @@ describe('durable fixed candidate views in actual PostgreSQL', () => {
           client,
           insert,
           args(randomUUID(), [own.reference, own.reference]),
+          '42501',
+        );
+        // Invalid duplicate references fail API RLS before CHECK evaluation.
+        // The migration owner separately proves the persisted non-duplicate invariant.
+        await client.query('reset role');
+        await denied(
+          client,
+          insert,
+          args(randomUUID(), [own.reference, own.reference]),
           '23514',
         );
+        await client.query('set local role wiser_data_api');
         await denied(
           client,
           'update service.ingestion_candidate_saved_view set title=$2 where view_id=$1',

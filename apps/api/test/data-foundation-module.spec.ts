@@ -91,10 +91,86 @@ describe('Data Foundation HTTP composition module', () => {
         type: 'object',
         additionalProperties: false,
       });
-      expect(capability.outputSchema).toMatchObject({
-        type: 'object',
-        additionalProperties: false,
-      });
+      if (capability.id === 'data.ingestion.candidate.topic.open') {
+        expect(capability.outputSchema).toMatchObject({
+          anyOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'status',
+                'specVersion',
+                'savedView',
+                'references',
+                'viewSpec',
+                'request',
+              ],
+              properties: {
+                status: { const: 'READABLE' },
+                specVersion: { const: 1 },
+                savedView: { properties: { specVersion: { const: 1 } } },
+                viewSpec: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: { period: { properties: { unit: {} } } },
+                },
+              },
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'status',
+                'specVersion',
+                'savedView',
+                'references',
+                'viewSpec',
+                'request',
+              ],
+              properties: {
+                status: { const: 'READABLE' },
+                specVersion: { const: 2 },
+                savedView: { properties: { specVersion: { const: 2 } } },
+                viewSpec: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'schemaVersion',
+                    'page',
+                    'period',
+                    'topic',
+                    'rulePins',
+                    'dependencyPins',
+                    'relationPins',
+                  ],
+                  properties: { schemaVersion: { const: 2 } },
+                },
+              },
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['status', 'viewId'],
+              properties: {
+                status: { const: 'UNAVAILABLE' },
+                viewId: { type: 'string', format: 'uuid' },
+              },
+            },
+          ],
+        });
+        const branches = capability.outputSchema.anyOf as Array<{
+          properties: Record<string, unknown>;
+        }>;
+        expect(Object.keys(branches[2]!.properties)).toEqual([
+          'status',
+          'viewId',
+        ]);
+      } else {
+        expect(capability.outputSchema).toMatchObject({
+          type: 'object',
+          additionalProperties: false,
+        });
+      }
       expect(capability.restMapping.path).toMatch(/^\/api\/data\/v1\//);
       expect(capability.graphqlMapping.field).not.toBe('');
       expect(capability.mcpMapping.toolName).toMatch(/^data_/);

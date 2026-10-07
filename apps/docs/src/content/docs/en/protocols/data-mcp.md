@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 ## HTTP adapter only
@@ -334,3 +334,7 @@ Registered tool `data_ingestion_candidate_provenance_get` calls the standard HTT
 ### Candidate relationship carrier boundary
 
 This internal carrier adds no MCP tool or direct database access. Existing published relationship tools retain their strict contracts. Candidate revision/decision pins must later be resolved through the verified HTTP capability and current authority for all fixed sources, never echoed from tool parameters. CONFIRMED does not publish or professionally approve a relationship; delegated agents cannot perform independent human decisions. Public candidate commands, managed admission and live HTTP/Auth/RLS acceptance remain unwired by this storage/reader slice.
+
+## Complete candidate topic tools
+
+The registry-derived `data_ingestion_candidate_topic_create/list/open` tools use the same authenticated HTTP topic endpoints and strict schemas. Create is an idempotent command; list/open are readonly queries. A tool argument supplies no trusted identity, adopted-rule authority or direct store access. List distinguishes v1/v2 and open preserves either fixed READABLE state or the authorized original saver's minimal UNAVAILABLE receipt. Use the returned fresh candidate page request through its existing HTTP-backed get/records/geometry tool. The existing candidate-view revoke tool handles both versions explicitly; no new revoke ID is added. Missing host authority remains a failure. Tool discovery and synthetic forwarding checks are not database/Auth/browser acceptance.

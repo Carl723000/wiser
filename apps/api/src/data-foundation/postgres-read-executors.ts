@@ -551,6 +551,22 @@ export function candidateSavedListCursor(
     : decodeCursor(input.after, scope);
 }
 
+/** Complete-topic continuations never reuse the legacy list's contract identity. */
+export function candidateTopicListCursor(
+  context: DataCapabilityExecutionContext,
+  input: Record<string, unknown>,
+  position?: readonly string[],
+): readonly (number | string)[] | string | undefined {
+  const scope = candidateCursorScope(
+    'data.ingestion.candidate.topic.list',
+    context,
+    input,
+  );
+  return position
+    ? encodeCursor(scope, position)
+    : decodeCursor(input.after, scope);
+}
+
 function encodeCursor(
   scope: CursorScope,
   position: readonly (number | string)[],

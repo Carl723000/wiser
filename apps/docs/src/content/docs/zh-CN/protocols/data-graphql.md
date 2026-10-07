@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 ## 入口与权威契约
@@ -338,3 +338,7 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 专题预备校验器设置已严格解析的完整候选清单；关系读取适配器在调用方已有的同一数据库连接中接收相同清单，不另起事务、提交或释放连接，返回的来源依赖不得超出该清单。异步适配器返回后，校验器重新设置原解析清单，再核全部实际成员。固定清单仅收窄历史 RLS，并不授予资料访问权；当前身份权限、全部实际清单成员及资料与规则守卫继续生效。
 
 无版本号的保存视图创建采用完整输入引用；列表、打开、重放和撤销只允许已经通过保存行 RLS 的行，以其实际保存的完整引用重新核清单。不同列表行不合并选择范围。初始不可见的历史保存行仍返回 NOT_FOUND；本片不实现不可用回执、历史枚举、v2 持久保存、默认规则或对象提供者、可信转换。合成 GUC／适配器测试与原生测试清单接线不表示已通过 PostgreSQL／真实身份验收。
+
+## 完整候选专题字段
+
+mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTopics`、`dataIngestionCandidateTopic` 经共同 Handler 映射三个专题 1.0.0 能力。创建沿用 mutation 幂等策略，每个 query 别名独立解析当前权限。JSON 输入／输出沿用严格 REST 模式：明确 v2、逐行 specVersion、版本一致的 READABLE 分支及原保存者限定的两字段 UNAVAILABLE。JSON scalar 或别名不能绕过固定来源／规则／关系检查；旧保存字段及 DTO 保持。缺少受信宿主提供者时安全拒绝，SDL／传输测试不证明真实持久化或权限验收。

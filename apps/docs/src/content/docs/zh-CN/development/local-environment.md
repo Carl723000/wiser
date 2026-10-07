@@ -17,7 +17,7 @@ checkPaths:
   - .env.example
   - scripts/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: df78e841951e24ba56bf3fb76cdf02329f9b1b8f
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 ## 运行模式
@@ -151,6 +151,8 @@ pnpm stack:down
 `docker compose logs` 可以只保留本次失败的 service 名；服务未创建时先用 `docker compose ps -a`。Supabase 由 CLI 管理而不属于根 Compose project；`supabase status` 用于确认服务/端口，具体容器日志从本机 Docker runtime 查看。
 
 `pnpm data:smoke` 先检查 `fixture-bundle`，再并发检查 `authority-migrations`、`pgstac-schema`、`runtime-roles`、`compose-health`、`api-contract` 和 `seed-fixture`。预检失败会阻止进入 vertical，并仅在 cause 中保留固定 `{ phase, errorName }`；异常名限定为安全内置名称，其他情况记为 `unknown`，不带出原异常消息、SQL、响应体或环境值。失败日志仍会尽力收集，收集失败不覆盖 smoke 原因；vertical 的阶段与错误码保持原样。阶段码只指出哪项检查拒绝，不代表已确定根因或可以放宽权限。 运行角色检查另保留固定 `stage`（`role-flags`、`wrong-scope` 或 `fixture-scope`）和 `reasonCode`（`ROLE_FLAGS_INVALID`、`RLS_SCOPE_CROSSED`、`SEEDED_SCOPE_UNREADABLE` 或 `ROLE_CHECK_EXECUTION_FAILED`）。这些字段仅来自本模块生成的异常；未知或伪造错误仍使用通用预检说明。原三项 SQL 和预期结果保持。
+
+本机命令在子进程 `close` 后结算捕获输出，保留 `exit` 后到达的数据。已标识的执行错误另提供有限 `executionStage`（`local-control`、`compose-override`、`docker-endpoint`、`compose-config`、`compose-command`、`postgres-exec`）与 `executionReason`（`CONTROL_CHECK_FAILED`、`PROCESS_START_FAILED`、`PROCESS_INPUT_FAILED`、`PROCESS_OUTPUT_FAILED`、`PROCESS_EXIT_FAILED`）。子阶段分别定位控制配置、覆盖文件、端点、配置检查和命令执行；进程原因只分类控制拒绝、启动、管道或退出失败，不携带原消息、SQL、环境、输出、路径或命令参数。字段来自私有进程内标记；未知执行错误和伪造字段不能产生子阶段诊断。并发预检、三段角色 SQL、RLS 断言与原有超时行为不变；新增诊断和离线回归不证明真实 CI 根因或服务验收通过。
 
 | 操作                                      | 删除什么                                             | 保留什么                                                 |
 | ----------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |

@@ -114,36 +114,70 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+const commandFailures = new WeakMap();
+const executionFailures = new WeakMap();
+
+function commandFailure(reason) {
+  const error = operationError('local process execution failed');
+  commandFailures.set(error, reason);
+  return error;
+}
+
+async function executionStep(stage, action, commandReason) {
+  try {
+    return await action();
+  } catch (error) {
+    const failure = operationError('local execution failed');
+    executionFailures.set(
+      failure,
+      Object.freeze({
+        executionStage: stage,
+        executionReason:
+          commandFailures.get(error) ??
+          commandReason?.() ??
+          'CONTROL_CHECK_FAILED',
+      }),
+    );
+    throw failure;
+  }
+}
+
 export function runCommand(
   command,
   args,
   { capture = true, input, environment = process.env } = {},
 ) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: ROOT_DIRECTORY,
-      env: environment,
-      shell: false,
-      stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
-    });
+    let child;
+    try {
+      child = spawn(command, args, {
+        cwd: ROOT_DIRECTORY,
+        env: environment,
+        shell: false,
+        stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
+      });
+    } catch {
+      reject(commandFailure('PROCESS_START_FAILED'));
+      return;
+    }
     const output = [];
     if (capture) {
       child.stdout.setEncoding('utf8');
       child.stdout.on('data', (chunk) => output.push(chunk));
+      child.stdout.once('error', () =>
+        reject(commandFailure('PROCESS_OUTPUT_FAILED')),
+      );
     }
-    child.once('error', () =>
-      reject(operationError(`${command} did not start`)),
+    child.once('error', () => reject(commandFailure('PROCESS_START_FAILED')));
+    child.stdin.once('error', () =>
+      reject(commandFailure('PROCESS_INPUT_FAILED')),
     );
-    child.once('exit', (code, signal) => {
+    child.once('close', (code) => {
       if (code === 0) {
         resolve(output.join(''));
         return;
       }
-      reject(
-        operationError(
-          `${command} exited with ${code ?? `signal ${signal ?? 'unknown'}`}`,
-        ),
-      );
+      reject(commandFailure('PROCESS_EXIT_FAILED'));
     });
     if (input === undefined) {
       child.stdin.end();
@@ -154,38 +188,66 @@ export function runCommand(
 }
 
 export async function runCompose(args, options, dependencies = {}) {
+  return executeCompose(args, options, dependencies, 'compose-command');
+}
+
+async function executeCompose(args, options, dependencies, commandStage) {
   const execute = dependencies.runCommand ?? runCommand;
   const rootDirectory = dependencies.rootDirectory ?? ROOT_DIRECTORY;
   let environment = options?.environment ?? process.env;
-  const target = await (dependencies.readTarget ?? readLocalSupabaseTarget)(
-    environment,
-    rootDirectory,
-  );
-  const prefix = localComposeArguments(target, environment, rootDirectory);
-  try {
-    await writeFile(
-      join(rootDirectory, 'compose.override.yaml'),
-      'services: {}\n',
-      { flag: 'wx', mode: 0o600 },
+  const { prefix, target } = await executionStep('local-control', async () => {
+    const target = await (dependencies.readTarget ?? readLocalSupabaseTarget)(
+      environment,
+      rootDirectory,
     );
-  } catch (error) {
-    if (error?.code !== 'EEXIST')
-      throw operationError('local Compose override is unavailable');
-  }
+    return {
+      target,
+      prefix: localComposeArguments(target, environment, rootDirectory),
+    };
+  });
+  await executionStep('compose-override', async () => {
+    try {
+      await writeFile(
+        join(rootDirectory, 'compose.override.yaml'),
+        'services: {}\n',
+        { flag: 'wx', mode: 0o600 },
+      );
+    } catch (error) {
+      if (error?.code !== 'EEXIST')
+        throw operationError('local Compose override is unavailable');
+    }
+  });
   if (args[0] !== 'config') {
-    environment = await resolveLocalDockerEnvironment(environment, execute);
-    const configuration = await execute(
-      'docker',
-      [...prefix, 'config', '--format', 'json'],
-      { environment },
+    let endpointCommandReason;
+    environment = await executionStep(
+      'docker-endpoint',
+      () =>
+        resolveLocalDockerEnvironment(environment, async (...parameters) => {
+          try {
+            return await execute(...parameters);
+          } catch (error) {
+            endpointCommandReason = commandFailures.get(error);
+            throw error;
+          }
+        }),
+      () => endpointCommandReason,
     );
-    assertLocalComposeProject(configuration, target);
+    await executionStep('compose-config', async () => {
+      const configuration = await execute(
+        'docker',
+        [...prefix, 'config', '--format', 'json'],
+        { environment },
+      );
+      assertLocalComposeProject(configuration, target);
+    });
   }
-  return execute('docker', [...prefix, ...args], { ...options, environment });
+  return executionStep(commandStage, () =>
+    execute('docker', [...prefix, ...args], { ...options, environment }),
+  );
 }
 
 export function runPostgresSql(sql, options, dependencies = {}) {
-  return runCompose(
+  return executeCompose(
     [
       'exec',
       '-T',
@@ -196,6 +258,7 @@ export function runPostgresSql(sql, options, dependencies = {}) {
     ],
     { ...options, input: sql },
     dependencies,
+    'postgres-exec',
   );
 }
 
@@ -404,9 +467,12 @@ select (
 
 const runtimeRoleDiagnoses = new WeakMap();
 
-function runtimeRoleFailure(stage, reasonCode) {
+function runtimeRoleFailure(stage, reasonCode, execution) {
   const error = operationError('runtime role check failed');
-  runtimeRoleDiagnoses.set(error, Object.freeze({ stage, reasonCode }));
+  runtimeRoleDiagnoses.set(
+    error,
+    Object.freeze({ stage, reasonCode, ...execution }),
+  );
   return error;
 }
 
@@ -418,8 +484,12 @@ export function runtimeRoleFailureDiagnostics(error) {
 async function runtimeRoleProbe(stage, sql, executeSql) {
   try {
     return await executeSql(sql);
-  } catch {
-    throw runtimeRoleFailure(stage, 'ROLE_CHECK_EXECUTION_FAILED');
+  } catch (error) {
+    throw runtimeRoleFailure(
+      stage,
+      'ROLE_CHECK_EXECUTION_FAILED',
+      executionFailures.get(error),
+    );
   }
 }
 

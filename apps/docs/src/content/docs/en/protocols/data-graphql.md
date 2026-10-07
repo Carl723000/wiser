@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 ## Endpoint and authority contract
@@ -28,7 +28,7 @@ POST /graphql
 Content-Type: application/json
 ```
 
-It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of the 43 Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
+It uses Mercurius with schema-first SDL and no decorator or TypeScript AST scanning. GraphQL fields are projections of registered Capabilities. Resolvers and REST call the same `DataCapabilityHandler`, preserving Zod input/output validation, scopes, security ceiling, purpose, timeout, idempotency, and audit semantics.
 
 `apps/api/package.json` and the root lockfile define the exact compatible GraphQL and Mercurius versions, and API typecheck/build verifies that combination. Protocol prose does not duplicate a version inventory that changes during dependency upgrades.
 
@@ -338,3 +338,7 @@ The private candidate revision/decision carrier and internal fixed-pin authority
 The preparatory topic validator installs its complete strictly parsed candidate selection. Its relation provider receives the same bounded list on the caller-owned client, without beginning, committing or releasing another transaction; returned dependencies must remain within that selection. The validator reapplies its original parsed selection before the post-provider manifest check. Fixed selection narrows historical RLS; it is not source authorization. Current authority, every actual manifest member and all material/rule guards remain required.
 
 Versionless saved create uses the complete parsed references. For list/open/replay/revoke, only an already RLS-visible saved row can supply its own complete stored references before the manifest recheck. Different list rows never combine their selections. An initially hidden historical saved row still returns NOT_FOUND: this composition does not implement the unavailable receipt, historical saved enumeration, v2 persistence, default rule/object providers or trusted conversion. Synthetic GUC/provider tests and native test-list wiring do not establish actual PostgreSQL/Auth acceptance.
+
+## Complete candidate topic fields
+
+Mutation `createDataIngestionCandidateTopic` and queries `dataIngestionCandidateTopics` / `dataIngestionCandidateTopic` map to the three topic 1.0.0 capabilities through the shared Handler. The creation mutation uses the existing mutation idempotency policy; each query alias independently resolves current authority. JSON input/output follows the strict REST schemas: explicit v2 input, per-row `specVersion`, matching READABLE v1/v2 branches and the original-saver-only two-field UNAVAILABLE receipt. Neither JSON scalars nor aliases bypass fixed source/rule/relation checks. Old saved-view fields and DTOs remain unchanged. Missing trusted runtime providers fail closed; SDL/transport tests do not prove live persistence or authorization.

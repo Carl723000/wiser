@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -285,4 +285,12 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 
 在 0043 及已分配的 0044 序列之后，沿 Data 校验和迁移器追加 `0045_candidate_historical_ready_reads.sql`；旧迁移字节不变。invoker 谓词使用真实批次行、严格有限固定引用、冻结计划／输入完整成员，并通过真实较新计划复用当前读取权限。不新增表、回填或权威载体；原 `candidate_readable`、Worker 租约／写入守卫及目录限制型策略保留，只为批次 SELECT 和原件可读谓词追加有限 READY 分支。运行角色的函数执行权限仍受函数内明确 API 身份检查约束。
 
-既有回滚型 `ingestion-candidate.spec.ts` 增加 P1→P2 的 READY／EMPTY、一般 PARTIAL／待处理拒绝、无选择或伪造引用拒绝、当前权限／用途／委托／期限／策略及失败／取消会话反例，并核原件及 Worker 旧计划拒绝。须在已迁移隔离数据库显式启用 `WISER_DATA_PG_INTEGRATION=1` 运行；当前 CI 串行原生集成路径已明确加入该文件与 ingestion-candidate-relations.spec.ts，沿用既有原生标志；实际 CI 通过后才能声称数据库覆盖。单元阶段跳过或策略结构检查不是 SQL／RLS 通过。不重置预览资料，也不从一条转换结果推断 D1 窄 PARTIAL 资格。保存后的历史恢复仍为独立接续；恢复通过关闭新增限界读取入口保留业务行和迁移历史。
+既有回滚型 `ingestion-candidate.spec.ts` 增加 P1→P2 的 READY／EMPTY、一般 PARTIAL／待处理拒绝、无选择或伪造引用拒绝、当前权限／用途／委托／期限／策略及失败／取消会话反例，并核原件及 Worker 旧计划拒绝。须在已迁移隔离数据库显式启用 `WISER_DATA_PG_INTEGRATION=1` 运行；当前 CI 串行原生集成路径已明确加入该文件与 ingestion-candidate-relations.spec.ts，沿用既有原生标志；实际 CI 通过后才能声称数据库覆盖。单元阶段跳过或策略结构检查不是 SQL／RLS 通过。不重置预览资料，也不从一条转换结果推断 D1 窄 PARTIAL 资格。实际保存后的历史恢复须使用下方0046路径，并通过自身Auth／数据库验收；恢复通过关闭新增限界读取入口保留业务行和迁移历史。
+
+## 完整候选专题存储（0046）
+
+沿校验和迁移器在 0044／0045 后追加 `0046_ingestion_candidate_topics.sql`，再配置运行角色；0042 原函数、旧行及校验和保持。原保存表的配置约束明确分派无版本 v1 或严格 v2，未知版本拒绝，不新增表或权威来源。v2 invoker 读取辅助函数只临时安装该保存行有限的完整清单，核当前候选 FORCE RLS 后恢复原选择，接通合格历史 READY；不扩大一般发现或 PARTIAL 资格。
+
+已有元数据角色继续 NOLOGIN、NOINHERIT、NOBYPASSRLS，仅获 `SELECT(view_id)`，并受一个请求 ID、原保存／委托责任、同项目／用途／密级／策略／期限约束。API 完整内容角色不获失效行放宽，无 SECURITY DEFINER。重新配置先清除元数据角色原表权限，再恢复上述列限界；保存配置不可改，更新仍只限 revoked_at。
+
+`ingestion-candidate-topics.spec.ts` 已加入相同串行隔离 PostgreSQL CI 清单，明确启用 `WISER_DATA_PG_INTEGRATION=1` 并使用迁移后的一次性数据库，检查严格版本／上限、P1→P2 历史启动及选择恢复、取消关闭、v1 标题行隔离、所有人／委托及单 ID 回执、禁止内容列、期限和真实 non-BYPASS 角色。单元执行跳过两项数据库用例，不算 SQL、RLS 或 Auth 通过；注册不触发预览重置、真实资料批准或部署。

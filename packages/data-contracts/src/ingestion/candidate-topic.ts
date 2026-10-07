@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
-import { Sha256Schema } from '../common.ts';
+import { CursorSchema, Sha256Schema } from '../common.ts';
 import { ExplorationMapViewSchema } from '../exploration/saved.ts';
 import {
   IngestionCandidateReferenceSchema,
@@ -11,6 +11,11 @@ import {
   IngestionCandidateSavedPageSchema,
   IngestionCandidateSavedReferencesSchema,
   IngestionCandidateSavedViewSpecSchema,
+  IngestionCandidateSavedViewSchema,
+  IngestionCandidateSavedRequestSchema,
+  ListIngestionCandidateViewsInputSchema,
+  OpenIngestionCandidateViewInputSchema,
+  OpenIngestionCandidateViewOutputSchema,
   candidateSavedReferenceKey,
 } from './candidate-saved.ts';
 
@@ -279,4 +284,117 @@ export type IngestionCandidateTopicSpec = z.infer<
 >;
 export type CreateIngestionCandidateTopicInput = z.infer<
   typeof CreateIngestionCandidateTopicInputSchema
+>;
+
+/** Public topic metadata identifies the actual stored spec without upgrading it. */
+export const IngestionCandidateTopicSavedViewSchema =
+  IngestionCandidateSavedViewSchema.extend({
+    specVersion: z.union([z.literal(1), z.literal(2)]),
+  });
+const savedTopicV1 = IngestionCandidateTopicSavedViewSchema.extend({
+  specVersion: z.literal(1),
+});
+const savedTopicV2 = IngestionCandidateTopicSavedViewSchema.extend({
+  specVersion: z.literal(2),
+});
+export const CreateIngestionCandidateTopicOutputSchema = z
+  .strictObject({ savedView: savedTopicV2 })
+  .refine(bound);
+export const ListIngestionCandidateTopicsInputSchema =
+  ListIngestionCandidateViewsInputSchema;
+export const ListIngestionCandidateTopicsOutputSchema = z
+  .strictObject({
+    items: z.array(IngestionCandidateTopicSavedViewSchema).max(100),
+    nextCursor: CursorSchema.nullable(),
+  })
+  .refine(bound);
+export const OpenIngestionCandidateTopicInputSchema =
+  OpenIngestionCandidateViewInputSchema;
+const readableV1 = z
+  .strictObject({
+    status: z.literal('READABLE'),
+    specVersion: z.literal(1),
+    savedView: savedTopicV1,
+    references: IngestionCandidateSavedReferencesSchema,
+    viewSpec: IngestionCandidateSavedViewSpecSchema,
+    request: IngestionCandidateSavedRequestSchema,
+  })
+  .refine((value) => {
+    const { specVersion: _version, ...metadata } = value.savedView;
+    return OpenIngestionCandidateViewOutputSchema.safeParse({
+      kind: 'ingestion-candidate-view',
+      savedView: metadata,
+      references: value.references,
+      viewSpec: value.viewSpec,
+      request: value.request,
+    }).success;
+  }, 'Legacy topic reads must retain the original fixed view request')
+  .refine(bound);
+const readableV2 = z
+  .strictObject({
+    status: z.literal('READABLE'),
+    specVersion: z.literal(2),
+    savedView: savedTopicV2,
+    references: IngestionCandidateSavedReferencesSchema,
+    viewSpec: IngestionCandidateTopicSpecSchema,
+    request: IngestionCandidateSavedRequestSchema,
+  })
+  .refine(
+    (value) =>
+      value.savedView.revokedAt === null &&
+      CreateIngestionCandidateTopicInputSchema.safeParse({
+        title: value.savedView.title,
+        visibility: value.savedView.visibility,
+        references: value.references,
+        viewSpec: value.viewSpec,
+      }).success,
+    'Readable topics must retain all fixed selections and remain unrevoked',
+  )
+  .refine((value) => {
+    const page = value.viewSpec.page;
+    const capabilityId =
+      page.kind === 'assets'
+        ? 'data.ingestion.candidate.get'
+        : page.kind === 'records'
+          ? 'data.ingestion.candidate.records'
+          : 'data.ingestion.candidate.geometry';
+    return (
+      value.request.capabilityId === capabilityId &&
+      candidateSavedReferenceKey(value.request.input) ===
+        candidateSavedReferenceKey(page.reference) &&
+      value.request.input.first === page.first &&
+      (page.kind === 'assets' ||
+        ('assetId' in value.request.input &&
+          value.request.input.assetId.toLowerCase() ===
+            page.assetId.toLowerCase())) &&
+      Boolean(value.request.input.after) ===
+        Boolean(page.kind === 'assets' ? page.afterAssetId : page.afterRecordId)
+    );
+  }, 'Resume request must describe the saved fixed page')
+  .refine(bound);
+/** Only the authorized original saver can receive this content-free result. */
+export const IngestionCandidateTopicUnavailableSchema = z.strictObject({
+  status: z.literal('UNAVAILABLE'),
+  viewId: PlatformUuidSchema,
+});
+export const OpenIngestionCandidateTopicOutputSchema = z
+  .union([readableV1, readableV2, IngestionCandidateTopicUnavailableSchema])
+  .refine(bound);
+export type IngestionCandidateTopicSavedView = z.infer<
+  typeof IngestionCandidateTopicSavedViewSchema
+>;
+export type CreateIngestionCandidateTopicOutput = z.infer<
+  typeof CreateIngestionCandidateTopicOutputSchema
+>;
+export type ListIngestionCandidateTopicsInput = z.infer<
+  typeof ListIngestionCandidateTopicsInputSchema
+>;
+export type ListIngestionCandidateTopicsOutput = z.infer<
+  typeof ListIngestionCandidateTopicsOutputSchema
+>;
+export type OpenIngestionCandidateTopicInput = z.infer<
+  typeof OpenIngestionCandidateTopicInputSchema
+>;
+export type OpenIngestionCandidateTopicOutput = z.infer<
+  typeof OpenIngestionCandidateTopicOutputSchema
 >;

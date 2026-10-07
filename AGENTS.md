@@ -18,7 +18,7 @@ checkPaths:
   - .github/workflows/**
   - package.json
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 # WISER repository instructions
@@ -65,3 +65,5 @@ lastReviewedCommit: 142fdcb1cce898dac5aaad94013f34663e162071
 Run `pnpm verify` before each green milestone; it includes the complete unit suite with coverage exactly once. All six CI verification lanes and the `CI complete` aggregate must pass before delivery. Database and browser changes require their focused integration and Playwright checks as well.
 
 候选历史 READY 读取的 `ingestion-candidate.spec.ts` 与候选关系载体的 `ingestion-candidate-relations.spec.ts` 采用同一明确的 Data PostgreSQL CI 串行列表，保留 `WISER_DATA_PG_INTEGRATION=1`、所有旧测试与隔离迁移。普通单元执行中的条件跳过不表示已通过 SQL、RLS、并发或真实身份验证。 / Historical READY candidate reads and private candidate relation storage use the same explicitly listed, serial isolated PostgreSQL CI lane; conditional unit skips are not native database acceptance.
+
+完整候选专题的 `ingestion-candidate-topics.spec.ts` 加入既有串行 Data PostgreSQL CI 清单；保留全部旧用例及原生标志。其两项条件跳过不代表严格 v2 存储、历史读取或最小所有者回执已通过真实数据库验收。 / Complete candidate topics use the existing serial isolated Data PostgreSQL CI list; skipped database cases are not native v2 persistence, historical-read or owner-receipt acceptance.

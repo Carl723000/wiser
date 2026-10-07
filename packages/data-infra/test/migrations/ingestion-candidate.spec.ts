@@ -568,13 +568,30 @@ describe('frozen ingestion candidate authority storage', () => {
           "select set_config('wiser.candidate_maintainer','false',true)",
           "select set_config('wiser.candidate_purpose','',true)",
           "select set_config('wiser.actor_type','agent',true)",
-          "select set_config('wiser.policy_version','2',true)",
+          "select set_config('wiser.policy_version','0',true)",
           'select set_config(\'wiser.resource_scope\',\'{"mode":"managed","permissions":{},"validUntil":"2000-01-01T00:00:00Z"}\',true)',
         ]) {
           await client.query(sql);
-          expect(await selectHistory()).toEqual([]);
+          expect(await selectHistory(), sql).toEqual([]);
           await client.query('rollback to savepoint history_current_authority');
         }
+        // Generic row policy version is a clearance ceiling, not the current
+        // project review-policy revision. A higher ceiling retains the row.
+        await client.query(
+          "select set_config('wiser.policy_version','2',true)",
+        );
+        expect(await selectHistory()).toEqual([{ processing_batch_id: batch }]);
+        await client.query('rollback to savepoint history_current_authority');
+        // Independently change the actual server review policy while enabled.
+        await client.query('reset role');
+        await client.query(
+          'update ingestion.project_review_policy set revision=revision+1,row_version=row_version+1 where tenant_id=$1 and project_id=$2',
+          [tenant, project],
+        );
+        await client.query('set local role wiser_data_api');
+        expect(await selectHistory()).toEqual([]);
+        expect(await originalRows()).toEqual({ assets: [], blobs: [] });
+        await client.query('rollback to savepoint history_current_authority');
         await setActor(other);
         expect(await selectHistory()).toEqual([]);
         await client.query(

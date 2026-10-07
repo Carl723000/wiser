@@ -66,7 +66,7 @@ begin
     endpoint_sources:=jsonb_build_array(primary_ref);
   end if;
   -- Mirror registered endpoint rules without changing the published legacy validator.
-  if case value->>'predicate'
+  if (case value->>'predicate'
     when 'IDENTITY_MATCH' then value#>>'{subject,kind}' not in ('PERSON','ORGANIZATION','ENTERPRISE','MONITORING_POINT','RIVER_REACH','BASIN','PLACE','EXTERNAL_ENTITY')
     when 'EXPRESSES_CLAIM' then value#>>'{subject,kind}' not in ('PERSON','ORGANIZATION') or value#>>'{object,kind}'<>'CLAIM'
     when 'REPORTS_CLAIM' then value#>>'{subject,kind}'<>'DOCUMENT' or value#>>'{object,kind}'<>'CLAIM'
@@ -77,7 +77,7 @@ begin
     when 'DERIVED_FROM' then value#>>'{subject,kind}' not in ('DOCUMENT','CLAIM','MODEL_RUN','OBSERVATION') or value#>>'{object,kind}' not in ('DOCUMENT','OBSERVATION','MODEL_RUN','EXTERNAL_ENTITY')
     when 'APPLIES_TO' then value#>>'{subject,kind}' not in ('POLICY','CLAIM')
     when 'USES_DATA' then value#>>'{subject,kind}'<>'MODEL_RUN' or value#>>'{object,kind}' not in ('DOCUMENT','OBSERVATION','EXTERNAL_ENTITY')
-    else value#>>'{subject,kind}' not in ('ENTERPRISE','MONITORING_POINT','INDICATOR_RECORD','RIVER_REACH','BASIN','EXTERNAL_ENTITY') or value#>>'{object,kind}' not in ('ENTERPRISE','MONITORING_POINT','INDICATOR_RECORD','RIVER_REACH','BASIN','EXTERNAL_ENTITY') end then return false; end if;
+    else value#>>'{subject,kind}' not in ('ENTERPRISE','MONITORING_POINT','INDICATOR_RECORD','RIVER_REACH','BASIN','EXTERNAL_ENTITY') or value#>>'{object,kind}' not in ('ENTERPRISE','MONITORING_POINT','INDICATOR_RECORD','RIVER_REACH','BASIN','EXTERNAL_ENTITY') end) then return false; end if;
   if jsonb_typeof(value->'evidence') is distinct from 'array' or jsonb_array_length(value->'evidence') not between 1 and 64 then return false; end if;
   for evidence in select * from jsonb_array_elements(value->'evidence') loop
     if not ingestion.candidate_relation_keys(evidence,array['reference','assetId','sourceHash','locator','excerpt','polarity'],array['recordId'])
@@ -90,8 +90,8 @@ begin
       or not (jsonb_typeof(evidence->'excerpt')='null' or (jsonb_typeof(evidence->'excerpt')='string' and length(evidence->>'excerpt')<=4096))
       or (evidence->>'polarity' in ('SUPPORTS','CONTRADICTS')) is distinct from true then return false; end if;
   end loop;
-  if exists(select 1 from jsonb_array_elements(endpoint_sources) endpoint where not exists
-    (select 1 from jsonb_array_elements(value->'evidence') evidence where evidence->'reference'=endpoint)) then return false; end if;
+  if exists(select 1 from jsonb_array_elements(endpoint_sources) endpoint(ref) where not exists
+    (select 1 from jsonb_array_elements(value->'evidence') supplied_evidence(entry) where supplied_evidence.entry->'reference'=endpoint.ref)) then return false; end if;
   return true;
 exception when others then return false;
 end $$;
@@ -197,7 +197,7 @@ begin
       or exists(select 1 from ingestion.candidate_relation_revision newer where newer.tenant_id=new.tenant_id and newer.project_id=new.project_id
         and newer.relation_id=new.relation_id and newer.revision>=new.revision) then
       raise exception 'candidate revision requires a readable exact latest predecessor and original responsibility' using errcode='42501'; end if;
-  elsif exists(select 1 from ingestion.candidate_relation_revision old where old.tenant_id=new.tenant_id and old.project_id=new.project_id and old.relation_id=new.relation_id) then
+  elsif exists(select 1 from ingestion.candidate_relation_revision prior_lineage where prior_lineage.tenant_id=new.tenant_id and prior_lineage.project_id=new.project_id and prior_lineage.relation_id=new.relation_id) then
     raise exception 'candidate relation lineage already exists' using errcode='40001'; end if;
   new.created_at:=clock_timestamp(); return new;
 end $$;

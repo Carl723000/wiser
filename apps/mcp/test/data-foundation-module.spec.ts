@@ -53,6 +53,9 @@ const EXPECTED_DATA_TOOLS = [
   'data_ingestion_candidate_view_list',
   'data_ingestion_candidate_view_open',
   'data_ingestion_candidate_view_revoke',
+  'data_ingestion_candidate_topic_create',
+  'data_ingestion_candidate_topic_list',
+  'data_ingestion_candidate_topic_open',
   'data_ingestion_approve',
   'data_ingestion_reject',
   'data_operation_cancel',
@@ -526,5 +529,96 @@ it.each(['create', 'list', 'open', 'revoke'] as const)(
       path: `/ingestion-candidate-views${name === 'open' || name === 'revoke' ? `/${VERSION_ID}/${name}` : ''}`,
     });
     expect(JSON.stringify(http.requests)).not.toContain('versionId');
+  },
+);
+
+it.each(['create', 'list', 'open'] as const)(
+  'forwards independent candidate topic %s through bounded HTTP only',
+  async (operation) => {
+    const http = new RecordingDataHttpClient();
+    const client = await connect(http);
+    const tool = (await client.listTools()).tools.find(
+      (item) => item.name === `data_ingestion_candidate_topic_${operation}`,
+    );
+    expect(tool?.annotations?.readOnlyHint).toBe(operation !== 'create');
+    expect(tool?.annotations?.destructiveHint).toBe(false);
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'a'.repeat(64),
+    };
+    const args =
+      operation === 'create'
+        ? {
+            title: '固定报告期专题',
+            references: [reference],
+            idempotencyKey: IDEMPOTENCY_KEY,
+            viewSpec: {
+              schemaVersion: 2,
+              page: { kind: 'assets', reference, first: 2 },
+              period: {
+                windowMode: 'month',
+                from: null,
+                to: null,
+                displayUnit: 'month',
+                timeRole: 'REPORT_PERIOD',
+                includeUndated: false,
+              },
+              topic: {
+                question: '哪些报告月份可读？',
+                regionIds: ['CHAObAI'],
+                needIds: ['water-quality'],
+                recordPins: [],
+              },
+              rulePins: [
+                'projection',
+                'readiness',
+                'requirement',
+                'impact',
+              ].map((kind) => ({
+                kind,
+                ruleId: `${kind}-rule`,
+                version: '1.0.0',
+              })),
+              dependencyPins: [
+                {
+                  kind: 'asset',
+                  reference,
+                  assetId: DATA_ITEM_ID,
+                  sourceHash: 'b'.repeat(64),
+                  parserVersion: 'parser/1.0.0',
+                },
+              ],
+              relationPins: [],
+            },
+          }
+        : operation === 'list'
+          ? { first: 2 }
+          : { viewId: VERSION_ID };
+    http.next =
+      operation === 'open'
+        ? { status: 'UNAVAILABLE', viewId: VERSION_ID }
+        : { fixed: true };
+    const result = await client.callTool({
+      name: `data_ingestion_candidate_topic_${operation}`,
+      arguments: args,
+    });
+    expect(result.isError).not.toBe(true);
+    expect(http.requests).toHaveLength(1);
+    expect(http.requests[0]).toMatchObject({
+      method: operation === 'list' ? 'GET' : 'POST',
+      path: `/ingestion-candidate-topics${operation === 'open' ? `/${VERSION_ID}/open` : ''}`,
+    });
+    if (operation === 'create')
+      expect(http.requests[0]?.headers?.['Idempotency-Key']).toBe(
+        IDEMPOTENCY_KEY,
+      );
+    const bad = await client.callTool({
+      name: `data_ingestion_candidate_topic_${operation}`,
+      arguments: { ...args, authority: 'verified' },
+    });
+    expect(bad.isError).toBe(true);
+    expect(http.requests).toHaveLength(1);
   },
 );

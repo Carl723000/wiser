@@ -151,6 +151,55 @@ values($1,$2,$3,$4,$5,decode($6,'hex'),$7,decode($8,'hex'),28,$9,decode($10,'hex
         actor,
         JSON.stringify(policy),
       ];
+      const startBatch = async (
+        processingBatchId: string,
+        parserVersion: string,
+      ) => {
+        await client.query(
+          "insert into ingestion.candidate_batch(processing_batch_id,tenant_id,project_id,ingestion_id,transform_plan_id,operation_id,review_hash,parser_version,security_level,policy_version) values($1,$2,$3,$4,$5,$4,decode($6,'hex'),$7,'L0_PUBLIC',1)",
+          [
+            processingBatchId,
+            tenant,
+            project,
+            ingestion,
+            plan,
+            reviewHash,
+            parserVersion,
+          ],
+        );
+        for (const member of members)
+          await client.query(
+            "insert into ingestion.candidate_asset(processing_batch_id,asset_id,tenant_id,project_id,source_hash,security_level,policy_version) values($1,$2,$3,$4,decode($5,'hex'),'L0_PUBLIC',1)",
+            [
+              processingBatchId,
+              member.assetId,
+              tenant,
+              project,
+              member.sourceHash,
+            ],
+          );
+      };
+      const completeBatch = async (processingBatchId: string) => {
+        for (const [index, member] of members.entries())
+          await client.query(
+            'update ingestion.candidate_asset set status=$3,reason=$4,record_count=$5,feature_count=$5 where processing_batch_id=$1 and asset_id=$2',
+            [
+              processingBatchId,
+              member.assetId,
+              index === 1 ? 'READY' : 'UNSUPPORTED',
+              index === 1
+                ? null
+                : index === 0
+                  ? 'FORMAT_COMPANION'
+                  : 'SOURCE_MANIFEST',
+              index === 1 ? 0 : null,
+            ],
+          );
+        await client.query(
+          "update ingestion.candidate_batch set status='PARTIAL',completed_at=clock_timestamp() where processing_batch_id=$1",
+          [processingBatchId],
+        );
+      };
       try {
         await client.query('begin');
         await client.query(
@@ -222,15 +271,7 @@ values($1,$2,$3,$4,$5,decode($6,'hex'),$7,decode($8,'hex'),28,$9,decode($10,'hex
           [job],
         );
         await client.query('set local role wiser_data_worker');
-        await client.query(
-          "insert into ingestion.candidate_batch(processing_batch_id,tenant_id,project_id,ingestion_id,transform_plan_id,operation_id,review_hash,parser_version,security_level,policy_version) values($1,$2,$3,$4,$5,$4,decode($6,'hex'),'synthetic-conversion','L0_PUBLIC',1)",
-          [batch, tenant, project, ingestion, plan, reviewHash],
-        );
-        for (const member of members)
-          await client.query(
-            "insert into ingestion.candidate_asset(processing_batch_id,asset_id,tenant_id,project_id,source_hash,security_level,policy_version) values($1,$2,$3,$4,decode($5,'hex'),'L0_PUBLIC',1)",
-            [batch, member.assetId, tenant, project, member.sourceHash],
-          );
+        await startBatch(batch, 'synthetic-conversion');
         await client.query('set local role wiser_data_api');
         await denied(client, insert, values);
         await client.query('set local role wiser_data_worker');
@@ -263,28 +304,10 @@ values($1,$2,$3,$4,$5,decode($6,'hex'),$7,decode($8,'hex'),28,$9,decode($10,'hex
         );
         await denied(
           client,
-          'set constraints candidate_conversion_commit_guard immediate',
+          'set constraints ingestion.candidate_conversion_commit_guard immediate',
           [],
         );
-        for (const [index, member] of members.entries())
-          await client.query(
-            'update ingestion.candidate_asset set status=$3,reason=$4,record_count=$5,feature_count=$5 where processing_batch_id=$1 and asset_id=$2',
-            [
-              batch,
-              member.assetId,
-              index === 1 ? 'READY' : 'UNSUPPORTED',
-              index === 1
-                ? null
-                : index === 0
-                  ? 'FORMAT_COMPANION'
-                  : 'SOURCE_MANIFEST',
-              index === 1 ? 0 : null,
-            ],
-          );
-        await client.query(
-          "update ingestion.candidate_batch set status='PARTIAL',completed_at=clock_timestamp() where processing_batch_id=$1",
-          [batch],
-        );
+        await completeBatch(batch);
         await client.query('savepoint late_conversion_cancel');
         await client.query('reset role');
         await client.query(
@@ -294,25 +317,65 @@ values($1,$2,$3,$4,$5,decode($6,'hex'),$7,decode($8,'hex'),28,$9,decode($10,'hex
         await client.query('set local role wiser_data_worker');
         await denied(
           client,
-          'set constraints candidate_conversion_commit_guard immediate',
+          'set constraints ingestion.candidate_conversion_commit_guard immediate',
           [],
         );
         await client.query('rollback to savepoint late_conversion_cancel');
+        await client.query(
+          'set constraints ingestion.candidate_conversion_commit_guard immediate',
+        );
         await client.query('savepoint late_conversion_timeout');
+        await client.query(
+          'set constraints ingestion.candidate_conversion_commit_guard deferred',
+        );
+        // Job deadlines are immutable while RUNNING. Give a separate synthetic
+        // job its short deadline at INSERT, then let only this test connection wait.
+        const expiringJob = randomUUID(),
+          expiringBatch = randomUUID();
         await client.query('reset role');
         await client.query(
-          "update ingestion.job set timeout_at=clock_timestamp()-interval '1 second',row_version=row_version+1 where job_id=$1",
-          [job],
+          "insert into ingestion.job(job_id,tenant_id,project_id,ingestion_id,operation_id,job_type,status,idempotency_key,payload,lease_owner,lease_expires_at,attempt_count,timeout_at,security_level) values($1,$2,$3,$4,$4,'data.ingestion.process','RUNNING',$1::uuid::text,'{}','conversion-sql-test',clock_timestamp()+interval '5 minutes',1,clock_timestamp()+interval '750 milliseconds','L0_PUBLIC')",
+          [expiringJob, tenant, project, ingestion],
+        );
+        await client.query(
+          "select set_config('wiser.candidate_job_id',$1,true)",
+          [expiringJob],
         );
         await client.query('set local role wiser_data_worker');
+        await startBatch(expiringBatch, 'synthetic-conversion-expiring');
+        const expiringValues = [...values];
+        expiringValues[0] = randomUUID();
+        expiringValues[3] = expiringBatch;
+        expiringValues[14] = expiringJob;
+        await client.query(insert, expiringValues);
+        await completeBatch(expiringBatch);
+        // This bounded 750ms wait is shorter than one second and never mutates
+        // the deadline or disables the actual migrated guards.
+        await client.query('select pg_sleep(0.75)');
+        expect(
+          (
+            await client.query(
+              'select timeout_at<=clock_timestamp() timed_out,lease_expires_at>clock_timestamp() leased,cancel_requested_at is null uncancelled,status,attempt_count from ingestion.job where job_id=$1',
+              [expiringJob],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            timed_out: true,
+            leased: true,
+            uncancelled: true,
+            status: 'RUNNING',
+            attempt_count: 1,
+          },
+        ]);
         await denied(
           client,
-          'set constraints candidate_conversion_commit_guard immediate',
+          'set constraints ingestion.candidate_conversion_commit_guard immediate',
           [],
         );
         await client.query('rollback to savepoint late_conversion_timeout');
         await client.query(
-          'set constraints candidate_conversion_commit_guard immediate',
+          'set constraints ingestion.candidate_conversion_commit_guard immediate',
         );
         await denied(client, insert, [randomUUID(), ...values.slice(1)]);
         await client.query('set local role wiser_data_api');

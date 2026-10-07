@@ -17,7 +17,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: df78e841951e24ba56bf3fb76cdf02329f9b1b8f
+lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
 ---
 
 # WISER · 水地图
@@ -153,3 +153,5 @@ tests/          跨应用、工具链与验收测试
 ## 许可与安全
 
 代码采用 [MIT License](./LICENSE)。场景数据和第三方材料遵循各自的 `PROVENANCE.md` 与数据许可。不要公开本机 Supabase、数据库、对象存储或开发默认凭据；安全报告方式见 [`SECURITY.md`](./SECURITY.md)。
+
+完整候选专题的 `ingestion-candidate-topics.spec.ts` 加入既有串行 Data PostgreSQL CI 清单；保留全部旧用例及原生标志。其两项条件跳过不代表严格 v2 存储、历史读取或最小所有者回执已通过真实数据库验收。 / Complete candidate topics use the existing serial isolated Data PostgreSQL CI list; skipped database cases are not native v2 persistence, historical-read or owner-receipt acceptance.
