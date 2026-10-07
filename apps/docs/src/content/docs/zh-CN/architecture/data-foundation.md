@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## 当前可运行能力
@@ -654,3 +654,7 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 旧 DTO、旧列表和旧行不自动升级。专题列表逐行标明 `specVersion: 1|2`，重开返回相应 READABLE 分支，v1 不补造问题或规则。既有撤销能力按存储版本明确分派。v2 创建、重放和重开在同一限定连接核实际资料与宿主权威；缺少规则、所需关系或来源对象提供者时安全拒绝，默认接线不从调用方 pin 补造权威。规则或决定变动不会静默替换固定版本。
 
 0046 先按该不可变 v2 保存行自身的完整引用，复用当前候选 FORCE RLS 核历史读取，再恢复原事务选择；不建立历史候选枚举，不放宽一般 PARTIAL。内容失效后，仅当前原保存者或责任委托人，在相同项目、用途、密级／策略及有效身份期限内，可取得严格 `{status:'UNAVAILABLE',viewId}`。已有受限元数据角色仅有该表 `SELECT(view_id)`，回执策略另限定一个请求 ID；无标题、配置、引用列权限，无 BYPASSRLS 或 definer。列表遇到迟到的失权时整页拒绝，不泄露标题或续页身份。条件 PostgreSQL、真实 Auth 和浏览器验收与合成事务／传输测试分别记录。
+
+### 有限专题宿主配置
+
+启动配置显式采用 `goal101-engineering-inspection/1` 工程检查配方：`DATA_CANDIDATE_TOPIC_PROFILE` 选择固定配方，`DATA_CANDIDATE_TOPIC_TENANT_ID`、`DATA_CANDIDATE_TOPIC_PROJECT_ID` 和 `DATA_CANDIDATE_TOPIC_PURPOSE` 精确绑定已配置的项目及现有 Auth 用途。四字段必须完整，禁止通配或首请求自注册；缺配置时专题权威继续失败关闭。运行时将提供者注入实际候选保存 executor。两套月报规则分别保留：旧 1.0.0 调用原 PUBLICATION 投影，新 2.0.0 调用 REPORT_PERIOD 投影；不能把旧路径称为新版本。需求规则定义摘要与需求输入版本分别记录，登录读取不查本机固定包。六区域与19需求仅为选择目录，不授资料读取权、不生成归属事实或专业批准。关系在同一保存 client 上读取固定修订和当前决定，并重核引用与权限；无可信源内对象映射时 `sourceObjectKey` 继续拒绝，整记录兼容路径保留。私有宿主模块记录定义摘要及本轮工程采用，不创建外部专业标准或公共协议。真实 SQL／Auth／浏览器验收另行记录。

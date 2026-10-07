@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## 协议边界
@@ -507,3 +507,7 @@ candidate-relations 契约／载体固定范围内的 relationId、lineageId、�
 三项沿用当前候选维护者或独立人工审核者准入，不新增 scope 或角色。创建要求严格 v2 配置、完整引用和幂等键；同一事务按受信宿主核实际四类已采用规则、资料哈希、整记录／几何及可选关系修订／决定。缺少提供者直接失败，不伪造空的权威集合。列表使用有限 `first/after`、专题专用的身份／用途／资源游标，逐行标明 `specVersion: 1|2`；旧列表仍只读 v1。
 
 重开的严格联合为 READABLE（相同版本的元数据、引用、配置和新分页请求），或仅向当前获准的原保存者返回 UNAVAILABLE 与 viewId；不返回失效标题、数量、来源 pin 或坐标。v1 不补造 v2 字段，未知或混合版本拒绝，新解析器／规则／决定不替换固定状态。既有 `data.ingestion.candidate.view.revoke` 及 DTO 按两个版本明确处理。默认运行时仍缺完整宿主规则／来源对象权威，依赖这些提供者的 v2 操作安全拒绝；能力注册不等于实际数据库或浏览器验收。
+
+### 有限专题宿主配置
+
+启动配置显式采用 `goal101-engineering-inspection/1` 工程检查配方：`DATA_CANDIDATE_TOPIC_PROFILE` 选择固定配方，`DATA_CANDIDATE_TOPIC_TENANT_ID`、`DATA_CANDIDATE_TOPIC_PROJECT_ID` 和 `DATA_CANDIDATE_TOPIC_PURPOSE` 精确绑定已配置的项目及现有 Auth 用途。四字段必须完整，禁止通配或首请求自注册；缺配置时专题权威继续失败关闭。运行时将提供者注入实际候选保存 executor。两套月报规则分别保留：旧 1.0.0 调用原 PUBLICATION 投影，新 2.0.0 调用 REPORT_PERIOD 投影；不能把旧路径称为新版本。需求规则定义摘要与需求输入版本分别记录，登录读取不查本机固定包。六区域与19需求仅为选择目录，不授资料读取权、不生成归属事实或专业批准。关系在同一保存 client 上读取固定修订和当前决定，并重核引用与权限；无可信源内对象映射时 `sourceObjectKey` 继续拒绝，整记录兼容路径保留。私有宿主模块记录定义摘要及本轮工程采用，不创建外部专业标准或公共协议。真实 SQL／Auth／浏览器验收另行记录。

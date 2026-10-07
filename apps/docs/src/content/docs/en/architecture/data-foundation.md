@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
 ---
 
 ## What runs today
@@ -654,3 +654,7 @@ Complete topics now use the existing immutable candidate saved-view table with e
 Legacy DTOs, list behavior and saved rows are not upgraded. The topic list marks each readable row `specVersion: 1|2`; topic open returns the matching `READABLE` branch, with no invented topic fields for v1. The existing revoke capability dispatches explicitly by storage version. V2 save, replay and restore validate actual material and host authority on the same scoped connection. Missing rule, required relation or source-object providers fail closed; default host wiring does not synthesize these authorities from request pins. A changed pin does not silently adopt a newer rule or decision.
 
 Migration 0046 reuses current candidate forced RLS for each saved v2 manifest before returning a historical row, then restores the prior transaction-local selection. It does not enumerate candidate history or relax general PARTIAL eligibility. When content is unavailable, only the current original saver/responsible delegator, within the same project, purpose, security/policy and live authority deadlines, may receive exactly `{status:'UNAVAILABLE',viewId}`. The existing limited metadata role has only `SELECT(view_id)` on this table, and its receipt policy additionally fixes one requested ID. It has no saved title/spec/reference grant, no BYPASSRLS and no definer function. Late authority loss rejects a list page before exposing its titles or continuation. Conditional PostgreSQL, live Auth and browser acceptance remain separate from synthetic transaction/transport tests.
+
+### Bounded topic host configuration
+
+Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. Two monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 calls the REPORT_PERIOD producer. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.

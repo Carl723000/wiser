@@ -17,6 +17,7 @@ import {
   type DataFoundationRuntimeFactories,
 } from '../src/data-foundation/runtime.js';
 import type { TrustedExternalMetadataRegistry } from '../src/data-foundation/external-metadata-registry.js';
+import * as candidateSaved from '../src/data-foundation/ingestion-candidate-saved.js';
 import type { PlatformAuthRuntime } from '../src/platform/auth-runtime.js';
 
 const enabledEnvironment = {
@@ -45,6 +46,37 @@ const enabledEnvironment = {
   DATA_MARTIN_URL: 'http://martin:3000',
   DATA_PUBLIC_API_ORIGIN: 'http://api:3001',
 } as NodeJS.ProcessEnv;
+
+it('injects the configured topic authority into the real default saved executor composition', async () => {
+  const create = vi.spyOn(
+    candidateSaved,
+    'createIngestionCandidateSavedExecutors',
+  );
+  const runtime = createDataFoundationRuntimeFromEnvironment(
+    {
+      ...enabledEnvironment,
+      DATA_CANDIDATE_TOPIC_PROFILE: 'goal101-engineering-inspection/1',
+      DATA_CANDIDATE_TOPIC_TENANT_ID: '6abcdef0-0000-4000-8000-000000000020',
+      DATA_CANDIDATE_TOPIC_PROJECT_ID: '6abcdef0-0000-4000-8000-000000000021',
+      DATA_CANDIDATE_TOPIC_PURPOSE: 'candidate-review',
+    },
+    authRuntime,
+  );
+  const app = buildApp({ modules: runtime.modules });
+  try {
+    await app.ready();
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        loadRules: expect.any(Function),
+        loadRelations: expect.any(Function),
+      }),
+    );
+  } finally {
+    await app.close();
+    create.mockRestore();
+  }
+});
 
 const authRuntime: PlatformAuthRuntime = {
   module: { id: 'platform.auth-runtime', register() {} },
