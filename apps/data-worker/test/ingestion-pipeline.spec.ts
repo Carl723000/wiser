@@ -408,13 +408,15 @@ async function registeredGeoJsonScenario(
     content_blob_id: null,
   }));
   const nativePool: IngestionRuntimePool = {
-    async connect() {
-      return {
-        async query(sql) {
-          return { rows: sql.includes('ingestion.runtime.load') ? inputs : [] };
+    connect() {
+      return Promise.resolve({
+        query(sql) {
+          return Promise.resolve({
+            rows: sql.includes('ingestion.runtime.load') ? inputs : [],
+          });
         },
         release() {},
-      };
+      });
     },
   };
   const native = new PostgresIngestionAuthority({
@@ -444,13 +446,13 @@ async function registeredGeoJsonScenario(
   const calls: { sql: string; values: readonly unknown[] }[] = [];
   const reads: string[] = [];
   const pool: DataPostgresPool = {
-    async connect() {
-      return {
-        async query(sql, values = []) {
+    connect() {
+      return Promise.resolve({
+        query(sql, values = []) {
           calls.push({ sql, values });
           if (sql.includes('candidate.load-checkpoint')) {
             const frozen = fixture.authority.frozenCheckpoint!;
-            return {
+            return Promise.resolve({
               rows: [
                 {
                   state: fixture.authority.state,
@@ -467,10 +469,10 @@ async function registeredGeoJsonScenario(
                   submitted_delegator_actor_id: null,
                 },
               ],
-            };
+            });
           }
           if (sql.includes('candidate.load-assets'))
-            return {
+            return Promise.resolve({
               rows: fixture.authority.assets.map((asset) => ({
                 asset_id: asset.assetId,
                 ordinal: asset.ordinal,
@@ -480,13 +482,13 @@ async function registeredGeoJsonScenario(
                 media_type: asset.mediaType,
                 byte_size: asset.size,
               })),
-            };
+            });
           if (sql.includes('candidate.lease-fence'))
-            return { rows: [{ job_id: job.jobId }] };
-          return { rows: [], rowCount: 1 };
+            return Promise.resolve({ rows: [{ job_id: job.jobId }] });
+          return Promise.resolve({ rows: [], rowCount: 1 });
         },
         release() {},
-      };
+      });
     },
     async end() {},
   };
