@@ -786,3 +786,204 @@ it('revokes the active saved view through the server and removes its loaded cont
       ?.headers,
   ).toHaveProperty('Idempotency-Key');
 });
+
+const topicOpened = {
+  status: 'READABLE',
+  specVersion: 2,
+  savedView: {
+    ...savedView,
+    specVersion: 2,
+    title: 'Synthetic complete topic',
+  },
+  references: [ref],
+  viewSpec: {
+    schemaVersion: 2,
+    ...opened.viewSpec,
+    period: {
+      timeRole: 'REPORT_PERIOD',
+      windowMode: 'month',
+      from: '2026-09',
+      to: '2026-09',
+      displayUnit: 'month',
+      includeUndated: false,
+    },
+    topic: {
+      question: 'Synthetic question retained exactly',
+      regionIds: ['synthetic-region'],
+      needIds: ['synthetic-need'],
+      recordPins: [{ reference: ref, assetId, recordId }],
+    },
+    rulePins: ['projection', 'readiness', 'requirement', 'impact'].map(
+      (kind) => ({ kind, ruleId: `synthetic-${kind}`, version: 'synthetic/1' }),
+    ),
+    dependencyPins: [
+      {
+        kind: 'asset',
+        reference: ref,
+        assetId,
+        sourceHash: 'b'.repeat(64),
+        parserVersion: 'synthetic-fixture-v1',
+      },
+      {
+        kind: 'record',
+        reference: ref,
+        assetId,
+        recordId,
+        sourceHash: 'b'.repeat(64),
+        parserVersion: 'synthetic-fixture-v1',
+        recordHash: 'c'.repeat(64),
+      },
+    ],
+    relationPins: [],
+  },
+  request: {
+    ...opened.request,
+    input: { ...ref, assetId, first: 2, after: 'topic-resume' },
+  },
+};
+function topicResponses(url: RequestInfo | URL) {
+  const path = requestUrl(url);
+  if (path === '/api/data-foundation/candidate-topics/open')
+    return respondJson(topicOpened);
+  if (path === '/api/data-foundation/candidate-topics/list')
+    return respondJson({
+      items: [{ ...savedView, specVersion: 1 }, topicOpened.savedView],
+      nextCursor: null,
+    });
+  if (path === '/api/data-foundation/candidates/records')
+    return respondJson(records);
+  if (path === '/api/data-foundation/candidates/geometry')
+    return respondJson(geometry);
+  if (path === '/api/data-foundation/candidates/get')
+    return respondJson(assets);
+  throw new Error('Unexpected topic transport');
+}
+it('restores the complete topic from its authorized request with no current candidate and never downgrades originals or saving', async () => {
+  fetch.mockImplementation(topicResponses);
+  render(
+    <IngestionCandidateReader
+      reference={null}
+      ingestionId={ref.ingestionId}
+      savedTopicId={viewId}
+      locale="en"
+    />,
+  );
+  await screen.findByText('Synthetic river');
+  expect(screen.getByText(topicOpened.savedView.title)).toBeDefined();
+  expect(screen.getByText(topicOpened.viewSpec.topic.question)).toBeDefined();
+  const materialRead = fetch.mock.calls.find(
+    ([url]) => requestUrl(url) === '/api/data-foundation/candidates/records',
+  );
+  expect(requestBody(materialRead?.[1])).toEqual(topicOpened.request.input);
+  expect(
+    screen
+      .getByRole('button', { name: 'Select record 1' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Revoke view' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Download original' })).toBeNull();
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Refresh candidate' })
+        .hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('tab', { name: 'Originals' }));
+  await screen.findByRole('button', { name: 'Read records' });
+  expect(screen.queryByRole('link', { name: 'Download original' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Read native raster' }),
+  ).toBeNull();
+  expect(
+    fetch.mock.calls.every(
+      ([url]) =>
+        !requestUrl(url).includes('candidate-saved-views') &&
+        !requestUrl(url).includes('candidate-assets'),
+    ),
+  ).toBe(true);
+});
+it('lists actual mixed-version topics and opens v2 through the topic ability; UNAVAILABLE clears titles, counts, references and material', async () => {
+  let available = true;
+  fetch.mockImplementation((url) =>
+    requestUrl(url) === '/api/data-foundation/candidate-topics/open' &&
+    !available
+      ? respondJson({ status: 'UNAVAILABLE', viewId })
+      : topicResponses(url),
+  );
+  render(<IngestionCandidateReader reference={ref} locale="en" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Load saved topics' }),
+  );
+  await screen.findByText('Synthetic complete topic');
+  const topicList = within(
+    screen.getByRole('region', { name: 'Saved topics' }),
+  );
+  fireEvent.click(
+    topicList.getAllByRole('button', { name: 'Reopen topic' })[1]!,
+  );
+  await screen.findByText('Synthetic river');
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Refresh candidate' })
+        .hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  available = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh candidate' }));
+  await screen.findByRole('alert');
+  for (const value of [
+    'Synthetic river',
+    'Synthetic complete topic',
+    'Synthetic fixed view',
+    topicOpened.viewSpec.topic.question,
+    ref.reviewHash,
+    ref.processingBatchId,
+    'synthetic-fixture-v1',
+  ])
+    expect(screen.queryByText(value)).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Processing facts' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Saved reading link' })).toBeNull();
+  const before = fetch.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(before));
+  expect(fetch.mock.calls[before]?.[0]).toBe(
+    '/api/data-foundation/candidate-topics/open',
+  );
+});
+it('rejects a changed complete-topic rule pin after material reading without showing partial content', async () => {
+  let opens = 0;
+  fetch.mockImplementation((url) => {
+    if (requestUrl(url) === '/api/data-foundation/candidate-topics/open') {
+      opens++;
+      return respondJson(
+        opens < 3
+          ? topicOpened
+          : {
+              ...topicOpened,
+              viewSpec: {
+                ...topicOpened.viewSpec,
+                rulePins: topicOpened.viewSpec.rulePins.map((pin) => ({
+                  ...pin,
+                  version: 'synthetic/2',
+                })),
+              },
+            },
+      );
+    }
+    return topicResponses(url);
+  });
+  render(
+    <IngestionCandidateReader
+      reference={null}
+      ingestionId={ref.ingestionId}
+      savedTopicId={viewId}
+      locale="en"
+    />,
+  );
+  await screen.findByRole('alert');
+  expect(screen.queryByText('Synthetic river')).toBeNull();
+  expect(screen.queryByText(topicOpened.savedView.title)).toBeNull();
+});

@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 82f2dcbc194c226f667572e1f670533c76dd3083
+lastReviewedCommit: 2d7b26ba27530d87b1b0b33f5b2267db736045a3
 ---
 
 ## 当前可运行能力
@@ -670,3 +670,5 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 共用命令执行器仅在`data.operation.cancel`收到PostgreSQL的`40P01`且回滚成功后重试一次。先释放连接，再重开完整事务，重新检查请求身份与范围的有效期、待审维护权限、行可见性、提交责任、乐观版本及同键回执；这不等于重新向Supabase解析身份。其他SQL错误、回滚失败和带对象存储副作用的命令不重试，第二次死锁返回既有脱敏持久化错误。公开准入、生命周期SQL、锁顺序、限额及旧迁移保持不变。
 
 公共执行器先锁入库会话，再锁任务和操作；原生直接辅助函数探针采用不同入口。执行器故障注入验证的是有界恢复，不证明HTTP已复现死锁，也不表示锁环已根除。真实Auth／HTTP与数据库并发验收分别记录。
+
+完整专题网页恢复验收要求严格分版的列表／打开、完整清单复核、不可用时清空内容，并保留旧视图的原件授权。新增Red测试固定这些要求；尚不能据此宣称网页恢复已实现或真实浏览器验收通过。

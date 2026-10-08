@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 4a1ce822
+lastReviewedCommit: 2d7b26ba27530d87b1b0b33f5b2267db736045a3
 ---
 
 ## Design direction
@@ -166,3 +166,5 @@ Applied non-default spatial filters remain readable as wrapping text chips above
 The local spatial workbench merges a camera proposal only while its rendered region remains current. A delayed proposal from the previous region cannot replace the new region camera; same-region month/evidence changes and comparison-scope changes retain camera control. Both comparison windows continue to share the current workspace camera. Component regression checks remain separate from native gesture and browser timing acceptance.
 
 After an external camera application or hiding stops the map, an earlier wheel input cannot requalify its delayed scroll frames. Only a new DOM wheel from that active map allows wheel or sourceless zoom frames to update reading state again. Existing native-target and zooming checks, mouse/keyboard input and controlled-camera synchronization at move end remain in force; no engine timer or clock comparison is changed.
+
+Complete-topic Web recovery acceptance requires strict versioned list/open, full-manifest rechecks, content clearing on UNAVAILABLE, and preservation of legacy view original authorization. New Red tests specify this behavior; they do not establish a working Web restoration or live browser acceptance.

@@ -130,3 +130,32 @@ it('shows a safe failure without mounting the reader or disclosing transport err
   expect(markup).not.toContain('private service detail');
   expect(mocks.reader).not.toHaveBeenCalled();
 });
+
+it('forwards a validated topic destination without disclosing the ordinary intake summary', async () => {
+  const markup = renderToStaticMarkup(
+    await Page({
+      params,
+      searchParams: Promise.resolve({ candidateTopic: viewId }),
+    }),
+  );
+  expect(mocks.detail).not.toHaveBeenCalled();
+  expect(mocks.reader).toHaveBeenCalledWith({
+    reference: null,
+    locale: 'en',
+    savedTopicId: viewId,
+    ingestionId,
+  });
+  expect(markup).not.toContain('Review required');
+});
+it.each([
+  { candidateTopic: 'bad' },
+  { candidateTopic: [viewId, viewId] },
+  { candidateView: viewId, candidateTopic: viewId },
+])('rejects malformed or competing topic destinations', async (query) => {
+  const markup = renderToStaticMarkup(
+    await Page({ params, searchParams: Promise.resolve(query) }),
+  );
+  expect(mocks.detail).not.toHaveBeenCalled();
+  expect(mocks.reader).not.toHaveBeenCalled();
+  expect(markup).toContain('role="alert"');
+});

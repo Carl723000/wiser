@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 82f2dcbc194c226f667572e1f670533c76dd3083
+lastReviewedCommit: 2d7b26ba27530d87b1b0b33f5b2267db736045a3
 ---
 
 ## What runs today
@@ -670,3 +670,5 @@ Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DAT
 The shared command executor retries `data.operation.cancel` once only after PostgreSQL reports `40P01` and rollback succeeds. The connection is released before a new complete transaction repeats request-context expiry, pending-maintenance scope, row visibility, submission responsibility, optimistic version and same-key receipt checks. This is not a new Supabase identity-resolution step. Other SQL failures, failed rollback and commands with object-store effects do not retry; a second deadlock returns the existing sanitized persistence error. Public admission, lifecycle SQL, lock ordering, limits and old migrations are unchanged.
 
 The public executor locks the ingestion session before jobs and the operation. A native direct-helper deadlock probe has a different entry path; fault-injected executor tests establish bounded recovery, not HTTP deadlock reproduction or removal of the lock cycle. Live Auth/HTTP and concurrent database acceptance remain separate.
+
+Complete-topic Web recovery acceptance requires strict versioned list/open, full-manifest rechecks, content clearing on UNAVAILABLE, and preservation of legacy view original authorization. New Red tests specify this behavior; they do not establish a working Web restoration or live browser acceptance.

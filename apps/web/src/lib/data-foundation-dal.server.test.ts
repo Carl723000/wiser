@@ -2073,3 +2073,354 @@ describe('fixed candidate saved-view transport', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 });
+
+function candidateTopicOpen(specVersion: 1 | 2 = 1) {
+  const opened = candidateViewOpen();
+  const common = {
+    status: 'READABLE' as const,
+    specVersion,
+    savedView: { ...opened.savedView, specVersion },
+    references: opened.references,
+    request: opened.request,
+  };
+  if (specVersion === 1) return { ...common, viewSpec: opened.viewSpec };
+  return {
+    ...common,
+    viewSpec: {
+      ...opened.viewSpec,
+      schemaVersion: 2,
+      period: {
+        windowMode: 'month',
+        from: null,
+        to: null,
+        displayUnit: 'month',
+        timeRole: 'REPORT_PERIOD',
+        includeUndated: true,
+      },
+      topic: {
+        question: 'Inspect the fixed pending source',
+        regionIds: ['bth'],
+        needIds: ['K5-001'],
+        recordPins: [],
+      },
+      rulePins: ['projection', 'readiness', 'requirement', 'impact'].map(
+        (kind) => ({ kind, ruleId: `test-${kind}`, version: 'test-v1' }),
+      ),
+      dependencyPins: [
+        {
+          kind: 'asset',
+          reference: candidateReference,
+          assetId: USER_ID,
+          sourceHash: 'b'.repeat(64),
+          parserVersion: 'test-v1',
+        },
+      ],
+      relationPins: [],
+    },
+  };
+}
+const candidateTopicMetadata = {
+  ...candidateViewMetadata,
+  specVersion: 1,
+};
+
+describe('fixed candidate topic read transport', () => {
+  it.each(['list', 'open'] as const)(
+    'uses the exact registered topic %s endpoint and current server identity',
+    async (action) => {
+      const output =
+        action === 'list'
+          ? { items: [candidateTopicMetadata], nextCursor: null }
+          : candidateTopicOpen();
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      const input =
+        action === 'list'
+          ? { first: 2, after: 'topic:one/+ =' }
+          : { viewId: candidateViewId };
+      await expect(
+        candidateDal(fetch).candidateTopic(action, input),
+      ).resolves.toEqual(output);
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = fetch.mock.calls[0];
+      if (typeof url !== 'string' || !init)
+        throw Error('Expected topic HTTP request');
+      const parsed = new URL(url);
+      const capability =
+        DATA_CAPABILITY_REGISTRY[`data.ingestion.candidate.topic.${action}`];
+      expect(parsed.pathname).toBe(
+        action === 'list'
+          ? '/api/data/v1/ingestion-candidate-topics'
+          : `/api/data/v1/ingestion-candidate-topics/${candidateViewId}/open`,
+      );
+      expect(parsed.pathname).toBe(
+        capability.restMapping.path.replace(':viewId', candidateViewId),
+      );
+      expect(init.method).toBe(capability.restMapping.method);
+      expect(init.cache).toBe('no-store');
+      expect(init.redirect).toBe('error');
+      const headers = new Headers(init.headers);
+      expect(headers.get('x-wiser-tenant-id')).toBe(TENANT_ID);
+      expect(headers.get('x-wiser-project-id')).toBe(PROJECT_ID);
+      expect(headers.get('x-wiser-purpose')).toBe('review');
+      expect(headers.get('authorization')).toBe(`Bearer ${accessToken()}`);
+      expect(headers.get('idempotency-key')).toBeNull();
+      if (action === 'list') {
+        expect(Object.fromEntries(parsed.searchParams)).toEqual({
+          first: '2',
+          after: 'topic:one/+ =',
+        });
+        expect(init.body).toBeUndefined();
+      } else {
+        expect(parsed.search).toBe('');
+        expect(init.body).toBe('{}');
+      }
+    },
+  );
+  it.each([
+    candidateTopicOpen(1),
+    candidateTopicOpen(2),
+    { status: 'UNAVAILABLE', viewId: candidateViewId },
+  ])(
+    'preserves the exact readable or content-free open branch %j',
+    async (output) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      await expect(
+        candidateDal(fetch).candidateTopic('open', {
+          viewId: candidateViewId.toUpperCase(),
+        }),
+      ).resolves.toEqual(output);
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+  it.each([
+    { ...candidateTopicOpen(), internalUrl: 'https://private/storage' },
+    { ...candidateTopicOpen(), specVersion: 2 },
+    {
+      ...candidateTopicOpen(),
+      savedView: { ...candidateTopicMetadata, viewId: USER_ID },
+    },
+    {
+      ...candidateTopicOpen(),
+      savedView: {
+        ...candidateTopicMetadata,
+        revokedAt: '2026-10-04T01:00:00Z',
+      },
+    },
+    {
+      ...candidateTopicOpen(),
+      request: {
+        ...candidateViewOpen().request,
+        input: {
+          ...candidateViewOpen().request.input,
+          reviewHash: 'c'.repeat(64),
+        },
+      },
+    },
+    { status: 'UNAVAILABLE', viewId: USER_ID },
+    { status: 'UNAVAILABLE', viewId: candidateViewId, title: 'Hidden source' },
+    {
+      status: 'UNAVAILABLE',
+      viewId: candidateViewId,
+      references: [candidateReference],
+    },
+    {
+      status: 'UNAVAILABLE',
+      viewId: candidateViewId,
+      viewSpec: candidateViewInput().viewSpec,
+    },
+    {
+      status: 'UNAVAILABLE',
+      viewId: candidateViewId,
+      request: candidateViewOpen().request,
+    },
+  ])(
+    'rejects a mismatched or content-leaking topic open result %j',
+    async (output) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      await expect(
+        candidateDal(fetch).candidateTopic('open', { viewId: candidateViewId }),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+  it.each([
+    ['list', { first: 101 }],
+    ['list', { queryId: PROJECT_ID }],
+    ['open', { viewId: '../private' }],
+    ['open', { viewId: candidateViewId, references: [candidateReference] }],
+    ['create', candidateViewInput()],
+    ['revoke', { viewId: candidateViewId }],
+  ] as const)(
+    'rejects invalid or non-read %s input before authentication',
+    async (action, input) => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth).candidateTopic(
+          action as 'list' | 'open',
+          input,
+        ),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it('preserves both actual storage versions in one authorized topic list', async () => {
+    const output = {
+      items: [
+        candidateTopicMetadata,
+        { ...candidateTopicMetadata, viewId: USER_ID, specVersion: 2 },
+      ],
+      nextCursor: 'topic:next',
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(output)),
+    );
+    await expect(
+      candidateDal(fetch).candidateTopic('list', { first: 2 }),
+    ).resolves.toEqual(output);
+  });
+  it.each([
+    [{ items: [], nextCursor: 'next' }, { first: 1 }],
+    [
+      {
+        items: [
+          candidateTopicMetadata,
+          { ...candidateTopicMetadata, viewId: USER_ID },
+        ],
+        nextCursor: null,
+      },
+      { first: 1 },
+    ],
+    [
+      {
+        items: [
+          candidateTopicMetadata,
+          { ...candidateTopicMetadata, viewId: candidateViewId.toUpperCase() },
+        ],
+        nextCursor: null,
+      },
+      { first: 2 },
+    ],
+    [
+      {
+        items: [
+          { ...candidateTopicMetadata, revokedAt: '2026-10-04T01:00:00Z' },
+        ],
+        nextCursor: null,
+      },
+      { first: 1 },
+    ],
+    [
+      {
+        items: [{ ...candidateTopicMetadata, specVersion: 3 }],
+        nextCursor: null,
+      },
+      { first: 1 },
+    ],
+    [
+      { items: [candidateTopicMetadata], nextCursor: 'repeat' },
+      { first: 1, after: 'repeat' },
+    ],
+    [
+      {
+        items: [candidateTopicMetadata],
+        nextCursor: null,
+        internalUrl: 'https://private/storage',
+      },
+      { first: 1 },
+    ],
+  ])(
+    'rejects inconsistent or non-progressing topic list output %j',
+    async (output, input) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      await expect(
+        candidateDal(fetch).candidateTopic('list', input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it('accepts an empty terminal topic list with the default page size', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json({ items: [], nextCursor: null })),
+    );
+    await expect(
+      candidateDal(fetch).candidateTopic('list', {}),
+    ).resolves.toEqual({ items: [], nextCursor: null });
+    const [url] = fetch.mock.calls[0];
+    if (typeof url !== 'string') throw Error('Expected URL');
+    expect(new URL(url).searchParams.get('first')).toBe('20');
+  });
+  it.each([64, 128 * 1024])(
+    'bounds topic response bytes by the smaller configuration/topic limit %i',
+    async (limit) => {
+      const cancel = vi.fn();
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(limit + 1));
+              },
+              cancel,
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      );
+      await expect(
+        candidateDal(fetch, {
+          responseLimitBytes: limit === 64 ? limit : 4 * 1024 * 1024,
+        }).candidateTopic('list', {}),
+      ).rejects.toMatchObject({ status: 502 });
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+  it('passes caller cancellation through the topic read without another transport', async () => {
+    const caller = new AbortController();
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{'));
+              queueMicrotask(() => caller.abort());
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch).candidateTopic(
+        'open',
+        { viewId: candidateViewId },
+        caller.signal,
+      ),
+    ).rejects.toMatchObject({ status: 499 });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+  });
+  it('keeps upstream topic denials safe and final without legacy or published retries', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(new Response('private SQL diagnostic', { status: 403 })),
+    );
+    await expect(
+      candidateDal(fetch).candidateTopic('open', { viewId: candidateViewId }),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: 'Data Foundation request failed: authorization.',
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
