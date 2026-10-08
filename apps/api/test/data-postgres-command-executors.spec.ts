@@ -2990,6 +2990,14 @@ describe('PostgreSQL Data Foundation command executors', () => {
         preparedClient = await admin.connect();
         await preparedClient.query('begin');
         await preparedClient.query(
+          `select set_config('wiser.tenant_id', $1, true),
+             set_config('wiser.project_id', $2, true),
+             set_config('wiser.actor_id', $3, true),
+             set_config('wiser.actor_type', 'human', true),
+             set_config('wiser.delegated_by', '', true)`,
+          [TENANT_ID, PROJECT_ID, ACTOR_ID],
+        );
+        await preparedClient.query(
           `insert into catalog.data_item (
              data_item_id, tenant_id, project_id, owner_project_id, name,
              business_domains, source_natures, source_channels,
@@ -3222,11 +3230,17 @@ describe('PostgreSQL Data Foundation command executors', () => {
              ingestion_id, tenant_id, project_id, operation_id,
              owner_project_id, state, intended_uses, expected_version,
              requested_security_level, security_level, policy_version,
-             row_version
+             row_version, submitted_by_actor_id, submitted_actor_type
            ) values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $3::uuid,
              'RECEIVED', array['hydrology-analysis'], 1, 'L1_INTERNAL',
-             'L1_INTERNAL', 1, 1)`,
-          [pipelineIngestionId, TENANT_ID, PROJECT_ID, pipelineOperationId],
+             'L1_INTERNAL', 1, 1, $5::uuid, 'human')`,
+          [
+            pipelineIngestionId,
+            TENANT_ID,
+            PROJECT_ID,
+            pipelineOperationId,
+            ACTOR_ID,
+          ],
         );
         await preparedClient.query(
           `insert into ingestion.input_asset (
@@ -3373,9 +3387,19 @@ describe('PostgreSQL Data Foundation command executors', () => {
           new FakeObjectStore(),
           { clock: () => NOW, idFactory: randomUUID },
         );
+        const independentReviewerId = randomUUID();
         await executor(approvalRuntime, 'data.ingestion.approve').execute(
           { ingestionId: pipelineIngestionId, expectedVersion: 11 },
-          { ...context, idempotencyKey: randomUUID() },
+          {
+            ...context,
+            principal: {
+              ...context.principal,
+              actorId: independentReviewerId,
+              authUserId: independentReviewerId,
+              sessionId: randomUUID(),
+            },
+            idempotencyKey: randomUUID(),
+          },
         );
         expect(approvalPool.capturedJobPayload).toEqual({
           ingestionId: pipelineIngestionId,

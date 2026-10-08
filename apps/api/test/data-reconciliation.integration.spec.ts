@@ -90,6 +90,12 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         `grant execute on all functions in schema security to ${role}`,
       );
       await client.query(
+        `grant execute on function ingestion.pending_subject_access(uuid,text,text) to ${role}`,
+      );
+      await client.query(
+        `grant execute on function ingestion.candidate_original_readable(uuid,uuid,uuid,text,bigint) to ${role}`,
+      );
+      await client.query(
         `grant select on all tables in schema catalog,service to ${role}`,
       );
       await client.query(
