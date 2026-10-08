@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: b0f89ae3
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 67c77778
 ---
 
 # WISER Web / 产品界面
@@ -110,3 +110,5 @@ pnpm --filter @wiser/web test:e2e
 本机空间首屏保留生效检索、图层、时间未知资料排除及矩形标签，月份与日期窗口明确区分。已显示公共参照署名在WebGL和平面画布可见，完整许可依据按需展开；查询、时间及保存契约不变。 / The local spatial first screen retains active search, layers, unknown-time exclusion and rectangle chips, distinguishes month/date windows, and keeps displayed public-reference attribution visible in both renderers. Detailed evidence remains disclosed on demand; query, time and saving contracts are unchanged.
 
 本地规格2将“报告期”与“发布日期”“观测期”分开，沿地图、月份、阅读链接、本机场景和导出显式保存；规格1原义不变。纯候选就绪引用独立计数，不伪造已发布身份或授予访问权限。 / Local format 2 preserves Report period separately from Publication and Observation through map/month/URL/scene/export adapters. Format 1 keeps its meaning; pure candidate references retain separate counts without published identities or access grants.
+
+已有专题可在接收页“已保存专题”中读取并重开，固定深链使用`?candidateTopic=<UUID>`，与旧`candidateView`互斥。此入口恢复完整服务端专题，不显示普通接收摘要；不可用时清空资料、标题、计数和引用。专题修改／另存、原件下载与原生影像读取暂不可用，旧视图原件授权保留。 / Existing topics can be listed and reopened from intake reading or a mutually exclusive `candidateTopic` deep link. The server-authorized complete specification remains intact; unavailability clears content, titles, counts and references. Topic editing/saving, original downloads and native raster reading remain unavailable. Legacy view-original authorization is preserved. Real Auth/HTTP and native browser acceptance remain separate from synthetic tests.

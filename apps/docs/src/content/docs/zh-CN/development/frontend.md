@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: b0f89ae3
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 67c77778
 ---
 
 ## 两个前端应用
@@ -357,3 +357,5 @@ WebGL没有原始用户事件的容器缩放回调不回写受控相机。外部
 摘要明确为打开页面时的进度快照，事件续读不自动更新摘要。失效位置沿用共享异常界面，并提供任务专用的回首提示，不要求用户修改并不存在的查询条件。浏览器将JSON响应限制为1 MiB，并在十五秒后结束未完成读取。
 
 本地空间规格2显式承载 `report-period`，地图筛选、就绪月份选择、阅读URL、本机场景和导出保持该角色；规格1继续保留原发布月份含义。纯就绪输入保留候选引用，不将其改写为已发布身份；这些适配本身不接通候选投影，也不授予读取权限。详见[候选就绪引用与报告期](/architecture/data-foundation/#候选就绪引用与报告期)。
+
+接收页另通过只读同源`candidate-topics/list|open`转发和已认证HTTP读取展示已有分版专题。单一有效`candidateTopic` UUID与`candidateView`互斥；专题深链仅挂载固定专题恢复，不附加当前接收任务计数。重开、可见性／pageshow恢复及后续分页均核完整清单与配置；不可用或拒权清空内容。v2问题与全部固定依据原样保留，不在网页重建或另存为旧视图。专题原件／原生影像动作在独立授权路径可用前保持不可用。已有v1视图与原件链接保持。合成测试与真实Auth／HTTP、原生浏览器验收分别记录。

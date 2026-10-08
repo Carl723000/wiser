@@ -14,6 +14,10 @@ import {
   OpenIngestionCandidateViewOutputSchema,
   RevokeIngestionCandidateViewInputSchema,
   RevokeIngestionCandidateViewOutputSchema,
+  ListIngestionCandidateTopicsInputSchema,
+  ListIngestionCandidateTopicsOutputSchema,
+  OpenIngestionCandidateTopicInputSchema,
+  OpenIngestionCandidateTopicOutputSchema,
   type IngestionCandidateGeometry,
   type IngestionCandidateGeometryPage,
   type IngestionCandidateAssetPage,
@@ -337,6 +341,97 @@ export async function readCandidateSavedView<
       throw new CandidateReaderError('invalid');
     current(signal);
     return value as CandidateSavedPages[A];
+  } catch (error) {
+    if (signal.aborted) throw new CandidateReaderError('cancelled');
+    if (error instanceof CandidateReaderError) throw error;
+    throw new CandidateReaderError('unavailable');
+  }
+}
+
+export interface CandidateTopicPages {
+  list: ReturnType<typeof ListIngestionCandidateTopicsOutputSchema.parse>;
+  open: ReturnType<typeof OpenIngestionCandidateTopicOutputSchema.parse>;
+}
+export async function readCandidateTopic<A extends keyof CandidateTopicPages>(
+  action: A,
+  input: unknown,
+  signal: AbortSignal,
+  fetch: typeof globalThis.fetch = globalThis.fetch,
+): Promise<CandidateTopicPages[A]> {
+  current(signal);
+  const schemas = {
+    list: [
+      ListIngestionCandidateTopicsInputSchema,
+      ListIngestionCandidateTopicsOutputSchema,
+    ],
+    open: [
+      OpenIngestionCandidateTopicInputSchema,
+      OpenIngestionCandidateTopicOutputSchema,
+    ],
+  } as const;
+  const selected = schemas[action];
+  const request = selected[0].safeParse(input);
+  if (!request.success) throw new CandidateReaderError('invalid');
+  try {
+    const body = JSON.stringify(request.data);
+    if (new TextEncoder().encode(body).byteLength > 128 * 1024)
+      throw new CandidateReaderError('invalid');
+    const response = await fetch(
+      `/api/data-foundation/candidate-topics/${action}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body,
+        cache: 'no-store',
+        signal,
+      },
+    );
+    if (signal.aborted) {
+      void response.body?.cancel().catch(() => {});
+      throw new CandidateReaderError('cancelled');
+    }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
+      throw new CandidateReaderError(
+        response.status === 401 || response.status === 403
+          ? 'denied'
+          : [404, 409, 410].includes(response.status)
+            ? 'stale'
+            : [413, 415, 422].includes(response.status)
+              ? 'invalid'
+              : 'unavailable',
+      );
+    }
+    const parsed = selected[1].safeParse(
+      await jsonBody(response, signal, 128 * 1024),
+    );
+    if (!parsed.success) throw new CandidateReaderError('invalid');
+    const value = parsed.data;
+    if (
+      ('viewId' in request.data &&
+        typeof request.data.viewId === 'string' &&
+        ('savedView' in value
+          ? value.savedView.viewId.toLowerCase()
+          : 'viewId' in value
+            ? value.viewId.toLowerCase()
+            : '') !== request.data.viewId.toLowerCase()) ||
+      ('items' in value &&
+        (!('first' in request.data) ||
+          typeof request.data.first !== 'number' ||
+          value.items.length > request.data.first ||
+          (value.items.length === 0 && value.nextCursor !== null) ||
+          value.items.some((view) => view.revokedAt !== null) ||
+          new Set(value.items.map((view) => view.viewId.toLowerCase())).size !==
+            value.items.length ||
+          (value.nextCursor !== null &&
+            'after' in request.data &&
+            value.nextCursor === request.data.after)))
+    )
+      throw new CandidateReaderError('invalid');
+    current(signal);
+    return value as CandidateTopicPages[A];
   } catch (error) {
     if (signal.aborted) throw new CandidateReaderError('cancelled');
     if (error instanceof CandidateReaderError) throw error;

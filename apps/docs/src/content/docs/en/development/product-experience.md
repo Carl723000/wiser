@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 2d7b26ba27530d87b1b0b33f5b2267db736045a3
+lastReviewedCommit: 67c77778
 ---
 
 ## What this guide governs
@@ -228,4 +228,4 @@ The local spatial workbench merges a camera proposal only while its rendered reg
 
 After an external camera application or hiding stops the map, an earlier wheel input cannot requalify its delayed scroll frames. Only a new DOM wheel from that active map allows wheel or sourceless zoom frames to update reading state again. Existing native-target and zooming checks, mouse/keyboard input and controlled-camera synchronization at move end remain in force; no engine timer or clock comparison is changed.
 
-Complete-topic Web recovery acceptance requires strict versioned list/open, full-manifest rechecks, content clearing on UNAVAILABLE, and preservation of legacy view original authorization. New Red tests specify this behavior; they do not establish a working Web restoration or live browser acceptance.
+Candidate intake reading lists existing saved topics with their actual v1/v2 version and restores them through topic.list/open. The optional `candidateTopic` link uses the server-authorized fixed request even without a current candidate; it omits the ordinary intake summary. Full-spec and manifest checks run before and after reads and on visible-page recovery. UNAVAILABLE, changed pins or lost authority clear materials, titles, counts and fixed references. Cross-intake or cancelled proposals retain the adopted reading owner. Topic reading preserves the complete v2 question, period and pins; edit/save, original download and native raster actions remain unavailable there. Legacy `candidateView` links and their original authorization remain unchanged. No browser pin bootstrap or topic creation is added. Synthetic transport/component verification is separate from real account, HTTP and native browser acceptance.

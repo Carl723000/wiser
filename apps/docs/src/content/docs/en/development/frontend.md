@@ -18,8 +18,8 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-10-06
-lastReviewedCommit: b0f89ae3
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 67c77778
 ---
 
 ## Two frontend applications
@@ -359,3 +359,5 @@ Authentication, authorization, missing-task, invalid-cursor and unavailable outc
 The summary names the progress snapshot from opening the page; event continuation does not refresh that summary. Invalid continuation positions use the shared failure surface with an Operation-specific restart message, rather than search-condition guidance. The browser caps JSON responses at 1 MiB and ends an unresolved read after fifteen seconds.
 
 Local spatial format 2 carries the explicit `report-period` time role through map filters, readiness month selection, reading URLs, local scenes and exports. Format 1 retains its existing publication semantics. The pure readiness input also preserves typed candidate references without converting them into published identities; these adapters do not themselves enable candidate projections or authorize reads. See [Candidate readiness and report periods](/en/architecture/data-foundation/#candidate-readiness-and-report-periods).
+
+The intake reader also exposes existing versioned topics through the read-only same-origin `candidate-topics/list|open` BFF and authenticated registered HTTP DAL. A single valid `candidateTopic` UUID is mutually exclusive with `candidateView`; the topic route mounts only fixed-topic recovery and never adds current intake counts. Reopening, visibility/pageshow recovery and later pages recheck the complete manifest and specification; UNAVAILABLE or denial clears content. V2 question and all pins remain intact in the retained specification, without browser reconstruction or legacy re-save. Topic originals/raster actions remain unavailable until an authorized topic-original path exists. Existing v1 view routes and original links remain unchanged. Synthetic tests are separate from real Auth/HTTP and native browser acceptance.

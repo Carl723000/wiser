@@ -23,6 +23,8 @@ import {
   candidateOriginalUrl,
   readCandidatePage,
   readCandidateSavedView,
+  readCandidateTopic,
+  type CandidateTopicPages,
   type CandidatePages,
   type CandidateReadAction,
   type CandidateSavedPages,
@@ -32,6 +34,21 @@ import { DataFoundationMap } from './data-foundation-map';
 import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
 import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-panel';
 import styles from './ingestion-candidate-reader.module.css';
+
+type OpenedReading =
+  | CandidateSavedPages['open']
+  | Exclude<CandidateTopicPages['open'], { status: 'UNAVAILABLE' }>;
+async function openReading(
+  viewId: string,
+  signal: AbortSignal,
+  kind: 'view' | 'topic',
+): Promise<OpenedReading> {
+  if (kind === 'view')
+    return readCandidateSavedView('open', { viewId }, signal);
+  const value = await readCandidateTopic('open', { viewId }, signal);
+  if (value.status === 'UNAVAILABLE') throw new CandidateReaderError('stale');
+  return value;
+}
 
 type Tab = 'originals' | 'records' | 'map';
 type Position = { after?: string; anchor?: string; savedStart?: boolean };
@@ -57,23 +74,26 @@ export function IngestionCandidateReader({
   reference,
   locale,
   savedViewId,
+  savedTopicId,
   ingestionId,
   readOnly = false,
 }: {
   readonly reference: IngestionCandidateReference | null;
   readonly locale: Locale;
   readonly savedViewId?: string;
+  readonly savedTopicId?: string;
   readonly ingestionId?: string;
   readonly readOnly?: boolean;
 }) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const routeIntake = ingestionId ?? reference?.ingestionId;
-  if (savedViewId && routeIntake && !readOnly)
+  if ((savedViewId || savedTopicId) && routeIntake && !readOnly)
     return (
       <SavedCandidateBootstrap
-        key={`${routeIntake}:${savedViewId}`}
+        key={`${routeIntake}:${savedTopicId ? 'topic' : 'view'}:${savedTopicId ?? savedViewId}`}
         ingestionId={routeIntake}
         savedViewId={savedViewId}
+        savedTopicId={savedTopicId}
         locale={locale}
       />
     );
@@ -98,10 +118,12 @@ export function IngestionCandidateReader({
 function SavedCandidateBootstrap({
   ingestionId,
   savedViewId,
+  savedTopicId,
   locale,
 }: {
   ingestionId: string;
-  savedViewId: string;
+  savedViewId?: string;
+  savedTopicId?: string;
   locale: Locale;
 }) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
@@ -113,7 +135,11 @@ function SavedCandidateBootstrap({
     const abort = new AbortController();
     setReference(null);
     setError(null);
-    void readCandidateSavedView('open', { viewId: savedViewId }, abort.signal)
+    void openReading(
+      (savedTopicId ?? savedViewId)!,
+      abort.signal,
+      savedTopicId ? 'topic' : 'view',
+    )
       .then((view) => {
         if (abort.signal.aborted) return;
         const input = view.request.input;
@@ -138,13 +164,14 @@ function SavedCandidateBootstrap({
           );
       });
     return () => abort.abort();
-  }, [ingestionId, savedViewId, retry]);
+  }, [ingestionId, savedViewId, savedTopicId, retry]);
   if (reference)
     return (
       <CandidateSession
         reference={reference}
         locale={locale}
         savedViewId={savedViewId}
+        savedTopicId={savedTopicId}
       />
     );
   return (
@@ -168,11 +195,13 @@ function CandidateSession({
   reference,
   locale,
   savedViewId,
+  savedTopicId,
   readOnly = false,
 }: {
   reference: IngestionCandidateReference;
   locale: Locale;
   savedViewId?: string;
+  savedTopicId?: string;
   readOnly?: boolean;
 }) {
   // The keyed owner fixes a complete candidate identity; replacements unmount and cancel it.
@@ -180,11 +209,17 @@ function CandidateSession({
   const [manifest, setManifest] = useState<IngestionCandidateSavedReferences>([
     reference,
   ]);
-  const [openedView, setOpenedView] = useState<
-    CandidateSavedPages['open'] | null
-  >(null);
+  const [openedView, setOpenedView] = useState<OpenedReading | null>(null);
   const [pageSize, setPageSize] = useState(first);
   const [saved, setSaved] = useState<CandidateSavedPages['list'] | null>(null);
+  const [topics, setTopics] = useState<CandidateTopicPages['list'] | null>(
+    null,
+  );
+  const [topicNav, setTopicNav] = useState(firstPosition);
+  const [topicMode, setTopicMode] = useState(savedTopicId !== undefined);
+  const recoveryKind = useRef<'view' | 'topic'>(
+    savedTopicId ? 'topic' : 'view',
+  );
   const [savedNav, setSavedNav] = useState(firstPosition);
   const [viewName, setViewName] = useState('');
   const [visibility, setVisibility] = useState<'private' | 'project'>(
@@ -194,7 +229,7 @@ function CandidateSession({
   const [otherLink, setOtherLink] = useState<string | null>(null);
   const mutationKeys = useRef(new Map<string, string>());
   // Keep only the server view identifier for recovery after sensitive content is cleared.
-  const recoveryViewId = useRef(savedViewId);
+  const recoveryViewId = useRef(savedTopicId ?? savedViewId);
   const dictionary = getDictionary(locale).dataFoundation;
   const copy = dictionary.candidateReader;
   const [assets, setAssets] = useState<IngestionCandidateAssetPage | null>(
@@ -315,6 +350,8 @@ function CandidateSession({
     setRecordNav(firstPosition());
     setGeometryNav(firstPosition());
     setSaved(null);
+    setTopics(null);
+    setTopicNav(firstPosition());
     setSavedNav(firstPosition());
     setOpenedView(null);
     setCameraRestore(null);
@@ -383,17 +420,18 @@ function CandidateSession({
     ...(chosenAsset ? { assetId: chosenAsset } : {}),
     ...(position.after ? { after: position.after } : {}),
   });
-  const manifestKey = (value: CandidateSavedPages['open']) =>
+  const manifestKey = (value: OpenedReading) =>
     JSON.stringify({
       references: value.references.map(candidateSavedReferenceKey).sort(),
       viewSpec: value.viewSpec,
+      specVersion: 'specVersion' in value ? value.specVersion : 1,
     });
   async function savedAuthority(signal: AbortSignal) {
     if (!openedView) return;
-    const current = await readCandidateSavedView(
-      'open',
-      { viewId: openedView.savedView.viewId },
+    const current = await openReading(
+      openedView.savedView.viewId,
       signal,
+      recoveryKind.current,
     );
     if (
       manifestKey(current) !== manifestKey(openedView) ||
@@ -555,7 +593,7 @@ function CandidateSession({
   }
   function saveCurrent() {
     if (recoveryGate.current) return;
-    if (!assets || !viewName.trim()) return;
+    if (topicMode || !assets || !viewName.trim()) return;
     const nav =
       tab === 'originals'
         ? assetNav
@@ -652,98 +690,121 @@ function CandidateSession({
       }
     });
   }
-  function openSaved(viewId: string) {
+  function loadTopics(position = firstPosition()) {
     if (recoveryGate.current) return Promise.resolve();
+    setTopics(null);
     return execute(async (signal) => {
-      const value = await readCandidateSavedView('open', { viewId }, signal);
-      const request = value.request;
-      const ref: IngestionCandidateReference = {
-        kind: request.input.kind,
-        ingestionId: request.input.ingestionId,
-        processingBatchId: request.input.processingBatchId,
-        reviewHash: request.input.reviewHash,
-      };
-      if (
-        ref.ingestionId.toLowerCase() !== reference.ingestionId.toLowerCase()
-      ) {
-        setOtherLink(
-          `/${locale}/data-foundation/ingestions/${ref.ingestionId.toLowerCase()}?candidateView=${viewId.toLowerCase()}`,
-        );
-        setNotice(copy.otherIntake);
-        return;
-      }
-      recoveryViewId.current = viewId;
-      const action =
-        request.capabilityId === 'data.ingestion.candidate.get'
-          ? 'get'
-          : request.capabilityId === 'data.ingestion.candidate.records'
-            ? 'records'
-            : 'geometry';
-      const material = await readCandidatePage(action, request.input, signal);
-      const originalPage =
-        'assets' in material
-          ? material
-          : await readCandidatePage('get', { ...ref, first }, signal);
-      const confirmation = await readCandidateSavedView(
-        'open',
-        { viewId },
+      const result = await readCandidateTopic(
+        'list',
+        { first: 20, ...(position.after ? { after: position.after } : {}) },
         signal,
       );
-      if (manifestKey(value) !== manifestKey(confirmation))
-        throw new CandidateReaderError('invalid');
-      if (signal.aborted) return;
-      setFixed(ref);
-      setManifest(value.references);
-      setOpenedView(confirmation);
-      setPageSize(request.input.first);
-      setAssets(originalPage);
-      setRecords('records' in material ? material : null);
-      setGeometry('features' in material ? material : null);
-      liveCamera.current = null;
-      const camera = supportedReadingCamera(value.viewSpec.map?.camera);
-      setCameraRestore(
-        camera && value.viewSpec.page.kind !== 'assets'
-          ? {
-              referenceKey: candidateSavedReferenceKey(ref),
-              assetId: value.viewSpec.page.assetId.toLowerCase(),
-              drawingKey:
-                'features' in material ? geometryDrawingKey(material) : null,
-              camera,
-              epoch: ++cameraEpoch.current,
-            }
-          : null,
-      );
-      setAssetId('assetId' in material ? material.assetId : null);
-      setSelected(
-        value.viewSpec.focus &&
-          candidateSavedReferenceKey(value.viewSpec.focus.reference) ===
-            candidateSavedReferenceKey(ref)
-          ? (value.viewSpec.focus.recordId ?? null)
-          : null,
-      );
-      const savedPage = value.viewSpec.page;
-      const anchor =
-        savedPage.kind === 'assets'
-          ? savedPage.afterAssetId
-          : savedPage.afterRecordId;
-      const nav: Navigation = {
-        savedStart: true,
-        ...(request.input.after ? { after: request.input.after } : {}),
-        ...(anchor ? { anchor } : {}),
-        previous: [],
-      };
-      setAssetNav('assets' in material ? nav : firstPosition());
-      setRecordNav('records' in material ? nav : firstPosition());
-      setGeometryNav('features' in material ? nav : firstPosition());
-      setTab(
-        'assets' in material
-          ? 'originals'
-          : 'records' in material
-            ? 'records'
-            : 'map',
-      );
-      setViewName(value.savedView.title);
-      setVisibility(value.savedView.visibility);
+      if (!signal.aborted) {
+        setTopics(result);
+        setTopicNav(position);
+      }
+    });
+  }
+  function openSaved(viewId: string, kind = recoveryKind.current) {
+    if (recoveryGate.current) return Promise.resolve();
+    return execute(async (signal) => {
+      try {
+        const value = await openReading(viewId, signal, kind);
+        const request = value.request;
+        const ref: IngestionCandidateReference = {
+          kind: request.input.kind,
+          ingestionId: request.input.ingestionId,
+          processingBatchId: request.input.processingBatchId,
+          reviewHash: request.input.reviewHash,
+        };
+        if (
+          ref.ingestionId.toLowerCase() !== reference.ingestionId.toLowerCase()
+        ) {
+          setOtherLink(
+            `/${locale}/data-foundation/ingestions/${ref.ingestionId.toLowerCase()}?${kind === 'topic' ? 'candidateTopic' : 'candidateView'}=${viewId.toLowerCase()}`,
+          );
+          setNotice(copy.otherIntake);
+          return;
+        }
+        const action =
+          request.capabilityId === 'data.ingestion.candidate.get'
+            ? 'get'
+            : request.capabilityId === 'data.ingestion.candidate.records'
+              ? 'records'
+              : 'geometry';
+        const material = await readCandidatePage(action, request.input, signal);
+        const originalPage =
+          'assets' in material
+            ? material
+            : await readCandidatePage('get', { ...ref, first }, signal);
+        const confirmation = await openReading(viewId, signal, kind);
+        if (manifestKey(value) !== manifestKey(confirmation))
+          throw new CandidateReaderError('invalid');
+        if (signal.aborted) return;
+        setFixed(ref);
+        setManifest(value.references);
+        setOpenedView(confirmation);
+        setTopicMode(kind === 'topic');
+        setPageSize(request.input.first);
+        setAssets(originalPage);
+        setRecords('records' in material ? material : null);
+        setGeometry('features' in material ? material : null);
+        liveCamera.current = null;
+        const camera = supportedReadingCamera(value.viewSpec.map?.camera);
+        setCameraRestore(
+          camera && value.viewSpec.page.kind !== 'assets'
+            ? {
+                referenceKey: candidateSavedReferenceKey(ref),
+                assetId: value.viewSpec.page.assetId.toLowerCase(),
+                drawingKey:
+                  'features' in material ? geometryDrawingKey(material) : null,
+                camera,
+                epoch: ++cameraEpoch.current,
+              }
+            : null,
+        );
+        setAssetId('assetId' in material ? material.assetId : null);
+        setSelected(
+          value.viewSpec.focus &&
+            candidateSavedReferenceKey(value.viewSpec.focus.reference) ===
+              candidateSavedReferenceKey(ref)
+            ? (value.viewSpec.focus.recordId ?? null)
+            : null,
+        );
+        const savedPage = value.viewSpec.page;
+        const anchor =
+          savedPage.kind === 'assets'
+            ? savedPage.afterAssetId
+            : savedPage.afterRecordId;
+        const nav: Navigation = {
+          savedStart: true,
+          ...(request.input.after ? { after: request.input.after } : {}),
+          ...(anchor ? { anchor } : {}),
+          previous: [],
+        };
+        setAssetNav('assets' in material ? nav : firstPosition());
+        setRecordNav('records' in material ? nav : firstPosition());
+        setGeometryNav('features' in material ? nav : firstPosition());
+        setTab(
+          'assets' in material
+            ? 'originals'
+            : 'records' in material
+              ? 'records'
+              : 'map',
+        );
+        setViewName(value.savedView.title);
+        setVisibility(value.savedView.visibility);
+        recoveryKind.current = kind;
+        recoveryViewId.current = viewId;
+      } catch (error) {
+        // Retain the attempted fixed identifier only for a real failure retry.
+        // A cross-intake result or cancelled proposal never replaces the adopted reading owner.
+        if (!signal.aborted) {
+          recoveryKind.current = kind;
+          recoveryViewId.current = viewId;
+        }
+        throw error;
+      }
     });
   }
   function revokeSaved(viewId: string) {
@@ -788,12 +849,12 @@ function CandidateSession({
           ? recordNav
           : geometryNav;
     void execute(async (signal) => {
-      let current: CandidateSavedPages['open'] | null = null;
+      let current: OpenedReading | null = null;
       if (openedView) {
-        current = await readCandidateSavedView(
-          'open',
-          { viewId: openedView.savedView.viewId },
+        current = await openReading(
+          openedView.savedView.viewId,
           signal,
+          recoveryKind.current,
         );
         if (
           manifestKey(current) !== manifestKey(openedView) ||
@@ -833,10 +894,10 @@ function CandidateSession({
         signal,
       );
       if (current) {
-        const confirmation = await readCandidateSavedView(
-          'open',
-          { viewId: current.savedView.viewId },
+        const confirmation = await openReading(
+          current.savedView.viewId,
           signal,
+          recoveryKind.current,
         );
         if (manifestKey(confirmation) !== manifestKey(current))
           throw new CandidateReaderError('invalid');
@@ -870,7 +931,8 @@ function CandidateSession({
   }, []);
   useEffect(() => {
     owner.current = true;
-    if (savedViewId) void openSaved(savedViewId);
+    if (savedTopicId || savedViewId)
+      void openSaved((savedTopicId ?? savedViewId)!);
     else void loadAssets();
     return () => {
       owner.current = false;
@@ -1237,16 +1299,18 @@ function CandidateSession({
                           </div>
                         </dl>
                         <div className={styles.actions}>
-                          <a
-                            href={candidateOriginalUrl(
-                              fixed,
-                              asset.assetId,
-                              locale,
-                              openedView?.savedView.viewId,
-                            )}
-                          >
-                            {copy.downloadOriginal}
-                          </a>
+                          {topicMode ? null : (
+                            <a
+                              href={candidateOriginalUrl(
+                                fixed,
+                                asset.assetId,
+                                locale,
+                                openedView?.savedView.viewId,
+                              )}
+                            >
+                              {copy.downloadOriginal}
+                            </a>
+                          )}
                           <button
                             type="button"
                             disabled={
@@ -1282,21 +1346,27 @@ function CandidateSession({
                       </li>
                     ))}
                   </ul>
-                  <IngestionCandidateRasterPanel
-                    key={`${candidateSavedReferenceKey(fixed)}:${openedView?.savedView.viewId ?? ''}:${rasterEpoch}`}
-                    reference={fixed}
-                    locale={locale}
-                    savedViewId={openedView?.savedView.viewId}
-                    parentBusy={busy}
-                    cancelSlot={rasterCancel}
-                    onAuthorityFailure={(kind) => {
-                      pending.current?.abort();
-                      pending.current = null;
-                      setBusy(false);
-                      clearContent();
-                      setFailure(kind);
-                    }}
-                  />
+                  {topicMode ? (
+                    <p className={styles.notice}>
+                      {copy.topicOriginalUnavailable}
+                    </p>
+                  ) : (
+                    <IngestionCandidateRasterPanel
+                      key={`${candidateSavedReferenceKey(fixed)}:${openedView?.savedView.viewId ?? ''}:${rasterEpoch}`}
+                      reference={fixed}
+                      locale={locale}
+                      savedViewId={openedView?.savedView.viewId}
+                      parentBusy={busy}
+                      cancelSlot={rasterCancel}
+                      onAuthorityFailure={(kind) => {
+                        pending.current?.abort();
+                        pending.current = null;
+                        setBusy(false);
+                        clearContent();
+                        setFailure(kind);
+                      }}
+                    />
+                  )}
                   {pager(
                     assetNav,
                     assets.nextCursor,
@@ -1488,16 +1558,18 @@ function CandidateSession({
                   <button type="button" onClick={() => setSelected(null)}>
                     {copy.clearSelection}
                   </button>
-                  <a
-                    href={candidateOriginalUrl(
-                      fixed,
-                      selectedRow.assetId,
-                      locale,
-                      openedView?.savedView.viewId,
-                    )}
-                  >
-                    {copy.downloadOriginal}
-                  </a>
+                  {topicMode ? null : (
+                    <a
+                      href={candidateOriginalUrl(
+                        fixed,
+                        selectedRow.assetId,
+                        locale,
+                        openedView?.savedView.viewId,
+                      )}
+                    >
+                      {copy.downloadOriginal}
+                    </a>
+                  )}
                 </div>
                 {currentGeometry && tab === 'map' ? (
                   <details>
@@ -1531,7 +1603,7 @@ function CandidateSession({
                     {copy.fixedReferences}: {manifest.length}
                   </span>
                   <a
-                    href={`/${locale}/data-foundation/ingestions/${fixed.ingestionId.toLowerCase()}?candidateView=${openedView.savedView.viewId.toLowerCase()}`}
+                    href={`/${locale}/data-foundation/ingestions/${fixed.ingestionId.toLowerCase()}?${topicMode ? 'candidateTopic' : 'candidateView'}=${openedView.savedView.viewId.toLowerCase()}`}
                   >
                     {copy.savedLink}
                   </a>
@@ -1568,97 +1640,172 @@ function CandidateSession({
                   </details>
                 </>
               ) : null}
-              <form
-                className={styles.saveForm}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveCurrent();
-                }}
-              >
-                <label>
-                  {copy.viewName}
-                  <input
-                    type="text"
-                    value={viewName}
-                    maxLength={160}
-                    onChange={(event) => setViewName(event.target.value)}
-                  />
-                </label>
-                <label>
-                  {copy.visibility}
-                  <select
-                    value={visibility}
-                    onChange={(event) =>
-                      setVisibility(event.target.value as 'private' | 'project')
-                    }
-                  >
-                    <option value="private">{copy.private}</option>
-                    <option value="project">{copy.project}</option>
-                  </select>
-                </label>
-                <button
-                  type="submit"
-                  disabled={
-                    busy ||
-                    !viewName.trim() ||
-                    (tab !== 'originals' &&
-                      (!assetId || (tab === 'records' ? !records : !geometry)))
-                  }
-                >
-                  {copy.save}
-                </button>
-              </form>
-              {savedMessage ? <p role="status">{savedMessage}</p> : null}
-              <div className={styles.summaryHeader}>
-                <h3>{copy.savedList}</h3>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void loadSaved()}
-                >
-                  {copy.loadSaved}
-                </button>
-              </div>
-              {saved ? (
+              {topicMode ? (
+                <p className={styles.notice}>{copy.topicReadOnly}</p>
+              ) : (
                 <>
-                  <ul className={styles.assetList}>
-                    {saved.items.map((view) => (
-                      <li key={view.viewId}>
-                        <strong>{view.title}</strong>
-                        <span>{copy[view.visibility]}</span>
-                        <div className={styles.actions}>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void openSaved(view.viewId)}
-                          >
-                            {copy.openSaved}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void revokeSaved(view.viewId)}
-                          >
-                            {copy.revokeSaved}
-                          </button>
-                          <ContextHelp label={copy.revokeHelp}>
-                            {copy.revokeExplanation}
-                          </ContextHelp>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  {saved.items.length === 0 ? <p>{copy.savedEmpty}</p> : null}
-                  {pager(
-                    savedNav,
-                    saved.nextCursor,
-                    undefined,
-                    copy.previousSaved,
-                    copy.nextSaved,
-                    loadSaved,
-                  )}
+                  {' '}
+                  <form
+                    className={styles.saveForm}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveCurrent();
+                    }}
+                  >
+                    <label>
+                      {copy.viewName}
+                      <input
+                        type="text"
+                        value={viewName}
+                        maxLength={160}
+                        onChange={(event) => setViewName(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {copy.visibility}
+                      <select
+                        value={visibility}
+                        onChange={(event) =>
+                          setVisibility(
+                            event.target.value as 'private' | 'project',
+                          )
+                        }
+                      >
+                        <option value="private">{copy.private}</option>
+                        <option value="project">{copy.project}</option>
+                      </select>
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={
+                        busy ||
+                        !viewName.trim() ||
+                        (tab !== 'originals' &&
+                          (!assetId ||
+                            (tab === 'records' ? !records : !geometry)))
+                      }
+                    >
+                      {copy.save}
+                    </button>
+                  </form>
+                  {savedMessage ? <p role="status">{savedMessage}</p> : null}
+                  <div className={styles.summaryHeader}>
+                    <h3>{copy.savedList}</h3>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void loadSaved()}
+                    >
+                      {copy.loadSaved}
+                    </button>
+                  </div>
+                  {saved ? (
+                    <>
+                      <ul className={styles.assetList}>
+                        {saved.items.map((view) => (
+                          <li key={view.viewId}>
+                            <strong>{view.title}</strong>
+                            <span>{copy[view.visibility]}</span>
+                            <div className={styles.actions}>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void openSaved(view.viewId, 'view')
+                                }
+                              >
+                                {copy.openSaved}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void revokeSaved(view.viewId)}
+                              >
+                                {copy.revokeSaved}
+                              </button>
+                              <ContextHelp label={copy.revokeHelp}>
+                                {copy.revokeExplanation}
+                              </ContextHelp>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                      {saved.items.length === 0 ? (
+                        <p>{copy.savedEmpty}</p>
+                      ) : null}
+                      {pager(
+                        savedNav,
+                        saved.nextCursor,
+                        undefined,
+                        copy.previousSaved,
+                        copy.nextSaved,
+                        loadSaved,
+                      )}
+                    </>
+                  ) : null}
+                </>
+              )}
+              {openedView &&
+              'specVersion' in openedView &&
+              openedView.specVersion === 2 ? (
+                <>
+                  <h4>{openedView.savedView.title}</h4>
+                  <p>{openedView.viewSpec.topic.question}</p>
+                  <details>
+                    <summary>{copy.topicDetails}</summary>
+                    <pre>{JSON.stringify(openedView.viewSpec, null, 2)}</pre>
+                  </details>
                 </>
               ) : null}
+              <section aria-label={copy.topicList}>
+                <div className={styles.summaryHeader}>
+                  <h3>{copy.topicList}</h3>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void loadTopics()}
+                  >
+                    {copy.loadTopics}
+                  </button>
+                </div>
+                {topics ? (
+                  <>
+                    <ul className={styles.assetList}>
+                      {topics.items.map((topic) => (
+                        <li key={topic.viewId}>
+                          <strong>{topic.title}</strong>
+                          <span>{copy[topic.visibility]}</span>
+                          <span>
+                            {topic.specVersion === 2
+                              ? copy.completeTopic
+                              : copy.legacyView}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void openSaved(topic.viewId, 'topic')
+                            }
+                          >
+                            {copy.openTopic}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {topics.items.length === 0 ? (
+                      <p>{copy.topicsEmpty}</p>
+                    ) : null}
+                    {pager(
+                      topicNav,
+                      topics.nextCursor,
+                      undefined,
+                      copy.previousTopics,
+                      copy.nextTopics,
+                      loadTopics,
+                    )}
+                  </>
+                ) : null}
+              </section>
             </section>
           )}
           <details>

@@ -33,6 +33,8 @@ import {
   type OpenIngestionCandidateViewInputSchema,
   type OpenIngestionCandidateViewOutputSchema,
   type RevokeIngestionCandidateViewOutputSchema,
+  type ListIngestionCandidateTopicsOutputSchema,
+  type OpenIngestionCandidateTopicOutputSchema,
 } from '@wiser/data-contracts';
 
 import {
@@ -131,6 +133,10 @@ export class DataFoundationApiError extends Error {
   }
 }
 
+type CandidateTopicOutput =
+  | ReturnType<typeof ListIngestionCandidateTopicsOutputSchema.parse>
+  | ReturnType<typeof OpenIngestionCandidateTopicOutputSchema.parse>;
+
 export interface DataFoundationDal {
   externalMetadata(
     input: unknown,
@@ -184,6 +190,11 @@ export interface DataFoundationDal {
     idempotencyKey?: string,
     signal?: AbortSignal,
   ): Promise<CandidateSavedViewOutput>;
+  candidateTopic(
+    action: 'list' | 'open',
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<CandidateTopicOutput>;
   operation(operationId: string): Promise<OperationDto>;
   operationEvents(
     operationId: string,
@@ -1074,6 +1085,79 @@ export function createDataFoundationDal(
               created.savedView.revokedAt !== null ||
               created.savedView.title !== creation.title ||
               created.savedView.visibility !== creation.visibility
+            )
+              throw new DataFoundationApiError('contract', 502);
+          }
+          return output;
+        },
+      );
+    },
+    candidateTopic: async (action, input, signal) => {
+      if (action !== 'list' && action !== 'open')
+        throw new DataFoundationApiError('invalid-request', 422);
+      const capability =
+        DATA_CAPABILITY_REGISTRY[`data.ingestion.candidate.topic.${action}`];
+      const checked = capability.inputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data as Record<string, unknown>;
+      let path: string = capability.restMapping.path;
+      const body: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (path.includes(`:${key}`)) {
+          if (typeof value !== 'string')
+            throw new DataFoundationApiError('invalid-request', 422);
+          path = path.replace(`:${key}`, encodeURIComponent(value));
+        } else body[key] = value;
+      }
+      if (capability.restMapping.method === 'GET') {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(body)) {
+          if (value === undefined) continue;
+          if (typeof value !== 'string' && typeof value !== 'number')
+            throw new DataFoundationApiError('invalid-request', 422);
+          query.set(key, String(value));
+        }
+        path += `?${query}`;
+      }
+      return parsed(
+        () =>
+          call(path, {
+            method: capability.restMapping.method as 'GET' | 'POST',
+            ...(capability.restMapping.method === 'GET' ? {} : { body }),
+            signal,
+            responseLimitBytes: CANDIDATE_SAVED_VIEW_BYTES,
+          }),
+        (value) => {
+          const output = capability.outputSchema.parse(
+            value,
+          ) as CandidateTopicOutput;
+          if (action === 'open') {
+            const opened = output as ReturnType<
+              typeof OpenIngestionCandidateTopicOutputSchema.parse
+            >;
+            const identity = checked.data as { viewId: string };
+            if (
+              !sameUuid(
+                opened.status === 'UNAVAILABLE'
+                  ? opened.viewId
+                  : opened.savedView.viewId,
+                identity.viewId,
+              )
+            )
+              throw new DataFoundationApiError('contract', 502);
+          } else {
+            const page = output as ReturnType<
+              typeof ListIngestionCandidateTopicsOutputSchema.parse
+            >;
+            const paging = checked.data as { first: number; after?: string };
+            if (
+              page.items.length > paging.first ||
+              (page.items.length === 0 && page.nextCursor !== null) ||
+              page.items.some((view) => view.revokedAt !== null) ||
+              new Set(page.items.map((view) => view.viewId.toLowerCase()))
+                .size !== page.items.length ||
+              (page.nextCursor !== null && page.nextCursor === paging.after)
             )
               throw new DataFoundationApiError('contract', 502);
           }

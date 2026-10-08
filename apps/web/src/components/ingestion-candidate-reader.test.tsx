@@ -9,7 +9,10 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { CreateIngestionCandidateViewInputSchema } from '@wiser/data-contracts';
+import {
+  CreateIngestionCandidateViewInputSchema,
+  OpenIngestionCandidateTopicOutputSchema,
+} from '@wiser/data-contracts';
 import { IngestionCandidateReader } from './ingestion-candidate-reader';
 
 const ref = {
@@ -799,6 +802,11 @@ const topicOpened = {
   viewSpec: {
     schemaVersion: 2,
     ...opened.viewSpec,
+    page: {
+      ...opened.viewSpec.page,
+      first: 2,
+      afterRecordId: '10000000-0000-4000-8000-000000000008',
+    },
     period: {
       timeRole: 'REPORT_PERIOD',
       windowMode: 'month',
@@ -847,7 +855,10 @@ function topicResponses(url: RequestInfo | URL) {
     return respondJson(topicOpened);
   if (path === '/api/data-foundation/candidate-topics/list')
     return respondJson({
-      items: [{ ...savedView, specVersion: 1 }, topicOpened.savedView],
+      items: [
+        { ...savedView, viewId: otherId, specVersion: 1 },
+        topicOpened.savedView,
+      ],
       nextCursor: null,
     });
   if (path === '/api/data-foundation/candidates/records')
@@ -859,6 +870,9 @@ function topicResponses(url: RequestInfo | URL) {
   throw new Error('Unexpected topic transport');
 }
 it('restores the complete topic from its authorized request with no current candidate and never downgrades originals or saving', async () => {
+  expect(
+    OpenIngestionCandidateTopicOutputSchema.safeParse(topicOpened).success,
+  ).toBe(true);
   fetch.mockImplementation(topicResponses);
   render(
     <IngestionCandidateReader
@@ -921,7 +935,7 @@ it('lists actual mixed-version topics and opens v2 through the topic ability; UN
     screen.getByRole('region', { name: 'Saved topics' }),
   );
   fireEvent.click(
-    topicList.getAllByRole('button', { name: 'Reopen topic' })[1]!,
+    topicList.getAllByRole('button', { name: 'Reopen topic' })[1],
   );
   await screen.findByText('Synthetic river');
   await waitFor(() =>
@@ -986,4 +1000,87 @@ it('rejects a changed complete-topic rule pin after material reading without sho
   await screen.findByRole('alert');
   expect(screen.queryByText('Synthetic river')).toBeNull();
   expect(screen.queryByText(topicOpened.savedView.title)).toBeNull();
+});
+
+it('keeps the adopted legacy view when a topic belongs to another intake', async () => {
+  const otherRef = { ...ref, ingestionId: otherId };
+  const otherTopic = {
+    ...topicOpened,
+    savedView: { ...topicOpened.savedView, viewId: assetId },
+    references: [otherRef],
+    viewSpec: {
+      ...topicOpened.viewSpec,
+      page: { ...topicOpened.viewSpec.page, reference: otherRef },
+      focus: { ...topicOpened.viewSpec.focus, reference: otherRef },
+      topic: {
+        ...topicOpened.viewSpec.topic,
+        recordPins: topicOpened.viewSpec.topic.recordPins.map((pin) => ({
+          ...pin,
+          reference: otherRef,
+        })),
+      },
+      dependencyPins: topicOpened.viewSpec.dependencyPins.map((pin) => ({
+        ...pin,
+        reference: otherRef,
+      })),
+    },
+    request: {
+      ...topicOpened.request,
+      input: { ...topicOpened.request.input, ingestionId: otherId },
+    },
+  };
+  expect(
+    OpenIngestionCandidateTopicOutputSchema.safeParse(otherTopic).success,
+  ).toBe(true);
+  fetch.mockImplementation((url) => {
+    const path = requestUrl(url);
+    if (path === '/api/data-foundation/candidate-saved-views/open')
+      return respondJson(opened);
+    if (path === '/api/data-foundation/candidate-topics/open')
+      return respondJson(otherTopic);
+    if (path === '/api/data-foundation/candidate-topics/list')
+      return respondJson({ items: [otherTopic.savedView], nextCursor: null });
+    return topicResponses(url);
+  });
+  render(
+    <IngestionCandidateReader
+      reference={null}
+      ingestionId={ref.ingestionId}
+      savedViewId={viewId}
+      locale="en"
+    />,
+  );
+  await screen.findByText('Synthetic river');
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Load saved topics' })
+        .hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Load saved topics' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Reopen topic' }));
+  await screen.findByText(
+    'This view contains another intake. Continue reading from that task.',
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Refresh candidate' })
+        .hasAttribute('disabled'),
+    ).toBe(false),
+  );
+  const before = fetch.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh candidate' }));
+  await waitFor(() => expect(fetch.mock.calls.length).toBeGreaterThan(before));
+  expect(fetch.mock.calls[before]?.[0]).toBe(
+    '/api/data-foundation/candidate-saved-views/open',
+  );
+  await screen.findByText('Synthetic river');
+  expect(screen.getByRole('button', { name: 'Save view' })).toBeDefined();
+  expect(
+    screen
+      .getByRole('link', { name: 'Download original' })
+      .getAttribute('href'),
+  ).toContain(`savedViewId=${viewId}`);
 });

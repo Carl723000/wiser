@@ -2880,6 +2880,18 @@ const zhCN = {
     },
     candidateReader: {
       title: '候选资料查阅',
+      topicList: '已保存专题',
+      loadTopics: '读取已保存专题',
+      openTopic: '重开专题',
+      completeTopic: '完整专题',
+      legacyView: '旧版固定视图',
+      topicsEmpty: '当前可读范围没有已保存专题。',
+      previousTopics: '上一页专题',
+      nextTopics: '下一页专题',
+      topicReadOnly: '此入口恢复已保存的固定专题；修改与另存暂不可用。',
+      topicOriginalUnavailable: '此专题入口暂不提供原件下载或原生影像读取。',
+      topicDetails: '完整专题固定依据',
+
       workspaceTitle: '当前候选资料工作台',
       workspaceScope:
         '查阅当前获权候选的原件、记录、地图和程序处理事实；资料仍待独立审核。',
@@ -6966,6 +6978,20 @@ const en: typeof zhCN = {
     },
     candidateReader: {
       title: 'Candidate materials',
+      topicList: 'Saved topics',
+      loadTopics: 'Load saved topics',
+      openTopic: 'Reopen topic',
+      completeTopic: 'Complete topic',
+      legacyView: 'Legacy fixed view',
+      topicsEmpty: 'There are no saved topics in the current readable scope.',
+      previousTopics: 'Previous topics',
+      nextTopics: 'Next topics',
+      topicReadOnly:
+        'This entry restores the saved fixed topic; editing and saving a new copy are unavailable.',
+      topicOriginalUnavailable:
+        'Original downloads and native raster reading are unavailable through this topic entry.',
+      topicDetails: 'Complete topic fixed evidence',
+
       workspaceTitle: 'Current candidate material workspace',
       workspaceScope:
         'Read the originals, records, map and processing facts of the currently authorized candidate. Materials remain pending independent review.',

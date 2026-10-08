@@ -29,7 +29,10 @@ import { candidateWorkspaceHref } from '@/lib/candidate-workspace-route';
 
 interface IngestionPageProps {
   readonly params: Promise<{ locale: string; ingestionId: string }>;
-  readonly searchParams?: Promise<{ candidateView?: string | string[] }>;
+  readonly searchParams?: Promise<{
+    candidateView?: string | string[];
+    candidateTopic?: string | string[];
+  }>;
 }
 
 export async function generateMetadata({ params }: IngestionPageProps) {
@@ -53,10 +56,22 @@ export default async function IngestionPage({
   let ingestion: IngestionDto | undefined;
   let candidateReference: IngestionCandidateReference | null = null;
   let savedViewId: string | undefined;
+  let savedTopicId: string | undefined;
   let failure: ReturnType<typeof handleDataPageError> | undefined;
   try {
     if (ingestionId === null) throw invalidDataPageRequest();
     const query = await searchParams;
+    if (query?.candidateTopic !== undefined) {
+      if (
+        query.candidateView !== undefined ||
+        typeof query.candidateTopic !== 'string'
+      )
+        throw invalidDataPageRequest();
+      const topicId = parseDataRouteUuid(query.candidateTopic);
+      if (topicId === null) throw invalidDataPageRequest();
+      savedTopicId = topicId;
+      route += `?candidateTopic=${topicId}`;
+    }
     if (query?.candidateView !== undefined) {
       if (typeof query.candidateView !== 'string')
         throw invalidDataPageRequest();
@@ -65,10 +80,12 @@ export default async function IngestionPage({
       savedViewId = viewId;
       route += `?candidateView=${viewId}`;
     }
-    const dal = await getDataFoundationDal();
-    const detail = await dal.ingestionDetail(ingestionId);
-    ingestion = detail.ingestion;
-    candidateReference = detail.candidateReference;
+    if (savedTopicId === undefined) {
+      const dal = await getDataFoundationDal();
+      const detail = await dal.ingestionDetail(ingestionId);
+      ingestion = detail.ingestion;
+      candidateReference = detail.candidateReference;
+    }
   } catch (error) {
     failure = handleDataPageError(error, locale, route);
   }
@@ -84,6 +101,16 @@ export default async function IngestionPage({
       {failure === undefined ? null : (
         <DataFailureState locale={locale} error={failure} />
       )}
+      {failure === undefined &&
+      savedTopicId !== undefined &&
+      ingestionId !== null ? (
+        <IngestionCandidateReader
+          locale={locale}
+          reference={null}
+          savedTopicId={savedTopicId}
+          ingestionId={ingestionId}
+        />
+      ) : null}
       {ingestion === undefined ? null : (
         <>
           {candidateReference === null || savedViewId !== undefined ? null : (
