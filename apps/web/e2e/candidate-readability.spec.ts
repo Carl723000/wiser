@@ -578,3 +578,216 @@ for (const locale of ['zh-CN', 'en'] as const)
         await expectNoOuterHorizontalOverflow(page);
       });
     }
+
+// Actual-CSS layout coverage only. The mounted result uses the production
+// RasterPanel > content > result wrapper > scrollable table hierarchy. These
+// explicit synthetic values do not establish Auth, raster computation, map
+// gestures or physical-phone acceptance; the native A8 driver verifies those.
+const rasterCss = moduleCss(
+  '../src/components/ingestion-candidate-raster-panel.module.css',
+  'raster-',
+);
+
+async function expectRasterFitsConfiguredViewport(page: Page, width: number) {
+  // Mobile Chromium may expand innerWidth after intrinsic grid overflow. The
+  // configured viewport and document client width remain the independent gate.
+  expect(page.viewportSize()?.width).toBe(width);
+  expect(
+    await page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+      scroll: scrollX,
+    })),
+  ).toEqual({ client: width, document: width, body: width, scroll: 0 });
+}
+
+for (const width of [390, 1440]) {
+  test.describe(`native raster result intrinsic layout ${width}`, () => {
+    test.use({
+      viewport: { width, height: width === 390 ? 844 : 900 },
+      isMobile: width === 390,
+    });
+    for (const locale of ['zh-CN', 'en'] as const)
+      for (const theme of ['light', 'dark'] as const) {
+        test(`mounted native values keep map actions and table scrolling ${locale}/${width}/${theme}`, async ({
+          page,
+        }) => {
+          await page.route('**/*', (route) => route.abort('blockedbyclient'));
+          const copy =
+            getDictionary(locale).dataFoundation.candidateReader.raster;
+          const e = escapeHtml;
+          const labels = [
+            copy.selectPixel,
+            copy.selectArea,
+            copy.viewSelection,
+            copy.viewGrid,
+          ];
+          const document = shell(
+            locale,
+            theme,
+            `<section class="reader-reader"><div class="reader-content">
+              <section class="reader-tabPanel">
+                <section class="raster-panel" aria-label="${e(copy.title)}">
+                  <button type="button">${e(copy.close)}</button>
+                  <div class="raster-content">
+                    <h4>${e(copy.title)}</h4><p>${e(copy.scope)}</p>
+                    <section class="raster-mapSection" aria-label="${e(copy.mapTitle)}">
+                      <p>${e(copy.mapScope)}</p>
+                      <div class="raster-pager">
+                        ${labels.map((label) => `<button type="button">${e(label)}</button>`).join('')}
+                      </div>
+                      <p>${e(copy.selectPixelHint)}</p>
+                      <div data-testid="candidate-raster-map-selection"></div>
+                    </section>
+                  </div>
+                </section>
+              </section>
+            </div></section>`,
+          ).replace(
+            '<head>',
+            `<head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${rasterCss}</style>`,
+          );
+          await page.setContent(document);
+          const panel = page.getByRole('region', {
+            name: copy.title,
+            exact: true,
+          });
+          const map = panel.getByRole('region', {
+            name: copy.mapTitle,
+            exact: true,
+          });
+          const controls = labels.map((name) =>
+            map.getByRole('button', { name, exact: true }),
+          );
+          await expectRasterFitsConfiguredViewport(page, width);
+
+          // One-cell and six-cell synthetic reads contain six original channel
+          // values per cell (B03, B8A, SCL, and three TCI channels): 42 total.
+          // Mount the table after the map controls, as an actual completed read
+          // does; an empty panel alone does not expose the intrinsic-grid bug.
+          let checkedChannels = 0;
+          for (const cellCount of [1, 6]) {
+            const cells = Array.from({ length: cellCount }, (_, index) => ({
+              row: 100 + Math.floor(index / 3),
+              column: 200 + (index % 3),
+              b03: 1000 + index,
+              b8a: 2000 + index,
+              scl: index % 2 ? 4 : 6,
+              tci: [30 + index, 40 + index, 50 + index],
+              valid: 255,
+              selected: index % 2,
+            }));
+            const expectedRows = cells.map((cell) => [
+              String(cell.row),
+              String(cell.column),
+              String(cell.b03),
+              String(cell.b8a),
+              String(cell.scl),
+              cell.tci.join(', '),
+              String(cell.valid),
+              String(cell.selected),
+            ]);
+            const resultHtml = `<div data-testid="candidate-raster-window-values">
+              <p>${e(copy.requestedCells)}: ${cellCount}</p>
+              <div class="raster-tableWrap" tabindex="0"><table><thead><tr>
+                ${[copy.row, copy.column, copy.b03Value, copy.b8aValue, 'SCL', 'TCI', copy.validMask, copy.qualityMask].map((field) => `<th>${e(field)}</th>`).join('')}
+              </tr></thead><tbody>
+                ${expectedRows.map((row) => `<tr>${row.map((value) => `<td>${e(value)}</td>`).join('')}</tr>`).join('')}
+              </tbody></table></div>
+            </div>`;
+            await panel.locator('.raster-content').evaluate((element, html) => {
+              element
+                .querySelector('[data-testid="candidate-raster-window-values"]')
+                ?.remove();
+              element.insertAdjacentHTML('beforeend', html);
+            }, resultHtml);
+            const result = panel.getByTestId('candidate-raster-window-values');
+            const table = result.locator('.raster-tableWrap');
+            const data = () =>
+              result
+                .locator('tbody tr')
+                .evaluateAll((rows) =>
+                  rows.map((row) =>
+                    [...row.querySelectorAll('td')].map((cell) =>
+                      cell.textContent?.trim(),
+                    ),
+                  ),
+                );
+            await expectRasterFitsConfiguredViewport(page, width);
+            expect(await data()).toEqual(expectedRows);
+            checkedChannels += cells.reduce(
+              (count, cell) => count + 3 + cell.tci.length,
+              0,
+            );
+
+            await controls[0].focus();
+            for (let index = 0; index < controls.length; index += 1) {
+              if (index > 0) await page.keyboard.press('Tab');
+              await expect(controls[index]).toBeFocused();
+              await expectFullyAccessible(controls[index]);
+              const bounds = await controls[index].boundingBox();
+              expect(bounds).not.toBeNull();
+              expect(bounds!.x).toBeGreaterThanOrEqual(-1);
+              expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
+              await controls[index].click();
+              await expect(controls[index]).toBeFocused();
+            }
+            await page.keyboard.press('Tab');
+            await expect(table).toBeFocused();
+            const dimensions = await table.evaluate((element) => ({
+              width: element.clientWidth,
+              full: element.scrollWidth,
+            }));
+            if (width === 390)
+              expect(dimensions.full).toBeGreaterThan(dimensions.width);
+            const finalHeader = result.getByRole('columnheader', {
+              name: copy.qualityMask,
+              exact: true,
+            });
+            if (dimensions.full > dimensions.width) {
+              await page.keyboard.press('ArrowRight');
+              await expect
+                .poll(() => table.evaluate((element) => element.scrollLeft))
+                .toBeGreaterThan(0);
+              for (let step = 0; step < 120; step += 1) {
+                if ((await readableTextObservation(finalHeader)).readable)
+                  break;
+                if (
+                  await table.evaluate(
+                    (element) =>
+                      element.scrollLeft + element.clientWidth >=
+                      element.scrollWidth - 1,
+                  )
+                )
+                  break;
+                await page.keyboard.press('ArrowRight');
+                await page.evaluate(
+                  () =>
+                    new Promise<void>((resolve) =>
+                      requestAnimationFrame(() =>
+                        requestAnimationFrame(() => resolve()),
+                      ),
+                    ),
+                );
+              }
+            }
+            await expect
+              .poll(() => readableTextObservation(finalHeader))
+              .toEqual({ readable: true, hit: true });
+            await expect(table).toBeFocused();
+            expect(
+              await table.evaluate(
+                (element) =>
+                  element.matches(':focus-visible') &&
+                  getComputedStyle(element).outlineStyle !== 'none',
+              ),
+            ).toBe(true);
+            expect(await data()).toEqual(expectedRows);
+            await expectRasterFitsConfiguredViewport(page, width);
+          }
+          expect(checkedChannels).toBe(42);
+        });
+      }
+  });
+}
