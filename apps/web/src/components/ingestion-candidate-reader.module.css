@@ -209,6 +209,8 @@
   overflow-wrap: anywhere;
 }
 .reader thead th {
+  /* Size short field names as words; still wrap overlong source field names. */
+  overflow-wrap: break-word;
   position: sticky;
   top: 0;
   background: var(--surface-raised);
