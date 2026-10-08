@@ -510,4 +510,71 @@ for (const locale of ['zh-CN', 'en'] as const)
         await expect(selected.getByRole('button')).toHaveText('2');
         await expectNoOuterHorizontalOverflow(page);
       });
+
+      test(`candidate field names retain readable words with larger fixture text ${locale}/${width}/${theme}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.route('**/*', (route) => route.abort('blockedbyclient'));
+        // A synthetic text-size stress case, not an OS-font or phone claim.
+        // Preserve the real cell rules; exercise intrinsic column sizing when
+        // the same source field needs more room than the default minimum.
+        await page.setContent(
+          shell(
+            locale,
+            theme,
+            `<section class="reader-reader"><div class="reader-tableWrap" tabindex="0">
+              <table style="font-size: 1.1rem"><thead><tr>
+                <th>row</th><th>report_month</th><th>value</th><th>location</th><th>provider</th><th>source</th>
+              </tr></thead><tbody><tr><th>2</th><td>2026-01</td><td>22.35</td><td>synthetic-reach</td><td>synthetic-provider</td><td>synthetic-source</td></tr></tbody></table>
+            </div></section>`,
+          ),
+        );
+        await expectOneLine(
+          page.getByRole('columnheader', { name: 'report_month', exact: true }),
+        );
+        await expectOneLine(
+          page.getByRole('cell', { name: '22.35', exact: true }),
+        );
+        await expectNoOuterHorizontalOverflow(page);
+      });
+
+      test(`candidate long unbroken field names wrap within their column ${locale}/${width}/${theme}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.route('**/*', (route) => route.abort('blockedbyclient'));
+        const field = 'synthetic_original_reference_field_'.repeat(14);
+        await page.setContent(
+          shell(
+            locale,
+            theme,
+            `<section class="reader-reader"><div class="reader-tableWrap" tabindex="0">
+              <table><thead><tr><th>row</th><th>${field}</th><th>value</th></tr></thead>
+                <tbody><tr><th>2</th><td>synthetic-source</td><td>22.35</td></tr></tbody></table>
+            </div></section>`,
+          ),
+        );
+        const header = page.getByRole('columnheader', {
+          name: field,
+          exact: true,
+        });
+        const reading = await header.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const rectangles = [...range.getClientRects()];
+          return {
+            lines: rectangles.length,
+            allTextInsideColumn: rectangles.every(
+              (rect) =>
+                rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1,
+            ),
+          };
+        });
+        expect(reading.lines).toBeGreaterThan(1);
+        expect(reading.allTextInsideColumn).toBe(true);
+        await expect(header).toHaveText(field);
+        await expectNoOuterHorizontalOverflow(page);
+      });
     }
