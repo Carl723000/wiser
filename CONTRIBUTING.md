@@ -17,7 +17,7 @@ checkPaths:
   - .docpact/config.yaml
   - .github/workflows/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 6229bc47924423ae48b31a96d0f6d1bef6a646a0
+lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
 ---
 
 # Contributing / 贡献指南
@@ -78,4 +78,4 @@ Red commits are recoverable checkpoints / Red 提交是可恢复检查点。允�
 
 完整候选专题的 `ingestion-candidate-topics.spec.ts` 加入既有串行 Data PostgreSQL CI 清单；保留全部旧用例及原生标志。其两项条件跳过不代表严格 v2 存储、历史读取或最小所有者回执已通过真实数据库验收。 / Complete candidate topics use the existing serial isolated Data PostgreSQL CI list; skipped database cases are not native v2 persistence, historical-read or owner-receipt acceptance.
 
-候选技术跟进载体的 `ingestion-candidate-followups.spec.ts` 加入既有串行隔离 Data PostgreSQL CI 清单，保留原所有项及 `WISER_DATA_PG_INTEGRATION=1`。其三项条件跳过不表示已通过真实来源核权、整记录更正、历史委托责任或事务验收。 / Private technical candidate followups use the same existing serial PostgreSQL CI lane; the three conditional unit skips are not native authority, whole-record correction, historical responsibility or transaction acceptance.
+候选技术跟进载体的 `ingestion-candidate-followups.spec.ts` 加入既有串行隔离 Data PostgreSQL CI 清单，保留原所有项及 `WISER_DATA_PG_INTEGRATION=1`。其五项条件跳过不表示已通过真实来源核权、整记录更正、历史委托责任或事务验收。 / Private technical candidate followups use the same existing serial PostgreSQL CI lane; the five conditional unit skips are not native authority, whole-record correction, historical responsibility or transaction acceptance.

@@ -21,8 +21,8 @@ checkPaths:
   - infrastructure/**/README.md
   - apps/docs/src/content/**
   - .docpact/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
 ---
 
 ## 一条信息只设一个权威入口

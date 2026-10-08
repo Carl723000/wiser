@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
+lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -285,7 +285,7 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 
 沿Data校验和迁移器追加 `0048_candidate_relation_rebind.sql`，随后重新配置窄授权；0044及全部已应用迁移字节不改。新FORCE RLS表固定同域新旧修订及完整证据对应多重集。invoker核同一关系／谱系、直接前序、当前责任人／维护权及双方完整来源当前可读；延迟约束要求新修订提交前具有映射，不回填历史。重复provision恢复API只获SELECT／INSERT，Worker／通用runtime无权访问，不增加UPDATE／DELETE或SECURITY DEFINER绕过。
 
-既有串行 `ingestion-candidate-relations.spec.ts` 增验缺失／伪造映射、独立读者禁写、旧确认历史／新无决定修订、不可变、过期和重复最小授权。其三项条件原生用例须在已迁移的隔离PostgreSQL运行，普通单元跳过不算通过。
+既有串行 `ingestion-candidate-relations.spec.ts` 增验缺失／伪造映射、独立读者禁写、旧确认历史／新无决定修订、不可变、过期和重复最小授权。其四项条件原生用例须在已迁移的隔离PostgreSQL运行，普通单元跳过不算通过。
 
 ## READY 候选历史读取（0045）
 

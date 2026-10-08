@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
+lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -285,7 +285,7 @@ Conditional ingestion-candidate-relations.spec.ts exercises real cumulative migr
 
 Append 0048_candidate_relation_rebind.sql through the Data checksum runner after the earlier additive sequence, then reapply runtime provisioning. All applied migration bytes, including 0044, remain unchanged. The FORCE RLS mapping table fixes scoped prior/new revisions and the complete evidence multiset. Its invoker insert guard checks same relation/lineage, immediate predecessor, current owner/maintainer and both complete source sets. A deferred constraint requires the mapping before any new revision commits, without backfilling old rows. Repeated provisioning restores API SELECT/INSERT only and removes inherited Worker/shared-runtime access. No UPDATE/DELETE or SECURITY DEFINER bypass is added.
 
-The existing serial ingestion-candidate-relations.spec.ts entry now includes missing/false mapping, independent-reader write denial, old confirmed history/new undecided revision, immutability, expiry and twice-applied least privilege. Its three conditional native cases require an isolated migrated PostgreSQL; unit skips do not pass them. Recovery disables the new entrypoints while preserving revision/decision history.
+The existing serial ingestion-candidate-relations.spec.ts entry now includes missing/false mapping, independent-reader write denial, old confirmed history/new undecided revision, immutability, expiry and twice-applied least privilege. Its four conditional native cases require an isolated migrated PostgreSQL; unit skips do not pass them. Recovery disables the new entrypoints while preserving revision/decision history.
 
 ## Historical READY candidate reads (0045)
 
