@@ -725,12 +725,15 @@ for (const width of [390, 1440]) {
             for (let index = 0; index < controls.length; index += 1) {
               if (index > 0) await page.keyboard.press('Tab');
               await expect(controls[index]).toBeFocused();
+              // Normal click actionability may scroll vertically to the control.
+              // Check the resulting visible hit target without forcing a click
+              // or adding a programmatic scroll; keyboard focus is still checked.
+              await controls[index].click();
               await expectFullyAccessible(controls[index]);
               const bounds = await controls[index].boundingBox();
               expect(bounds).not.toBeNull();
               expect(bounds!.x).toBeGreaterThanOrEqual(-1);
               expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
-              await controls[index].click();
               await expect(controls[index]).toBeFocused();
             }
             await page.keyboard.press('Tab');

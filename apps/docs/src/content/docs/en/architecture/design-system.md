@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
+lastReviewedCommit: ae17177d673bd8c641c77e37d79a85747935ca3d
 ---
 
 ## Design direction
@@ -170,3 +170,5 @@ After an external camera application or hiding stops the map, an earlier wheel i
 Candidate intake reading lists existing saved topics with their actual v1/v2 version and restores them through topic.list/open. The optional `candidateTopic` link uses the server-authorized fixed request even without a current candidate; it omits the ordinary intake summary. Full-spec and manifest checks run before and after reads and on visible-page recovery. UNAVAILABLE, changed pins or lost authority clear materials, titles, counts and fixed references. Cross-intake or cancelled proposals retain the adopted reading owner. Topic reading preserves the complete v2 question, period and pins; edit/save, original download and native raster actions remain unavailable there. Legacy `candidateView` links and their original authorization remain unchanged. No browser pin bootstrap or topic creation is added. Synthetic transport/component verification is separate from real account, HTTP and native browser acceptance.
 
 Candidate followups reuse shared themes, compact state badges, type, assignee, revision and explicit actions. Evidence-source selection is separate from the original followup source and preserves its identity. Originals, whole-record geometry and professional review are distinct. Action notes and old/new correspondence use named forms; technical IDs and complete geometry are disclosed on demand. Technical closure never appears as professional approval. Source changes, parent revalidation and denied reads cancel obsolete work and remove invalid content; late responses cannot revive it.
+
+Candidate native-raster result tables keep the panel and map controls within the configured viewport after values appear. Their single content grid column can shrink below table intrinsic width; the unchanged eight-column table retains horizontal scrolling inside its own focusable area. Map actions remain keyboard-focusable and ordinary clicks may scroll vertically before checking the complete visible hit target. Chromium coverage mounts explicit synthetic one-cell and six-cell results with the actual styles in both languages/themes at 390×844 mobile and 1440×900 desktop sizes. This layout coverage does not establish authenticated four-file processing or native map-gesture acceptance.

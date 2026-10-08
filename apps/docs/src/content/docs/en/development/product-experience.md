@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
+lastReviewedCommit: ae17177d673bd8c641c77e37d79a85747935ca3d
 ---
 
 ## What this guide governs
@@ -233,3 +233,5 @@ After an external camera application or hiding stops the map, an earlier wheel i
 Candidate intake reading lists existing saved topics with their actual v1/v2 version and restores them through topic.list/open. The optional `candidateTopic` link uses the server-authorized fixed request even without a current candidate; it omits the ordinary intake summary. Full-spec and manifest checks run before and after reads and on visible-page recovery. UNAVAILABLE, changed pins or lost authority clear materials, titles, counts and fixed references. Cross-intake or cancelled proposals retain the adopted reading owner. Topic reading preserves the complete v2 question, period and pins; edit/save, original download and native raster actions remain unavailable there. Legacy `candidateView` links and their original authorization remain unchanged. No browser pin bootstrap or topic creation is added. Synthetic transport/component verification is separate from real account, HTTP and native browser acceptance.
 
 Candidate reading and the readiness gap inspector provide list, create, act and independent-review entry points. Readers select a fixed source and load actual evidence: gaps may use original-level evidence, while corrections require a locator, original CRS and whole geometry. Existing followups support claim, handoff, cross-candidate supplements, submission, return and reopening with complete responsibility history. Lists request at most 25 entries, originals/geometry at most 50, and readers request each next page. The complete delivered history, capped at 200 events, expands 20 at a time; this is not a new history pagination API. Readonly topics and synthetic tracks hide mutations. 403 and 409 remove invalid content and explain current authority or version changes; recovery does not resend old writes. Component/transport regressions do not replace actual account, database or browser acceptance.
+
+After native candidate pixel values load, the map and its window/grid actions remain within the page width. The complete original values and mask codes stay in the result table, which scrolls horizontally inside the panel. Users can reach map actions and the table with the keyboard; ordinary page scrolling remains available when a control is farther down the page. Language and theme changes preserve the same reading and action path. The layout regression uses explicit synthetic results; real-account native-image reading remains a separate acceptance path.
