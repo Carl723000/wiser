@@ -117,6 +117,12 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       await client.query(
         `grant execute on all functions in schema security,service to ${role}`,
       );
+      await client.query(
+        `grant execute on function ingestion.pending_subject_access(uuid,text,text) to ${role}`,
+      );
+      await client.query(
+        `grant execute on function ingestion.candidate_original_readable(uuid,uuid,uuid,text,bigint) to ${role}`,
+      );
       for (const s of sources) {
         await client.query(
           `insert into catalog.data_item(data_item_id,tenant_id,project_id,owner_project_id,name,business_domains,source_natures,source_channels,processing_stage,intended_uses,source_organization,authorization_scope,generation_method,quality_grade,acceptance_status,publication_status,security_level,update_mode) values($1,$2,$3,$3,'Synthetic resource',array['water-quality'],array['observed'],array['official'],'RAW',array['research'],'Synthetic provider','test','SYNTHETIC','A','PASSED','PUBLISHED','L1_INTERNAL','SNAPSHOT')`,
