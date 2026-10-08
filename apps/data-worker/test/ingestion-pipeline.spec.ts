@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { wordPairFixture } from './candidate-conversion-fixture.js';
 import { createHash } from 'node:crypto';
 import type { SourceRegistration } from '@wiser/data-contracts';
 
-import type { ClaimedDataJob } from '@wiser/data-infra';
+import type { ClaimedDataJob, DataPostgresPool } from '@wiser/data-infra';
+import {
+  FixtureFakeAiPlanner,
+  FixtureFakeAiPlanValidator,
+  PostgresIngestionAuthority,
+  type IngestionRuntimePool,
+} from '../src/adapters/ingestion-runtime.js';
+import { createIngestionCandidateProcessor } from '../src/handlers/ingestion-candidate.js';
 
 import { DataJobHandlerError } from '../src/handlers/registry.js';
 import {
@@ -315,6 +322,319 @@ function setup(
       }),
   };
 }
+
+async function registeredGeoJsonScenario(
+  mutation?: 'missing-asset' | 'wrong-hash',
+) {
+  const fixture = setup({ assetCount: 2 });
+  const policy = { mode: 'REQUIRE_INDEPENDENT_REVIEW', revision: 1 };
+  const geojson = {
+    type: 'FeatureCollection',
+    features: [
+      [
+        [0, 0],
+        [1, 1],
+      ],
+      [
+        [2, 2],
+        [3, 3],
+        [4, 4],
+      ],
+    ].map((coordinates, index) => ({
+      type: 'Feature',
+      properties: {
+        name: `synthetic-reference-${index + 1}`,
+        license: 'ODbL-1.0',
+        attribution: 'Synthetic reference fixture; no collected OSM object',
+        positionRole: 'open-geographical-reference',
+        notAMonthlyObservationReach: true,
+        reviewStatus: 'pending',
+      },
+      geometry: { type: 'LineString', coordinates },
+    })),
+  };
+  const sourceBytes = Buffer.from(JSON.stringify(geojson));
+  const sourceHash = createHash('sha256').update(sourceBytes).digest('hex');
+  const [manifestAsset, geoAsset] = fixture.authority.assets;
+  const body = JSON.stringify({
+    schemaVersion: 'wiser.source-registration.v1',
+    sourceId: 'synthetic-reference',
+    record: { synthetic: true, license: 'ODbL-1.0', notAnObservation: true },
+    files: [
+      {
+        assetId: geoAsset!.assetId,
+        path: 'synthetic-reference.geojson',
+        sha256: mutation === 'wrong-hash' ? 'f'.repeat(64) : sourceHash,
+        sizeBytes: sourceBytes.length,
+        preparedSha256: mutation === 'wrong-hash' ? 'f'.repeat(64) : sourceHash,
+        preparedSizeBytes: sourceBytes.length,
+        artifactClass: 'geographical-reference',
+        completeness: 'PARTIAL',
+        disposition: 'IMPORT',
+        relatedSourceIds: ['synthetic-reference'],
+      },
+    ],
+  });
+  const manifestBytes = Buffer.from(body);
+  const manifestHash = createHash('sha256').update(manifestBytes).digest('hex');
+  const registration: SourceRegistration = {
+    sourceId: 'synthetic-reference',
+    kind: 'FILE_COLLECTION',
+    name: 'Synthetic reference fixture',
+    bundleId: 'synthetic-reference-test',
+    providerName: 'Synthetic test',
+    accessStatus: 'synthetic_reference_only',
+    completeness: 'PARTIAL',
+    manifestAssetId: manifestAsset!.assetId,
+    manifestSha256: manifestHash,
+    limitations: [
+      'Geographical reference only; no observation or authority claim.',
+    ],
+  };
+  const inputs = [manifestAsset!, geoAsset!].map((asset, index) => ({
+    state: 'RECEIVED',
+    row_version: 1,
+    security_level: 'L0_PUBLIC',
+    policy_version: 9,
+    source_registration: registration,
+    review_policy_snapshot: policy,
+    current_review_policy: policy,
+    asset_id: asset.assetId,
+    ordinal: index,
+    storage_key: `tenants/${job.tenantId}/projects/${job.projectId}/quarantine/${asset.uploadId}/object`,
+    media_type: index === 0 ? 'application/json' : 'application/geo+json',
+    byte_size: index === 0 ? manifestBytes.length : sourceBytes.length,
+    source_hash: null,
+    content_blob_id: null,
+  }));
+  const nativePool: IngestionRuntimePool = {
+    async connect() {
+      return {
+        async query(sql) {
+          return { rows: sql.includes('ingestion.runtime.load') ? inputs : [] };
+        },
+        release() {},
+      };
+    },
+  };
+  const native = new PostgresIngestionAuthority({
+    pool: nativePool,
+    workerActorId: job.jobId,
+    maximumPolicyVersion: 9,
+    objectStore: {
+      commitQuarantineObject() {
+        throw new Error('No publication allowed');
+      },
+    },
+  });
+  const admitted = await native.load({
+    tenantId: job.tenantId!,
+    projectId: job.projectId!,
+    ingestionId: payload.ingestionId,
+    securityLevel: 'L0_PUBLIC',
+    policyVersion: 9,
+  });
+  // Derive sourceKind from the actual native adapter, not a test-only override.
+  fixture.authority.assets = [...admitted.assets];
+  if (admitted.sourceRegistration === undefined)
+    throw new Error('Native admission must retain source registration');
+  fixture.authority.sourceRegistration = admitted.sourceRegistration;
+  fixture.authority.reviewGovernance = admitted.reviewGovernance;
+  if (mutation === 'missing-asset') fixture.authority.assets.pop();
+  const calls: { sql: string; values: readonly unknown[] }[] = [];
+  const reads: string[] = [];
+  const pool: DataPostgresPool = {
+    async connect() {
+      return {
+        async query(sql, values = []) {
+          calls.push({ sql, values });
+          if (sql.includes('candidate.load-checkpoint')) {
+            const frozen = fixture.authority.frozenCheckpoint!;
+            return {
+              rows: [
+                {
+                  state: fixture.authority.state,
+                  security_level: 'L0_PUBLIC',
+                  policy_version: 9,
+                  operation_id: job.operationId,
+                  transform_plan_id: job.jobId,
+                  frozen_checkpoint: frozen,
+                  review_hash: frozen.reviewHash,
+                  review_policy_snapshot: policy,
+                  current_review_policy: policy,
+                  submitted_by_actor_id: job.jobId,
+                  submitted_actor_type: 'human',
+                  submitted_delegator_actor_id: null,
+                },
+              ],
+            };
+          }
+          if (sql.includes('candidate.load-assets'))
+            return {
+              rows: fixture.authority.assets.map((asset) => ({
+                asset_id: asset.assetId,
+                ordinal: asset.ordinal,
+                upload_id: asset.uploadId,
+                storage_key: asset.objectRef,
+                source_hash: asset.sourceHash,
+                media_type: asset.mediaType,
+                byte_size: asset.size,
+              })),
+            };
+          if (sql.includes('candidate.lease-fence'))
+            return { rows: [{ job_id: job.jobId }] };
+          return { rows: [], rowCount: 1 };
+        },
+        release() {},
+      };
+    },
+    async end() {},
+  };
+  const process = createIngestionCandidateProcessor({
+    pool,
+    read(input) {
+      reads.push(input.uploadId);
+      return Promise.resolve(
+        input.uploadId === manifestAsset!.uploadId
+          ? manifestBytes
+          : sourceBytes,
+      );
+    },
+  });
+  const planner = new FixtureFakeAiPlanner();
+  const validator = new FixtureFakeAiPlanValidator();
+  const propose = vi.spyOn(planner, 'propose').mockImplementation(() => {
+    throw new Error('Fixture planner must not run');
+  });
+  const validate = vi.spyOn(validator, 'validate').mockImplementation(() => {
+    throw new Error('Fixture validator must not run');
+  });
+  const handler = createIngestionPipelineHandler({
+    ...fixture.options,
+    aiPlanner: planner,
+    aiValidator: validator,
+    sourceRegistration: { readManifest: () => Promise.resolve(body) },
+    fingerprint: {
+      sha256: ({ objectRef }) =>
+        Promise.resolve(
+          objectRef === inputs[0]!.storage_key ? manifestHash : sourceHash,
+        ),
+    },
+    pendingCandidate: { process },
+  });
+  return {
+    fixture,
+    geojson,
+    sourceBytes,
+    sourceHash,
+    manifestHash,
+    registration,
+    admitted,
+    calls,
+    reads,
+    propose,
+    validate,
+    handler,
+  };
+}
+
+describe('registered GeoJSON candidate composition', () => {
+  it('uses native admission and the production JSON parser while retaining independent review and source limitations', async () => {
+    const value = await registeredGeoJsonScenario();
+    const before = Buffer.from(value.sourceBytes);
+    const result = await value.handler(job);
+    expect(value.admitted.assets.map((asset) => asset.sourceKind)).toEqual([
+      'document',
+      'document',
+    ]);
+    expect(result).toMatchObject({
+      status: 'WAITING_REVIEW',
+      result: {
+        state: 'REVIEW_REQUIRED',
+        candidate: {
+          status: 'PARTIAL',
+          parsedRecordCount: 2,
+          parsedFeatureCount: 2,
+          unknownAssetCount: 1,
+        },
+      },
+    });
+    expect(value.propose).not.toHaveBeenCalled();
+    expect(value.validate).not.toHaveBeenCalled();
+    expect(value.fixture.authority.commits).toBe(0);
+    expect(value.fixture.authority.versionId).toBeUndefined();
+    expect(
+      value.fixture.authority.frozenCheckpoint!.assetManifest,
+    ).toMatchObject({
+      validationScope: 'SOURCE_REGISTRATION',
+      sourceRegistration: value.registration,
+      reviewGovernance: { mode: 'REQUIRE_INDEPENDENT_REVIEW' },
+      assets: [
+        { sourceHash: value.manifestHash },
+        { sourceHash: value.sourceHash },
+      ],
+    });
+    expect(value.sourceBytes).toEqual(before);
+    const finished = value.calls.filter((call) =>
+      call.sql.includes('candidate.finish-asset'),
+    );
+    expect(finished[0]!.values.slice(2, 6)).toEqual([
+      'UNSUPPORTED',
+      'SOURCE_MANIFEST',
+      null,
+      null,
+    ]);
+    expect(finished[1]!.values.slice(2, 6)).toEqual(['READY', null, 2, 2]);
+    const inserts = value.calls.filter((call) =>
+      call.sql.includes('candidate.insert-records'),
+    );
+    expect(inserts).toHaveLength(1);
+    const rows = JSON.parse(inserts[0]!.values.at(-1) as string) as Array<{
+      geometry: unknown;
+      values: Record<string, unknown>;
+    }>;
+    const columns = JSON.parse(finished[1]!.values[6] as string) as Array<{
+      key: string;
+      label: string;
+    }>;
+    expect(rows.map((row) => row.geometry)).toEqual(
+      value.geojson.features.map((feature) => feature.geometry),
+    );
+    expect(
+      rows.map((row) =>
+        Object.fromEntries(
+          columns.map((column) => [column.label, row.values[column.key]]),
+        ),
+      ),
+    ).toEqual(value.geojson.features.map((feature) => feature.properties));
+    expect(
+      value.calls.some((call) =>
+        /insert into (catalog\.analysis|event\.outbox)|update ingestion\.session/i.test(
+          call.sql,
+        ),
+      ),
+    ).toBe(false);
+    expect(value.fixture.order).not.toContain('parse');
+  });
+
+  it.each(['missing-asset', 'wrong-hash'] as const)(
+    'rejects %s binding before candidate reads or fixture AI decisions',
+    async (mutation) => {
+      const value = await registeredGeoJsonScenario(mutation);
+      await expect(value.handler(job)).rejects.toMatchObject({
+        category: 'SOURCE_REGISTRATION_INVALID',
+        retryable: false,
+      });
+      expect(value.propose).not.toHaveBeenCalled();
+      expect(value.validate).not.toHaveBeenCalled();
+      expect(value.reads).toEqual([]);
+      expect(value.calls).toEqual([]);
+      expect(value.fixture.authority.frozenCheckpoint).toBeUndefined();
+      expect(value.fixture.authority.commits).toBe(0);
+      expect(value.fixture.authority.versionId).toBeUndefined();
+    },
+  );
+});
 
 describe('Agent-native ingestion pipeline', () => {
   it('retries a source manifest outage, then freezes source evidence without an AI plan or analytical parser', async () => {
