@@ -1,7 +1,9 @@
+import { createIngestionCandidateRelationExecutors } from './ingestion-candidate-relations-runtime.js';
 import { Buffer } from 'node:buffer';
 
 import { Pool } from 'pg';
 
+import { createCandidateFollowupExecutors } from './ingestion-candidate-followups.js';
 import { createExternalMetadataExecutor } from './external-metadata-executor.js';
 import {
   createTrustedExternalMetadataPorts,
@@ -127,6 +129,7 @@ export interface DataFoundationRuntimeFactories {
     config: Extract<DataFoundationApiRuntimeConfig, { mode: 'enabled' }>,
     pool: DataFoundationSharedPool,
     external?: ExternalMetadataPorts,
+    assigneeAuthority?: PlatformAuthRuntime['candidateFollowupAssigneeAuthority'],
   ): readonly DataCapabilityExecutor[];
   createAssetDownloadPort(
     pool: DataFoundationSharedPool,
@@ -242,7 +245,7 @@ const defaultFactories: DataFoundationRuntimeFactories = {
       objectStore as DataCommandObjectStore,
     );
   },
-  createSpecialExecutors(config, pool, external) {
+  createSpecialExecutors(config, pool, external, assigneeAuthority) {
     const pg = (pool as DefaultPool).pg;
     const embedding = createDataEmbedding(config.embedding);
     const search = new SearchOrchestrator({
@@ -292,6 +295,8 @@ const defaultFactories: DataFoundationRuntimeFactories = {
         pg,
         createCandidateTopicHost(config.candidateTopicHost),
       ),
+      ...createIngestionCandidateRelationExecutors(pg),
+      ...createCandidateFollowupExecutors(pg, assigneeAuthority),
       ...createReconciliationExecutors(pg),
       ...createAssessmentExecutors(pg),
       ...createKnowledgeRelationExecutors(pg),
@@ -403,7 +408,12 @@ export function createDataFoundationRuntimeFromEnvironment(
       : undefined;
     const read = factories.createReadRuntime(pool, external);
     const command = factories.createCommandRuntime(pool, objectStore.store);
-    const special = factories.createSpecialExecutors(config, pool, external);
+    const special = factories.createSpecialExecutors(
+      config,
+      pool,
+      external,
+      platformAuth.candidateFollowupAssigneeAuthority,
+    );
     const assetDownload = factories.createAssetDownloadPort(
       pool,
       objectStore.store,

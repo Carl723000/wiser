@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 67c77778
+lastReviewedCommit: cbad44a3349273c2393998e88f7c47a5867d7b00
 ---
 
 ## What runs today
@@ -645,7 +645,13 @@ Candidate relationship content lives in the ingestion domain, separately from pu
 
 Migration 0044 separates immutable content revisions, fixed evidence, frozen relation/source responsibility and append-only decisions. A revision starts at PENDING_REVIEW; CONFIRMED is a candidate decision, not professional APPROVED or publication. Independent decisions require a non-delegated human who is neither the relation submitter/delegator nor any relevant source submitter/delegator. WITHDRAWN is limited to the responsible proposer while pending; REVOKED follows confirmation. Revision and decisionVersion remain separate, with decisionVersion 0 meaning no decision.
 
-The internal fixed-pin reader uses the caller's scoped PostgreSQL client and current authorization context. It requires the exact historical content revision and its actual latest decision version, then returns bounded fixed candidate/asset/record/hash dependencies. Empty relation selections remain empty; missing, changed or unreadable material is rejected rather than substituted. Existing candidate/source RLS is rechecked for every dependency. This carrier and reader do not activate public relationship commands, grant source access, enable published projection or establish full A7 acceptance. Actual PostgreSQL, current Auth, concurrency, public write execution and browser evidence remain separate requirements.
+The internal fixed-pin reader uses the caller's scoped PostgreSQL client and current authorization context. It requires the exact historical content revision and its actual latest decision version, then returns bounded fixed candidate/asset/record/hash dependencies. Empty relation selections remain empty; missing, changed or unreadable material is rejected rather than substituted. Existing candidate/source RLS is rechecked for every dependency. The six candidate relationship commands now use this separate carrier; they grant no source access or published projection. Actual PostgreSQL, current Auth, concurrency, public write execution and browser evidence remain separate acceptance requirements.
+
+### Candidate relationship commands
+
+The six 1.0.0 IDs data.ingestion.candidate.relations.create/get/list/review/withdraw/rebind are individually registered and admitted for managed access. Create assigns identities on the server. Get fixes both content revision and actual decisionVersion. List requires a complete finite source manifest, returns whole latest revisions within 100 members/1 MiB, and binds its cursor to actor/delegator, purpose, current resource authority and sources. One unreadable member rejects the complete request.
+
+Writes reuse transactional idempotency, audit and Outbox with trusted immutable responsibility. Independent review excludes all relation/source submitters and delegators and forbids delegated decisions. Withdrawal requires the responsible proposer and a pending decision. Explicit rebind persists a complete old-to-new evidence mapping through 0048 and creates a new pending revision with decisionVersion 0, preserving old content and decisions. Existing scopes and source RLS remain; limits stay 100/64/256 KiB/100,000 bytes. UUID identity fields are normalized; original excerpts and locators are unchanged. Synthetic executor tests are not native SQL/Auth acceptance.
 
 ### Fixed-reference internal composition
 
@@ -672,3 +678,13 @@ The shared command executor retries `data.operation.cancel` once only after Post
 The public executor locks the ingestion session before jobs and the operation. A native direct-helper deadlock probe has a different entry path; fault-injected executor tests establish bounded recovery, not HTTP deadlock reproduction or removal of the lock cycle. Live Auth/HTTP and concurrent database acceptance remain separate.
 
 Candidate intake reading lists existing saved topics with their actual v1/v2 version and restores them through topic.list/open. The optional `candidateTopic` link uses the server-authorized fixed request even without a current candidate; it omits the ordinary intake summary. Full-spec and manifest checks run before and after reads and on visible-page recovery. UNAVAILABLE, changed pins or lost authority clear materials, titles, counts and fixed references. Cross-intake or cancelled proposals retain the adopted reading owner. Topic reading preserves the complete v2 question, period and pins; edit/save, original download and native raster actions remain unavailable there. Legacy `candidateView` links and their original authorization remain unchanged. No browser pin bootstrap or topic creation is added. Synthetic transport/component verification is separate from real account, HTTP and native browser acceptance.
+
+## Candidate followups and whole-record correction
+
+Private `ingestion.candidate_followup` roots keep original source, rule version, reason and creation responsibility immutable. Append-only events derive current state, assignee, cumulative evidence and all historical responsibilities. Supplements first pass standard candidate intake; spatial correction explicitly links whole old/new geometry, source CRS, original hash and actual locator without inventing component identities.
+
+The technical lifecycle is `OPEN → WORKING → REVIEW_PENDING → CLOSED`. Closing resolves a technical issue only. Independent review excludes every creator, handler, handoff target, supplementer, actual source submitter and delegator. Entire-task and history reads require current access to every original/supplemental source. The five operations reuse existing transactions, idempotency, Audit and Outbox; see [REST](/en/protocols/data-rest/#candidate-followups).
+
+Candidate followup evidence comparison canonicalizes only identity UUID spelling. Hashes, literal locators, source CRS, geometry and original values stay unchanged. Create and same-key replay use the same canonical identity. Incremental migration 0049 adds a duplicate-denial guard while retaining 0047 append-only events, source checks and historic bytes; only the existing managed API gets exact execution access to its two private helpers. Native SQL and browser acceptance remain separate evidence.
+
+Candidate reading and the nine-question gap inspector reuse one followup panel. Only explicitly declared fixed candidate references are selectable; published works and local work IDs are not converted into candidate identity. New followups obtain original hashes from current candidate reads. Supplements may select another candidate in the current manifest; whole-record corrections select old/new records and correspondence explicitly. A same-origin BFF invokes the existing five capabilities, while current identity, project, purpose, role and each source remain server-authorized. Mutations retain UUID idempotency and the current version. Inputs are limited to 128 KiB and outputs to 2 MiB. Displaying independent-review actions supplies no reviewer authority. Component, native SQL, HTTP and browser acceptance remain separate.

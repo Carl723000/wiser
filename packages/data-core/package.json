@@ -10,7 +10,8 @@
     "./measurement-comparison": "./src/measurement-comparison.ts",
     "./candidate-monthly-projection": "./src/candidate-monthly-projection.ts",
     "./candidate-conversion": "./src/candidate-conversion.ts",
-    "./candidate-relations": "./src/candidate-relations.ts"
+    "./candidate-relations": "./src/candidate-relations.ts",
+    "./candidate-followups": "./src/candidate-followups.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

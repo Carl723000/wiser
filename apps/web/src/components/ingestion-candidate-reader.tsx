@@ -29,6 +29,7 @@ import {
   type CandidateReadAction,
   type CandidateSavedPages,
 } from '@/lib/ingestion-candidate-reader';
+import { CandidateFollowupPanel } from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
 import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
@@ -1219,6 +1220,20 @@ function CandidateSession({
               )}
             </details>
           </section>
+          <details className={styles.savedSection}>
+            <summary>{getDictionary(locale).candidateFollowups.title}</summary>
+            <CandidateFollowupPanel
+              locale={locale}
+              ruleId="candidate-reader-evidence"
+              ruleVersion={assets.parserVersion}
+              references={manifest.map((item) => ({
+                reference: item,
+                label: item.ingestionId,
+              }))}
+              readOnly={readOnly || topicMode}
+              parentBusy={busy}
+            />
+          </details>
           <div
             className={styles.tabs}
             role="tablist"

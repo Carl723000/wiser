@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## Start with the two PostgreSQL boundaries
@@ -279,7 +279,13 @@ After 0043, append 0044_ingestion_candidate_relations.sql and rerun runtime prov
 
 The provision exception runs after common grants: API receives only SELECT/INSERT on these four tables; shared runtime and Worker grants are removed, and UPDATE/DELETE remain unavailable. Invoker guards have no SECURITY DEFINER bypass. Same tenant/project/relation transaction-level advisory locks serialize revision/decision validation without granting UPDATE just to lock immutable rows. The revision chain, decision primary key, expected decision version and transition guards remain authoritative; locks do not supply authorization. A hash collision only adds contention. Commands touching multiple relations must acquire them in consistent order, retain bounded statement/transaction timeouts, and handle transactional failure rather than assume lock acquisition proves success.
 
-Conditional ingestion-candidate-relations.spec.ts exercises real cumulative migrations, legal FINGERPRINTED/CLEAN/versionless source fixtures, twice-applied role narrowing, independent confirmation/revocation, complete responsibility exclusions, current authority withdrawal, explicit predecessors and immutability. Ordinary unit runs skip these PostgreSQL cases; skips do not prove SQL syntax, RLS, concurrency or live Auth. Do not reset preview data or rewrite an applied checksum. Public relationship write executors are not activated by this storage slice. Recovery disables the new entrypoints while preserving revision/decision history.
+Conditional ingestion-candidate-relations.spec.ts exercises real cumulative migrations, legal FINGERPRINTED/CLEAN/versionless source fixtures, twice-applied role narrowing, independent confirmation/revocation, complete responsibility exclusions, current authority withdrawal, explicit predecessors and immutability. Ordinary unit runs skip these PostgreSQL cases; skips do not prove SQL syntax, RLS, concurrency or live Auth. Do not reset preview data or rewrite an applied checksum. Public candidate executors now use the same carrier and the additive 0048 mapping gate.
+
+### Candidate evidence rebind mappings (0048)
+
+Append 0048_candidate_relation_rebind.sql through the Data checksum runner after the earlier additive sequence, then reapply runtime provisioning. All applied migration bytes, including 0044, remain unchanged. The FORCE RLS mapping table fixes scoped prior/new revisions and the complete evidence multiset. Its invoker insert guard checks same relation/lineage, immediate predecessor, current owner/maintainer and both complete source sets. A deferred constraint requires the mapping before any new revision commits, without backfilling old rows. Repeated provisioning restores API SELECT/INSERT only and removes inherited Worker/shared-runtime access. No UPDATE/DELETE or SECURITY DEFINER bypass is added.
+
+The existing serial ingestion-candidate-relations.spec.ts entry now includes missing/false mapping, independent-reader write denial, old confirmed history/new undecided revision, immutability, expiry and twice-applied least privilege. Its three conditional native cases require an isolated migrated PostgreSQL; unit skips do not pass them. Recovery disables the new entrypoints while preserving revision/decision history.
 
 ## Historical READY candidate reads (0045)
 
@@ -294,3 +300,11 @@ Append `0046_ingestion_candidate_topics.sql` after 0044/0045 through the existin
 The existing metadata role keeps NOLOGIN, NOINHERIT and NOBYPASSRLS. Provisioning grants it only `SELECT(view_id)` for a requested, original-owner, live v2 receipt under same project/purpose/security/policy/deadline guards. The API's broad content role is not given an unavailable-row policy; no SECURITY DEFINER is introduced. Reprovisioning first clears prior metadata table grants and reapplies these column limits. Saved configuration remains immutable and updates remain limited to revoked_at.
 
 `ingestion-candidate-topics.spec.ts` is in the same serial isolated PostgreSQL CI list. With `WISER_DATA_PG_INTEGRATION=1` and the migrated disposable database it checks strict versions/bounds, P1→P2 historical bootstrap and scope restoration, cancellation closure, v1 title-row isolation, exact owner/delegator and one-ID receipt, forbidden content columns, expiry and actual non-BYPASS roles. Unit runs skip both database cases; this is not SQL/RLS/Auth acceptance. No preview reset, real-source approval or deployment follows from registration.
+
+## Candidate followup migration 0047
+
+Additive `0047_candidate_followups.sql` creates private roots and append-only events while retaining earlier migration bytes. Event triggers verify version, handling responsibility, every current source and independent review, then update only the derived current snapshot. Original source/creation responsibility, direct updates, deletes and event history rewrites remain protected.
+
+Both tables use forced RLS, invoker functions and exact API table/column grants. Runtime provision clears broad inherited worker, metadata and public grants without new global roles. Static checks are separate from the conditional native cases in `ingestion-candidate-followups.spec.ts`, covering actual RLS, full responsibilities/delegation, version races and supplemental-source loss; database acceptance requires executing them against an isolated database.
+
+Followup commands canonicalize only UUID identity spelling while preserving literal hashes, locators, source CRS and geometry; same-key replay compares the same canonical identity. Increment 0049 rejects spelling-only duplicates within an event and across cumulative evidence after 0047 source, responsibility, version and append-only guards. Only the existing API receives exact private-function execution; prior migrations and rows remain intact. Native SQL, HTTP and browser evidence remain separate checks.

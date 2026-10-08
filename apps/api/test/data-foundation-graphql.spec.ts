@@ -714,3 +714,111 @@ it.each(['dataIngestionCandidateTopics', 'dataIngestionCandidateTopic'])(
     });
   },
 );
+
+it.each([
+  ['create', 'mutation', 'createDataIngestionCandidateFollowup'],
+  ['get', 'query', 'dataIngestionCandidateFollowup'],
+  ['list', 'query', 'dataIngestionCandidateFollowups'],
+  ['act', 'mutation', 'actDataIngestionCandidateFollowup'],
+  ['review', 'mutation', 'reviewDataIngestionCandidateFollowup'],
+] as const)(
+  'dispatches private candidate followup %s through its exact authenticated Capability',
+  async (operation, kind, field) => {
+    const source = {
+      reference: {
+        kind: 'ingestion-candidate',
+        ingestionId: INGESTION_ID,
+        processingBatchId: OPERATION_ID,
+        reviewHash: 'a'.repeat(64),
+      },
+      assetId: DATA_ITEM_ID,
+      sourceHash: 'b'.repeat(64),
+      locator: `asset:${DATA_ITEM_ID}`,
+    };
+    const input =
+      operation === 'create'
+        ? {
+            type: 'GAP',
+            source,
+            ruleId: 'coverage',
+            ruleVersion: '1',
+            reason: 'missing month',
+          }
+        : operation === 'list'
+          ? { ...source.reference, first: 2 }
+          : operation === 'get'
+            ? { followupId: VERSION_ID }
+            : operation === 'act'
+              ? {
+                  followupId: VERSION_ID,
+                  expectedVersion: 1,
+                  action: 'CLAIM',
+                  note: 'take ownership',
+                }
+              : {
+                  followupId: VERSION_ID,
+                  expectedVersion: 4,
+                  decision: 'CLOSE',
+                  note: 'independent check',
+                };
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({ marker: operation }),
+    );
+    const { app } = appWith({ handler: { execute } });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(kind === 'mutation'),
+      payload: {
+        query: `${kind} Followup($input:JSON!){${field}(input:$input)}`,
+        variables: { input },
+      },
+    });
+    expect(responseErrors(response)).toBeUndefined();
+    expect(response.json()).toMatchObject({
+      data: { [field]: { marker: operation } },
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityId: `data.ingestion.candidate.followup.${operation}`,
+        input,
+        requestContext,
+        ...(kind === 'mutation' ? { idempotencyKey: IDEMPOTENCY_KEY } : {}),
+      }),
+    );
+  },
+);
+
+it.each(['dataIngestionCandidateFollowups', 'dataIngestionCandidateFollowup'])(
+  'rechecks every source for each private followup %s alias',
+  async (field) => {
+    let count = 0;
+    const execute = vi.fn((_input: ExecuteDataCapabilityInput) =>
+      Promise.resolve({ current: ++count }),
+    );
+    const { app } = appWith({ handler: { execute } });
+    const input = field.endsWith('Followups')
+      ? {
+          kind: 'ingestion-candidate',
+          ingestionId: INGESTION_ID,
+          processingBatchId: OPERATION_ID,
+          reviewHash: 'a'.repeat(64),
+          first: 2,
+        }
+      : { followupId: VERSION_ID };
+    const response = await app.inject({
+      method: 'POST',
+      url: '/graphql',
+      headers: headers(),
+      payload: {
+        query: `query Followup($input:JSON!){a:${field}(input:$input) b:${field}(input:$input)}`,
+        variables: { input },
+      },
+    });
+    expect(responseErrors(response)).toBeUndefined();
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(response.json()).toMatchObject({
+      data: { a: { current: 1 }, b: { current: 2 } },
+    });
+  },
+);

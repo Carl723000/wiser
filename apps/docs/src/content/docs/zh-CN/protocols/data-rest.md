@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## 协议边界
@@ -484,11 +484,13 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 
 Registry 将这一严格查询映射为 `GET /api/data/v1/ingestions/:ingestionId/candidates/:processingBatchId/:preparedAssetId/provenance`，`kind` 与 `reviewHash` 保留为查询参数。受管准入仅增加该能力 ID。标准处理器保留仅含哈希的审计，传输返回前再次核对当前权限，并使用 `no-store` 响应。窄读沿用维护者（`data.operation.read` 与 `data.ingestion.write`）或独立人类审核者（`data.operation.read` 与 `data.publish`）资格，不新增 scope。Worker 已接入声明冻结、独立清单核对及同事务写入的私有转换端口；默认没有受信适配器时保留 `UNVERIFIABLE/TOOL_UNAVAILABLE`。真实受信 O → R′ 转换、Auth／PostgreSQL／RLS／HTTP 及原 A13 验收仍未核实；本地注册接线不等于服务已运行。
 
-### 候选关系载体：内部检查点
+### 候选关系命令（1.0）
 
 candidate-relations 契约／载体固定范围内的 relationId、lineageId、内容修订／supersedesId、映射／规则版本、完整候选来源证据及不可变提交责任。原上限保持：每命令100次修订、每关系64项证据、命令256 KiB、单关系100,000 UTF-8字节。候选决定使用 CONFIRMED／REJECTED／CORRECTION_REQUIRED／REVOKED／WITHDRAWN，不映射为已发布 APPROVED；独立审核排除全部固定关系／来源提交者及委托人。
 
-宿主专用固定 pin 读取器核对确切内容修订与实际当前决定版本，并返回有界固定来源依赖。本片不增加公开路由、Capability ID、scope 或受管白名单；既有 REST 已发布关系及 v1 保存视图不变。公开候选创建／审核／重新绑定、幂等事务写入及真实 Auth／SQL／浏览器仍需后续接线与验收，内部 provider 测试不能证明命令已可调用。
+六项精确ID `data.ingestion.candidate.relations.create/get/list/review/withdraw/rebind` 使用 `/api/data/v1/ingestion-candidate-relations` 下的POST路由：创建位于根路径，列表位于 `/list`，单件读／审核／撤回／再绑定分别位于 `/:relationId/read`、`/:relationId/review`、`/:relationId/withdraw`、`/:relationId/rebind`。get／list仍为只读，以严格JSON承载有限清单，避免100项引用进入网址。路径提供relationId，请求体固定revision、decisionVersion及完整references。创建仅含proposals，身份由服务器生成；再绑定另含replacement及完整的 `{from,to}` 证据mapping；审核含status和rationale，撤回含rationale。命令要求UUID幂等键，乐观版本用明确pin，不使用If-Match。
+
+读取沿既有data.operation.read；create／withdraw／rebind还须data.ingestion.write；review须data.publish及非委托独立人类。精确准入不授予来源：首次调用、翻页及重放均重核全部来源与不可变责任。列表返回最多100条完整最新修订及1 MiB；写上限保留100条／64证据／256 KiB／100,000字节。0048再绑定保留旧历史，新修订回待审。只规范身份UUID，证据原文保持。既有已发布API不变，真实SQL／Auth／HTTP／浏览器另行验收。
 
 ### 固定引用的内部接线
 
@@ -515,3 +517,23 @@ candidate-relations 契约／载体固定范围内的 relationId、lineageId、�
 ### 取消命令恢复
 
 既有取消命令在PostgreSQL死锁回滚已确认后，可重试一次完整事务，保留同一幂等键并重新检查当前请求范围、责任与版本。第二次死锁及其他数据库错误沿用既有脱敏错误，不改变路由、请求、响应、准入或SQL契约。详见[取消命令死锁恢复](/architecture/data-foundation/#取消命令死锁恢复)。
+
+## 候选跟进
+
+| 方法 | 路径                                                            | 操作                             |
+| ---- | --------------------------------------------------------------- | -------------------------------- |
+| POST | `/api/data/v1/ingestion-candidate-followups`                    | 创建私有缺口或整记录更正任务     |
+| GET  | `/api/data/v1/ingestion-candidate-followups`                    | 按固定候选引用分页读取           |
+| GET  | `/api/data/v1/ingestion-candidate-followups/:followupId`        | 读取整单及完整追加历史           |
+| POST | `/api/data/v1/ingestion-candidate-followups/:followupId/act`    | 办理、交接、补证、提交复核或重开 |
+| POST | `/api/data/v1/ingestion-candidate-followups/:followupId/review` | 独立技术关闭或退回               |
+
+创建输入为 `type: GAP | CORRECTION`、`source`、`ruleId`、`ruleVersion`、`reason`；来源包含固定 `reference`、`assetId`、原件 `sourceHash`、实际 `locator`，空间更正还须有 `recordId`、整条 `geometry` 与 `sourceCrs`。只有资产时定位值为 `asset:<assetId>`，不伪造记录定位。补证须先取得标准接收产生的固定候选。
+
+办理输入含 `followupId`、`expectedVersion`、`note` 和 `action`：`CLAIM`、`HANDOFF`、`SUPPLEMENT`、`SUBMIT_REVIEW`、`REOPEN`。交接只提供 `targetActorId`；补证提供 `evidence`，整记录更正另提供 `correction: {scope: WHOLE_RECORD, old, new, mappingReason}`。复核使用 `decision: CLOSE | RETURN`。写操作要求 UUID `Idempotency-Key`；办理与复核还要求与输入版本一致的 `If-Match: "vN"`。
+
+列表 GET 使用 `kind=ingestion-candidate`、`ingestionId`、`processingBatchId`、`reviewHash`，可加 `state`、`first`（最大 100）及 `after`。每单最多 200 个事件，累计补证最多 64 项，写输入不超过 128 KiB，读取响应不超过 2 MB；溢出拒绝，不把截断历史伪装成完整。游标绑定调用方、用途、项目和当前授权，不能跨身份复用。
+
+创建/办理要求 `data.operation.read` 与 `data.ingestion.write`，复核要求 `data.operation.read` 与 `data.publish` 及独立未委托人类；读取还须当前维护或复核资格。每次访问和幂等重放均核原来源及所有累计证据。返回 `technicalOnly: true`，关闭不会批准专业事实、发布资料或增加访问许可。
+
+候选跟进命令仅统一 UUID 身份大小写，保留哈希、原文定位、坐标系和几何字面；同键重放按同一规范身份比较。0049在0047既有来源、责任、版本和追加事件守卫之后，另拒绝单事件及累计证据中的身份拼写重复。只给既有 API 精确私有函数执行权限，不改旧迁移或既有行；本机原生SQL、HTTP和浏览器仍需分别核验。

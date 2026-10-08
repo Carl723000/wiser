@@ -18,7 +18,7 @@ checkPaths:
   - apps/mcp/**
   - apps/telemetry-ingress/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## Where access starts
@@ -297,3 +297,9 @@ GoTrue v2.195.0 may automatically reuse an existing client consent for the same 
 The signed-in account control opens `/[locale]/account/agents`. It shows the most recently updated 100 owned connections, project labels where still visible, the optional expiry and current status. An untimed connection displays “Until you disconnect”; older timed connections retain their expiry. Missing project membership does not prevent disconnecting. Supabase client names are untrusted text; the page does not render provider links or credentials.
 
 Disconnect submits an explicit same-origin POST. The server verifies the current session, reloads owned connections and derives the OAuth client from that record, never from browser input. It revokes the WISER connection first, then clears that user's Supabase grant. Provider failure leaves access stopped and offers a retry; it is not reported as complete. An already absent provider grant is an idempotent success. The bounded form rejects duplicate or extra fields, foreign/null Origin and oversized bodies. The page uses `same-origin` referrer policy for native forms; decisions are uncached and use `no-referrer`. After disconnection the user restarts authorization in the original client and explicitly chooses the project again.
+
+## Candidate assignment eligibility
+
+Candidate handoff accepts `targetActorId` only. A server-only Auth adapter reads existing active human actors, memberships, role scopes, expiry and resource authority within the caller's current tenant, project and purpose. Assignment eligibility is not a target Session and creates no account, role or grant. Unknown or unadmitted targets fail closed without exposing account details.
+
+The Data transaction rechecks actual candidate access for every source under the target's current context, then reloads Auth eligibility after appending handoff. Shared project membership is insufficient. Automatic handoff currently admits existing human maintainers; agent/service handlers continue to use their verified current delegation, and review always requires a non-delegated independent human.

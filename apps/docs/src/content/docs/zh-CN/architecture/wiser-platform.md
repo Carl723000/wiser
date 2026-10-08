@@ -18,7 +18,7 @@ checkPaths:
   - infrastructure/**
   - supabase/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## 决策摘要
@@ -101,3 +101,7 @@ Core 必须纯净确定性；Application 承担用例、Ports 和 Capability Han
 ## 验证边界
 
 平台边界通过可执行命令证明，而不是靠文档宣称。`pnpm verify` 覆盖格式、lint、类型、单元/组件测试、build 与 Compose config；Supabase、Data、浏览器、可观测性和文档治理还有各自的聚焦门禁。完整矩阵见[测试与验证](/development/testing/)。
+
+## 候选技术闭环的职责
+
+候选跟进属于 Data Foundation 的既有候选治理流程，不新增业务系统或身份源。私有跟进与事件由独立 Data PostgreSQL 保存；目标交接资格仍由统一 Auth 控制面提供。技术关闭不会发布资料、批准专业事实或授予访问权限。

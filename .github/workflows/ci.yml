@@ -296,6 +296,7 @@ jobs:
           packages/data-infra/test/migrations/ingestion-candidate-topics.spec.ts
           packages/data-infra/test/migrations/ingestion-candidate.spec.ts
           packages/data-infra/test/migrations/ingestion-candidate-relations.spec.ts
+          packages/data-infra/test/migrations/ingestion-candidate-followups.spec.ts
           apps/api/test/data-managed-operation-reads.integration.spec.ts
 
       - name: Verify Data Worker commit against real PostgreSQL

@@ -11,7 +11,11 @@ export type CandidateRasterBand = keyof typeof RETAINED_RASTER_HASHES;
 export const CANDIDATE_RASTER_BANDS = ['B03', 'B8A', 'SCL', 'TCI'] as const;
 export const CANDIDATE_RASTER_MAX_COMPRESSED_BYTES = 16 * 1024 * 1024;
 export const CANDIDATE_RASTER_MAX_CELLS = 4096;
-const GRID = { columns: 1080, rows: 1292 } as const;
+export const CANDIDATE_RASTER_GRID = { columns: 1080, rows: 1292 } as const;
+export const CANDIDATE_RASTER_AFFINE = [
+  20, 0, 385180, 0, -20, 4481920,
+] as const;
+const GRID = CANDIDATE_RASTER_GRID;
 
 export interface CandidateRasterWindow {
   readonly row: number;

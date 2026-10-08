@@ -34,6 +34,10 @@ import {
 } from '@wiser/platform-auth';
 import { PlatformAgentResourceSchema } from '@wiser/platform-contracts';
 
+import {
+  createCandidateFollowupAssigneeAuthority,
+  type CandidateFollowupAssigneeAuthority,
+} from './candidate-followup-assignee-authority.js';
 import { createPlatformAgentConnectionsModule } from './agent-connections-module.js';
 import { createPlatformDelegationModule } from './delegation-module.js';
 import { createProjectInvitationSender } from './project-invitation-sender.js';
@@ -80,6 +84,7 @@ export interface PlatformAuthRuntimeFactories {
 }
 
 export interface PlatformAuthRuntime {
+  readonly candidateFollowupAssigneeAuthority?: CandidateFollowupAssigneeAuthority;
   readonly module: WiserApiModule | null;
   readonly resolver: PlatformPrincipalResolver | null;
   readonly resourceAdministrationModule?: (
@@ -387,6 +392,11 @@ export function createPlatformAuthRuntimeFromEnvironment(
   return {
     module,
     resolver,
+    candidateFollowupAssigneeAuthority:
+      createCandidateFollowupAssigneeAuthority(
+        database.transactionPool,
+        database.resourceAuthorityQuery,
+      ),
     ...(config.projectAccess
       ? {
           resourceAdministrationModule: (

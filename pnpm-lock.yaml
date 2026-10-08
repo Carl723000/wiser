@@ -300,6 +300,9 @@ importers:
       next:
         specifier: 16.3.3
         version: 16.3.3(@playwright/test@1.63.0)(@types/node@24.13.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      proj4:
+        specifier: 2.22.0
+        version: 2.22.0(geotiff@3.0.5)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -5912,6 +5915,12 @@ packages:
       }
     engines: { node: '>=18' }
 
+  mgrs@1.0.0:
+    resolution:
+      {
+        integrity: sha512-awNbTOqCxK1DBGjalK3xqWIstBZgN6fxsMSiXLs9/spqWkF2pAhb2rrYCFSsr1/tT7PhcDGjZndG8SWYn0byYA==,
+      }
+
   micromark-core-commonmark@2.0.3:
     resolution:
       {
@@ -6659,6 +6668,17 @@ packages:
         integrity: sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==,
       }
     engines: { node: '>= 0.6.0' }
+
+  proj4@2.22.0:
+    resolution:
+      {
+        integrity: sha512-MVvH09QrYm3A235rcX39WDiCKanrBiblu28l0KYIn/B2DofmYhvP/LLS43kE66jNDfx/P1l/nah3JmsAq8UgbQ==,
+      }
+    peerDependencies:
+      geotiff: '*'
+    peerDependenciesMeta:
+      geotiff:
+        optional: true
 
   property-information@7.2.0:
     resolution:
@@ -7777,6 +7797,12 @@ packages:
       }
     engines: { node: '>=8' }
     hasBin: true
+
+  wkt-parser@1.5.6:
+    resolution:
+      {
+        integrity: sha512-cqHU3lzGt/gt2OqIORP0uVy5yeOX43WABmgFkmJsmcqH3HhQo9PiJG6ftytwGKmpQUbegeX7+pQc2BuNCRfcrw==,
+      }
 
   wrappy@1.0.2:
     resolution:
@@ -11217,6 +11243,8 @@ snapshots:
 
   merge-descriptors@2.0.0: {}
 
+  mgrs@1.0.0: {}
+
   micromark-core-commonmark@2.0.3:
     dependencies:
       decode-named-character-reference: 1.3.0
@@ -11786,6 +11814,13 @@ snapshots:
   process-warning@5.1.0: {}
 
   process@0.11.10: {}
+
+  proj4@2.22.0(geotiff@3.0.5):
+    dependencies:
+      mgrs: 1.0.0
+      wkt-parser: 1.5.6
+    optionalDependencies:
+      geotiff: 3.0.5
 
   property-information@7.2.0: {}
 
@@ -12526,6 +12561,8 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  wkt-parser@1.5.6: {}
 
   wrappy@1.0.2: {}
 

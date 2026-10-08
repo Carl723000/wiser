@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool, type PoolClient } from 'pg';
 import { describe, expect, it } from 'vitest';
+import { commitAfterAdvisoryWait } from './support/native-advisory-race.js';
 
 async function denied(
   client: PoolClient,
@@ -530,5 +531,492 @@ describe('private candidate relation carrier PostgreSQL authority', () => {
         await pool.end();
       }
     },
+  );
+  it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
+    'requires complete immutable rebind mapping and preserves scoped prior content and decisions',
+    async () => {
+      const pool = new Pool({
+          connectionString: process.env['DATA_TEST_DATABASE_URL'],
+          max: 1,
+        }),
+        client = await pool.connect();
+      const tenant = randomUUID(),
+        project = randomUUID(),
+        sourceActor = randomUUID(),
+        proposer = randomUUID(),
+        reviewer = randomUUID(),
+        revision = randomUUID(),
+        relation = randomUUID(),
+        lineage = randomUUID();
+      try {
+        await client.query('begin');
+        await client.query(
+          "select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),set_config('wiser.max_security_level','L0_PUBLIC',true),set_config('wiser.policy_version','1',true)",
+          [tenant, project],
+        );
+        await client.query(
+          "insert into ingestion.project_review_policy(tenant_id,project_id,mode,revision) values($1,$2,'REQUIRE_INDEPENDENT_REVIEW',1)",
+          [tenant, project],
+        );
+        const source = await freezeRelationSource(
+          client,
+          tenant,
+          project,
+          sourceActor,
+        );
+        const sourceHash = (
+          await client.query<{ hash: string }>(
+            "select encode(source_hash,'hex') hash from ingestion.candidate_asset where processing_batch_id=$1 and asset_id=$2",
+            [source.reference.processingBatchId, source.asset],
+          )
+        ).rows[0]!['hash'];
+        const content = {
+          subject: {
+            key: 'upstream',
+            label: 'Synthetic upstream',
+            kind: 'EXTERNAL_ENTITY',
+            externalId: null,
+          },
+          predicate: 'FLOWS_TO',
+          object: {
+            key: 'downstream',
+            label: 'Synthetic downstream',
+            kind: 'EXTERNAL_ENTITY',
+            externalId: null,
+          },
+          qualifiers: {
+            measure: null,
+            reportedValue: '',
+            reportedLimit: null,
+            unit: null,
+            observedAt: null,
+            missing: false,
+            spatialScope: null,
+            limitations: [],
+            reportedConclusion: null,
+            context: {
+              recordNature: 'SOURCE_RELATION',
+              timeRole: 'PUBLICATION_TIME',
+              validFrom: null,
+              validTo: null,
+              locationRole: 'REFERENCE_LOCATION',
+              applicability: 'Watercourse background only',
+            },
+          },
+          generation: { method: 'SOURCE_FIELDS', model: null },
+          evidence: [
+            {
+              reference: source.reference,
+              assetId: source.asset,
+              recordId: source.record,
+              sourceHash,
+              locator: 'table:1/row:1',
+              excerpt: 'synthetic',
+              polarity: 'SUPPORTS',
+            },
+          ],
+        };
+        const insert = `insert into ingestion.candidate_relation_revision(revision_id,tenant_id,project_id,relation_id,lineage_id,revision,supersedes_id,ingestion_id,processing_batch_id,review_hash,mapping_version,rule_version,content,submitted_by_actor_id,submitted_actor_type,purpose,security_level,policy_version)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,decode($10,'hex'),'synthetic-map/1','candidate-relations/1',$11::jsonb,$12,'human','candidate-review','L0_PUBLIC',1)`;
+
+        const setActor = async (
+          actor: string,
+          maintenance = true,
+          review = true,
+        ) => {
+          await client.query('reset role');
+          await client.query(
+            "select set_config('wiser.actor_id',$1,true),set_config('wiser.actor_type','human',true),set_config('wiser.delegated_by','',true),set_config('wiser.candidate_maintainer',$2,true),set_config('wiser.candidate_reviewer',$3,true),set_config('wiser.purpose','candidate-review',true),set_config('wiser.candidate_purpose','candidate-review',true),set_config('wiser.candidate_view_deadline','infinity',true),set_config('wiser.resource_scope','',true)",
+            [actor, String(maintenance), String(review)],
+          );
+          await client.query('set local role wiser_data_api');
+        };
+        const values = (id: string, n: number, previous: string | null) => [
+          id,
+          tenant,
+          project,
+          relation,
+          lineage,
+          n,
+          previous,
+          source.reference.ingestionId,
+          source.reference.processingBatchId,
+          source.reference.reviewHash,
+          JSON.stringify(content),
+          proposer,
+        ];
+        await setActor(proposer);
+        await client.query(insert, values(revision, 1, null));
+        await setActor(reviewer, false, true);
+        await client.query(
+          "insert into ingestion.candidate_relation_decision(tenant_id,project_id,revision_id,decision_version,decision,actor_id,actor_type,purpose,rationale) values($1,$2,$3,1,'CONFIRMED',$4,'human','candidate-review','Synthetic independent confirmation')",
+          [tenant, project, revision, reviewer],
+        );
+        await setActor(proposer);
+        await client.query('savepoint missing_rebind');
+        await client.query(insert, values(randomUUID(), 2, revision));
+        await expect(
+          client.query(
+            'set constraints ingestion.candidate_relation_rebind_complete immediate',
+          ),
+        ).rejects.toMatchObject({ code: '42501' });
+        await client.query('rollback to savepoint missing_rebind');
+        const next = randomUUID(),
+          mapping = [{ from: content.evidence[0], to: content.evidence[0] }];
+        await client.query(insert, values(next, 2, revision));
+        const addMapping =
+          'insert into ingestion.candidate_relation_rebind(tenant_id,project_id,revision_id,previous_revision_id,mapping) values($1,$2,$3,$4,$5::jsonb)';
+        await denied(client, addMapping, [
+          tenant,
+          project,
+          next,
+          revision,
+          JSON.stringify([
+            {
+              from: content.evidence[0],
+              to: { ...content.evidence[0], sourceHash: '0'.repeat(64) },
+            },
+          ]),
+        ]);
+        await setActor(reviewer, false, true);
+        await denied(client, addMapping, [
+          tenant,
+          project,
+          next,
+          revision,
+          JSON.stringify(mapping),
+        ]);
+        await setActor(proposer);
+        await client.query(addMapping, [
+          tenant,
+          project,
+          next,
+          revision,
+          JSON.stringify(mapping),
+        ]);
+        await client.query(
+          'set constraints ingestion.candidate_relation_rebind_complete immediate',
+        );
+        expect(
+          (
+            await client.query(
+              'select revision,content from ingestion.candidate_relation_revision where relation_id=$1 order by revision',
+              [relation],
+            )
+          ).rows,
+        ).toEqual([
+          { revision: 1, content },
+          { revision: 2, content },
+        ]);
+        expect(
+          (
+            await client.query(
+              'select decision_version,decision from ingestion.candidate_relation_decision where revision_id=$1',
+              [revision],
+            )
+          ).rows,
+        ).toEqual([{ decision_version: 1, decision: 'CONFIRMED' }]);
+        expect(
+          (
+            await client.query(
+              'select revision_id from ingestion.candidate_relation_decision where revision_id=$1',
+              [next],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        expect(
+          (
+            await client.query(
+              'select mapping from ingestion.candidate_relation_rebind where revision_id=$1',
+              [next],
+            )
+          ).rows[0],
+        ).toEqual({ mapping });
+        await client.query('reset role');
+        await client.query(
+          'grant update,delete on ingestion.candidate_relation_rebind to wiser_data_api',
+        );
+        await client.query('set local role wiser_data_api');
+        expect(
+          (
+            await client.query(
+              'delete from ingestion.candidate_relation_rebind where revision_id=$1 returning revision_id',
+              [next],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        await client.query(
+          "select set_config('wiser.candidate_view_deadline','2000-01-01T00:00:00Z',true)",
+        );
+        expect(
+          (
+            await client.query(
+              'select revision_id from ingestion.candidate_relation_rebind where revision_id=$1',
+              [next],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        await client.query('reset role');
+        const sql = readFileSync(
+            new URL(
+              '../../../../infrastructure/data-foundation/postgres/provision-runtime.sql',
+              import.meta.url,
+            ),
+            'utf8',
+          ),
+          start = sql.indexOf(
+            "if to_regclass('ingestion.candidate_relation_rebind') is not null then",
+          ),
+          end = sql.indexOf('end if;', start);
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        for (let pass = 0; pass < 2; pass++) {
+          await client.query(
+            'grant select,insert,update,delete on ingestion.candidate_relation_rebind to wiser_data_runtime',
+          );
+          await client.query(
+            `do $$ begin ${sql.slice(start, end + 7)} end $$;`,
+          );
+          for (const role of [
+            'wiser_data_api',
+            'wiser_data_worker',
+            'wiser_data_runtime',
+            'wiser_data_metadata',
+            'wiser_data_gis',
+          ])
+            expect(
+              (
+                await client.query(
+                  "select has_table_privilege($1,'ingestion.candidate_relation_rebind','SELECT') reads,has_table_privilege($1,'ingestion.candidate_relation_rebind','INSERT') inserts,has_table_privilege($1,'ingestion.candidate_relation_rebind','UPDATE') updates,has_table_privilege($1,'ingestion.candidate_relation_rebind','DELETE') deletes",
+                  [role],
+                )
+              ).rows[0],
+            ).toEqual({
+              reads: role === 'wiser_data_api',
+              inserts: role === 'wiser_data_api',
+              updates: false,
+              deletes: false,
+            });
+        }
+      } finally {
+        await client.query('rollback');
+        client.release();
+        await pool.end();
+      }
+    },
+  );
+});
+
+/** Committed synthetic fixtures require a disposable database without consumers. */
+describe('private candidate relation native PostgreSQL concurrency', () => {
+  it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
+    'serializes competing independent reviews at one decision version across two connections',
+    async () => {
+      const pool = new Pool({
+        connectionString: process.env['DATA_TEST_DATABASE_URL'],
+        max: 2,
+        connectionTimeoutMillis: 5_000,
+      });
+      const clients: PoolClient[] = [];
+      try {
+        const winner = await pool.connect();
+        clients.push(winner);
+        const contender = await pool.connect();
+        clients.push(contender);
+        const tenant = randomUUID(),
+          project = randomUUID(),
+          sourceActor = randomUUID(),
+          proposer = randomUUID(),
+          reviewer = randomUUID(),
+          otherReviewer = randomUUID(),
+          revision = randomUUID(),
+          relation = randomUUID(),
+          lineage = randomUUID();
+        const setScope = async (
+          client: PoolClient,
+          actor: string,
+          maintenance: boolean,
+        ) => {
+          await client.query('set local role wiser_data_api');
+          await client.query(
+            "select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),set_config('wiser.max_security_level','L0_PUBLIC',true),set_config('wiser.policy_version','1',true),set_config('wiser.actor_id',$3,true),set_config('wiser.actor_type','human',true),set_config('wiser.delegated_by','',true),set_config('wiser.candidate_maintainer',$4,true),set_config('wiser.candidate_reviewer','true',true),set_config('wiser.purpose','candidate-review',true),set_config('wiser.candidate_purpose','candidate-review',true),set_config('wiser.candidate_view_deadline',(clock_timestamp()+interval '1 hour')::text,true),set_config('wiser.resource_scope','',true)",
+            [tenant, project, actor, String(maintenance)],
+          );
+        };
+        await winner.query('begin');
+        await winner.query("set local statement_timeout='5s'");
+        await winner.query(
+          "select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),set_config('wiser.max_security_level','L0_PUBLIC',true),set_config('wiser.policy_version','1',true)",
+          [tenant, project],
+        );
+        await winner.query(
+          "insert into ingestion.project_review_policy(tenant_id,project_id,mode,revision) values($1,$2,'REQUIRE_INDEPENDENT_REVIEW',1)",
+          [tenant, project],
+        );
+        const source = await freezeRelationSource(
+          winner,
+          tenant,
+          project,
+          sourceActor,
+        );
+        const sourceHash = (
+          await winner.query<{ hash: string }>(
+            "select encode(source_hash,'hex') hash from ingestion.candidate_asset where processing_batch_id=$1 and asset_id=$2",
+            [source.reference.processingBatchId, source.asset],
+          )
+        ).rows[0]!.hash;
+        const content = {
+          subject: {
+            key: 'upstream',
+            label: 'Synthetic upstream',
+            kind: 'EXTERNAL_ENTITY',
+            externalId: null,
+          },
+          predicate: 'FLOWS_TO',
+          object: {
+            key: 'downstream',
+            label: 'Synthetic downstream',
+            kind: 'EXTERNAL_ENTITY',
+            externalId: null,
+          },
+          qualifiers: {
+            measure: null,
+            reportedValue: '',
+            reportedLimit: null,
+            unit: null,
+            observedAt: null,
+            missing: false,
+            spatialScope: null,
+            limitations: [],
+            reportedConclusion: null,
+            context: {
+              recordNature: 'SOURCE_RELATION',
+              timeRole: 'PUBLICATION_TIME',
+              validFrom: null,
+              validTo: null,
+              locationRole: 'REFERENCE_LOCATION',
+              applicability: 'Watercourse background only',
+            },
+          },
+          generation: { method: 'SOURCE_FIELDS', model: null },
+          evidence: [
+            {
+              reference: source.reference,
+              assetId: source.asset,
+              recordId: source.record,
+              sourceHash,
+              locator: 'table:1/row:1',
+              excerpt: 'synthetic',
+              polarity: 'SUPPORTS',
+            },
+          ],
+        };
+        await setScope(winner, proposer, true);
+        await winner.query(
+          `insert into ingestion.candidate_relation_revision(revision_id,tenant_id,project_id,relation_id,lineage_id,revision,supersedes_id,ingestion_id,processing_batch_id,review_hash,mapping_version,rule_version,content,submitted_by_actor_id,submitted_actor_type,purpose,security_level,policy_version)
+           values($1,$2,$3,$4,$5,1,null,$6,$7,decode($8,'hex'),'synthetic-map/1','candidate-relations/1',$9::jsonb,$10,'human','candidate-review','L0_PUBLIC',1)`,
+          [
+            revision,
+            tenant,
+            project,
+            relation,
+            lineage,
+            source.reference.ingestionId,
+            source.reference.processingBatchId,
+            source.reference.reviewHash,
+            JSON.stringify(content),
+            proposer,
+          ],
+        );
+        await winner.query('set constraints all immediate');
+        // Commit only disposable synthetic setup, so both backends see it.
+        await winner.query('commit');
+        for (const [client, actor] of [
+          [winner, reviewer],
+          [contender, otherReviewer],
+        ] as const) {
+          await client.query('begin isolation level read committed');
+          await client.query("set local statement_timeout='5s'");
+          await client.query(
+            "set local idle_in_transaction_session_timeout='10s'",
+          );
+          await setScope(client, actor, false);
+        }
+        const decide = (
+          client: PoolClient,
+          actor: string,
+          decision: 'CONFIRMED' | 'REJECTED',
+        ) =>
+          client.query(
+            `insert into ingestion.candidate_relation_decision(tenant_id,project_id,revision_id,decision_version,decision,actor_id,actor_type,purpose,rationale)
+             values($1,$2,$3,1,$4,$5,'human','candidate-review','Synthetic independent concurrent review')`,
+            [tenant, project, revision, decision, actor],
+          );
+        await commitAfterAdvisoryWait(
+          winner,
+          contender,
+          () => decide(winner, reviewer, 'CONFIRMED'),
+          () => decide(contender, otherReviewer, 'REJECTED'),
+        );
+        await winner.query('begin');
+        await winner.query("set local statement_timeout='5s'");
+        await setScope(winner, reviewer, false);
+        expect(
+          (
+            await winner.query(
+              'select decision_version,decision,actor_id from ingestion.candidate_relation_decision where revision_id=$1 order by decision_version',
+              [revision],
+            )
+          ).rows,
+        ).toEqual([
+          { decision_version: 1, decision: 'CONFIRMED', actor_id: reviewer },
+        ]);
+        expect(
+          (
+            await winner.query(
+              'select revision,content from ingestion.candidate_relation_revision where revision_id=$1',
+              [revision],
+            )
+          ).rows,
+        ).toEqual([{ revision: 1, content }]);
+        expect(
+          (
+            await winner.query(
+              'select responsibility_kind,actor_id,actor_type,delegated_by from ingestion.candidate_relation_responsibility where revision_id=$1 order by responsibility_kind',
+              [revision],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            responsibility_kind: 'RELATION',
+            actor_id: proposer,
+            actor_type: 'human',
+            delegated_by: null,
+          },
+          {
+            responsibility_kind: 'SOURCE',
+            actor_id: sourceActor,
+            actor_type: 'human',
+            delegated_by: null,
+          },
+        ]);
+        expect(
+          (
+            await winner.query(
+              'select count(*)::integer count from ingestion.candidate_relation_evidence where revision_id=$1',
+              [revision],
+            )
+          ).rows,
+        ).toEqual([{ count: 1 }]);
+        await winner.query('rollback');
+      } finally {
+        for (const client of clients) {
+          await client.query('rollback').catch(() => undefined);
+          client.release();
+        }
+        await pool.end();
+      }
+    },
+    15_000,
   );
 });

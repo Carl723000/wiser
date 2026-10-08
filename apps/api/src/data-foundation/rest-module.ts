@@ -48,6 +48,8 @@ const VERSIONED_COMMANDS = new Set<DataCapabilityId>([
   'data.ingestion.approve',
   'data.ingestion.reject',
   'data.operation.cancel',
+  'data.ingestion.candidate.followup.act',
+  'data.ingestion.candidate.followup.review',
 ]);
 const ARRAY_QUERY_FIELDS = new Set([
   'businessDomains',
@@ -341,16 +343,47 @@ function requestHeadersSchema(
 function capabilityRouteSchema(capabilityId: DataCapabilityId) {
   const definition = DATA_CAPABILITY_REGISTRY[capabilityId];
   const input = jsonSchema(definition.inputSchema);
-  const properties = record(input['properties']);
-  if (properties === null) {
-    throw new Error(`Capability ${capabilityId} requires an object input.`);
-  }
+  const unionKey = Array.isArray(input['oneOf'])
+    ? 'oneOf'
+    : Array.isArray(input['anyOf'])
+      ? 'anyOf'
+      : null;
+  const branches =
+    unionKey === null ? [input] : (input[unionKey] as unknown[]).map(record);
+  if (
+    branches.some(
+      (branch) => branch === null || record(branch['properties']) === null,
+    )
+  )
+    throw new Error(
+      `Capability ${capabilityId} requires strict object input branches.`,
+    );
+  const objects = branches as Readonly<Record<string, unknown>>[];
   const pathNames = pathParameterNames(definition.restMapping.path);
-  const transportNames = Object.keys(properties).filter(
-    (name) => !pathNames.includes(name),
+  const projectedParams = objects.map((branch) =>
+    projectObjectSchema(branch, pathNames),
   );
-  const params = projectObjectSchema(input, pathNames);
-  const transport = projectObjectSchema(input, transportNames);
+  if (
+    projectedParams.some(
+      (params) => JSON.stringify(params) !== JSON.stringify(projectedParams[0]),
+    )
+  )
+    throw new Error(
+      `Capability ${capabilityId} requires identical path parameters in every branch.`,
+    );
+  const params = projectedParams[0] ?? null;
+  const transportBranches = objects.map((branch) =>
+    projectObjectSchema(
+      branch,
+      Object.keys(record(branch['properties'])!).filter(
+        (name) => !pathNames.includes(name),
+      ),
+    ),
+  );
+  const transport =
+    unionKey === null
+      ? transportBranches[0]
+      : { [unionKey]: transportBranches };
   const response =
     definition.restMapping.responseMode === 'SSE'
       ? { type: 'string', contentMediaType: 'text/event-stream' }

@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## HTTP adapter only
@@ -333,8 +333,16 @@ Registered tool `data_ingestion_candidate_provenance_get` calls the standard HTT
 
 ### Candidate relationship carrier boundary
 
-This internal carrier adds no MCP tool or direct database access. Existing published relationship tools retain their strict contracts. Candidate revision/decision pins must later be resolved through the verified HTTP capability and current authority for all fixed sources, never echoed from tool parameters. CONFIRMED does not publish or professionally approve a relationship; delegated agents cannot perform independent human decisions. Public candidate commands, managed admission and live HTTP/Auth/RLS acceptance remain unwired by this storage/reader slice.
+Registry-derived data_ingestion_candidate_relations_create/get/list/review/withdraw/rebind tools use the same strict authenticated HTTP routes. Get/list are readonly despite POST transport; writes retain command idempotency. Arguments provide no trusted actor, purpose, source grant or direct database access. Current authority and the complete source manifest are checked on reads/retries, with all relation/source submitters and delegators excluded from independent human decisions. Explicit rebind creates a new pending revision and keeps old history plus its immutable mapping. CONFIRMED is not professional APPROVED or publication. Existing published tools remain; discovery/forwarding tests are not native SQL/Auth/browser acceptance.
 
 ## Complete candidate topic tools
 
 The registry-derived `data_ingestion_candidate_topic_create/list/open` tools use the same authenticated HTTP topic endpoints and strict schemas. Create is an idempotent command; list/open are readonly queries. A tool argument supplies no trusted identity, adopted-rule authority or direct store access. List distinguishes v1/v2 and open preserves either fixed READABLE state or the authorized original saver's minimal UNAVAILABLE receipt. Use the returned fresh candidate page request through its existing HTTP-backed get/records/geometry tool. The existing candidate-view revoke tool handles both versions explicitly; no new revoke ID is added. Missing host authority remains a failure. Tool discovery and synthetic forwarding checks are not database/Auth/browser acceptance.
+
+## Candidate followup tools
+
+Five synchronous tools use the full prefix `data_ingestion_candidate_followup_` followed by `create`, `get`, `list`, `act` or `review`. Skill operations are `data.ingestion.candidate.followup.<operation>`. All reuse the Capability registry schemas and the unified HTTP authority/state machine.
+
+The installed SDK advertises object schemas. For create/act only, the MCP adapter projects the fixed union's known fields into a strict object and revalidates the entire command with the original discriminated union before HTTP forwarding. An irrelevant action field, forged target authority or missing whole-record geometry is still rejected. Every command requires `idempotencyKey`; act/review forward `expectedVersion` as `If-Match`. This transport projection changes no identity or permission.
+
+Handlers use their existing authorized identity; target eligibility is resolved server-side. An agent/service may act on authorized sources through verified delegation but cannot independently review. Outputs mark `technicalOnly: true`; technical closure is not professional approval or publication. See [REST](/en/protocols/data-rest/#candidate-followups).

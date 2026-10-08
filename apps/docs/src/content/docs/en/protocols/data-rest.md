@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## Protocol boundary
@@ -488,7 +488,9 @@ The registry maps this strict query to `GET /api/data/v1/ingestions/:ingestionId
 
 The candidate-relations contracts/carrier fix scoped relationId, lineageId, content revision/supersedesId, mapping/rule versions, full candidate/source evidence and immutable submission responsibility. Limits remain 100 revisions per command, 64 evidence items per relation, a 256 KiB command and 100,000 UTF-8 bytes per relation. Candidate decisions use CONFIRMED/REJECTED/CORRECTION_REQUIRED/REVOKED/WITHDRAWN; none maps to published APPROVED. Independent review excludes all fixed relation/source submitting and delegator identities.
 
-The host-only fixed-pin reader resolves exact content revisions and actual current decision versions, with bounded fixed source dependencies. It adds no public route, Capability ID, scope or managed allowlist entry. Existing REST published relationships and saved v1 views remain unchanged; public candidate create/review/rebind execution, idempotent transactional writes and actual Auth/SQL/browser acceptance require subsequent verified wiring. Internal provider tests cannot establish that these commands are callable.
+The six exact IDs data.ingestion.candidate.relations.create/get/list/review/withdraw/rebind use POST routes under /api/data/v1/ingestion-candidate-relations: create at the base, list at /list, and get/review/withdraw/rebind at /:relationId/read, /:relationId/review, /:relationId/withdraw, /:relationId/rebind. Get/list remain readonly queries; POST carries their finite strict JSON manifest without URL-sized arrays. The path supplies relationId; the body fixes revision, decisionVersion and complete references. Create takes proposals with server-generated identities; rebind adds replacement and an explicit complete mapping of {from,to} evidence. Review adds status/rationale; withdrawal adds rationale. Commands require UUID Idempotency-Key; optimistic versions use the body pin, not If-Match.
+
+Reads use existing data.operation.read; create/withdraw/rebind additionally require data.ingestion.write, review requires data.publish and a non-delegated independent human. Exact ID admission never grants source access: first call, pagination and retries recheck every fixed source and immutable responsibility. List returns whole latest revisions, at most 100/1 MiB. Writes retain 100 proposals, 64 evidence, 256 KiB and 100,000-byte content limits. Rebind through 0048 preserves prior history and resets the new revision to pending. Identity UUIDs are normalized without changing evidence strings. Published APIs remain unchanged; native SQL/Auth/HTTP/browser acceptance is separate.
 
 ### Fixed-reference internal composition
 
@@ -515,3 +517,23 @@ Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DAT
 ### Cancellation recovery
 
 The existing cancellation command may retry one complete transaction after a confirmed PostgreSQL deadlock rollback, retaining the same idempotency key and repeating current context, ownership and version checks. A second deadlock and other database failures keep the existing sanitized error. No route, request, response, admission or SQL contract changes; see [cancellation deadlock recovery](/architecture/data-foundation/#cancellation-deadlock-recovery).
+
+## Candidate followups
+
+| Method | Path                                                            | Operation                                           |
+| ------ | --------------------------------------------------------------- | --------------------------------------------------- |
+| POST   | `/api/data/v1/ingestion-candidate-followups`                    | Create a private gap/correction                     |
+| GET    | `/api/data/v1/ingestion-candidate-followups`                    | List a fixed candidate's tasks                      |
+| GET    | `/api/data/v1/ingestion-candidate-followups/:followupId`        | Read the whole task and complete history            |
+| POST   | `/api/data/v1/ingestion-candidate-followups/:followupId/act`    | Claim, handoff, supplement, submit review or reopen |
+| POST   | `/api/data/v1/ingestion-candidate-followups/:followupId/review` | Independently close or return                       |
+
+Create uses `type: GAP | CORRECTION`, `source`, `ruleId`, `ruleVersion`, `reason`. Source contains a fixed `reference`, `assetId`, original `sourceHash` and actual `locator`; spatial correction also requires `recordId`, whole `geometry` and `sourceCrs`. Asset-only gaps use `asset:<assetId>` without inventing a record locator. Supplements must first become standard intake candidates.
+
+Act uses `followupId`, `expectedVersion`, `note`, and `action: CLAIM | HANDOFF | SUPPLEMENT | SUBMIT_REVIEW | REOPEN`. Handoff accepts `targetActorId` only. Supplement includes `evidence`; whole-record correction also requires `correction: {scope: WHOLE_RECORD, old, new, mappingReason}`. Review uses `decision: CLOSE | RETURN`. Writes require UUID `Idempotency-Key`; act/review also require matching `If-Match: "vN"`.
+
+GET list uses `kind=ingestion-candidate`, `ingestionId`, `processingBatchId`, `reviewHash`, optional `state`, `first` (maximum 100) and `after`. Each task allows at most 200 events and 64 cumulative supplements. Command input is capped at 128 KiB, reads at 2 MB; overflow fails instead of silently truncating complete history. Cursors bind identity, purpose, project and current authorization.
+
+Create/act require `data.operation.read` plus `data.ingestion.write`; review requires `data.operation.read`, `data.publish` and an independent non-delegated human. Reads also require current maintenance/review eligibility. Every read and replay rechecks all current sources. Outputs mark `technicalOnly: true`; closing grants no professional approval, publication or source permission.
+
+Followup commands canonicalize only UUID identity spelling while preserving literal hashes, locators, source CRS and geometry; same-key replay compares the same canonical identity. Increment 0049 rejects spelling-only duplicates within an event and across cumulative evidence after 0047 source, responsibility, version and append-only guards. Only the existing API receives exact private-function execution; prior migrations and rows remain intact. Native SQL, HTTP and browser evidence remain separate checks.

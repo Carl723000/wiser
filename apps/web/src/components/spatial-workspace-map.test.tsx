@@ -235,6 +235,103 @@ const props = {
   onSelect: vi.fn(),
   webGLAvailable: true,
 };
+
+it('delivers a WGS84 canvas pick only to an active inspection reader while retaining ordinary record selection', () => {
+  const onCoordinate = vi.fn();
+  const { rerender } = render(
+    <SpatialWorkspaceMap {...props} {...{ onCoordinate }} webGLAvailable />,
+  );
+  const event = {
+    lngLat: { lng: 116.7, lat: 40.1 },
+    point: { x: 400, y: 230 },
+    features: [],
+  };
+  act(() => (probe.props.onClick as (event: unknown) => void)(event));
+  expect(onCoordinate).toHaveBeenCalledWith([116.7, 40.1]);
+  rerender(
+    <SpatialWorkspaceMap
+      {...props}
+      {...{ onCoordinate }}
+      active={false}
+      webGLAvailable
+    />,
+  );
+  act(() => (probe.props.onClick as (event: unknown) => void)(event));
+  expect(onCoordinate).toHaveBeenCalledTimes(1);
+  expect(props.onSelect).not.toHaveBeenCalled();
+});
+
+it('draws one-finger WGS84 inspection bounds and discards a cancelled or multi-touch gesture', () => {
+  const onBounds = vi.fn();
+  render(
+    <SpatialWorkspaceMap
+      {...props}
+      drawBounds
+      onBounds={onBounds}
+      webGLAvailable
+    />,
+  );
+  const touch = (lng: number, lat: number, count = 1) => ({
+    lngLat: { lng, lat },
+    points: Array.from({ length: count }, () => ({ x: 0, y: 0 })),
+    originalEvent: { touches: { length: count } },
+    preventDefault: vi.fn(),
+  });
+  const start = touch(116.5, 40.1),
+    end = touch(116.6, 40.2);
+  act(() => (probe.props.onTouchStart as (event: unknown) => void)?.(start));
+  act(() => (probe.props.onTouchMove as (event: unknown) => void)?.(end));
+  act(() => (probe.props.onTouchEnd as (event: unknown) => void)?.(end));
+  expect(onBounds).toHaveBeenCalledWith([116.5, 40.1, 116.6, 40.2]);
+  act(() => (probe.props.onTouchStart as (event: unknown) => void)?.(start));
+  act(() => (probe.props.onTouchCancel as (event: unknown) => void)?.(end));
+  act(() => (probe.props.onTouchEnd as (event: unknown) => void)?.(end));
+  act(() =>
+    (probe.props.onTouchStart as (event: unknown) => void)?.(
+      touch(116.5, 40.1, 2),
+    ),
+  );
+  act(() => (probe.props.onTouchEnd as (event: unknown) => void)?.(end));
+  expect(onBounds).toHaveBeenCalledTimes(1);
+});
+
+it('keeps WGS84 picking and returned TCI cell colors in the existing planar fallback', () => {
+  const onCoordinate = vi.fn();
+  const inspectionGeometry = {
+    type: 'FeatureCollection' as const,
+    features: [
+      {
+        type: 'Feature' as const,
+        properties: { kind: 'pixel' as const, color: 'rgb(43,72,45)' },
+        geometry: features.features[0].geometry,
+      },
+    ],
+  };
+  const { container } = render(
+    <SpatialWorkspaceMap
+      {...props}
+      camera={{ ...camera, bearing: 0, pitch: 0 }}
+      features={{ type: 'FeatureCollection', features: [] }}
+      mode="2d"
+      {...{ onCoordinate, inspectionGeometry }}
+      webGLAvailable={false}
+    />,
+  );
+  fireEvent.click(screen.getByLabelText(copy.planarView), {
+    clientX: 400,
+    clientY: 230,
+  });
+  expect(onCoordinate).toHaveBeenCalledTimes(1);
+  const coordinate = onCoordinate.mock.calls[0][0] as readonly [number, number];
+  expect(coordinate[0]).toBeCloseTo(116.5, 10);
+  expect(coordinate[1]).toBeCloseTo(39.5, 10);
+  expect(
+    container
+      .querySelector('[data-inspection-kind="pixel"] path')
+      ?.getAttribute('fill'),
+  ).toBe('rgb(43,72,45)');
+  expect(props.onSelect).not.toHaveBeenCalled();
+});
 beforeEach(() => {
   probe.custom = null;
   probe.images = [];

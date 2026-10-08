@@ -22,7 +22,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## Backend topology
@@ -171,3 +171,9 @@ pnpm verify           # repository convergence after required focused and integr
 A pure EXCON protocol change normally needs no Data gate, and a pure Data change should not erase Supabase merely “for safety.” Combine the gates only for cross-system identity or complete-stack behavior.
 
 See [adding a WISER system](/en/development/adding-a-system/) for the complete new-system and module-registration checklist.
+
+## Candidate followup runtime
+
+`ingestion-candidate-followups.ts` composes synchronous `create`, `get`, `list`, `act` and `review` Capabilities. Commands reuse `CommandTransactions`; idempotency binds actor/type/delegator/purpose and replay rechecks every current source. Lists use a fixed candidate reference, stable scoped cursors and bounded pages rather than unbounded history reads.
+
+`candidate-followup-assignee-authority.ts` reuses the existing Auth pool/resource loader; client input supplies no target role, actor type or scope. In-memory executor probes cover successful and denied paths but do not prove native Auth/HTTP, PostgreSQL RLS, committed transactions or concurrency.

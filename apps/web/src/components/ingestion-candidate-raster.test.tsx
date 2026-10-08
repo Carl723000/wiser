@@ -14,7 +14,21 @@ import {
 } from '@/lib/candidate-raster-window';
 import { readCandidateRasterWindow } from '@/lib/candidate-raster-original-reader';
 import { CandidateReaderError } from '@/lib/ingestion-candidate-reader';
+import {
+  nativeRasterCoordinate,
+  nativeRasterToMap,
+} from '@/lib/candidate-raster-map';
 import { IngestionCandidateReader } from './ingestion-candidate-reader';
+
+const rasterMapProbe = vi.hoisted(() => ({
+  props: {} as Record<string, unknown>,
+}));
+vi.mock('./spatial-workspace-map', () => ({
+  SpatialWorkspaceMap: (props: Record<string, unknown>) => {
+    rasterMapProbe.props = props;
+    return <div data-testid="candidate-raster-map-engine" />;
+  },
+}));
 
 vi.mock('@/lib/candidate-raster-original-reader', () => ({
   readCandidateRasterWindow: vi.fn(),
@@ -201,6 +215,139 @@ it('collects four distinct authorized asset pages and reads this selection in na
   expect(values.textContent).toContain('1713');
   expect(values.textContent).toContain('EPSG:32650');
   expect(screen.queryByText('Published version')).toBeNull();
+});
+
+it('verifies the fixed four-file candidate before showing the map, then reads and recalls the same AOI', async () => {
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  expect(screen.queryByTestId('candidate-raster-map-engine')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open raster map' }));
+  await screen.findByTestId('candidate-raster-map-engine');
+  expect(rasterRead).not.toHaveBeenCalled();
+  formWindow(650, 535, 6, 7);
+  fireEvent.click(screen.getByRole('button', { name: 'View selected window' }));
+  expect(
+    screen
+      .getByTestId('candidate-raster-map-selection')
+      .getAttribute('data-native-window'),
+  ).toBe('650,535,6,7');
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await screen.findByTestId('candidate-raster-window-values');
+  expect(rasterRead.mock.calls[0][0].window).toEqual({
+    row: 650,
+    column: 535,
+    rows: 6,
+    columns: 7,
+  });
+  const ring = screen
+    .getByTestId('candidate-raster-map-selection')
+    .getAttribute('data-selection-ring');
+  expect(
+    screen
+      .getByTestId('candidate-raster-window-values')
+      .querySelectorAll('tbody tr'),
+  ).toHaveLength(42);
+  const drawn = rasterMapProbe.props.inspectionGeometry as {
+    features: { properties: { kind: string; color?: string } }[];
+  };
+  const pixels = drawn.features.filter(
+    (feature) => feature.properties.kind === 'pixel',
+  );
+  expect(pixels).toHaveLength(42);
+  expect(
+    pixels.every((feature) => feature.properties.color === 'rgb(43,72,45)'),
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'View whole grid' }));
+  fireEvent.click(screen.getByRole('button', { name: 'View selected window' }));
+  expect(
+    screen
+      .getByTestId('candidate-raster-map-selection')
+      .getAttribute('data-selection-ring'),
+  ).toBe(ring);
+});
+
+it('converts a map pixel and bounded AOI to native integer windows without reading until requested', async () => {
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Open raster map' }));
+  await screen.findByTestId('candidate-raster-map-engine');
+  act(() =>
+    (rasterMapProbe.props.onCoordinate as (point: number[]) => void)(
+      nativeRasterToMap(nativeRasterCoordinate(77.5, 318.5)),
+    ),
+  );
+  expect(
+    screen.getByRole<HTMLInputElement>('spinbutton', {
+      name: 'Native row (0-based)',
+    }).value,
+  ).toBe('77');
+  expect(
+    screen.getByRole<HTMLInputElement>('spinbutton', {
+      name: 'Native column (0-based)',
+    }).value,
+  ).toBe('318');
+  fireEvent.click(screen.getByRole('button', { name: 'Select bounded area' }));
+  const a = nativeRasterToMap(nativeRasterCoordinate(650.5, 535.5)),
+    b = nativeRasterToMap(nativeRasterCoordinate(655.5, 541.5));
+  act(() =>
+    (rasterMapProbe.props.onBounds as (bounds: number[]) => void)([
+      Math.min(a[0], b[0]),
+      Math.min(a[1], b[1]),
+      Math.max(a[0], b[0]),
+      Math.max(a[1], b[1]),
+    ]),
+  );
+  expect(
+    screen
+      .getByTestId('candidate-raster-map-selection')
+      .getAttribute('data-native-window'),
+  ).toBe('650,535,6,7');
+  expect(rasterRead).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  await screen.findByTestId('candidate-raster-window-values');
+  expect(rasterRead.mock.calls[0][0].window).toEqual({
+    row: 650,
+    column: 535,
+    rows: 6,
+    columns: 7,
+  });
+});
+
+it('rejects outside and excessive map selections without original reads or retaining a readable previous window', async () => {
+  render(<IngestionCandidateReader reference={reference} locale="en" />);
+  await openInspector();
+  fireEvent.click(screen.getByRole('button', { name: 'Open raster map' }));
+  await screen.findByTestId('candidate-raster-map-engine');
+  const pageReads = fetchMock.mock.calls.length;
+  act(() =>
+    (rasterMapProbe.props.onCoordinate as (point: number[]) => void)([116, 39]),
+  );
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'outside the raster grid',
+  );
+  expect(
+    screen
+      .getByTestId('candidate-raster-map-selection')
+      .getAttribute('data-native-window'),
+  ).toBe('');
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  expect(rasterRead).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(pageReads);
+  formWindow(77, 318, 1, 1);
+  fireEvent.click(screen.getByRole('button', { name: 'Select bounded area' }));
+  const a = nativeRasterToMap(nativeRasterCoordinate(100.5, 100.5)),
+    b = nativeRasterToMap(nativeRasterCoordinate(164.5, 164.5));
+  act(() =>
+    (rasterMapProbe.props.onBounds as (bounds: number[]) => void)([
+      Math.min(a[0], b[0]),
+      Math.min(a[1], b[1]),
+      Math.max(a[0], b[0]),
+      Math.max(a[1], b[1]),
+    ]),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Read native window' }));
+  expect(rasterRead).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(pageReads);
 });
 
 it('clears returned pixels and candidate links when a fresh raster read is denied', async () => {

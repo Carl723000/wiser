@@ -37,6 +37,16 @@ import {
   type OpenIngestionCandidateTopicOutputSchema,
 } from '@wiser/data-contracts';
 
+import { candidateSavedReferenceKey } from '@wiser/data-contracts';
+import { sameCandidateFollowupEvidence } from './candidate-followup-reader';
+import type {
+  CandidateFollowupOutputSchema,
+  ListCandidateFollowupsOutputSchema,
+} from '@wiser/data-contracts/candidate-followups';
+type CandidateFollowupOutput =
+  | ReturnType<typeof CandidateFollowupOutputSchema.parse>
+  | ReturnType<typeof ListCandidateFollowupsOutputSchema.parse>;
+
 import {
   parseCapabilityRegistry,
   parseDataCatalogPage,
@@ -195,6 +205,12 @@ export interface DataFoundationDal {
     input: unknown,
     signal?: AbortSignal,
   ): Promise<CandidateTopicOutput>;
+  candidateFollowup(
+    action: 'create' | 'get' | 'list' | 'act' | 'review',
+    input: unknown,
+    idempotencyKey?: string,
+    signal?: AbortSignal,
+  ): Promise<CandidateFollowupOutput>;
   operation(operationId: string): Promise<OperationDto>;
   operationEvents(
     operationId: string,
@@ -989,6 +1005,93 @@ export function createDataFoundationDal(
           )
             throw new DataFoundationApiError('contract', 502);
           return page;
+        },
+      );
+    },
+    candidateFollowup: async (action, input, idempotencyKey, signal) => {
+      if (!['create', 'get', 'list', 'act', 'review'].includes(action))
+        throw new DataFoundationApiError('invalid-request', 422);
+      const command =
+        action === 'create' || action === 'act' || action === 'review';
+      if (command && (!idempotencyKey || !UUID_PATTERN.test(idempotencyKey)))
+        throw new DataFoundationApiError('invalid-request', 422);
+      const capability =
+        DATA_CAPABILITY_REGISTRY[`data.ingestion.candidate.followup.${action}`];
+      const checked = capability.inputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data as Record<string, unknown>;
+      let path: string = capability.restMapping.path;
+      const body: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (path.includes(`:${key}`)) {
+          if (typeof value !== 'string')
+            throw new DataFoundationApiError('invalid-request', 422);
+          path = path.replace(`:${key}`, encodeURIComponent(value));
+        } else if (key !== 'expectedVersion') body[key] = value;
+      }
+      if (!command) {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(body)) {
+          if (value === undefined) continue;
+          if (typeof value !== 'string' && typeof value !== 'number')
+            throw new DataFoundationApiError('invalid-request', 422);
+          query.set(key, String(value));
+        }
+        path += `?${query}`;
+      }
+      return parsed(
+        () =>
+          call(path, {
+            method: capability.restMapping.method as 'GET' | 'POST',
+            ...(command ? { body, idempotencyKey } : {}),
+            ...(typeof data['expectedVersion'] === 'number'
+              ? { expectedVersion: data['expectedVersion'] }
+              : {}),
+            signal,
+            responseLimitBytes: 2 * 1024 * 1024,
+          }),
+        (value) => {
+          const output = capability.outputSchema.parse(
+            value,
+          ) as CandidateFollowupOutput;
+          if ('items' in output) {
+            const reference = checked.data as ReturnType<
+              typeof IngestionCandidateReadInputSchema.parse
+            >;
+            if (
+              output.items.length > reference.first ||
+              (output.items.length === 0 && output.nextCursor !== null) ||
+              (output.nextCursor !== null &&
+                output.nextCursor === reference.after) ||
+              new Set(output.items.map((item) => item.followupId.toLowerCase()))
+                .size !== output.items.length ||
+              output.items.some(
+                (item) =>
+                  candidateSavedReferenceKey(item.source.reference) !==
+                    candidateSavedReferenceKey(reference) ||
+                  (data['state'] !== undefined && item.state !== data['state']),
+              )
+            )
+              throw new DataFoundationApiError('contract', 502);
+          } else if (action !== 'create') {
+            if (
+              typeof data['followupId'] !== 'string' ||
+              !sameUuid(output.followup.followupId, data['followupId'])
+            )
+              throw new DataFoundationApiError('contract', 502);
+          } else {
+            const original = data['source'];
+            if (
+              output.followup.type !== data['type'] ||
+              output.followup.ruleId !== data['ruleId'] ||
+              output.followup.ruleVersion !== data['ruleVersion'] ||
+              output.followup.reason !== data['reason'] ||
+              !sameCandidateFollowupEvidence(output.followup.source, original)
+            )
+              throw new DataFoundationApiError('contract', 502);
+          }
+          return output;
         },
       );
     },

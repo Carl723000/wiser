@@ -29,7 +29,7 @@ checkPaths:
   - .docpact/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## Intended use
@@ -255,3 +255,7 @@ pnpm verify            # final repository convergence
 ```
 
 Keep commits single-purpose: contracts/core, application/API, database, Worker/MCP, UI, and documentation form separate recoverable commits. A system is integrated only when its public vertical slice, negative authorization paths, and operating instructions are all verifiable.
+
+## Extending existing candidate governance
+
+Candidate followups reuse Data Foundation contracts, pure transitions, application transactions and private Data migrations. Five additive Capabilities require no new system, public Auth route or role. The composition root supplies an internal Auth eligibility port; current Data RLS rechecks source access, and its eligibility DTO is never a login credential.

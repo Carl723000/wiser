@@ -2424,3 +2424,185 @@ describe('fixed candidate topic read transport', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 });
+
+describe('fixed-source candidate followup transport', () => {
+  const source = {
+    reference: candidateReference,
+    assetId: USER_ID,
+    sourceHash: 'b'.repeat(64),
+    locator: `asset:${USER_ID}`,
+  };
+  const actor = {
+    actorId: USER_ID,
+    actorType: 'human' as const,
+    delegatedBy: null,
+    purpose: 'review',
+  };
+  const value = () => ({
+    followupId: SESSION_ID,
+    type: 'GAP',
+    state: 'OPEN',
+    rowVersion: 1,
+    source,
+    createdBy: actor,
+    evidence: [],
+    assignee: null,
+    responsibilities: [actor],
+    ruleId: 'missing-source',
+    ruleVersion: '1',
+    reason: 'Missing source',
+    createdAt: '2026-10-08T00:00:00Z',
+    technicalOnly: true,
+    events: [
+      {
+        eventId: TENANT_ID,
+        rowVersion: 1,
+        expectedVersion: 0,
+        action: 'CREATE',
+        actor,
+        target: null,
+        stateAfter: 'OPEN',
+        evidence: [],
+        correction: null,
+        note: 'Missing source',
+        createdAt: '2026-10-08T00:00:00Z',
+      },
+    ],
+  });
+  it.each(['create', 'get', 'list', 'act', 'review'] as const)(
+    'projects exact %s HTTP path and command preconditions',
+    async (action) => {
+      const inputs = {
+        create: {
+          type: 'GAP',
+          source,
+          ruleId: 'missing-source',
+          ruleVersion: '1',
+          reason: 'Missing source',
+        },
+        get: { followupId: SESSION_ID },
+        list: { ...candidateReference, first: 2, after: 'one:page/+ =' },
+        act: {
+          followupId: SESSION_ID,
+          expectedVersion: 1,
+          action: 'CLAIM',
+          note: 'Claim',
+        },
+        review: {
+          followupId: SESSION_ID,
+          expectedVersion: 1,
+          decision: 'RETURN',
+          note: 'Recheck',
+        },
+      };
+      const output =
+        action === 'list'
+          ? { items: [value()], nextCursor: null }
+          : { followup: value() };
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(output)),
+      );
+      await expect(
+        candidateDal(fetch).candidateFollowup(
+          action,
+          inputs[action],
+          SESSION_ID,
+        ),
+      ).resolves.toEqual(output);
+      const [url, init] = fetch.mock.calls[0];
+      expect(typeof url).toBe('string');
+      if (typeof url !== 'string') throw new Error('Expected an HTTP URL');
+      expect(url).toContain('/api/data/v1/ingestion-candidate-followups');
+      expect(init?.cache).toBe('no-store');
+      const headers = new Headers(init?.headers);
+      if (['act', 'review'].includes(action)) {
+        expect(headers.get('If-Match')).toBe('"v1"');
+        expect(typeof init?.body).toBe('string');
+        if (typeof init?.body !== 'string')
+          throw new Error('Expected a JSON request body');
+        expect(JSON.parse(init.body) as unknown).not.toHaveProperty(
+          'expectedVersion',
+        );
+      }
+      if (['create', 'act', 'review'].includes(action))
+        expect(headers.get('Idempotency-Key')).toBe(SESSION_ID);
+      else {
+        expect(headers.get('Idempotency-Key')).toBeNull();
+        expect(init?.body).toBeUndefined();
+      }
+    },
+  );
+  it('rejects customer authority and non-UUID idempotency without obtaining identity', async () => {
+    const auth = vi.fn(() => Promise.resolve(authClient([])));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const dal = candidateDal(fetch, {}, auth);
+    await expect(
+      dal.candidateFollowup(
+        'act',
+        {
+          followupId: SESSION_ID,
+          expectedVersion: 1,
+          action: 'HANDOFF',
+          targetActorId: USER_ID,
+          targetScope: { maintainer: true },
+          note: 'Handoff',
+        },
+        SESSION_ID,
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      dal.candidateFollowup(
+        'create',
+        {
+          type: 'GAP',
+          source,
+          ruleId: 'missing-source',
+          ruleVersion: '1',
+          reason: 'Missing',
+        },
+        'bad-key',
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(auth).not.toHaveBeenCalled();
+  });
+  it('rejects another followup and another fixed-source page', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ followup: value() }))
+      .mockResolvedValueOnce(
+        Response.json({ items: [value()], nextCursor: null }),
+      );
+    const dal = candidateDal(fetch);
+    await expect(
+      dal.candidateFollowup('get', { followupId: PROJECT_ID }),
+    ).rejects.toMatchObject({ status: 502 });
+    await expect(
+      dal.candidateFollowup('list', {
+        ...candidateReference,
+        reviewHash: 'c'.repeat(64),
+        first: 2,
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+  it('rejects repeated list cursors and truncated event history', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ items: [value()], nextCursor: 'loop' }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ followup: { ...value(), rowVersion: 2 } }),
+      );
+    const dal = candidateDal(fetch);
+    await expect(
+      dal.candidateFollowup('list', {
+        ...candidateReference,
+        first: 2,
+        after: 'loop',
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+    await expect(
+      dal.candidateFollowup('get', { followupId: SESSION_ID }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+});

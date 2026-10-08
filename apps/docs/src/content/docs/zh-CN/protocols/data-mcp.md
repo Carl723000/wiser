@@ -18,7 +18,7 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - skills/wiser-data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 69a65eb178f361127693ce8aa494223fdaf9519a
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## 只做 HTTP 适配
@@ -333,8 +333,16 @@ MCP 不替调用方保存 bearer、upload id、multipart ETag 或 Operation curs
 
 ### 候选关系载体边界
 
-内部载体不增加 MCP 工具或直接数据库访问，既有已发布关系工具继续使用原严格契约。候选修订／决定 pin 后续须经已核验的 HTTP 能力逐项解析，并核对全部固定来源当前权限，不能原样回显工具参数充当权威。CONFIRMED 不表示关系发布或专业批准，委托智能体不能作独立人类决定。本存储／读取切片尚未接通公开候选命令、受管准入及真实 HTTP／Auth／RLS 验收。
+Registry派生 `data_ingestion_candidate_relations_create/get/list/review/withdraw/rebind`，统一使用严格获权HTTP。get／list虽采用POST传输，仍为只读；写操作保留幂等。参数不提供可信主体、用途、来源grant或直接数据库入口。读取／重放复核当前权限和完整来源，独立决定排除全部关系／来源提交者及委托人。显式再绑定生成待审新修订并保留旧历史及不可变映射。CONFIRMED不等于专业APPROVED或发布，已发布工具保持；发现／转发测试不代替原生SQL／Auth／浏览器验收。
 
 ## 完整候选专题工具
 
 Registry 派生 `data_ingestion_candidate_topic_create/list/open`，使用相同鉴权 HTTP 专题接口与严格模式。创建为幂等命令，列表／重开为只读查询；工具参数不提供身份、已采用规则权威或直接存储访问。列表区分 v1／v2，重开保留固定 READABLE 状态或获准原保存者的最小 UNAVAILABLE。新分页请求仍经既有 HTTP get／records／geometry 工具执行。原候选视图撤销工具按两个版本处理，不新增撤销 ID。缺少宿主权威仍失败；工具发现和合成转发测试不等于数据库、Auth 或浏览器验收。
+
+## 候选跟进工具
+
+五项同步工具为 `data_ingestion_candidate_followup_create`、`get`、`list`、`act`、`review`（均使用同一完整前缀）。Skill 对应 `data.ingestion.candidate.followup.<operation>`，由统一 Capability registry 提供输入与输出，MCP 不创建另一份权限或状态机。
+
+当前 SDK 只展示对象模式。create／act 仅在 MCP 适配层将固定分支的已知字段投影成严格对象，并在 HTTP 转发前用原判别联合模式完整复核；动作无关字段、伪造目标资格及缺少整记录几何仍拒绝。命令都需要 `idempotencyKey`，act／review 将 `expectedVersion` 转成 `If-Match`。该传输投影不改变身份或权限。
+
+办理使用已获权调用身份；目标交接资格由服务端核实。agent/service 可以按有效委托办理已获权来源，不能执行独立复核。工具输出包含 `technicalOnly: true`；技术关闭不构成专业资料批准或发布。详情见[REST 候选跟进](/protocols/data-rest/#候选跟进)。

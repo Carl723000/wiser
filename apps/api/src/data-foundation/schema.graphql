@@ -129,8 +129,12 @@ type Query {
   dataItemVersion(id: ID!, version: ID!): DataItemVersion
   dataIngestionCandidateViews(input: JSON!): JSON!
   dataIngestionCandidateView(input: JSON!): JSON!
+  dataCandidateRelation(input: JSON!): JSON!
+  dataCandidateRelations(input: JSON!): JSON!
   dataIngestionCandidateTopics(input: JSON!): JSON!
   dataIngestionCandidateTopic(input: JSON!): JSON!
+  dataIngestionCandidateFollowup(input: JSON!): JSON!
+  dataIngestionCandidateFollowups(input: JSON!): JSON!
   dataIngestionCandidate(input: JSON!): JSON!
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
@@ -147,7 +151,14 @@ type Mutation {
   createDataReconciliation(input: JSON!): JSON!
   reviewDataReconciliation(input: JSON!): JSON!
   createDataIngestionCandidateView(input: JSON!): JSON!
+  createDataCandidateRelations(input: JSON!): JSON!
+  reviewDataCandidateRelation(input: JSON!): JSON!
+  withdrawDataCandidateRelation(input: JSON!): JSON!
+  rebindDataCandidateRelation(input: JSON!): JSON!
   createDataIngestionCandidateTopic(input: JSON!): JSON!
+  createDataIngestionCandidateFollowup(input: JSON!): JSON!
+  actDataIngestionCandidateFollowup(input: JSON!): JSON!
+  reviewDataIngestionCandidateFollowup(input: JSON!): JSON!
   revokeDataIngestionCandidateView(input: JSON!): JSON!
   createDataExploreView(input: JSON!): JSON!
   revokeDataExploreView(input: JSON!): JSON!

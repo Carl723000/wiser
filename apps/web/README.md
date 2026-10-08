@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 67c77778
+lastReviewedCommit: e7668a030b799235068d25089aafc613137c7bc2
 ---
 
 # WISER Web / 产品界面
@@ -112,3 +112,5 @@ pnpm --filter @wiser/web test:e2e
 本地规格2将“报告期”与“发布日期”“观测期”分开，沿地图、月份、阅读链接、本机场景和导出显式保存；规格1原义不变。纯候选就绪引用独立计数，不伪造已发布身份或授予访问权限。 / Local format 2 preserves Report period separately from Publication and Observation through map/month/URL/scene/export adapters. Format 1 keeps its meaning; pure candidate references retain separate counts without published identities or access grants.
 
 已有专题可在接收页“已保存专题”中读取并重开，固定深链使用`?candidateTopic=<UUID>`，与旧`candidateView`互斥。此入口恢复完整服务端专题，不显示普通接收摘要；不可用时清空资料、标题、计数和引用。专题修改／另存、原件下载与原生影像读取暂不可用，旧视图原件授权保留。 / Existing topics can be listed and reopened from intake reading or a mutually exclusive `candidateTopic` deep link. The server-authorized complete specification remains intact; unavailability clears content, titles, counts and references. Topic editing/saving, original downloads and native raster reading remain unavailable. Legacy view-original authorization is preserved. Real Auth/HTTP and native browser acceptance remain separate from synthetic tests.
+
+候选查阅与就绪缺口明细共用持久跟进面板，复用既有五项能力、幂等键、当前版本和服务端逐来源核权。补证可选择清单内另一真实候选，整记录更正保留明确新旧对应；技术办结与专业批准分开显示。 / Candidate reading and readiness gap details share the persistent followup panel, existing five capabilities, idempotency, current version and server source checks. Supplements can select another actual candidate in the manifest; whole-record corrections retain explicit correspondence. Technical closure and professional approval remain distinct.

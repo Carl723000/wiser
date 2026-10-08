@@ -19,7 +19,7 @@ checkPaths:
   - scripts/data-foundation/**
   - compose.yaml
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: afe653f892264f5fe9b26b46cb285250c3748888
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## 先区分两个 PostgreSQL 边界
@@ -279,7 +279,13 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 
 角色例外位于通用授权之后：API仅获四表 SELECT／INSERT，撤回通用 runtime 与 Worker 授权，禁止 UPDATE／DELETE。invoker 守卫不使用 SECURITY DEFINER 绕过。按同一租户／项目／关系取得事务级 advisory lock，串行核对修订与决定，无须为锁定不可变行增加 UPDATE 权限。修订链、决定主键、期望决定版本和状态守卫仍是权威约束；锁不授予权限，哈希碰撞只会增加等待。涉及多条关系的命令须按一致顺序取得锁，保留有界语句／事务期限，并处理事务失败，不能把取得锁当作写入成功。
 
-条件用例 ingestion-candidate-relations.spec.ts 在真实累积迁移下使用合法 FINGERPRINTED／CLEAN／无版本原件，检查两次角色收窄、独立确认／撤销、完整禁止自审、当前权限撤回、显式前序修订及不可变历史。普通单元运行跳过这些 PostgreSQL 用例；跳过不能证明 SQL 语法、RLS、并发或真实 Auth。不得重置预览数据或重写已应用校验和。本存储切片不启用公开关系写执行器；恢复时关闭新增入口，保留修订及决定历史。
+条件用例 ingestion-candidate-relations.spec.ts 在真实累积迁移下使用合法 FINGERPRINTED／CLEAN／无版本原件，检查两次角色收窄、独立确认／撤销、完整禁止自审、当前权限撤回、显式前序修订及不可变历史。普通单元运行跳过这些 PostgreSQL 用例；跳过不能证明 SQL 语法、RLS、并发或真实 Auth。不得重置预览数据或重写已应用校验和。公开候选执行器现复用该载体与增量0048映射门禁；恢复时关闭新增入口，保留修订及决定历史。
+
+### 候选证据再绑定映射（0048）
+
+沿Data校验和迁移器追加 `0048_candidate_relation_rebind.sql`，随后重新配置窄授权；0044及全部已应用迁移字节不改。新FORCE RLS表固定同域新旧修订及完整证据对应多重集。invoker核同一关系／谱系、直接前序、当前责任人／维护权及双方完整来源当前可读；延迟约束要求新修订提交前具有映射，不回填历史。重复provision恢复API只获SELECT／INSERT，Worker／通用runtime无权访问，不增加UPDATE／DELETE或SECURITY DEFINER绕过。
+
+既有串行 `ingestion-candidate-relations.spec.ts` 增验缺失／伪造映射、独立读者禁写、旧确认历史／新无决定修订、不可变、过期和重复最小授权。其三项条件原生用例须在已迁移的隔离PostgreSQL运行，普通单元跳过不算通过。
 
 ## READY 候选历史读取（0045）
 
@@ -294,3 +300,11 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 已有元数据角色继续 NOLOGIN、NOINHERIT、NOBYPASSRLS，仅获 `SELECT(view_id)`，并受一个请求 ID、原保存／委托责任、同项目／用途／密级／策略／期限约束。API 完整内容角色不获失效行放宽，无 SECURITY DEFINER。重新配置先清除元数据角色原表权限，再恢复上述列限界；保存配置不可改，更新仍只限 revoked_at。
 
 `ingestion-candidate-topics.spec.ts` 已加入相同串行隔离 PostgreSQL CI 清单，明确启用 `WISER_DATA_PG_INTEGRATION=1` 并使用迁移后的一次性数据库，检查严格版本／上限、P1→P2 历史启动及选择恢复、取消关闭、v1 标题行隔离、所有人／委托及单 ID 回执、禁止内容列、期限和真实 non-BYPASS 角色。单元执行跳过两项数据库用例，不算 SQL、RLS 或 Auth 通过；注册不触发预览重置、真实资料批准或部署。
+
+## 候选跟进迁移 0047
+
+增量迁移 `0047_candidate_followups.sql` 新增私有跟进与追加事件表，保留旧迁移字节。原来源与创建责任不可更改；事件触发器校验版本、办理责任、每个当前来源及独立复核，再更新当前派生快照。直接更新、删除和绕开追加事件的状态改写被拒绝，事件历史仅追加。
+
+两表使用 forced RLS、invoker 函数和 API 的精确表/列权限。运行 provision 明确清除 worker、metadata 和公共继承的宽权限，不新增全局角色。静态迁移检查与原生测试分开；`ingestion-candidate-followups.spec.ts` 的条件原生用例覆盖实际 RLS、完整责任、委托、版本并发与补证来源失效，须在隔离数据库实际执行后才可宣称数据库验收通过。
+
+候选跟进命令仅统一 UUID 身份大小写，保留哈希、原文定位、坐标系和几何字面；同键重放按同一规范身份比较。0049在0047既有来源、责任、版本和追加事件守卫之后，另拒绝单事件及累计证据中的身份拼写重复。只给既有 API 精确私有函数执行权限，不改旧迁移或既有行；本机原生SQL、HTTP和浏览器仍需分别核验。

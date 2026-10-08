@@ -29,6 +29,8 @@ const VERSIONED_COMMANDS = new Set<DataCapabilityId>([
   'data.ingestion.approve',
   'data.ingestion.reject',
   'data.operation.cancel',
+  'data.ingestion.candidate.followup.act',
+  'data.ingestion.candidate.followup.review',
 ]);
 const RESPONSE_CHARACTER_LIMIT = 32_000;
 
@@ -219,15 +221,74 @@ function resourceText(payload: JsonObject): string {
   });
 }
 
+function isObjectSchema(
+  schema: z.core.$ZodType,
+): schema is z.ZodObject<z.ZodRawShape> {
+  return schema instanceof z.ZodObject;
+}
+
 function objectSchema(id: DataCapabilityId): z.ZodObject<z.ZodRawShape> {
   const schema = DATA_CAPABILITY_REGISTRY[id].inputSchema;
-  if (!(schema instanceof z.ZodObject)) {
+  if (!isObjectSchema(schema)) {
     throw new Error(`Data Capability ${id} input must be a Zod object.`);
   }
   return schema;
 }
 
 function toolInputSchema(id: DataCapabilityId): z.ZodObject<z.ZodRawShape> {
+  if (
+    id === 'data.ingestion.candidate.followup.create' ||
+    id === 'data.ingestion.candidate.followup.act'
+  ) {
+    // The installed MCP SDK advertises only object schemas. Preserve all
+    // discovered fields while applying the original strict variant validator.
+    const original = DATA_CAPABILITY_REGISTRY[id].inputSchema;
+    if (!(original instanceof z.ZodDiscriminatedUnion)) {
+      throw new Error(
+        `Data Capability ${id} requires its fixed variant schema.`,
+      );
+    }
+    const branches = original.options;
+    const fields = new Map<string, z.ZodType[]>();
+    for (const branch of branches) {
+      if (!isObjectSchema(branch)) {
+        throw new Error(
+          `Data Capability ${id} variants must be strict objects.`,
+        );
+      }
+      for (const [key, value] of Object.entries(branch.shape)) {
+        if (!(value instanceof z.ZodType)) {
+          throw new Error(
+            `Data Capability ${id} requires full field validators.`,
+          );
+        }
+        const variants = fields.get(key) ?? [];
+        variants.push(value);
+        fields.set(key, variants);
+      }
+    }
+    const shape: Record<string, z.ZodType> = {};
+    for (const [key, variants] of fields) {
+      const field = variants.length === 1 ? variants[0]! : z.union(variants);
+      shape[key] =
+        variants.length === branches.length ? field : field.optional();
+    }
+    return z
+      .strictObject({ ...shape, idempotencyKey: IDEMPOTENCY_KEY_SCHEMA })
+      .superRefine((input, context) => {
+        const { idempotencyKey: _key, ...command } = input;
+        const result = original.safeParse(command);
+        if (!result.success) {
+          for (const issue of result.error.issues) {
+            context.addIssue({
+              code: 'custom',
+              path: issue.path,
+              message: issue.message,
+            });
+          }
+        }
+      });
+  }
   const schema = objectSchema(id);
   return DATA_CAPABILITY_REGISTRY[id].kind === 'command'
     ? schema.safeExtend({ idempotencyKey: IDEMPOTENCY_KEY_SCHEMA })

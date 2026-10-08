@@ -65,7 +65,18 @@ limit 1
 export function createPostgresResourceAuthorityLoader(
   query: ResourceAuthorityQuery,
 ) {
-  return async (context: PlatformRequestContext): Promise<unknown> => {
+  return async (context: {
+    authorization: Pick<
+      PlatformRequestContext['authorization'],
+      'tenantId' | 'projectId' | 'purpose'
+    > &
+      Partial<PlatformRequestContext['authorization']>;
+    principal: Pick<
+      PlatformRequestContext['principal'],
+      'actorId' | 'delegatedBy'
+    > &
+      Partial<PlatformRequestContext['principal']>;
+  }): Promise<unknown> => {
     const result = await query(LOAD, [
       context.authorization.tenantId,
       context.authorization.projectId,

@@ -1,0 +1,111 @@
+.panel {
+  min-width: 0;
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+.heading,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-block: 0.5rem;
+}
+.heading h4 {
+  margin: 0;
+}
+.scope {
+  color: var(--text-secondary);
+}
+.panel select,
+.panel input,
+.panel textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.3rem;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+}
+.panel button {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.35rem;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.panel button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.panel :is(button, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.panel pre {
+  max-width: 100%;
+  overflow: auto;
+  font-size: 0.85rem;
+}
+.form {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  margin-block: 0.8rem;
+  border: 0;
+}
+.task {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+.badge {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 1rem;
+}
+.badge[data-state='REVIEW_PENDING'] {
+  background: var(--warning-soft);
+}
+.error {
+  color: var(--danger);
+}
+.list,
+.history {
+  padding-inline-start: 1.25rem;
+}
+.list li {
+  margin-block: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.history li {
+  margin-block: 0.8rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.history li > span,
+.history time {
+  display: block;
+  color: var(--text-secondary);
+}
+.task dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.evidence summary {
+  font-weight: 600;
+}

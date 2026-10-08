@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## 入口与权威契约
@@ -331,7 +331,7 @@ REST、GraphQL、原文依据、STAC和地图响应在工作完成后重新解�
 
 ### 候选关系载体边界
 
-私有候选修订／决定载体与内部固定 pin 权威读取器不增加 GraphQL 字段或 mutation。既有已发布关系输入、来源版本身份及审核状态不变；候选内容修订与实际最新 decisionVersion 分开，0表示尚无候选决定。后续公开接线须经过同一严格能力处理器，并逐项核对固定来源的当前权限；resolver 不能将候选四元变成已发布版本，或把客户端 pin 当作权威结果。条件 SQL 跳过与内部读取器测试不代表 GraphQL／Auth 验收。
+查询 `dataCandidateRelation`、`dataCandidateRelations` 及mutation `createDataCandidateRelations`、`reviewDataCandidateRelation`、`withdrawDataCandidateRelation`、`rebindDataCandidateRelation`，逐项经同一handler调用六项严格候选能力。get／list重复别名不走请求内缓存。来源清单、当前权限、完整禁止自审、幂等、明确pin和上限与REST一致。内容修订与实际决定版本分开，不将候选四元或调用方pin变为已发布版本／批准。既有已发布字段保持；条件SQL跳过及合成resolver测试不代替原生GraphQL／Auth验收。
 
 ### 固定引用的内部接线
 
@@ -350,3 +350,9 @@ mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTo
 ### 取消命令恢复
 
 `cancelDataOperation`复用共用取消执行器：死锁回滚已确认后重试一次完整事务，再核身份范围、责任、版本及同键回执；字段、输入、输出、准入与错误契约不变，其他变更操作不增加重试。详见[取消命令死锁恢复](/architecture/data-foundation/#取消命令死锁恢复)。
+
+## 候选跟进
+
+同步字段为 mutations `createDataIngestionCandidateFollowup`、`actDataIngestionCandidateFollowup`、`reviewDataIngestionCandidateFollowup`，queries `dataIngestionCandidateFollowup`、`dataIngestionCandidateFollowups`。它们复用同一严格 Capability schema、当前来源核权、版本与独立复核规则，不另设 GraphQL 授权路径。办理只接受目标标识；完整输入、分页、大小与技术关闭边界见[REST 候选跟进](/protocols/data-rest/#候选跟进)。
+
+候选跟进命令仅统一 UUID 身份大小写，保留哈希、原文定位、坐标系和几何字面；同键重放按同一规范身份比较。0049在0047既有来源、责任、版本和追加事件守卫之后，另拒绝单事件及累计证据中的身份拼写重复。只给既有 API 精确私有函数执行权限，不改旧迁移或既有行；本机原生SQL、HTTP和浏览器仍需分别核验。

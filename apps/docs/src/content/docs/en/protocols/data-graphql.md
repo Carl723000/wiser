@@ -16,7 +16,7 @@ checkPaths:
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 3e1dafbd02308c3363c22ebb419735d054ddbbb0
+lastReviewedCommit: 60e0d6035040a31aa817660bbcfa04f628636e45
 ---
 
 ## Endpoint and authority contract
@@ -331,7 +331,7 @@ The candidate conversion declaration, server-check and fixed provenance-read sch
 
 ### Candidate relationship carrier boundary
 
-The private candidate revision/decision carrier and internal fixed-pin authority reader are not new GraphQL fields or mutations. Published relationship inputs, source-version identities and review status stay unchanged. Candidate content revision and actual latest decisionVersion are separate, and 0 means no candidate decision. When public candidate wiring is added, it must traverse the same strict capability handler and current authority for every fixed source; no GraphQL resolver may turn a candidate tuple into a published version or use client pins as authority. Conditional SQL skips and internal reader tests are not GraphQL/Auth acceptance.
+Queries dataCandidateRelation/dataCandidateRelations and mutations createDataCandidateRelations/reviewDataCandidateRelation/withdrawDataCandidateRelation/rebindDataCandidateRelation map one-to-one to the six strict candidate relationship capabilities through the same handler. Get/list bypass request memoization for repeated aliases. Source manifests, current authority, complete responsibility exclusions, idempotency, body pins and budgets follow REST. Content revision and actual decisionVersion remain separate. No resolver turns a candidate tuple or client pin into a published version/approval; published relationship fields stay unchanged. Conditional SQL skips and synthetic resolvers are not native GraphQL/Auth acceptance.
 
 ### Fixed-reference internal composition
 
@@ -350,3 +350,9 @@ Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DAT
 ### Cancellation recovery
 
 `cancelDataOperation` uses the shared cancellation executor's single complete-transaction retry after a confirmed deadlock rollback. Identity context, responsibility, version and same-key receipt checks repeat; no field, input, output, admission or error contract changes. Other mutations do not gain retries. See [cancellation deadlock recovery](/architecture/data-foundation/#cancellation-deadlock-recovery).
+
+## Candidate followups
+
+Mutations are `createDataIngestionCandidateFollowup`, `actDataIngestionCandidateFollowup`, `reviewDataIngestionCandidateFollowup`; queries are `dataIngestionCandidateFollowup`, `dataIngestionCandidateFollowups`. They share strict Capability schemas, current source authority, version checks and independent review, without a separate GraphQL authorization path. Handoff accepts a target identifier only. Input, paging, budgets and technical-only closure are described in [REST](/en/protocols/data-rest/#candidate-followups).
+
+Followup commands canonicalize only UUID identity spelling while preserving literal hashes, locators, source CRS and geometry; same-key replay compares the same canonical identity. Increment 0049 rejects spelling-only duplicates within an event and across cumulative evidence after 0047 source, responsibility, version and append-only guards. Only the existing API receives exact private-function execution; prior migrations and rows remain intact. Native SQL, HTTP and browser evidence remain separate checks.

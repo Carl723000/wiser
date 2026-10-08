@@ -204,3 +204,50 @@ test('narrows private candidate relation carriers after the common grants', asyn
     /grant[\s\S]+to wiser_data_runtime|grant update|grant delete/,
   );
 });
+
+test('restores candidate rebind append-only API grants after common grants', async () => {
+  const sql = (await readFile(sqlPath, 'utf8')).toLowerCase();
+  const start = sql.indexOf(
+      "if to_regclass('ingestion.candidate_relation_rebind') is not null then",
+    ),
+    end = sql.indexOf('end if;', start);
+  assert.ok(start > sql.indexOf('grant select, insert, update on all tables'));
+  const block = sql.slice(start, end);
+  assert.match(
+    block,
+    /revoke all on ingestion\.candidate_relation_rebind from wiser_data_runtime,wiser_data_api,wiser_data_worker/,
+  );
+  assert.match(
+    block,
+    /grant select,insert on ingestion\.candidate_relation_rebind to wiser_data_api/,
+  );
+  assert.doesNotMatch(
+    block,
+    /grant update|grant delete|grant[\s\S]+to wiser_data_runtime|grant[\s\S]+to wiser_data_worker/,
+  );
+});
+
+test('runs candidate followup native guards in the existing serial PostgreSQL lane', async () => {
+  const workflow = await readFile(
+    new URL('../../.github/workflows/ci.yml', import.meta.url),
+    'utf8',
+  );
+  const start = workflow.indexOf(
+    '- name: Verify resource isolation and immutable exploration membership',
+  );
+  const end = workflow.indexOf('- name:', start + 8);
+  assert.ok(start >= 0 && end > start);
+  const lane = workflow.slice(start, end);
+  assert.match(lane, /WISER_DATA_PG_INTEGRATION: '1'/);
+  assert.match(lane, /vitest run --no-file-parallelism/);
+  assert.match(
+    lane,
+    /packages\/data-infra\/test\/migrations\/ingestion-candidate-followups\.spec\.ts/,
+  );
+  for (const oldFile of [
+    'ingestion-candidate.spec.ts',
+    'ingestion-candidate-relations.spec.ts',
+    'ingestion-candidate-topics.spec.ts',
+  ])
+    assert.ok(lane.includes(oldFile));
+});

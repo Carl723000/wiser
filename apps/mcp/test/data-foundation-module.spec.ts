@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DATA_CAPABILITY_REGISTRY } from '@wiser/data-contracts';
 
 import type {
   AgentExconHttpClient,
@@ -14,6 +15,7 @@ import {
 } from '../src/data-foundation/module.js';
 import { DataFoundationApiError } from '../src/data-foundation/http-client.js';
 import { createAgentExconMcpServer } from '../src/server.js';
+import { candidateRelationPublicInputs } from './support/candidate-relations-public-fixture.ts';
 
 const TENANT_ID = 'a1000000-0000-4000-8000-000000000001';
 const PROJECT_ID = 'a1000000-0000-4000-8000-000000000002';
@@ -49,6 +51,11 @@ const EXPECTED_DATA_TOOLS = [
   'data_ingestion_candidate_records',
   'data_ingestion_candidate_geometry',
   'data_ingestion_candidate_provenance_get',
+  'data_ingestion_candidate_followup_create',
+  'data_ingestion_candidate_followup_get',
+  'data_ingestion_candidate_followup_list',
+  'data_ingestion_candidate_followup_act',
+  'data_ingestion_candidate_followup_review',
   'data_ingestion_candidate_view_create',
   'data_ingestion_candidate_view_list',
   'data_ingestion_candidate_view_open',
@@ -56,6 +63,12 @@ const EXPECTED_DATA_TOOLS = [
   'data_ingestion_candidate_topic_create',
   'data_ingestion_candidate_topic_list',
   'data_ingestion_candidate_topic_open',
+  'data_ingestion_candidate_relations_create',
+  'data_ingestion_candidate_relations_get',
+  'data_ingestion_candidate_relations_list',
+  'data_ingestion_candidate_relations_review',
+  'data_ingestion_candidate_relations_withdraw',
+  'data_ingestion_candidate_relations_rebind',
   'data_ingestion_approve',
   'data_ingestion_reject',
   'data_operation_cancel',
@@ -132,6 +145,149 @@ async function connect(dataHttp: RecordingDataHttpClient): Promise<Client> {
 }
 
 describe('Data Foundation MCP module', () => {
+  it('exposes bounded private followup tool inputs and preserves strict action variants', async () => {
+    const http = new RecordingDataHttpClient();
+    const client = await connect(http);
+    const tools = (await client.listTools()).tools;
+    for (const name of ['create', 'act']) {
+      const tool = tools.find(
+        ({ name: toolName }) =>
+          toolName === `data_ingestion_candidate_followup_${name}`,
+      );
+      expect(tool?.inputSchema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+      });
+      expect(tool?.inputSchema.required).toContain('idempotencyKey');
+      expect(tool?.inputSchema.required).toContain(
+        name === 'create' ? 'type' : 'action',
+      );
+    }
+    const reference = {
+      kind: 'ingestion-candidate',
+      ingestionId: INGESTION_ID,
+      processingBatchId: VERSION_ID,
+      reviewHash: 'a'.repeat(64),
+    };
+    const source = {
+      reference,
+      assetId: EVIDENCE_ID,
+      sourceHash: 'b'.repeat(64),
+      locator: `asset:${EVIDENCE_ID}`,
+    };
+    const valid: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+      [
+        'create',
+        {
+          type: 'GAP',
+          source,
+          ruleId: 'coverage',
+          ruleVersion: '1',
+          reason: 'missing month',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+      ['get', { followupId: DATA_ITEM_ID }],
+      ['list', { ...reference, first: 2 }],
+      [
+        'act',
+        {
+          followupId: DATA_ITEM_ID,
+          expectedVersion: 1,
+          action: 'CLAIM',
+          note: 'ownership',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+      [
+        'review',
+        {
+          followupId: DATA_ITEM_ID,
+          expectedVersion: 4,
+          decision: 'CLOSE',
+          note: 'independent check',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+    ];
+    for (const [name, args] of valid) {
+      const result = await client.callTool({
+        name: `data_ingestion_candidate_followup_${name}`,
+        arguments: args,
+      });
+      expect(result.isError).not.toBe(true);
+    }
+    expect(http.requests.map(({ path, method }) => [path, method])).toEqual([
+      ['/ingestion-candidate-followups', 'POST'],
+      [`/ingestion-candidate-followups/${DATA_ITEM_ID}`, 'GET'],
+      ['/ingestion-candidate-followups', 'GET'],
+      [`/ingestion-candidate-followups/${DATA_ITEM_ID}/act`, 'POST'],
+      [`/ingestion-candidate-followups/${DATA_ITEM_ID}/review`, 'POST'],
+    ]);
+    expect(http.requests[2]?.query).toEqual({ ...reference, first: 2 });
+    expect(http.requests[3]).toMatchObject({
+      headers: { 'If-Match': '"v1"', 'Idempotency-Key': IDEMPOTENCY_KEY },
+      body: { action: 'CLAIM', note: 'ownership' },
+    });
+    expect(http.requests[4]).toMatchObject({
+      headers: { 'If-Match': '"v4"' },
+      body: { decision: 'CLOSE', note: 'independent check' },
+    });
+    for (const [name, args] of [
+      [
+        'create',
+        {
+          type: 'CORRECTION',
+          source,
+          ruleId: 'location',
+          ruleVersion: '1',
+          reason: 'incorrect location',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+      [
+        'act',
+        {
+          followupId: DATA_ITEM_ID,
+          expectedVersion: 1,
+          action: 'CLAIM',
+          targetActorId: EVIDENCE_ID,
+          note: 'forbidden target',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+      [
+        'act',
+        {
+          followupId: DATA_ITEM_ID,
+          expectedVersion: 1,
+          action: 'HANDOFF',
+          targetActorId: EVIDENCE_ID,
+          targetType: 'human',
+          note: 'authority injection',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+      [
+        'act',
+        {
+          followupId: DATA_ITEM_ID,
+          expectedVersion: 1,
+          action: 'SUPPLEMENT',
+          evidence: [],
+          note: 'empty supplement',
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      ],
+    ] as const) {
+      const denied = await client.callTool({
+        name: `data_ingestion_candidate_followup_${name}`,
+        arguments: args,
+      });
+      expect(denied.isError).toBe(true);
+    }
+    expect(http.requests).toHaveLength(5);
+  });
   it('preserves the frozen candidate discovery reference from ingestion get without a published version', async () => {
     const http = new RecordingDataHttpClient();
     const reference = {
@@ -199,6 +355,58 @@ describe('Data Foundation MCP module', () => {
     expect(invalid.isError).toBe(true);
     expect(http.requests).toHaveLength(1);
   });
+
+  it.each(['create', 'get', 'list', 'review', 'withdraw', 'rebind'] as const)(
+    'forwards candidate relation %s through its precise HTTP route',
+    async (operation) => {
+      const http = new RecordingDataHttpClient(),
+        client = await connect(http);
+      const inputs = candidateRelationPublicInputs(
+        {
+          kind: 'ingestion-candidate',
+          ingestionId: INGESTION_ID,
+          processingBatchId: VERSION_ID,
+          reviewHash: 'e'.repeat(64),
+        },
+        EVIDENCE_ID,
+        DATA_ITEM_ID,
+      );
+      const input = inputs[`data.ingestion.candidate.relations.${operation}`];
+      const writes = !['get', 'list'].includes(operation);
+      const result = await client.callTool({
+        name: `data_ingestion_candidate_relations_${operation}`,
+        arguments: {
+          ...input,
+          ...(writes ? { idempotencyKey: IDEMPOTENCY_KEY } : {}),
+        },
+      });
+      expect(result.isError).not.toBe(true);
+      expect(http.requests).toHaveLength(1);
+      const paths = {
+        create: '/ingestion-candidate-relations',
+        get: `/ingestion-candidate-relations/${DATA_ITEM_ID}/read`,
+        list: '/ingestion-candidate-relations/list',
+        review: `/ingestion-candidate-relations/${DATA_ITEM_ID}/review`,
+        withdraw: `/ingestion-candidate-relations/${DATA_ITEM_ID}/withdraw`,
+        rebind: `/ingestion-candidate-relations/${DATA_ITEM_ID}/rebind`,
+      };
+      const body = DATA_CAPABILITY_REGISTRY[
+        `data.ingestion.candidate.relations.${operation}`
+      ].inputSchema.parse(input) as Record<string, unknown>;
+      delete body['relationId'];
+      expect(http.requests[0]).toEqual({
+        method: 'POST',
+        path: paths[operation],
+        headers: {
+          'X-Wiser-Tenant-Id': TENANT_ID,
+          'X-Wiser-Project-Id': PROJECT_ID,
+          'X-Wiser-Purpose': 'analysis',
+          ...(writes ? { 'Idempotency-Key': IDEMPOTENCY_KEY } : {}),
+        },
+        body,
+      });
+    },
+  );
 
   it('registers every static Capability mapping and no arbitrary execution tool', async () => {
     const client = await connect(new RecordingDataHttpClient());

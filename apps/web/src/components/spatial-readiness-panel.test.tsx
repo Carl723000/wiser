@@ -569,3 +569,77 @@ it('shows unknown computation information separately from an unmet-condition ver
       .getAttribute('data-use-state'),
   ).toBe('UNKNOWN');
 });
+
+it('opens gap followups with only explicit candidate identities in the selected region and demand', () => {
+  const pack = inspectionPack();
+  const candidateReference = {
+    kind: 'ingestion-candidate' as const,
+    ingestionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    processingBatchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    reviewHash: 'c'.repeat(64),
+  };
+  const candidateSource = {
+    candidateReference,
+    assetId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    sourceLocalWorkId: 'Actual candidate A',
+    track: 'REAL' as const,
+    kind: 'DOCUMENT' as const,
+    needIds: ['K5-001'],
+    regionIds: ['chaobai'],
+  };
+  const facts: ProjectReadinessInput = {
+    track: 'REAL',
+    requirement: {
+      needId: 'K5-001',
+      version: 'current-rule',
+      regionId: 'chaobai',
+      purpose: 'inspection',
+      dateRole: 'PUBLICATION',
+      window: null,
+    },
+    sources: [
+      candidateSource,
+      {
+        ...candidateSource,
+        sourceLocalWorkId: 'Other region source',
+        regionIds: ['yongding'],
+        candidateReference: {
+          ...candidateReference,
+          reviewHash: 'e'.repeat(64),
+        },
+      },
+      {
+        ...materialReference(pack.sources[0]),
+        track: 'REAL',
+        kind: 'DOCUMENT',
+        needIds: ['K5-001'],
+        regionIds: ['chaobai'],
+      },
+    ],
+    records: [],
+    series: [],
+    correspondences: [],
+  };
+  render(
+    <SpatialReadinessPanel
+      locale="en"
+      pack={pack}
+      regionId="chaobai"
+      copy={copy}
+      facts={facts}
+    />,
+  );
+  const question = screen
+    .getByRole('heading', { level: 3, name: 'Gaps' })
+    .closest('article')!;
+  fireEvent.click(within(question).getByRole('button', { name: copy.inspect }));
+  const select = screen.getByLabelText('Fixed candidate source');
+  expect(within(select).getAllByRole('option')).toHaveLength(1);
+  expect(
+    within(select).getByRole('option', { name: 'Actual candidate A' }),
+  ).toBeTruthy();
+  expect(
+    within(select).queryByRole('option', { name: 'Other region source' }),
+  ).toBeNull();
+  expect(screen.queryByText(/Select a fixed candidate source/)).toBeNull();
+});

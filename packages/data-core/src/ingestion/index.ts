@@ -6,7 +6,7 @@ import {
   type IngestionState,
 } from '@wiser/data-contracts';
 
-import { DataFoundationDomainError } from '../domain-error.js';
+import { DataFoundationDomainError } from '../domain-error.ts';
 
 /** PostgreSQL uuid values have one textual form; compare only validated identities. */
 export function canonicalIngestionUuid(value: unknown): string | null {

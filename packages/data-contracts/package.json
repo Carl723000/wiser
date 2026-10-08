@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./candidate-conversion": "./src/ingestion/candidate-conversion.ts",
-    "./candidate-relations": "./src/ingestion/candidate-relations.ts"
+    "./candidate-relations": "./src/ingestion/candidate-relations.ts",
+    "./candidate-followups": "./src/ingestion/candidate-followups.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

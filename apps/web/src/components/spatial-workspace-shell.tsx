@@ -486,6 +486,7 @@ export function SpatialWorkspaceShell({
           </div>
         ) : (
           <SpatialReadinessPanel
+            locale={locale}
             pack={pack}
             regionId={impact ? exerciseRegionId : regionId}
             copy={dictionary.spatialReadiness}

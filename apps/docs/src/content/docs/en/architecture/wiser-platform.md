@@ -18,7 +18,7 @@ checkPaths:
   - infrastructure/**
   - supabase/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## Decision summary
@@ -101,3 +101,7 @@ Core remains pure and deterministic. Application owns use cases, Ports, and Capa
 ## Verification boundary
 
 Executable commands prove the platform boundary; prose does not. `pnpm verify` covers formatting, lint, types, unit/component tests, builds, and Compose configuration. Supabase, Data, browser, observability, and documentation governance have additional focused gates. See [Testing and verification](/en/development/testing/) for the complete matrix.
+
+## Candidate technical closure ownership
+
+Candidate followups extend existing Data Foundation candidate governance without a new system or identity authority. Independent Data PostgreSQL owns private followups/events; unified Auth retains assignment eligibility. Technical closure neither publishes a source, approves a professional fact nor grants access.

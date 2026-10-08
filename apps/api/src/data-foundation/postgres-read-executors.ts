@@ -551,6 +551,21 @@ export function candidateSavedListCursor(
     : decodeCursor(input.after, scope);
 }
 
+export function candidateFollowupListCursor(
+  context: DataCapabilityExecutionContext,
+  input: Record<string, unknown>,
+  position?: readonly string[],
+) {
+  const scope = candidateCursorScope(
+    'data.ingestion.candidate.followup.list',
+    context,
+    input,
+  );
+  return position
+    ? encodeCursor(scope, position)
+    : decodeCursor(input.after, scope);
+}
+
 /** Complete-topic continuations never reuse the legacy list's contract identity. */
 export function candidateTopicListCursor(
   context: DataCapabilityExecutionContext,
@@ -559,6 +574,22 @@ export function candidateTopicListCursor(
 ): readonly (number | string)[] | string | undefined {
   const scope = candidateCursorScope(
     'data.ingestion.candidate.topic.list',
+    context,
+    input,
+  );
+  return position
+    ? encodeCursor(scope, position)
+    : decodeCursor(input.after, scope);
+}
+
+/** Relationship pages bind their own capability, fixed sources and current authority. */
+export function candidateRelationListCursor(
+  context: DataCapabilityExecutionContext,
+  input: Record<string, unknown>,
+  position?: readonly string[],
+): readonly (number | string)[] | string | undefined {
+  const scope = candidateCursorScope(
+    'data.ingestion.candidate.relations.list',
     context,
     input,
   );

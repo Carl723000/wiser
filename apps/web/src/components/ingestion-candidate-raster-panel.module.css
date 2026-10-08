@@ -74,3 +74,11 @@
   gap: 0.65rem;
   margin-top: 0.65rem;
 }
+.mapSection {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.mapSection > div {
+  min-width: 0;
+}

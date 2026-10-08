@@ -193,6 +193,34 @@ do $$ begin
     grant select,insert on ingestion.candidate_relation_revision,ingestion.candidate_relation_evidence,
       ingestion.candidate_relation_responsibility,ingestion.candidate_relation_decision to wiser_data_api;
   end if;
+  if to_regclass('ingestion.candidate_relation_rebind') is not null then
+    revoke all on ingestion.candidate_relation_rebind from wiser_data_runtime,wiser_data_api,wiser_data_worker;
+    grant select,insert on ingestion.candidate_relation_rebind to wiser_data_api;
+  end if;
+  if to_regclass('ingestion.candidate_followup') is not null then
+    revoke all on ingestion.candidate_followup,ingestion.candidate_followup_event
+      from wiser_data_runtime,wiser_data_api,wiser_data_worker,wiser_data_metadata,wiser_data_gis;
+    grant select,insert on ingestion.candidate_followup,ingestion.candidate_followup_event to wiser_data_api;
+    grant update(state,row_version,assignee,evidence,responsibilities) on ingestion.candidate_followup to wiser_data_api;
+    revoke all on function ingestion.valid_candidate_followup_actor(jsonb),ingestion.valid_candidate_followup_evidence(jsonb),
+      ingestion.valid_candidate_followup_evidence_list(jsonb),ingestion.valid_candidate_followup_correction(jsonb),
+      ingestion.candidate_followup_sources_readable(uuid,uuid,jsonb),ingestion.candidate_followup_target_live(uuid,uuid,jsonb,jsonb),
+      ingestion.guard_candidate_followup_root(),ingestion.guard_candidate_followup_event(),
+      ingestion.apply_candidate_followup_event(),ingestion.candidate_followup_creation_complete()
+      from wiser_data_runtime,wiser_data_api,wiser_data_worker,wiser_data_metadata,wiser_data_gis;
+    grant execute on function ingestion.valid_candidate_followup_actor(jsonb),ingestion.valid_candidate_followup_evidence(jsonb),
+      ingestion.valid_candidate_followup_evidence_list(jsonb),ingestion.valid_candidate_followup_correction(jsonb),
+      ingestion.candidate_followup_sources_readable(uuid,uuid,jsonb),ingestion.candidate_followup_target_live(uuid,uuid,jsonb,jsonb),
+      ingestion.guard_candidate_followup_root(),ingestion.guard_candidate_followup_event(),
+      ingestion.apply_candidate_followup_event(),ingestion.candidate_followup_creation_complete() to wiser_data_api;
+  end if;
+  if to_regprocedure('ingestion.candidate_followup_evidence_identity(jsonb)') is not null then
+    revoke all on function ingestion.candidate_followup_evidence_identity(jsonb),
+      ingestion.guard_candidate_followup_evidence_identity()
+      from wiser_data_runtime,wiser_data_api,wiser_data_worker,wiser_data_metadata,wiser_data_gis;
+    grant execute on function ingestion.candidate_followup_evidence_identity(jsonb),
+      ingestion.guard_candidate_followup_evidence_identity() to wiser_data_api;
+  end if;
   if to_regclass('ingestion.project_review_policy') is not null then
     revoke insert,update,delete on ingestion.project_review_policy from wiser_data_runtime;
   end if;

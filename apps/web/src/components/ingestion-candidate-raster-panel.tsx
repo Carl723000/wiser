@@ -12,12 +12,15 @@ import {
   validateRasterSelection,
   type CandidateRasterQuality,
   type CandidateRasterWindowResult,
+  type CandidateRasterWindow,
 } from '@/lib/candidate-raster-window';
 import { discoverCandidateRasterAssets } from '@/lib/candidate-raster-ui-assets';
 import { readCandidateRasterWindow } from '@/lib/candidate-raster-original-reader';
 import { CandidateReaderError } from '@/lib/ingestion-candidate-reader';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import { ContextHelp } from './context-help';
+import { CandidateRasterMap } from './candidate-raster-map';
+import { checkedRasterWindow } from '@/lib/candidate-raster-map';
 import styles from './ingestion-candidate-raster-panel.module.css';
 
 const RESULT_PAGE_SIZE = 64;
@@ -56,6 +59,7 @@ export function IngestionCandidateRasterPanel({
     null,
   );
   const [resultPage, setResultPage] = useState(0);
+  const [mapReady, setMapReady] = useState(false);
   const active = useRef<AbortController | null>(null);
   const deadline = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancel = useCallback(() => {
@@ -80,8 +84,8 @@ export function IngestionCandidateRasterPanel({
     setFailure(null);
   }
 
-  async function read() {
-    if (parentBusy) return;
+  async function read(prepareMap = false) {
+    if (parentBusy || busy) return;
     stop();
     let selection;
     try {
@@ -95,16 +99,18 @@ export function IngestionCandidateRasterPanel({
                 .map((part) => integer(part.trim())),
               ruleVersion,
             };
-      selection = validateRasterSelection({
-        window: {
-          row: integer(row),
-          column: integer(column),
-          rows: integer(rows),
-          columns: integer(columns),
-        },
-        quality,
-        bands: CANDIDATE_RASTER_BANDS,
-      });
+      selection = prepareMap
+        ? null
+        : validateRasterSelection({
+            window: {
+              row: integer(row),
+              column: integer(column),
+              rows: integer(rows),
+              columns: integer(columns),
+            },
+            quality,
+            bands: CANDIDATE_RASTER_BANDS,
+          });
     } catch {
       setFailure(copy.invalidSelection);
       return;
@@ -120,6 +126,7 @@ export function IngestionCandidateRasterPanel({
       controller.abort();
       setBusy(false);
       setResult(null);
+      setMapReady(false);
       setFailure(copy.unavailable);
     }, 120_000);
     setBusy(true);
@@ -129,6 +136,11 @@ export function IngestionCandidateRasterPanel({
         controller.signal,
       );
       if (controller.signal.aborted || active.current !== controller) return;
+      if (prepareMap) {
+        setMapReady(true);
+        return;
+      }
+      if (!selection) return;
       const pixels = await readCandidateRasterWindow(
         {
           reference,
@@ -142,10 +154,12 @@ export function IngestionCandidateRasterPanel({
       );
       if (controller.signal.aborted || active.current !== controller) return;
       setResult(pixels);
+      setMapReady(true);
       setResultPage(0);
     } catch (error) {
       if (controller.signal.aborted || active.current !== controller) return;
       setResult(null);
+      setMapReady(false);
       const kind =
         error instanceof CandidateReaderError ? error.kind : 'unavailable';
       if (kind === 'denied' || kind === 'stale') onAuthorityFailure(kind);
@@ -158,6 +172,26 @@ export function IngestionCandidateRasterPanel({
         setBusy(false);
       }
     }
+  }
+
+  let mapWindow: CandidateRasterWindow | null = null;
+  try {
+    mapWindow = checkedRasterWindow({
+      row: integer(row),
+      column: integer(column),
+      rows: integer(rows),
+      columns: integer(columns),
+    });
+  } catch {
+    /* Invalid drafts have no map selection. */
+  }
+  function selectMapWindow(window: CandidateRasterWindow) {
+    if (parentBusy || busy) return;
+    stop();
+    setRow(String(window.row));
+    setColumn(String(window.column));
+    setRows(String(window.rows));
+    setColumns(String(window.columns));
   }
 
   const total = result ? result.window.rows * result.window.columns : 0;
@@ -211,6 +245,29 @@ export function IngestionCandidateRasterPanel({
             </ContextHelp>
           </h4>
           <p>{copy.scope}</p>
+          <button
+            type="button"
+            disabled={parentBusy || busy}
+            onClick={() => void read(true)}
+          >
+            {copy.openMap}
+          </button>
+          {mapReady ? (
+            <CandidateRasterMap
+              locale={locale}
+              window={mapWindow}
+              result={result}
+              disabled={parentBusy || busy}
+              onWindow={selectMapWindow}
+              onInvalid={() => {
+                if (parentBusy || busy) return;
+                stop();
+                setRow('');
+                setColumn('');
+                setFailure(copy.invalidMapSelection);
+              }}
+            />
+          ) : null}
           <form
             className={styles.form}
             onSubmit={(event) => {

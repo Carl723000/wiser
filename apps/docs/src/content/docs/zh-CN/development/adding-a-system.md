@@ -29,7 +29,7 @@ checkPaths:
   - .docpact/**
   - .github/workflows/**
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## 适用目标
@@ -255,3 +255,7 @@ pnpm verify            # final repository convergence
 ```
 
 提交保持单一目的：contract/core、application/API、数据库、Worker/MCP、UI、文档分别形成可恢复的小提交。一个系统只有在其公开纵切、授权负向路径和运行说明都可验证时才算接入完成。
+
+## 既有候选流程扩展
+
+候选跟进沿用 Data Foundation 的 contracts、纯状态转换、应用事务和私有 Data 迁移。新增五项 Capability 不需要新系统、公共 Auth 路由或角色。目标资格只通过组合根中的内部 Auth 端口读取；来源可用性由 Data 的当前 RLS 再核，避免把资格 DTO 当成登录凭据。

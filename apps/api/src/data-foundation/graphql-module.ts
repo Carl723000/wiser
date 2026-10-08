@@ -162,8 +162,12 @@ type Query {
   dataItemVersion(id: ID!, version: ID!): DataItemVersion
   dataIngestionCandidateViews(input: JSON!): JSON!
   dataIngestionCandidateView(input: JSON!): JSON!
+  dataCandidateRelation(input: JSON!): JSON!
+  dataCandidateRelations(input: JSON!): JSON!
   dataIngestionCandidateTopics(input: JSON!): JSON!
   dataIngestionCandidateTopic(input: JSON!): JSON!
+  dataIngestionCandidateFollowup(input: JSON!): JSON!
+  dataIngestionCandidateFollowups(input: JSON!): JSON!
   dataIngestionCandidate(input: JSON!): JSON!
   dataIngestionCandidateRecords(input: JSON!): JSON!
   dataIngestionCandidateGeometry(input: JSON!): JSON!
@@ -180,7 +184,14 @@ type Mutation {
   createDataReconciliation(input: JSON!): JSON!
   reviewDataReconciliation(input: JSON!): JSON!
   createDataIngestionCandidateView(input: JSON!): JSON!
+  createDataCandidateRelations(input: JSON!): JSON!
+  reviewDataCandidateRelation(input: JSON!): JSON!
+  withdrawDataCandidateRelation(input: JSON!): JSON!
+  rebindDataCandidateRelation(input: JSON!): JSON!
   createDataIngestionCandidateTopic(input: JSON!): JSON!
+  createDataIngestionCandidateFollowup(input: JSON!): JSON!
+  actDataIngestionCandidateFollowup(input: JSON!): JSON!
+  reviewDataIngestionCandidateFollowup(input: JSON!): JSON!
   revokeDataIngestionCandidateView(input: JSON!): JSON!
   createDataExploreView(input: JSON!): JSON!
   revokeDataExploreView(input: JSON!): JSON!
@@ -232,9 +243,22 @@ export const GRAPHQL_CAPABILITY_BY_FIELD: Readonly<
   dataItemVersion: 'data.catalog.versions.get',
   dataIngestion: 'data.ingestion.get',
   dataIngestionDetail: 'data.ingestion.get',
+  createDataCandidateRelations: 'data.ingestion.candidate.relations.create',
+  dataCandidateRelation: 'data.ingestion.candidate.relations.get',
+  dataCandidateRelations: 'data.ingestion.candidate.relations.list',
+  reviewDataCandidateRelation: 'data.ingestion.candidate.relations.review',
+  withdrawDataCandidateRelation: 'data.ingestion.candidate.relations.withdraw',
+  rebindDataCandidateRelation: 'data.ingestion.candidate.relations.rebind',
   dataIngestionCandidateTopics: 'data.ingestion.candidate.topic.list',
   dataIngestionCandidateTopic: 'data.ingestion.candidate.topic.open',
   createDataIngestionCandidateTopic: 'data.ingestion.candidate.topic.create',
+  createDataIngestionCandidateFollowup:
+    'data.ingestion.candidate.followup.create',
+  dataIngestionCandidateFollowup: 'data.ingestion.candidate.followup.get',
+  dataIngestionCandidateFollowups: 'data.ingestion.candidate.followup.list',
+  actDataIngestionCandidateFollowup: 'data.ingestion.candidate.followup.act',
+  reviewDataIngestionCandidateFollowup:
+    'data.ingestion.candidate.followup.review',
   dataIngestionCandidateViews: 'data.ingestion.candidate.view.list',
   dataIngestionCandidateView: 'data.ingestion.candidate.view.open',
   createDataIngestionCandidateView: 'data.ingestion.candidate.view.create',
@@ -357,8 +381,12 @@ class CapabilityLoader {
         });
     }
     if (
+      capabilityId === 'data.ingestion.candidate.relations.get' ||
+      capabilityId === 'data.ingestion.candidate.relations.list' ||
       capabilityId === 'data.ingestion.candidate.topic.list' ||
       capabilityId === 'data.ingestion.candidate.topic.open' ||
+      capabilityId === 'data.ingestion.candidate.followup.get' ||
+      capabilityId === 'data.ingestion.candidate.followup.list' ||
       capabilityId === 'data.ingestion.candidate.view.list' ||
       capabilityId === 'data.ingestion.candidate.view.open' ||
       capabilityId === 'data.ingestion.candidate.provenance.get'
@@ -394,6 +422,8 @@ function complexityRule(maximum: number): ValidationRule {
           'dataQuery',
           'dataIngestionCandidateTopics',
           'dataIngestionCandidateTopic',
+          'dataIngestionCandidateFollowup',
+          'dataIngestionCandidateFollowups',
           'dataIngestionCandidateViews',
           'dataIngestionCandidateView',
           'dataExploreViews',
@@ -775,6 +805,26 @@ const resolvers = {
       args: { id: string },
       context: GraphqlContext,
     ) => executeQuery(context, 'data.ingestion.get', { ingestionId: args.id }),
+    dataCandidateRelation: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(
+        context,
+        'data.ingestion.candidate.relations.get',
+        args.input,
+      ),
+    dataCandidateRelations: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(
+        context,
+        'data.ingestion.candidate.relations.list',
+        args.input,
+      ),
     dataIngestionCandidateTopics: (
       _: unknown,
       args: { input: unknown },
@@ -787,6 +837,26 @@ const resolvers = {
       context: GraphqlContext,
     ) =>
       executeQuery(context, 'data.ingestion.candidate.topic.open', args.input),
+    dataIngestionCandidateFollowup: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(
+        context,
+        'data.ingestion.candidate.followup.get',
+        args.input,
+      ),
+    dataIngestionCandidateFollowups: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeQuery(
+        context,
+        'data.ingestion.candidate.followup.list',
+        args.input,
+      ),
     dataIngestionCandidateViews: (
       _: unknown,
       args: { input: unknown },
@@ -866,6 +936,46 @@ const resolvers = {
       context: GraphqlContext,
     ) => executeCommand(context, 'data.reconciliation.review', args.input),
 
+    createDataCandidateRelations: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.relations.create',
+        args.input,
+      ),
+    reviewDataCandidateRelation: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.relations.review',
+        args.input,
+      ),
+    withdrawDataCandidateRelation: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.relations.withdraw',
+        args.input,
+      ),
+    rebindDataCandidateRelation: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.relations.rebind',
+        args.input,
+      ),
     createDataIngestionCandidateTopic: (
       _: unknown,
       args: { input: unknown },
@@ -874,6 +984,36 @@ const resolvers = {
       executeCommand(
         context,
         'data.ingestion.candidate.topic.create',
+        args.input,
+      ),
+    createDataIngestionCandidateFollowup: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.followup.create',
+        args.input,
+      ),
+    actDataIngestionCandidateFollowup: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.followup.act',
+        args.input,
+      ),
+    reviewDataIngestionCandidateFollowup: (
+      _: unknown,
+      args: { input: unknown },
+      context: GraphqlContext,
+    ) =>
+      executeCommand(
+        context,
+        'data.ingestion.candidate.followup.review',
         args.input,
       ),
     createDataIngestionCandidateView: (

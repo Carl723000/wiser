@@ -15,6 +15,7 @@ export * from './candidate.ts';
 export * from './candidate-read.ts';
 export * from './candidate-saved.ts';
 export * from './candidate-topic.ts';
+export * from './candidate-relations-public.ts';
 
 export const IngestionStateSchema = z.enum([
   'RECEIVED',

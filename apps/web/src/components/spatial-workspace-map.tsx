@@ -107,6 +107,13 @@ export interface SpatialWorkspaceMapProps {
   bounds?: WorkspaceBounds | null;
   drawBounds?: boolean;
   onBounds?: (bounds: WorkspaceBounds) => void;
+  /** Reading-only WGS84 canvas pick; never creates or selects a business record. */
+  onCoordinate?: (coordinate: readonly [number, number]) => void;
+  /** Already-authorized raster footprint/selection, separate from record layers. */
+  inspectionGeometry?: FeatureCollection<
+    Geometry,
+    { kind: 'footprint' | 'selection' | 'pixel'; color?: string }
+  >;
   rasterReports?: readonly WorkspaceRasterReport[];
   rasterSettings?: WorkspaceRasterSettings;
   onRasterChange?: (settings: WorkspaceRasterSettings) => void;
@@ -266,6 +273,8 @@ export function SpatialWorkspaceMap({
   bounds = null,
   drawBounds = false,
   onBounds,
+  onCoordinate,
+  inspectionGeometry,
   rasterReports = [],
   rasterSettings = defaultWorkspaceRaster,
   onRasterChange,
@@ -274,6 +283,7 @@ export function SpatialWorkspaceMap({
   const map = useRef<MapRef>(null),
     container = useRef<HTMLDivElement>(null),
     drawStart = useRef<number[] | null>(null);
+  const drawPointer = useRef<number | null>(null);
   const id = useId().replaceAll(':', '');
   const lastGestureCamera = useRef<string | null>(null);
   const wheelQualified = useRef(true);
@@ -313,6 +323,12 @@ export function SpatialWorkspaceMap({
     [size, setSize] = useState({ width: 800, height: 460 }),
     [pendingBounds, setPendingBounds] = useState<WorkspaceBounds | null>(null);
   const [hits, setHits] = useState<WorkspaceMapFeatures['features']>([]);
+  useEffect(() => {
+    if (active && drawBounds) return;
+    drawStart.current = null;
+    drawPointer.current = null;
+    setPendingBounds(null);
+  }, [active, drawBounds]);
   const [publicReferenceVisibility, setPublicReferenceVisibility] =
     useState<PublicReferenceVisibility>({
       administrative: true,
@@ -637,6 +653,7 @@ export function SpatialWorkspaceMap({
             pitchWithRotate
             touchPitch={mode === '3d'}
             dragPan={!drawBounds}
+            touchZoomRotate={!drawBounds}
             boxZoom={false}
             maxPitch={70}
             minZoom={3}
@@ -689,13 +706,13 @@ export function SpatialWorkspaceMap({
               if (active) settleCamera((value) => value + 1);
             }}
             onMouseDown={(event) => {
-              if (drawBounds) {
+              if (active && drawBounds) {
                 drawStart.current = [event.lngLat.lng, event.lngLat.lat];
                 setPendingBounds(null);
               }
             }}
             onMouseMove={(event) => {
-              if (drawBounds && drawStart.current)
+              if (active && drawBounds && drawStart.current)
                 setPendingBounds(
                   rectangle(drawStart.current, [
                     event.lngLat.lng,
@@ -704,10 +721,52 @@ export function SpatialWorkspaceMap({
                 );
             }}
             onMouseUp={(event) => {
-              if (drawBounds) finishDraw([event.lngLat.lng, event.lngLat.lat]);
+              if (active && drawBounds)
+                finishDraw([event.lngLat.lng, event.lngLat.lat]);
+            }}
+            onTouchStart={(event) => {
+              if (!active || !drawBounds) return;
+              drawStart.current =
+                event.points.length === 1
+                  ? [event.lngLat.lng, event.lngLat.lat]
+                  : null;
+              setPendingBounds(null);
+              event.preventDefault();
+            }}
+            onTouchMove={(event) => {
+              if (!active || !drawBounds) return;
+              if (event.points.length !== 1) {
+                drawStart.current = null;
+                setPendingBounds(null);
+              } else if (drawStart.current) {
+                setPendingBounds(
+                  rectangle(drawStart.current, [
+                    event.lngLat.lng,
+                    event.lngLat.lat,
+                  ]),
+                );
+              }
+              event.preventDefault();
+            }}
+            onTouchEnd={(event) => {
+              if (!active || !drawBounds) return;
+              if (event.points.length === 1)
+                finishDraw([event.lngLat.lng, event.lngLat.lat]);
+              else {
+                drawStart.current = null;
+                setPendingBounds(null);
+              }
+            }}
+            onTouchCancel={() => {
+              drawStart.current = null;
+              setPendingBounds(null);
             }}
             onClick={(event) => {
-              if (drawBounds) return;
+              if (!active || drawBounds) return;
+              if (onCoordinate) {
+                onCoordinate([event.lngLat.lng, event.lngLat.lat]);
+                return;
+              }
               const nearby =
                 map.current?.queryRenderedFeatures(
                   [
@@ -736,6 +795,39 @@ export function SpatialWorkspaceMap({
               else setHits(picked);
             }}
           >
+            {inspectionGeometry ? (
+              <Source
+                id="workspace-raster-inspection"
+                type="geojson"
+                data={inspectionGeometry}
+              >
+                <Layer
+                  id="workspace-raster-inspection-pixels"
+                  type="fill"
+                  filter={['==', ['get', 'kind'], 'pixel']}
+                  paint={{ 'fill-color': ['get', 'color'], 'fill-opacity': 1 }}
+                />
+                <Layer
+                  id="workspace-raster-inspection-line"
+                  type="line"
+                  filter={['!=', ['get', 'kind'], 'pixel']}
+                  paint={{
+                    'line-color': [
+                      'case',
+                      ['==', ['get', 'kind'], 'selection'],
+                      colors.selected,
+                      colors.accent,
+                    ],
+                    'line-width': [
+                      'case',
+                      ['==', ['get', 'kind'], 'selection'],
+                      3,
+                      2,
+                    ],
+                  }}
+                />
+              </Source>
+            ) : null}
             <Source id="workspace-grid" type="geojson" data={grid}>
               <Layer
                 id="workspace-graticule"
@@ -911,7 +1003,17 @@ export function SpatialWorkspaceMap({
             aria-label={copy.planarView}
             className={styles.planar}
             onPointerDown={(event) => {
-              if (!drawBounds) return;
+              if (!active || !drawBounds) return;
+              if (
+                drawPointer.current !== null &&
+                drawPointer.current !== event.pointerId
+              ) {
+                drawStart.current = null;
+                drawPointer.current = null;
+                setPendingBounds(null);
+                return;
+              }
+              drawPointer.current = event.pointerId;
               const box = event.currentTarget.getBoundingClientRect(),
                 point = planar.unproject(
                   ((event.clientX - box.left) * size.width) /
@@ -922,7 +1024,13 @@ export function SpatialWorkspaceMap({
               event.currentTarget.setPointerCapture?.(event.pointerId);
             }}
             onPointerMove={(event) => {
-              if (!drawBounds || !drawStart.current) return;
+              if (
+                !active ||
+                !drawBounds ||
+                !drawStart.current ||
+                drawPointer.current !== event.pointerId
+              )
+                return;
               const box = event.currentTarget.getBoundingClientRect();
               setPendingBounds(
                 rectangle(
@@ -936,7 +1044,13 @@ export function SpatialWorkspaceMap({
               );
             }}
             onPointerUp={(event) => {
-              if (!drawBounds) return;
+              if (
+                !active ||
+                !drawBounds ||
+                drawPointer.current !== event.pointerId
+              )
+                return;
+              drawPointer.current = null;
               const box = event.currentTarget.getBoundingClientRect();
               finishDraw(
                 planar.unproject(
@@ -946,7 +1060,53 @@ export function SpatialWorkspaceMap({
                 ),
               );
             }}
+            onPointerCancel={() => {
+              drawStart.current = null;
+              drawPointer.current = null;
+              setPendingBounds(null);
+            }}
+            onClick={(event) => {
+              if (!active || drawBounds || !onCoordinate) return;
+              const box = event.currentTarget.getBoundingClientRect();
+              const point = planar.unproject(
+                ((event.clientX - box.left) * size.width) /
+                  (box.width || size.width),
+                ((event.clientY - box.top) * 460) / (box.height || 460),
+              );
+              onCoordinate([point[0], point[1]]);
+            }}
           >
+            {inspectionGeometry?.features.map((feature, index) => (
+              <g
+                key={`inspection-${index}`}
+                pointerEvents="none"
+                data-inspection-kind={feature.properties.kind}
+              >
+                {geometryPaths(feature.geometry, planar.project).map(
+                  ({ path }, part) => (
+                    <path
+                      key={part}
+                      d={path}
+                      fill={
+                        feature.properties.kind === 'pixel'
+                          ? feature.properties.color
+                          : 'none'
+                      }
+                      stroke={
+                        feature.properties.kind === 'pixel'
+                          ? 'none'
+                          : feature.properties.kind === 'selection'
+                            ? colors.selected
+                            : colors.accent
+                      }
+                      strokeWidth={
+                        feature.properties.kind === 'selection' ? 3 : 2
+                      }
+                    />
+                  ),
+                )}
+              </g>
+            ))}
             {grid.features.flatMap((feature, i) =>
               feature.geometry
                 ? geometryPaths(feature.geometry, planar.project).map(

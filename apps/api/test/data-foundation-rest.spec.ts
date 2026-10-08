@@ -1,3 +1,4 @@
+import { candidateRelationPublicInputs } from './support/candidate-relations-public-fixture.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   FastifyInstance,
@@ -114,6 +115,41 @@ const candidateTopicCreateInput = {
   },
 };
 const validInputs = {
+  ...candidateRelationPublicInputs(
+    savedCandidateReference,
+    ASSET_ID,
+    OPERATION_ID,
+  ),
+  'data.ingestion.candidate.followup.create': {
+    type: 'GAP',
+    source: {
+      reference: savedCandidateReference,
+      assetId: ASSET_ID,
+      sourceHash: 'b'.repeat(64),
+      locator: `asset:${ASSET_ID}`,
+    },
+    ruleId: 'coverage',
+    ruleVersion: '1',
+    reason: 'Missing report period',
+  },
+  'data.ingestion.candidate.followup.get': { followupId: OPERATION_ID },
+  'data.ingestion.candidate.followup.list': {
+    ...savedCandidateReference,
+    first: 2,
+  },
+  'data.ingestion.candidate.followup.act': {
+    followupId: OPERATION_ID,
+    expectedVersion: 1,
+    action: 'CLAIM',
+    note: 'Claim task',
+  },
+  'data.ingestion.candidate.followup.review': {
+    followupId: OPERATION_ID,
+    expectedVersion: 4,
+    decision: 'RETURN',
+    note: 'Evidence incomplete',
+  },
+
   'data.ingestion.candidate.topic.create': candidateTopicCreateInput,
   'data.ingestion.candidate.topic.list': { first: 2 },
   'data.ingestion.candidate.topic.open': { viewId: OPERATION_ID },
@@ -412,6 +448,8 @@ const VERSIONED_COMMANDS = new Set<DataCapabilityId>([
   'data.ingestion.approve',
   'data.ingestion.reject',
   'data.operation.cancel',
+  'data.ingestion.candidate.followup.act',
+  'data.ingestion.candidate.followup.review',
 ]);
 
 function authHeaders() {

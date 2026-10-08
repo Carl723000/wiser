@@ -871,21 +871,38 @@ function requestHash(
   input: unknown,
   context: DataCapabilityExecutionContext,
 ) {
+  const candidateRelationCommand = [
+    'data.ingestion.candidate.relations.create',
+    'data.ingestion.candidate.relations.review',
+    'data.ingestion.candidate.relations.withdraw',
+    'data.ingestion.candidate.relations.rebind',
+  ].includes(capabilityId);
+  const identity = (value: string) =>
+    candidateRelationCommand ? trustedCommandUuid(value) : value;
   return createHash('sha256')
     .update(
       canonical({
         capabilityId,
         input,
-        actorId: context.principal.actorId,
-        tenantId: context.authorization.tenantId,
-        projectId: context.authorization.projectId,
+        actorId: identity(context.principal.actorId),
+        tenantId: identity(context.authorization.tenantId),
+        projectId: identity(context.authorization.projectId),
         ...([
           'data.ingestion.candidate.view.create',
           'data.ingestion.candidate.view.revoke',
+          'data.ingestion.candidate.relations.create',
+          'data.ingestion.candidate.relations.review',
+          'data.ingestion.candidate.relations.withdraw',
+          'data.ingestion.candidate.relations.rebind',
+          'data.ingestion.candidate.followup.create',
+          'data.ingestion.candidate.followup.act',
+          'data.ingestion.candidate.followup.review',
         ].includes(capabilityId)
           ? {
               actorType: context.principal.actorType,
-              delegatedBy: context.principal.delegatedBy ?? null,
+              delegatedBy: context.principal.delegatedBy
+                ? identity(context.principal.delegatedBy)
+                : null,
               purpose: context.authorization.purpose,
             }
           : {}),

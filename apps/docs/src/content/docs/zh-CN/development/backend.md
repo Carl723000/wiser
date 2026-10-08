@@ -22,7 +22,7 @@ checkPaths:
   - compose.yaml
   - package.json
 lastReviewedAt: 2026-10-08
-lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
+lastReviewedCommit: 4b34dd75754425e8d4defd48ee00af2354bfb69b
 ---
 
 ## 后端拓扑
@@ -171,3 +171,9 @@ pnpm verify           # 所需聚焦与集成门禁之后的全仓收敛
 纯 EXCON 协议改动通常不需要 Data gate；纯 Data 改动也不应仅为“保险”清空 Supabase。只有跨系统身份或完整栈行为变化时才组合相应门禁。
 
 新增业务系统和模块注册的完整清单见[新增 WISER 系统](/development/adding-a-system/)。
+
+## 候选跟进运行链
+
+`ingestion-candidate-followups.ts` 组合五项同步 Capability：`create`、`get`、`list`、`act`、`review`。创建、办理和复核复用 `CommandTransactions`，幂等摘要绑定 actor/type/delegator/purpose；重放仍检查当前全部来源。列表使用固定候选引用、稳定游标与分页，不无限读取历史。
+
+交接资格由 `candidate-followup-assignee-authority.ts` 复用现有 Auth pool 与资源核权 loader；目标类型、角色与范围不由客户端提供。纯 API 执行探针覆盖成功和拒绝路径，但不能替代实际 Auth/HTTP、PostgreSQL RLS、事务提交和并发验收。

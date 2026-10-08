@@ -31,6 +31,8 @@ import {
   MATRIX_REGIONS,
   type MatrixAxis,
 } from '../lib/spatial-readiness-matrix';
+import { CandidateFollowupPanel } from './candidate-followup-panel';
+import type { Locale } from '@/lib/i18n';
 import { ContextHelp } from './context-help';
 import {
   buildMonthlyReadout,
@@ -128,6 +130,7 @@ export interface ReadinessCopy {
 }
 export interface SpatialReadinessPanelProps {
   pack: WorkspacePack;
+  locale?: Locale;
   regionId: RegionId;
   staleRecordIds?: readonly string[];
   facts?: ProjectReadinessInput | null;
@@ -154,6 +157,7 @@ export function SpatialReadinessPanel({
   onSelectScope,
   sourceHref,
   copy,
+  locale = 'zh-CN',
 }: SpatialReadinessPanelProps) {
   const [localNeedId, setNeedId] = useState('K5-001');
   const needId = selection?.needId ?? localNeedId;
@@ -766,7 +770,7 @@ export function SpatialReadinessPanel({
                 {result.density.reportWindows.join(', ') || copy.unknown}
               </p>
             )}
-            {question.details.length > 0 ? (
+            {question.details.length > 0 || question.id === 'gaps' ? (
               <button type="button" onClick={() => open(question.id)}>
                 {copy.inspect}
               </button>
@@ -789,6 +793,27 @@ export function SpatialReadinessPanel({
               {copy.closeDetails}
             </button>
           </div>
+          {selected.id === 'gaps' && (
+            <CandidateFollowupPanel
+              locale={locale}
+              ruleId={`project-readiness:${needId}:gaps`}
+              ruleVersion={facts?.requirement.version ?? pack.processingVersion}
+              readOnly={track !== 'REAL'}
+              references={(facts?.sources ?? []).flatMap((source) =>
+                'candidateReference' in source &&
+                source.candidateReference !== undefined &&
+                source.needIds.includes(needId) &&
+                source.regionIds.includes(activeRegion)
+                  ? [
+                      {
+                        reference: source.candidateReference,
+                        label: source.sourceLocalWorkId ?? source.assetId,
+                      },
+                    ]
+                  : [],
+              )}
+            />
+          )}
           {(selected.id === 'density' || selected.id === 'gaps') &&
             result.project.monthly.raw.length > 0 && (
               <>

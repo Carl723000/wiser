@@ -1,3 +1,4 @@
+import { candidateRelationPublicInputs } from './support/candidate-relations-public-fixture.ts';
 import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
@@ -195,6 +196,41 @@ const candidateTopicCreateInput = {
   },
 };
 const validCapabilityInputs = {
+  'data.ingestion.candidate.followup.create': {
+    type: 'GAP',
+    source: {
+      reference: savedCandidateReference,
+      assetId: ASSET_ID,
+      sourceHash: 'b'.repeat(64),
+      locator: `asset:${ASSET_ID}`,
+    },
+    ruleId: 'coverage',
+    ruleVersion: '1',
+    reason: 'Missing report period',
+  },
+  'data.ingestion.candidate.followup.get': { followupId: OPERATION_ID },
+  'data.ingestion.candidate.followup.list': {
+    ...savedCandidateReference,
+    first: 2,
+  },
+  'data.ingestion.candidate.followup.act': {
+    followupId: OPERATION_ID,
+    expectedVersion: 1,
+    action: 'CLAIM',
+    note: 'Claim task',
+  },
+  'data.ingestion.candidate.followup.review': {
+    followupId: OPERATION_ID,
+    expectedVersion: 4,
+    decision: 'RETURN',
+    note: 'Evidence incomplete',
+  },
+
+  ...candidateRelationPublicInputs(
+    savedCandidateReference,
+    ASSET_ID,
+    OPERATION_ID,
+  ),
   'data.ingestion.candidate.topic.create': candidateTopicCreateInput,
   'data.ingestion.candidate.topic.list': { first: 2 },
   'data.ingestion.candidate.topic.open': { viewId: OPERATION_ID },
@@ -473,6 +509,145 @@ const validCapabilityInputs = {
 } satisfies Record<DataCapabilityId, Readonly<Record<string, unknown>>>;
 
 const expectedCapabilityMappings = {
+  'data.ingestion.candidate.followup.create': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-followups',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'createDataIngestionCandidateFollowup',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_followup_create' },
+    skillMapping: { operation: 'data.ingestion.candidate.followup.create' },
+  },
+  'data.ingestion.candidate.followup.get': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestion-candidate-followups/:followupId',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateFollowup',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_followup_get' },
+    skillMapping: { operation: 'data.ingestion.candidate.followup.get' },
+  },
+  'data.ingestion.candidate.followup.list': {
+    restMapping: {
+      method: 'GET',
+      path: '/api/data/v1/ingestion-candidate-followups',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'query',
+      field: 'dataIngestionCandidateFollowups',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_followup_list' },
+    skillMapping: { operation: 'data.ingestion.candidate.followup.list' },
+  },
+  'data.ingestion.candidate.followup.act': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-followups/:followupId/act',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'actDataIngestionCandidateFollowup',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_followup_act' },
+    skillMapping: { operation: 'data.ingestion.candidate.followup.act' },
+  },
+  'data.ingestion.candidate.followup.review': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-followups/:followupId/review',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'reviewDataIngestionCandidateFollowup',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_followup_review' },
+    skillMapping: { operation: 'data.ingestion.candidate.followup.review' },
+  },
+
+  'data.ingestion.candidate.relations.create': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-relations',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'createDataCandidateRelations',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_relations_create' },
+    skillMapping: { operation: 'data.ingestion.candidate.relations.create' },
+  },
+  'data.ingestion.candidate.relations.get': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-relations/:relationId/read',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataCandidateRelation' },
+    mcpMapping: { toolName: 'data_ingestion_candidate_relations_get' },
+    skillMapping: { operation: 'data.ingestion.candidate.relations.get' },
+  },
+  'data.ingestion.candidate.relations.list': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-relations/list',
+      successStatus: 200,
+    },
+    graphqlMapping: { operationType: 'query', field: 'dataCandidateRelations' },
+    mcpMapping: { toolName: 'data_ingestion_candidate_relations_list' },
+    skillMapping: { operation: 'data.ingestion.candidate.relations.list' },
+  },
+  'data.ingestion.candidate.relations.review': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-relations/:relationId/review',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'reviewDataCandidateRelation',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_relations_review' },
+    skillMapping: { operation: 'data.ingestion.candidate.relations.review' },
+  },
+  'data.ingestion.candidate.relations.withdraw': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-relations/:relationId/withdraw',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'withdrawDataCandidateRelation',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_relations_withdraw' },
+    skillMapping: { operation: 'data.ingestion.candidate.relations.withdraw' },
+  },
+  'data.ingestion.candidate.relations.rebind': {
+    restMapping: {
+      method: 'POST',
+      path: '/api/data/v1/ingestion-candidate-relations/:relationId/rebind',
+      successStatus: 200,
+    },
+    graphqlMapping: {
+      operationType: 'mutation',
+      field: 'rebindDataCandidateRelation',
+    },
+    mcpMapping: { toolName: 'data_ingestion_candidate_relations_rebind' },
+    skillMapping: { operation: 'data.ingestion.candidate.relations.rebind' },
+  },
+
   'data.ingestion.candidate.topic.create': {
     restMapping: {
       method: 'POST',
@@ -1090,6 +1265,40 @@ const expectedCapabilityMappings = {
 } satisfies Record<DataCapabilityId, unknown>;
 
 const expectedCapabilityScopes = {
+  'data.ingestion.candidate.followup.create': [
+    'data.operation.read',
+    'data.ingestion.write',
+  ],
+  'data.ingestion.candidate.followup.get': ['data.operation.read'],
+  'data.ingestion.candidate.followup.list': ['data.operation.read'],
+  'data.ingestion.candidate.followup.act': [
+    'data.operation.read',
+    'data.ingestion.write',
+  ],
+  'data.ingestion.candidate.followup.review': [
+    'data.operation.read',
+    'data.publish',
+  ],
+
+  'data.ingestion.candidate.relations.create': [
+    'data.operation.read',
+    'data.ingestion.write',
+  ],
+  'data.ingestion.candidate.relations.get': ['data.operation.read'],
+  'data.ingestion.candidate.relations.list': ['data.operation.read'],
+  'data.ingestion.candidate.relations.review': [
+    'data.operation.read',
+    'data.publish',
+  ],
+  'data.ingestion.candidate.relations.withdraw': [
+    'data.operation.read',
+    'data.ingestion.write',
+  ],
+  'data.ingestion.candidate.relations.rebind': [
+    'data.operation.read',
+    'data.ingestion.write',
+  ],
+
   'data.ingestion.candidate.topic.create': ['data.operation.read'],
   'data.ingestion.candidate.topic.list': ['data.operation.read'],
   'data.ingestion.candidate.topic.open': ['data.operation.read'],
@@ -1169,6 +1378,52 @@ const asynchronousCapabilityIds = new Set<DataCapabilityId>([
 ]);
 
 const expectedJsonSchemaHashes = {
+  'data.ingestion.candidate.followup.create': {
+    input: '120de28019804617e9d352ae641b65e3a7ec3d9dce2988b6c8ac73ca5d4431ac',
+    output: '5e623d87922fbd6c0ec7faa553f605c624463c9ed9311a853248c0bac5cbd55b',
+  },
+  'data.ingestion.candidate.followup.get': {
+    input: 'd5c4f6478705223ee772b473210a2b8671cc863f0c6627534b375a5d8049f158',
+    output: '5e623d87922fbd6c0ec7faa553f605c624463c9ed9311a853248c0bac5cbd55b',
+  },
+  'data.ingestion.candidate.followup.list': {
+    input: '645186504a0642d7c624ee5425544af05ed23f7238e65f694b1376cdd7305717',
+    output: '7f0f51c3d673c0272d3f5e1ecd6e0ff265a7190aa6fa40f9cf574029488b0be7',
+  },
+  'data.ingestion.candidate.followup.act': {
+    input: '47a65e6db52476c6a908b44602546a14271cfb23f4ca843247dedad6773f2392',
+    output: '5e623d87922fbd6c0ec7faa553f605c624463c9ed9311a853248c0bac5cbd55b',
+  },
+  'data.ingestion.candidate.followup.review': {
+    input: 'c02bf52b7669aa10b32ccae429b51d514c6ae3e644ef7b41d13e90010c5b759b',
+    output: '5e623d87922fbd6c0ec7faa553f605c624463c9ed9311a853248c0bac5cbd55b',
+  },
+
+  'data.ingestion.candidate.relations.create': {
+    input: '0f8d8bb1c7c3df24661f7635e74f8dadfe65e733f3fd467876a76ee1b9efe92d',
+    output: 'e8d091da247cc47650bd34ef2fc505a51abe359f8b575f35c3d284cbabe43dbb',
+  },
+  'data.ingestion.candidate.relations.get': {
+    input: '31364c8bf64f32f80e9ff2dba81ed206dea16b849af566519904b206f045e065',
+    output: '7e7e2daba10e42ca5ec74eb7d549e29e1746565ab91eae4451b6136afbb4b712',
+  },
+  'data.ingestion.candidate.relations.list': {
+    input: 'ed9db9e811eaaf6125b56c9b5224749dfb67aa592ab4d5851f779b50f44d3f31',
+    output: '7f2a63a2ec3443d638ab9e463fcc4effa0600b52aea3d7ff7ed2d58574e60f2b',
+  },
+  'data.ingestion.candidate.relations.review': {
+    input: '2685da0835c77d7b09f85dd4fc865e1ddee9f8e389d6adf9dff7ff42b208bb72',
+    output: '7e7e2daba10e42ca5ec74eb7d549e29e1746565ab91eae4451b6136afbb4b712',
+  },
+  'data.ingestion.candidate.relations.withdraw': {
+    input: 'ce71a940a79c9ba22fbaf3ab430fa6d07604aadd3fa3cb28ffb5875403f11a45',
+    output: '7e7e2daba10e42ca5ec74eb7d549e29e1746565ab91eae4451b6136afbb4b712',
+  },
+  'data.ingestion.candidate.relations.rebind': {
+    input: '238e6f66136dcfcd04f0d855970d1775a3d6f43f978eb97c4dfa87fd1466ad82',
+    output: '7e7e2daba10e42ca5ec74eb7d549e29e1746565ab91eae4451b6136afbb4b712',
+  },
+
   'data.ingestion.candidate.topic.create': {
     input: '96f220dd705433e95e4bf74d6fe123d3e51adfa7ce8c7ccd2840c24065b2355e',
     output: 'd66424cdcca8911275814822b8c1f03853af81685faeccb195c056114385fe54',
@@ -1726,6 +1981,11 @@ describe('Data Foundation capability registry', () => {
       'data.ingestion.candidate.records',
       'data.ingestion.candidate.geometry',
       'data.ingestion.candidate.provenance.get',
+      'data.ingestion.candidate.followup.create',
+      'data.ingestion.candidate.followup.get',
+      'data.ingestion.candidate.followup.list',
+      'data.ingestion.candidate.followup.act',
+      'data.ingestion.candidate.followup.review',
       'data.ingestion.candidate.view.create',
       'data.ingestion.candidate.view.list',
       'data.ingestion.candidate.view.open',
@@ -1733,6 +1993,12 @@ describe('Data Foundation capability registry', () => {
       'data.ingestion.candidate.topic.create',
       'data.ingestion.candidate.topic.list',
       'data.ingestion.candidate.topic.open',
+      'data.ingestion.candidate.relations.create',
+      'data.ingestion.candidate.relations.get',
+      'data.ingestion.candidate.relations.list',
+      'data.ingestion.candidate.relations.review',
+      'data.ingestion.candidate.relations.withdraw',
+      'data.ingestion.candidate.relations.rebind',
       'data.ingestion.approve',
       'data.ingestion.reject',
       'data.operation.cancel',
@@ -2144,6 +2410,20 @@ describe('Data Foundation JSON Schema generation', () => {
       for (const schema of [definition.inputSchema, definition.outputSchema]) {
         const generated = z.toJSONSchema(schema, { target: 'draft-7' });
         if (
+          schema === definition.inputSchema &&
+          [
+            'data.ingestion.candidate.followup.create',
+            'data.ingestion.candidate.followup.act',
+          ].includes(capabilityId)
+        ) {
+          expect(generated.oneOf).toHaveLength(
+            capabilityId.endsWith('.create') ? 2 : 5,
+          );
+          for (const branch of generated.oneOf ?? []) {
+            expect(branch.type).toBe('object');
+            expect(branch.additionalProperties).toBe(false);
+          }
+        } else if (
           capabilityId === 'data.ingestion.candidate.topic.open' &&
           schema === definition.outputSchema
         ) {
