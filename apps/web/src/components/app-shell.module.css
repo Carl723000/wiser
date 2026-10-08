@@ -153,6 +153,9 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
   gap: 8px;
   align-items: center;
   justify-self: end;
@@ -161,6 +164,9 @@
 
 .authControl {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
   gap: 5px;
   align-items: center;
   min-width: 0;
@@ -454,7 +460,7 @@
 
 @media (max-width: 760px) {
   .header {
-    grid-template-columns: minmax(90px, 1fr) auto;
+    grid-template-columns: minmax(90px, 1fr) minmax(0, 1fr);
     gap: 8px;
     min-height: 116px;
     padding: 8px 14px;

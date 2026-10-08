@@ -44,7 +44,7 @@ const escapeHtml = (value: string) =>
       '"': '&quot;',
       "'": '&#39;',
     };
-    return entities[character]!;
+    return entities[character];
   });
 
 function shell(locale: Locale, theme: 'light' | 'dark', child: string) {
@@ -167,11 +167,11 @@ async function expectFullyAccessible(locator: Locator) {
         bottom: clipBottom,
       },
       hit: points.every(([x, y]) => {
-        const hit = document.elementFromPoint(x!, y!);
+        const hit = document.elementFromPoint(x, y);
         return hit === element || (hit !== null && element.contains(hit));
       }),
       hitDetails: points.map(([x, y]) => {
-        const hit = document.elementFromPoint(x!, y!);
+        const hit = document.elementFromPoint(x, y);
         return {
           x,
           y,
@@ -352,11 +352,11 @@ for (const locale of ['zh-CN', 'en'] as const)
             )
             .toBe(true);
         }
-        await expect(controls[3]!).toHaveAttribute(
+        await expect(controls[3]).toHaveAttribute(
           'href',
           `/${locale}/account/password`,
         );
-        await expect(controls[4]!).toHaveAttribute(
+        await expect(controls[4]).toHaveAttribute(
           'href',
           `/${locale}/account/agents`,
         );

@@ -200,6 +200,7 @@
 }
 .reader th,
 .reader td {
+  min-width: 8rem;
   max-width: 32rem;
   padding: 0.65rem;
   border-bottom: 1px solid var(--border);
