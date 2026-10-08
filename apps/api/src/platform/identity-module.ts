@@ -33,6 +33,10 @@ export function createPlatformIdentityModule(
     id: 'platform.identity',
     register(app) {
       app.get('/api/platform/v1/me', async (request, reply) => {
+        reply.header(
+          'Cache-Control',
+          'private, no-cache, no-store, max-age=0, must-revalidate',
+        );
         const token = bearerToken(singleHeader(request.headers.authorization));
         const tenantId = singleHeader(request.headers['x-wiser-tenant-id']);
         const projectId = singleHeader(request.headers['x-wiser-project-id']);

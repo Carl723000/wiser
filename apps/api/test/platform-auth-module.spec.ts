@@ -11,6 +11,8 @@ const TENANT_ID = 'e1000000-0000-4000-8000-000000000001';
 const PROJECT_ID = 'e1000000-0000-4000-8000-000000000002';
 const USER_ID = 'e1000000-0000-4000-8000-000000000003';
 const SESSION_ID = 'e1000000-0000-4000-8000-000000000004';
+const PRIVATE_CACHE_CONTROL =
+  'private, no-cache, no-store, max-age=0, must-revalidate';
 
 const context: PlatformRequestContext = {
   principal: {
@@ -79,6 +81,7 @@ describe('WISER platform identity HTTP module', () => {
       purpose: 'operate',
     });
     expect(resolveInput?.traceId).toMatch(/^[a-f0-9]{32}$/);
+    expect(response.headers['cache-control']).toBe(PRIVATE_CACHE_CONTROL);
   });
 
   it('fails closed when credentials or authorization context are absent', async () => {
@@ -106,5 +109,114 @@ describe('WISER platform identity HTTP module', () => {
     expect(missing.statusCode).toBe(401);
     expect(denied.statusCode).toBe(403);
     expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    'authorization',
+    'x-wiser-tenant-id',
+    'x-wiser-project-id',
+    'x-wiser-purpose',
+  ])(
+    'does not cache the rejection when %s is missing',
+    async (missingHeader) => {
+      const resolve = vi.fn(() => Promise.resolve(context));
+      const app = buildApp({
+        logger: false,
+        modules: [createPlatformIdentityModule({ resolve })],
+      });
+      openApps.push(app);
+      const headers: Record<string, string> = {
+        authorization: 'Bearer verified-token',
+        'x-wiser-tenant-id': TENANT_ID,
+        'x-wiser-project-id': PROJECT_ID,
+        'x-wiser-purpose': 'operate',
+      };
+      delete headers[missingHeader];
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/platform/v1/me',
+        headers,
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({
+        code: 'NOT_AUTHENTICATED',
+        message:
+          '需要 Bearer credential、Tenant、Project 与 Purpose。 / Bearer credential, Tenant, Project, and Purpose are required.',
+      });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(response.headers['cache-control']).toBe(PRIVATE_CACHE_CONTROL);
+    },
+  );
+
+  it('does not cache the rejection when current authorization is lost', async () => {
+    const resolve = vi.fn(() => Promise.resolve(null));
+    const app = buildApp({
+      logger: false,
+      modules: [createPlatformIdentityModule({ resolve })],
+    });
+    openApps.push(app);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/platform/v1/me',
+      headers: {
+        authorization: 'Bearer revoked-token',
+        'x-wiser-tenant-id': TENANT_ID,
+        'x-wiser-project-id': PROJECT_ID,
+        'x-wiser-purpose': 'operate',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      code: 'NOT_AUTHORIZED',
+      message:
+        '当前身份无权访问该项目上下文。 / The current identity is not authorized for this project context.',
+    });
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(response.headers['cache-control']).toBe(PRIVATE_CACHE_CONTROL);
+  });
+
+  it('preserves the shared non-cacheable safe error when the resolver throws', async () => {
+    const resolve = vi.fn(() =>
+      Promise.reject(new Error('synthetic resolver diagnostic')),
+    );
+    const app = buildApp({
+      logger: false,
+      modules: [createPlatformIdentityModule({ resolve })],
+    });
+    openApps.push(app);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/platform/v1/me',
+      headers: {
+        authorization: 'Bearer verified-token',
+        'x-wiser-tenant-id': TENANT_ID,
+        'x-wiser-project-id': PROJECT_ID,
+        'x-wiser-purpose': 'operate',
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    const body = response.json<{
+      error: { code: string; message: string; traceId: string };
+    }>();
+    expect(body.error.traceId).toMatch(
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
+    );
+    expect(body).toEqual({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message:
+          '服务暂时无法完成请求。 / The service could not complete the request.',
+        traceId: body.error.traceId,
+      },
+    });
+    expect(response.body).not.toContain('synthetic resolver diagnostic');
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(response.headers['cache-control']).toBe(PRIVATE_CACHE_CONTROL);
   });
 });

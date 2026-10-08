@@ -21,8 +21,8 @@ checkPaths:
   - packages/**
   - compose.yaml
   - package.json
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 6ecec49ff897d44bf0d25e6eed5bfac58f2e85aa
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
 ---
 
 ## 后端拓扑

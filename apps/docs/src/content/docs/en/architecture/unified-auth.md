@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
 ---
 
 ## Where access starts
@@ -108,6 +108,8 @@ Consent creates a platform Agent, memberships, and one Delegation in one control
 | `POST` | `/api/platform/v1/credentials/{credentialId}:revoke`             | Revoke one credential                                                       |
 
 `/me` and delegation routes require Bearer, Tenant, Project, and Purpose. Every write requires a UUID `Idempotency-Key`; Delegation commands also require a verified Supabase human with `platform.delegation.manage`. Responses are `private, no-store`, and issue/rotate plaintext is unrecoverable.
+
+`GET /api/platform/v1/me` sets `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate` before resolving identity; success, missing required headers, and lost project authorization remain non-cacheable, while resolver exceptions retain the shared safe error body and non-cacheable response.
 
 Agent HTTP routes are enabled when the API receives both `WISER_AGENT_MCP_RESOURCE` (the exact public `/mcp` URL) and `WISER_AGENT_AUTH_ISSUER` (the public Supabase `/auth/v1` issuer). Both require HTTPS except on loopback. The internal Supabase transport URL remains independent of the public issuer. Partial configuration fails startup.
 

@@ -473,6 +473,9 @@ describe('WISER platform auth runtime', () => {
       projectId: PROJECT_ID,
       maxSecurityLevel: 'L1_INTERNAL',
     });
+    expect(response.headers['cache-control']).toBe(
+      'private, no-cache, no-store, max-age=0, must-revalidate',
+    );
 
     await app.close();
     openApps.pop();

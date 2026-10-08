@@ -17,8 +17,8 @@ checkPaths:
   - apps/web/**
   - apps/mcp/**
   - apps/telemetry-ingress/**
-lastReviewedAt: 2026-09-26
-lastReviewedCommit: 37d60e1cf561bf0f12a97ed34f48ece1a50f29d5
+lastReviewedAt: 2026-10-08
+lastReviewedCommit: 8333ed960c0c4c13448d513f986f0c76732cb458
 ---
 
 ## 从哪里获得访问权限
@@ -108,6 +108,8 @@ Agent 连接记录把一个 human 与 OAuth client 绑定到已有的 `agent-dat
 | `POST` | `/api/platform/v1/credentials/{credentialId}:revoke`             | 撤销单个 credential                                              |
 
 `/me` 与委托路由都要求 Bearer、Tenant、Project 与 Purpose。所有写操作要求 UUID `Idempotency-Key`；Delegation 命令还要求经过验证且具备 `platform.delegation.manage` 的 Supabase human。响应为 `private, no-store`，issue/rotate 的明文不可恢复。
+
+`GET /api/platform/v1/me` 在解析身份前设置 `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`；成功、缺少必要请求头和当前项目授权失效的响应均不可缓存，解析器异常仍沿用统一错误处理的安全正文与不可缓存响应。
 
 API 同时配置 `WISER_AGENT_MCP_RESOURCE`（精确的公开 `/mcp` URL）与 `WISER_AGENT_AUTH_ISSUER`（公开 Supabase `/auth/v1` issuer）后启用 Agent HTTP 路由。除回环地址外，两者都要求 HTTPS。内部 Supabase transport URL 与公开 issuer 分开配置；配置不完整时拒绝启动。
 
