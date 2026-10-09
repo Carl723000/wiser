@@ -29,6 +29,12 @@ import {
   type CandidateReadAction,
   type CandidateSavedPages,
 } from '@/lib/ingestion-candidate-reader';
+import { CANDIDATE_MONTHLY_RULE_VERSION_V3 } from '@wiser/data-core/candidate-monthly-projection';
+import {
+  readCandidateMonthlySemantics,
+  type CandidateMonthlySemanticRead,
+} from '@/lib/candidate-monthly-semantic-reader';
+import { CandidateMonthlyPanel } from './candidate-monthly-panel';
 import { CandidateFollowupPanel } from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
@@ -254,6 +260,9 @@ function CandidateSession({
     epoch: number;
   } | null>(null);
   const cameraEpoch = useRef(0);
+  const [monthly, setMonthly] = useState<CandidateMonthlySemanticRead | null>(
+    null,
+  );
   const [assetId, setAssetId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('originals');
@@ -289,6 +298,7 @@ function CandidateSession({
       return;
     // Browser events must block new navigation before React commits a render.
     recoveryGate.current = true;
+    setMonthly(null);
     restricted.current?.setAttribute('inert', '');
     setRecovering(true);
     rasterCancel.current?.();
@@ -340,6 +350,7 @@ function CandidateSession({
   }
 
   function clearContent() {
+    setMonthly(null);
     contentAvailable.current = false;
     rasterCancel.current?.();
     setAssets(null);
@@ -369,6 +380,7 @@ function CandidateSession({
     kind: 'read' | 'mutation' | 'recovery' = 'read',
   ) {
     if (recoveryGate.current && kind !== 'recovery') return;
+    setMonthly(null);
     mutationPending.current = kind === 'mutation';
     setMutating(mutationPending.current);
     rasterCancel.current?.();
@@ -484,6 +496,54 @@ function CandidateSession({
       setRecordNav(position);
     });
   }
+  function loadMonthly(chosenAsset: string, preparedSha256: string) {
+    if (recoveryGate.current || mutationPending.current) return;
+    setTab('originals');
+    setAssetId(chosenAsset);
+    setRecords(null);
+    setGeometry(null);
+    setSelected(null);
+    setRecordNav(firstPosition());
+    setGeometryNav(firstPosition());
+    return execute(async (signal) => {
+      // The owner chooses view vs complete topic and checks every saved member.
+      // Do not pass a topic identifier through the semantic reader's v1 view path.
+      await savedAuthority(signal);
+      const pins =
+        openedView && 'rulePins' in openedView.viewSpec
+          ? openedView.viewSpec.rulePins
+          : null;
+      const pin = pins?.find(
+        (item) =>
+          item.kind === 'projection' &&
+          item.ruleId === 'beijing-monthly-docx-c3',
+      );
+      if (topicMode && !pin) {
+        await savedAuthority(signal);
+        if (!signal.aborted) setNotice(copy.monthly.ruleUnavailable);
+        return;
+      }
+      const processingRuleVersion = pin
+        ? pin.version
+        : CANDIDATE_MONTHLY_RULE_VERSION_V3;
+      const value = await readCandidateMonthlySemantics(
+        {
+          reference: fixed,
+          assetId: chosenAsset,
+          fixed: {
+            sourceLocalWorkId: null,
+            originalSha256: null,
+            preparedSha256,
+            processingRuleVersion,
+          },
+        },
+        signal,
+      );
+      await savedAuthority(signal);
+      if (signal.aborted || !owner.current) return;
+      setMonthly(value);
+    });
+  }
   function loadGeometry(chosenAsset: string, position = firstPosition()) {
     if (recoveryGate.current) return Promise.resolve();
     setTab('map');
@@ -542,11 +602,23 @@ function CandidateSession({
     )
       setSelected(recordId);
   }
-  function seek(kind: 'records' | 'geometry') {
-    if (recoveryGate.current) return;
-    if (!assetId || !selected) return;
-    const chosenAsset = assetId,
-      chosenRecord = selected;
+  function seek(
+    kind: 'records' | 'geometry',
+    target?: { assetId: string; recordId: string },
+  ) {
+    if (recoveryGate.current || mutationPending.current) return;
+    const chosenAsset = target?.assetId ?? assetId,
+      chosenRecord = target?.recordId ?? selected;
+    if (!chosenAsset || !chosenRecord) return;
+    if (target) {
+      setSelected(null);
+      setRecords(null);
+      setAssetId(chosenAsset);
+      if (chosenAsset !== assetId) {
+        setGeometry(null);
+        setGeometryNav(firstPosition());
+      }
+    }
     setTab(kind === 'geometry' ? 'map' : 'records');
     return execute(async (signal) => {
       let position = firstPosition();
@@ -570,8 +642,10 @@ function CandidateSession({
           rows.some(
             (row) => row.recordId.toLowerCase() === chosenRecord.toLowerCase(),
           )
-        )
+        ) {
+          setSelected(chosenRecord);
           return;
+        }
         if (!value.nextCursor || rows.length === 0) break;
         position = nextPosition(
           position,
@@ -1234,6 +1308,20 @@ function CandidateSession({
               parentBusy={busy}
             />
           </details>
+          {monthly && (
+            <CandidateMonthlyPanel
+              key={`${candidateSavedReferenceKey(fixed)}:${monthly.assetId}`}
+              result={monthly}
+              locale={locale}
+              busy={busy || recovering}
+              onSelect={(record) =>
+                void seek('records', {
+                  assetId: record.source.assetId,
+                  recordId: record.sourceLocalIdentity.recordId,
+                })
+              }
+            />
+          )}
           <div
             className={styles.tabs}
             role="tablist"
@@ -1337,6 +1425,22 @@ function CandidateSession({
                           >
                             {copy.readRecords}
                           </button>
+                          {asset.status === 'READY' &&
+                            asset.recordCount !== null &&
+                            asset.recordCount > 0 && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void loadMonthly(
+                                    asset.assetId,
+                                    asset.sourceHash,
+                                  )
+                                }
+                              >
+                                {copy.monthly.read}
+                              </button>
+                            )}
                           <button
                             type="button"
                             disabled={

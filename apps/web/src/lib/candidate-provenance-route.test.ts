@@ -1,0 +1,145 @@
+import { afterEach, expect, it, vi } from 'vitest';
+
+const { candidate, getDal } = vi.hoisted(() => ({
+  candidate: vi.fn(),
+  getDal: vi.fn(),
+}));
+vi.mock('./data-foundation-dal.server', () => ({
+  getDataFoundationDal: getDal,
+  DataFoundationApiError: class extends Error {},
+}));
+import { DataFoundationApiError } from './data-foundation-dal.server';
+import { POST } from '../app/api/data-foundation/candidate-provenance/route';
+
+function request(
+  body?: BodyInit,
+  origin = 'http://localhost',
+  signal?: AbortSignal,
+) {
+  return new Request('http://localhost/api/data-foundation/candidates/get', {
+    method: 'POST',
+    headers: { host: 'localhost', origin },
+    ...(body === undefined ? {} : { body }),
+    ...(body instanceof ReadableStream ? { duplex: 'half' } : {}),
+    signal,
+  });
+}
+const call = (_action: string, body?: BodyInit, origin?: string) =>
+  POST(request(body, origin));
+afterEach(() => {
+  vi.useRealTimers();
+  vi.resetAllMocks();
+});
+
+it.each([
+  ['get', '{}', 'https://foreign.example', 403],
+  ['get', undefined, 'http://localhost', 422],
+  ['get', '{', 'http://localhost', 422],
+  ['get', new Uint8Array([0xff]), 'http://localhost', 422],
+  ['get', 'x'.repeat(16385), 'http://localhost', 413],
+] as const)(
+  'rejects %s request with %i before accessing the DAL',
+  async (_action, body, origin, status) => {
+    const response = await call(_action, body, origin);
+    expect(response.status).toBe(status);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(getDal).not.toHaveBeenCalled();
+  },
+);
+it.each(['provenance'])(
+  'forwards the read-only %s command and caller cancellation',
+  async (_action) => {
+    getDal.mockResolvedValue({ candidateConversionProvenance: candidate });
+    candidate.mockResolvedValue({ reference: 'fixed' });
+    const req = request('{"kind":"ingestion-candidate"}');
+    const response = await POST(req);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ reference: 'fixed' });
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(candidate).toHaveBeenCalledWith(
+      { kind: 'ingestion-candidate' },
+      req.signal,
+    );
+  },
+);
+it('enforces the body limit across chunks and cancels the unread stream', async () => {
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(8192));
+      controller.enqueue(new Uint8Array(8193));
+    },
+    cancel,
+  });
+  expect((await call('records', body)).status).toBe(413);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(getDal).not.toHaveBeenCalled();
+});
+it('returns 413 even when the oversized request stream never finishes cancellation', async () => {
+  const cancel = vi.fn(() => new Promise<void>(() => {}));
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(16385));
+    },
+    cancel,
+  });
+  await expect(
+    Promise.race([
+      call('get', body),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+    ]),
+  ).resolves.toMatchObject({ status: 413 });
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(getDal).not.toHaveBeenCalled();
+});
+it('does not acquire a session after the browser aborts a stalled request body', async () => {
+  const abort = new AbortController();
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{'));
+      queueMicrotask(() => abort.abort());
+    },
+    cancel,
+  });
+  const response = await POST(request(body, undefined, abort.signal));
+  expect(response.status).toBe(499);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(getDal).not.toHaveBeenCalled();
+});
+it('preserves safe DAL status and hides every upstream diagnostic', async () => {
+  getDal.mockResolvedValue({ candidateConversionProvenance: candidate });
+  const error = Object.create(
+    DataFoundationApiError.prototype,
+  ) as DataFoundationApiError;
+  Object.assign(error, {
+    status: 403,
+    message: 'private/path https://internal.example',
+  });
+  candidate.mockRejectedValueOnce(error);
+  const denied = await call('get', '{}');
+  expect(denied.status).toBe(403);
+  expect(await denied.text()).toBe('{"code":"CANDIDATE_FAILED"}');
+  candidate.mockRejectedValueOnce(new Error('private upstream body'));
+  const failed = await call('get', '{}');
+  expect(failed.status).toBe(503);
+  expect(await failed.text()).toBe('{"code":"CANDIDATE_FAILED"}');
+});
+
+it('bounds a stalled input body before acquiring any session', async () => {
+  vi.useFakeTimers();
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{'));
+    },
+    cancel,
+  });
+  const result = POST(request(body));
+  await vi.advanceTimersByTimeAsync(30_000);
+  await expect(
+    Promise.race([result, Promise.resolve(null)]),
+  ).resolves.toMatchObject({ status: 504 });
+  expect(cancel).toHaveBeenCalled();
+  expect(getDal).not.toHaveBeenCalled();
+});

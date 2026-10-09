@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-08
-lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
+lastReviewedAt: 2026-10-09
+lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
 ---
 
 ## What runs today
@@ -639,6 +639,12 @@ The private `word_structure.py` reader consumes actual DOCX ZIP/XML bytes with e
 
 `structure.pythonPath` is checked only for an absolute path; the factory does not pin the interpreter digest. A pinned extractor script does not establish the interpreter or dependency closure. Use the factory only within a complete task runtime image, or a host interpreter and its complete dependency closure, that the core task has actually admitted. The existing parser base-image digest does not cover arbitrary host Python. That complete runtime has not yet been admitted; obtaining and hashing a stable converter package is not installation or runtime admission. The unsupported-construct inventory and original-value/A13 checks for the eight real DOCX files remain future acceptance work, not completed checks.
 
+### Authorized monthly conversion reading
+
+The Web client obtains fixed conversion provenance through the same-origin `candidate-provenance` bridge. The bridge accepts at most 16 KiB, bounds incoming body reading to 30 seconds, forwards browser cancellation and current server-owned session/scope to the existing provenance capability, and returns no-store responses. Strict result validation binds the candidate and prepared member; neither browser hashes nor a caller verification flag establishes equivalence.
+
+The explicit `beijing-monthly-docx-c3/2.1.0` producer consumes a server-verified O/P/M pair only after complete bounded asset and record pages. It retains the actual PARTIAL batch, the original/prepared/manifest status and reasons, the original hash O, the parsed hash P and source-local declaration. Unexplained failed members, wrong rules, changed members or late authorization loss prevent semantic output. Candidate first-page, saved selection and provenance are rechecked after collection; this is not a multi-request atomic snapshot. Existing 1.0.0 and 2.0.0 behavior and saved pins remain unchanged; the new producer has a separate host recipe. Technical equivalence and parsing never grant professional approval, geometry or observation identity. Native conversion, real authenticated browser operation and full original-value acceptance remain separate evidence gates.
+
 ## Private candidate relationship carrier
 
 Candidate relationship content lives in the ingestion domain, separately from published assertions. A revision fixes the candidate tuple, source-local endpoints, predicate, full context, source evidence, mapping/rule versions and immutable submitting actor/delegator/purpose. Every predicate requires context, including legacy water predicates; cross-source IDENTITY_MATCH requires two distinct candidate endpoints and evidence for both. No candidate tuple becomes a catalog version or published row_version.
@@ -669,7 +675,7 @@ Migration 0046 reuses current candidate forced RLS for each saved v2 manifest be
 
 ### Bounded topic host configuration
 
-Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. Two monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 calls the REPORT_PERIOD producer. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.
+Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. The monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 retains the original READY-only REPORT_PERIOD behavior. The separate 2.1.0 recipe permits only server-verified conversion members under the narrow PARTIAL rule and retains the original O hash. Historical saved pins are never upgraded automatically. The prior source digest is retained with its frozen source revision; the conversion-aware implementation has a separate adoption digest. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.
 
 ## Cancellation deadlock recovery
 

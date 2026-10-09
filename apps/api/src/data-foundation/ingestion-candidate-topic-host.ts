@@ -3,6 +3,7 @@ import { PlatformUuidSchema } from '@wiser/platform-contracts';
 import {
   CANDIDATE_MONTHLY_RULE_VERSION,
   CANDIDATE_MONTHLY_RULE_VERSION_V2,
+  CANDIDATE_MONTHLY_RULE_VERSION_V3,
 } from '@wiser/data-core';
 import type { CreateIngestionCandidateTopicInput } from '@wiser/data-contracts';
 import type { CandidateTopicPinAuthorities } from './ingestion-candidate-topic-pins.js';
@@ -62,8 +63,18 @@ export const CANDIDATE_TOPIC_ENGINEERING_ADOPTION = Object.freeze({
   adoptedAt: '2026-10-08',
   basis: 'bounded candidate compatibility engineering configuration',
   projection: Object.freeze({
+    // Historical adoption: this digest belongs to this frozen source revision.
+    sourceRevision: 'a32ad00c148bc1de08b18cfa168e0ee9952784e2',
     source: 'packages/data-core/src/candidate-monthly-projection.ts',
     sha256: '729b83e1fe6d3e34be916278bbaacf0ccc09566591485c72d8d5d1568ae6c220',
+  }),
+  conversionProjection: Object.freeze({
+    adoptedAt: '2026-10-09',
+    version: CANDIDATE_MONTHLY_RULE_VERSION_V3,
+    source: 'packages/data-core/src/candidate-monthly-projection.ts',
+    sha256: '154a7a266ac49da2591408e54d6a9c1aa2dbd0bcc10ab8cec61ce501878a3258',
+    basis:
+      'Explicit conversion-aware producer; legacy 1.0.0 and 2.0.0 behavior retained',
   }),
   readiness: Object.freeze({
     source: 'packages/data-core/src/project-readiness.ts',
@@ -99,16 +110,19 @@ const commonRules: readonly RulePin[] = Object.freeze([
   } as const),
 ]);
 const bundles = Object.freeze(
-  [CANDIDATE_MONTHLY_RULE_VERSION, CANDIDATE_MONTHLY_RULE_VERSION_V2].map(
-    (version) =>
-      Object.freeze([
-        Object.freeze({
-          kind: 'projection',
-          ruleId: 'beijing-monthly-docx-c3',
-          version,
-        } as const),
-        ...commonRules,
-      ]),
+  [
+    CANDIDATE_MONTHLY_RULE_VERSION,
+    CANDIDATE_MONTHLY_RULE_VERSION_V2,
+    CANDIDATE_MONTHLY_RULE_VERSION_V3,
+  ].map((version) =>
+    Object.freeze([
+      Object.freeze({
+        kind: 'projection',
+        ruleId: 'beijing-monthly-docx-c3',
+        version,
+      } as const),
+      ...commonRules,
+    ]),
   ),
 );
 const regions = new Set([

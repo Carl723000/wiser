@@ -15,8 +15,8 @@ checkPaths:
   - packages/data-contracts/src/capability/**
   - apps/api/src/data-foundation/**
   - skills/wiser-data-foundation/**
-lastReviewedAt: 2026-10-08
-lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
+lastReviewedAt: 2026-10-09
+lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
 ---
 
 ## Protocol boundary
@@ -512,7 +512,7 @@ Open's strict union is `READABLE` with matching specVersion/metadata/references/
 
 ### Bounded topic host configuration
 
-Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. Two monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 calls the REPORT_PERIOD producer. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.
+Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DATA_CANDIDATE_TOPIC_PROFILE` selects the fixed engineering recipe; `DATA_CANDIDATE_TOPIC_TENANT_ID`, `DATA_CANDIDATE_TOPIC_PROJECT_ID` and `DATA_CANDIDATE_TOPIC_PURPOSE` bind one configured project and an existing Auth purpose exactly. All four fields are required together, with no wildcard or first-request registration. Missing configuration keeps topic authority closed. The runtime injects this provider into the actual candidate saved executors. The monthly bundles remain distinct: 1.0.0 calls the original PUBLICATION producer; 2.0.0 retains the original READY-only REPORT_PERIOD behavior. The separate 2.1.0 recipe permits only server-verified conversion members under the narrow PARTIAL rule and retains the original O hash. Historical saved pins are never upgraded automatically. The prior source digest is retained with its frozen source revision; the conversion-aware implementation has a separate adoption digest. Requirement definition digests and requirement input versions remain separate; authenticated reading never loads a local fixed pack. The six-region/19-need catalog permits selections only: it grants no material access, geographic facts or professional approval. Relations read fixed revisions and current decisions on the same saved client, with reference and authority rechecks. Unproven `sourceObjectKey` mappings still fail closed while whole-record compatibility remains. The private host records definition digests and this engineering adoption; it creates no external professional standard or public protocol. Native SQL/Auth/browser acceptance is recorded separately.
 
 ### Cancellation recovery
 

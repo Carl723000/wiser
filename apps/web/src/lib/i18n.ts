@@ -2943,6 +2943,45 @@ const zhCN = {
       openAction: '查看接入任务',
     },
     candidateReader: {
+      monthly: {
+        read: '读取月报原值',
+        ruleUnavailable:
+          '此专题未固定适用的月报读取规则。请查阅原件与解析记录。',
+        title: '月报原值',
+        reportPeriod: '报告期',
+        name: '原文名称',
+        value: '原始类别',
+        kind: '原值类型',
+        sourceRow: '查看原表行',
+        more: '显示更多原值',
+        shown: '已显示',
+        noLocation: '位置尚未核定；原值可按原表查阅。',
+        noScope: '需求与区域归属尚未指定，不据此计算业务覆盖。',
+        verified: '原件与转换件的结构一致性已核验。',
+        unavailable: '暂不能读取月报原值。可先查阅原件与解析记录。',
+        technical: '月报来源与转换依据',
+        original: '历史原件',
+        prepared: '解析转换件',
+        manifest: '来源清单',
+        rule: '读取规则',
+        result: '核验结果',
+        tool: '核验工具',
+        reason: '处理原因',
+        empty: '原始空文本',
+        reasons: {
+          INVALID_INPUT: '读取依据不完整。',
+          INCOMPLETE_RECORD_PAGES: '解析记录尚不完整。',
+          SOURCE_NOT_READY: '所选资料尚未满足月报读取条件。',
+          SOURCE_CHANGED: '固定来源已变化，请刷新候选。',
+          UNKNOWN_LAYOUT: '当前表格结构尚不能识别为月报。',
+          MISSING_SOURCE_LOCAL_IDENTITY: '缺少源内作品声明。',
+          MISSING_ORIGINAL_HASH: '缺少可核对的原件依据。',
+          CONVERSION_PROVENANCE_UNAVAILABLE:
+            '原件与转换件的核验依据尚不满足要求。',
+          RULE_VERSION_CHANGED: '读取规则已变化，请刷新候选。',
+        },
+      },
+
       title: '候选资料查阅',
       topicList: '已保存专题',
       loadTopics: '读取已保存专题',
@@ -7128,6 +7167,53 @@ const en: typeof zhCN = {
       openAction: 'View ingestion task',
     },
     candidateReader: {
+      monthly: {
+        read: 'Read monthly originals',
+        ruleUnavailable:
+          'This topic does not pin a supported monthly reading rule. Inspect the originals and parsed records.',
+        title: 'Monthly originals',
+        reportPeriod: 'Report period',
+        name: 'Original name',
+        value: 'Original category',
+        kind: 'Value kind',
+        sourceRow: 'View source row',
+        more: 'Show more original values',
+        shown: 'Shown',
+        noLocation:
+          'Location is not established; original values remain traceable to their source rows.',
+        noScope:
+          'Requirement and region membership are not assigned; these values do not establish business coverage.',
+        verified:
+          'Original and prepared document structures were verified as equivalent.',
+        unavailable:
+          'Monthly originals cannot be read yet. You can inspect the original files and parsed records.',
+        technical: 'Monthly source and conversion evidence',
+        original: 'Historical original',
+        prepared: 'Parsed document',
+        manifest: 'Source manifest',
+        rule: 'Reading rule',
+        result: 'Verification result',
+        tool: 'Verification tool',
+        reason: 'Processing reason',
+        empty: 'Original empty text',
+        reasons: {
+          INVALID_INPUT: 'Reading evidence is incomplete.',
+          INCOMPLETE_RECORD_PAGES: 'Parsed records are incomplete.',
+          SOURCE_NOT_READY:
+            'The selected material is not ready for monthly reading.',
+          SOURCE_CHANGED: 'The fixed source changed. Refresh the candidate.',
+          UNKNOWN_LAYOUT:
+            'This table structure is not recognized as a monthly report.',
+          MISSING_SOURCE_LOCAL_IDENTITY:
+            'The source-local work declaration is missing.',
+          MISSING_ORIGINAL_HASH: 'Verifiable original evidence is missing.',
+          CONVERSION_PROVENANCE_UNAVAILABLE:
+            'Original and prepared document verification does not yet meet the reading conditions.',
+          RULE_VERSION_CHANGED:
+            'The reading rule changed. Refresh the candidate.',
+        },
+      },
+
       title: 'Candidate materials',
       topicList: 'Saved topics',
       loadTopics: 'Load saved topics',

@@ -2606,3 +2606,255 @@ describe('fixed-source candidate followup transport', () => {
     ).rejects.toMatchObject({ status: 502 });
   });
 });
+
+describe('fixed candidate conversion provenance transport', () => {
+  const input = { ...candidateReference, preparedAssetId: USER_ID };
+  const output = {
+    reference: candidateReference,
+    preparedAssetId: USER_ID,
+    check: null,
+  };
+
+  it('reads the registered fixed candidate member under the verified server scope', async () => {
+    const order: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(() => {
+      order.push('fetch');
+      return Promise.resolve(Response.json(output));
+    });
+    await expect(
+      candidateDal(fetch, {}, () =>
+        Promise.resolve(authClient(order)),
+      ).candidateConversionProvenance(input),
+    ).resolves.toEqual(output);
+    expect(order).toEqual(['claims', 'session', 'fetch']);
+    const url = new URL(fetch.mock.calls[0][0] as string);
+    expect(url.pathname).toBe(
+      `/api/data/v1/ingestions/${PROJECT_ID}/candidates/${GEO_VERSION_ID}/${USER_ID}/provenance`,
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      kind: input.kind,
+      reviewHash: input.reviewHash,
+    });
+    const init = fetch.mock.calls[0][1];
+    const headers = new Headers(init?.headers);
+    expect(headers.get('authorization')).toBe(`Bearer ${accessToken()}`);
+    expect(headers.get('x-wiser-tenant-id')).toBe(TENANT_ID);
+    expect(headers.get('x-wiser-project-id')).toBe(PROJECT_ID);
+    expect(headers.get('x-wiser-purpose')).toBe('review');
+    expect(init).toMatchObject({
+      method: 'GET',
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    expect(init?.body).toBeUndefined();
+  });
+
+  it.each([
+    { ...input, preparedAssetId: '../private' },
+    { ...input, reviewHash: 'A'.repeat(64) },
+    { ...input, tenantId: TENANT_ID },
+    { ...input, versionId: USER_ID },
+  ])(
+    'rejects malformed or caller-scoped input before authentication %j',
+    async (invalid) => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth).candidateConversionProvenance(invalid),
+      ).rejects.toMatchObject({ kind: 'invalid-request', status: 422 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { ...output, preparedAssetId: SESSION_ID },
+    {
+      ...output,
+      reference: { ...candidateReference, ingestionId: SESSION_ID },
+    },
+    {
+      ...output,
+      reference: { ...candidateReference, processingBatchId: SESSION_ID },
+    },
+    {
+      ...output,
+      reference: { ...candidateReference, reviewHash: 'b'.repeat(64) },
+    },
+    { ...output, check: {} },
+    { ...output, internalUrl: 'private/path' },
+  ])(
+    'rejects another fixed identity or malformed response %j',
+    async (invalid) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(invalid)),
+      );
+      await expect(
+        candidateDal(fetch).candidateConversionProvenance(input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('retains the complete verified conversion check without relabelling authority', async () => {
+    const check = {
+      schemaVersion: 1,
+      resultId: TENANT_ID,
+      reference: candidateReference,
+      kind: 'HISTORICAL_EQUIVALENCE',
+      state: 'VERIFIED_EQUIVALENT',
+      original: { assetId: SESSION_ID, sha256: 'b'.repeat(64), byteSize: 12 },
+      prepared: { assetId: USER_ID, sha256: 'c'.repeat(64), byteSize: 18 },
+      manifest: { assetId: GEO_VERSION_ID, sha256: 'd'.repeat(64) },
+      sourceLocalWorkId: 'monthly-synthetic-2023-04',
+      historicalToolVersion: null,
+      rule: { id: 'candidate-word-equivalence', version: '1.0.0' },
+      tool: {
+        name: 'trusted-converter',
+        version: 'synthetic-test',
+        digest: 'e'.repeat(64),
+      },
+      reconvertedSha256: 'f'.repeat(64),
+      comparisonDigest: '1'.repeat(64),
+      comparison: {
+        tableCount: 1,
+        physicalCellCount: 2,
+        emptyCellCount: 1,
+        paragraphCount: 1,
+        monthTitleCount: 1,
+        differenceCount: 0,
+        differences: [],
+      },
+      failureReason: null,
+    };
+    const response = { ...output, check };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(response)),
+    );
+    await expect(
+      candidateDal(fetch).candidateConversionProvenance(input),
+    ).resolves.toEqual(response);
+    const mismatched = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        Response.json({
+          ...response,
+          check: {
+            ...check,
+            reference: { ...candidateReference, reviewHash: 'b'.repeat(64) },
+          },
+        }),
+      ),
+    );
+    await expect(
+      candidateDal(mismatched).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+  });
+
+  it('compares fixed UUID identities case-insensitively', async () => {
+    const reference = {
+      ...candidateReference,
+      ingestionId: 'abcdefab-cdef-4abc-8abc-abcdefabcdef',
+      processingBatchId: 'bcdefabc-defa-4bcd-8bcd-bcdefabcdefa',
+    };
+    const preparedAssetId = 'cdefabcd-efab-4cde-8cde-cdefabcdefab';
+    const response = { reference, preparedAssetId, check: null };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(response)),
+    );
+    await expect(
+      candidateDal(fetch).candidateConversionProvenance({
+        ...reference,
+        ingestionId: reference.ingestionId.toUpperCase(),
+        processingBatchId: reference.processingBatchId.toUpperCase(),
+        preparedAssetId: preparedAssetId.toUpperCase(),
+      }),
+    ).resolves.toEqual(response);
+  });
+
+  it.each([401, 403, 404, 409])(
+    'retains upstream denial %i without fallback or diagnostics',
+    async (status) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(new Response('private diagnostic', { status })),
+      );
+      await expect(
+        candidateDal(fetch).candidateConversionProvenance(input),
+      ).rejects.toMatchObject({ status });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('requires verified claims before contacting the service', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const auth = () =>
+      Promise.resolve({
+        auth: {
+          ...authClient([]).auth,
+          getClaims: () => Promise.resolve({ data: null, error: null }),
+        },
+      });
+    await expect(
+      candidateDal(fetch, {}, auth).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects pre-cancelled reads before session access', async () => {
+    const auth = vi.fn(() => Promise.resolve(authClient([])));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    await expect(
+      candidateDal(fetch, {}, auth).candidateConversionProvenance(
+        input,
+        AbortSignal.abort(),
+      ),
+    ).rejects.toMatchObject({ status: 499 });
+    expect(auth).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('cancels a stalled response body at the existing request deadline', async () => {
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch, {
+        requestTimeoutMs: 20,
+      }).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ status: 504 });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('bounds response bytes before parsing any provenance', async () => {
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(129));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch, {
+        responseLimitBytes: 128,
+      }).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+});

@@ -15,8 +15,8 @@ whenToUpdate:
 checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
-lastReviewedAt: 2026-10-08
-lastReviewedCommit: ae17177d673bd8c641c77e37d79a85747935ca3d
+lastReviewedAt: 2026-10-09
+lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
 ---
 
 ## What this guide governs
@@ -201,6 +201,8 @@ Spatial results use separately paged located, unresolved and outside-extent tabl
 Fixed-input dependency checks distinguish exact record/position corrections from shared version changes. A record correction narrows impact only with an explicit record set, and a position correction only with an exact record/position set. Missing or wrong-kind local hints conservatively check every matching fixed source/version dependent, including geometry references used by records from other sources. Valid empty or nonmatching sets retain empty impact. Original, processing-rule and geometry-version changes, permission withdrawal and missing fixed sources evaluate every matching dependent in the complete permitted input despite a narrow hint. A known processing version limits own-record matching to that version. The synthetic exercise uses the same complete-input check without editing or persisting real source content. This local dependency result does not establish an authenticated correction workflow.
 
 ## Pending material reading
+
+Candidate monthly originals are loaded explicitly from a selected readable asset. The reading owner clears the result during navigation, saves, visibility recovery and authorization failure. The table preserves original object names, report period and category values and returns to the exact native source row using bounded paging. A selected filter or name does not establish geographic or need assignment, approved correspondence or a publication series. Complete topics keep their stored projection version and recheck all saved members before and after monthly reading. Conversion member states, technical equivalence and professional review remain distinct.
 
 An intake with an authorized completed candidate offers originals, raw parsed records and native geometry before professional approval. A null candidate reference remains an explicit no-candidate state. Original links retain the fixed candidate and asset, table labels come from declared columns, and source locators remain exact. Drawing a line, area or geometry collection does not assign a sampling or study-area role. Map hits and the keyboard record list select the same real record.
 

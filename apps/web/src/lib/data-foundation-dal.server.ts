@@ -38,6 +38,11 @@ import {
 } from '@wiser/data-contracts';
 
 import { candidateSavedReferenceKey } from '@wiser/data-contracts';
+import {
+  GetCandidateConversionProvenanceInputSchema,
+  GetCandidateConversionProvenanceOutputSchema,
+  type GetCandidateConversionProvenanceOutput,
+} from '@wiser/data-contracts/candidate-conversion';
 import { sameCandidateFollowupEvidence } from './candidate-followup-reader';
 import type {
   CandidateFollowupOutputSchema,
@@ -194,6 +199,10 @@ export interface DataFoundationDal {
     input: unknown,
     signal?: AbortSignal,
   ): Promise<CandidatePage>;
+  candidateConversionProvenance(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<GetCandidateConversionProvenanceOutput>;
   candidateSavedView(
     action: 'create' | 'list' | 'open' | 'revoke',
     input: unknown,
@@ -1005,6 +1014,43 @@ export function createDataFoundationDal(
           )
             throw new DataFoundationApiError('contract', 502);
           return page;
+        },
+      );
+    },
+    candidateConversionProvenance: async (input, signal) => {
+      const checked =
+        GetCandidateConversionProvenanceInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data;
+      const capability =
+        DATA_CAPABILITY_REGISTRY['data.ingestion.candidate.provenance.get'];
+      let path: string = capability.restMapping.path;
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(data)) {
+        if (path.includes(`:${key}`))
+          path = path.replace(`:${key}`, encodeURIComponent(value));
+        else query.set(key, value);
+      }
+      return parsed(
+        () =>
+          call(`${path}?${query}`, {
+            signal,
+            responseLimitBytes: CANDIDATE_RESPONSE_LIMIT_BYTES,
+          }),
+        (value) => {
+          const output =
+            GetCandidateConversionProvenanceOutputSchema.parse(value);
+          const reference = output.reference;
+          if (
+            reference.kind !== data.kind ||
+            !sameUuid(reference.ingestionId, data.ingestionId) ||
+            !sameUuid(reference.processingBatchId, data.processingBatchId) ||
+            reference.reviewHash !== data.reviewHash ||
+            !sameUuid(output.preparedAssetId, data.preparedAssetId)
+          )
+            throw new DataFoundationApiError('contract', 502);
+          return output;
         },
       );
     },

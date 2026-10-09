@@ -1,5 +1,6 @@
 import {
   IngestionCandidateBatchSchema,
+  type IngestionCandidateBatch,
   IngestionCandidateReferenceSchema,
   candidateSavedReferenceKey,
   jsonUtf8Bytes,
@@ -10,14 +11,23 @@ import {
 import {
   CANDIDATE_MONTHLY_RULE_VERSION,
   CANDIDATE_MONTHLY_RULE_VERSION_V2,
+  CANDIDATE_MONTHLY_RULE_VERSION_V3,
   projectCandidateMonthlyReport,
   projectCandidateMonthlyReportV2,
+  projectCandidateMonthlyReportV3,
   type CandidateMonthlyProjectedRecord,
   type CandidateMonthlyProjectedRecordV2,
+  type CandidateMonthlyProjectedRecordV3,
   type CandidateMonthlyUnparsedReason,
 } from '@wiser/data-core/candidate-monthly-projection';
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
+import type { CandidateConversionCheck } from '@wiser/data-contracts/candidate-conversion';
 import {
+  candidateConversionEligibility,
+  CANDIDATE_WORD_EQUIVALENCE_RULE,
+} from '@wiser/data-core/candidate-conversion';
+import {
+  readCandidateConversionProvenance,
   CandidateReaderError,
   readCandidatePage,
   readCandidateSavedView,
@@ -45,7 +55,9 @@ export interface CandidateMonthlyReadInput {
 }
 
 export type CandidateMonthlySemanticRecord = Omit<
-  CandidateMonthlyProjectedRecord | CandidateMonthlyProjectedRecordV2,
+  | CandidateMonthlyProjectedRecord
+  | CandidateMonthlyProjectedRecordV2
+  | CandidateMonthlyProjectedRecordV3,
   'source'
 > & {
   readonly source: {
@@ -65,9 +77,31 @@ export type CandidateMonthlySemanticReason =
   | 'CONVERSION_PROVENANCE_UNAVAILABLE'
   | 'RULE_VERSION_CHANGED';
 
+/** Technical evidence only; neither this result nor parsing READY is professional approval. */
+export type CandidateMonthlyConversionEvidence = Pick<
+  CandidateConversionCheck,
+  | 'resultId'
+  | 'state'
+  | 'rule'
+  | 'original'
+  | 'prepared'
+  | 'manifest'
+  | 'sourceLocalWorkId'
+  | 'tool'
+  | 'comparisonDigest'
+>;
+
 export type CandidateMonthlySemanticRead =
   | {
       readonly kind: 'READY';
+      readonly batchStatus: IngestionCandidateBatch['status'];
+      readonly conversionEvidence: CandidateMonthlyConversionEvidence | null;
+      readonly conversionMembers: readonly {
+        readonly role: 'original' | 'prepared' | 'manifest';
+        readonly assetId: string;
+        readonly status: IngestionCandidateBatch['assets'][number]['status'];
+        readonly reason: string | null;
+      }[];
       readonly reason: null;
       readonly candidateReference: IngestionCandidateReference;
       readonly assetId: string;
@@ -76,18 +110,22 @@ export type CandidateMonthlySemanticRead =
       readonly reportPeriod?: string;
       readonly processingRuleVersion:
         | typeof CANDIDATE_MONTHLY_RULE_VERSION
-        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V3;
       readonly records: readonly CandidateMonthlySemanticRecord[];
     }
   | {
       readonly kind: 'NOT_PARSED';
+      readonly batchStatus: IngestionCandidateBatch['status'];
+      readonly conversionEvidence: null;
       readonly reason: CandidateMonthlySemanticReason;
       readonly candidateReference: IngestionCandidateReference;
       readonly assetId: string;
       readonly publicationMonth: null;
       readonly processingRuleVersion:
         | typeof CANDIDATE_MONTHLY_RULE_VERSION
-        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2
+        | typeof CANDIDATE_MONTHLY_RULE_VERSION_V3;
       readonly records: readonly [];
     };
 
@@ -101,12 +139,16 @@ function notParsed(
   reference: IngestionCandidateReference,
   assetId: string,
   reason: CandidateMonthlySemanticReason,
+  batchStatus: IngestionCandidateBatch['status'],
   version:
     | typeof CANDIDATE_MONTHLY_RULE_VERSION
-    | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2 = CANDIDATE_MONTHLY_RULE_VERSION,
+    | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2
+    | typeof CANDIDATE_MONTHLY_RULE_VERSION_V3 = CANDIDATE_MONTHLY_RULE_VERSION,
 ): CandidateMonthlySemanticRead {
   return {
     kind: 'NOT_PARSED',
+    batchStatus,
+    conversionEvidence: null,
     reason,
     candidateReference: reference,
     assetId,
@@ -312,36 +354,70 @@ export async function readCandidateMonthlySemantics(
     invalid();
   const fixed = raw.fixed;
   const v2 = fixed.processingRuleVersion === CANDIDATE_MONTHLY_RULE_VERSION_V2;
-  const version = v2
-    ? CANDIDATE_MONTHLY_RULE_VERSION_V2
-    : CANDIDATE_MONTHLY_RULE_VERSION;
-  const refused = (reason: CandidateMonthlySemanticReason) =>
-    notParsed(reference.data, assetId.data, reason, version);
+  const v3 = fixed.processingRuleVersion === CANDIDATE_MONTHLY_RULE_VERSION_V3;
+  const version = v3
+    ? CANDIDATE_MONTHLY_RULE_VERSION_V3
+    : v2
+      ? CANDIDATE_MONTHLY_RULE_VERSION_V2
+      : CANDIDATE_MONTHLY_RULE_VERSION;
   const initialSaved = await checkedSavedOpen(raw, signal, fetch);
   const { batch, firstPage } = await completeBatch(raw, signal, fetch);
+  const refused = (reason: CandidateMonthlySemanticReason) =>
+    notParsed(reference.data, assetId.data, reason, batch.status, version);
   const asset = batch.assets.find(
     (entry) => entry.assetId.toLowerCase() === assetId.data.toLowerCase(),
   );
   if (!asset || asset.sourceHash !== fixed.preparedSha256)
     return refused('SOURCE_CHANGED');
   if (
-    batch.status !== 'READY' ||
+    (!v3 && batch.status !== 'READY') ||
     asset.status !== 'READY' ||
     asset.recordCount === null
   )
     return refused('SOURCE_NOT_READY');
-  if (!v2 && fixed.processingRuleVersion !== CANDIDATE_MONTHLY_RULE_VERSION)
-    return refused('RULE_VERSION_CHANGED');
   if (
-    (!v2 && fixed.sourceLocalWorkId === null) ||
-    (fixed.sourceLocalWorkId !== null &&
-      (typeof fixed.sourceLocalWorkId !== 'string' ||
-        !fixed.sourceLocalWorkId.trim() ||
-        fixed.sourceLocalWorkId.length > 256))
+    !v2 &&
+    !v3 &&
+    fixed.processingRuleVersion !== CANDIDATE_MONTHLY_RULE_VERSION
+  )
+    return refused('RULE_VERSION_CHANGED');
+
+  // Version 2.1.0 obtains declarations only through the currently authorized server result.
+  // A null result preserves the native/no-conversion legacy route; it is not
+  // evidence of an O/P pair and cannot qualify a PARTIAL batch.
+  const provenanceInput = { ...reference.data, preparedAssetId: assetId.data };
+  const provenance = v3
+    ? await readCandidateConversionProvenance(provenanceInput, signal, fetch)
+    : null;
+  current(signal);
+  const conversion = provenance?.check ?? null;
+  let sourceLocalWorkId = fixed.sourceLocalWorkId;
+  let originalSha256 = fixed.originalSha256;
+  if (conversion !== null) {
+    if (
+      !['READY', 'PARTIAL'].includes(batch.status) ||
+      !candidateConversionEligibility(
+        batch,
+        conversion,
+        CANDIDATE_WORD_EQUIVALENCE_RULE,
+      ).eligible
+    )
+      return refused('CONVERSION_PROVENANCE_UNAVAILABLE');
+    sourceLocalWorkId = conversion.sourceLocalWorkId;
+    originalSha256 = conversion.original.sha256;
+  } else {
+    if (batch.status !== 'READY') return refused('SOURCE_NOT_READY');
+  }
+  if (
+    (!v2 && !v3 && sourceLocalWorkId === null) ||
+    (sourceLocalWorkId !== null &&
+      (typeof sourceLocalWorkId !== 'string' ||
+        !sourceLocalWorkId.trim() ||
+        sourceLocalWorkId.length > 256))
   )
     return refused('MISSING_SOURCE_LOCAL_IDENTITY');
-  if (fixed.originalSha256 === null) return refused('MISSING_ORIGINAL_HASH');
-  if (fixed.originalSha256 !== fixed.preparedSha256)
+  if (originalSha256 === null) return refused('MISSING_ORIGINAL_HASH');
+  if (conversion === null && originalSha256 !== fixed.preparedSha256)
     return refused('CONVERSION_PROVENANCE_UNAVAILABLE');
   const pages = await completeRecords(raw, asset.recordCount, signal, fetch);
 
@@ -358,30 +434,82 @@ export async function readCandidateMonthlySemantics(
     const currentSaved = await checkedSavedOpen(raw, signal, fetch);
     if (currentSaved !== initialSaved) throw new CandidateReaderError('stale');
   }
+  if (provenance !== null) {
+    const freshProvenance = await readCandidateConversionProvenance(
+      provenanceInput,
+      signal,
+      fetch,
+    );
+    if (JSON.stringify(freshProvenance) !== JSON.stringify(provenance))
+      throw new CandidateReaderError('stale');
+  }
   current(signal);
-  const projection = v2
-    ? projectCandidateMonthlyReportV2({
+  const projection = v3
+    ? projectCandidateMonthlyReportV3({
         batch,
         pages,
+        conversionCheck: conversion,
         fixed: {
-          sourceLocalWorkId: fixed.sourceLocalWorkId,
+          sourceLocalWorkId,
           assetId: assetId.data,
           sourceHash: fixed.preparedSha256,
         },
       })
-    : projectCandidateMonthlyReport({
-        batch,
-        pages,
-        fixed: {
-          workId: fixed.sourceLocalWorkId!,
-          assetId: assetId.data,
-          sourceHash: fixed.preparedSha256,
-        },
-      });
+    : v2
+      ? projectCandidateMonthlyReportV2({
+          batch,
+          pages,
+          fixed: {
+            sourceLocalWorkId,
+            assetId: assetId.data,
+            sourceHash: fixed.preparedSha256,
+          },
+        })
+      : projectCandidateMonthlyReport({
+          batch,
+          pages,
+          fixed: {
+            workId: fixed.sourceLocalWorkId!,
+            assetId: assetId.data,
+            sourceHash: fixed.preparedSha256,
+          },
+        });
   current(signal);
   if (projection.kind !== 'READY') return refused(projection.reason);
   return {
     kind: 'READY',
+    batchStatus: batch.status,
+    conversionMembers:
+      conversion === null
+        ? []
+        : (['original', 'prepared', 'manifest'] as const).map((role) => {
+            // Eligibility above established each exact O/P/M member in this complete batch.
+            const member = batch.assets.find(
+              (asset) =>
+                asset.assetId.toLowerCase() ===
+                conversion[role].assetId.toLowerCase(),
+            )!;
+            return {
+              role,
+              assetId: member.assetId,
+              status: member.status,
+              reason: member.reason,
+            };
+          }),
+    conversionEvidence:
+      conversion === null
+        ? null
+        : {
+            resultId: conversion.resultId,
+            state: conversion.state,
+            rule: conversion.rule,
+            original: conversion.original,
+            prepared: conversion.prepared,
+            manifest: conversion.manifest,
+            sourceLocalWorkId: conversion.sourceLocalWorkId,
+            tool: conversion.tool,
+            comparisonDigest: conversion.comparisonDigest,
+          },
     reason: null,
     candidateReference: reference.data,
     assetId: assetId.data,
@@ -394,9 +522,9 @@ export async function readCandidateMonthlySemantics(
     records: projection.records.map((record) => ({
       ...record,
       source: {
-        sourceLocalWorkId: fixed.sourceLocalWorkId,
+        sourceLocalWorkId,
         assetId: record.source.assetId,
-        originalSha256: fixed.originalSha256!,
+        originalSha256,
         preparedSha256: fixed.preparedSha256,
       },
     })),

@@ -1,4 +1,9 @@
 import {
+  GetCandidateConversionProvenanceInputSchema,
+  GetCandidateConversionProvenanceOutputSchema,
+  type GetCandidateConversionProvenanceOutput,
+} from '@wiser/data-contracts/candidate-conversion';
+import {
   IngestionCandidateAssetPageSchema,
   IngestionCandidateRecordPageSchema,
   IngestionCandidateGeometryPageSchema,
@@ -172,6 +177,58 @@ export async function readCandidatePage<A extends CandidateReadAction>(
     }
     current(signal);
     return value as CandidatePages[A];
+  } catch (error) {
+    if (signal.aborted) throw new CandidateReaderError('cancelled');
+    if (error instanceof CandidateReaderError) throw error;
+    throw new CandidateReaderError('unavailable');
+  }
+}
+/** Conversion facts come only from the currently authorized fixed server member. */
+export async function readCandidateConversionProvenance(
+  input: unknown,
+  signal: AbortSignal,
+  fetch: typeof globalThis.fetch = globalThis.fetch,
+): Promise<GetCandidateConversionProvenanceOutput> {
+  current(signal);
+  const request = GetCandidateConversionProvenanceInputSchema.safeParse(input);
+  if (!request.success) throw new CandidateReaderError('invalid');
+  try {
+    const response = await fetch('/api/data-foundation/candidate-provenance', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request.data),
+      cache: 'no-store',
+      signal,
+    });
+    if (signal.aborted) {
+      void response.body?.cancel().catch(() => {});
+      throw new CandidateReaderError('cancelled');
+    }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
+      throw new CandidateReaderError(
+        response.status === 401 || response.status === 403
+          ? 'denied'
+          : [404, 409, 410].includes(response.status)
+            ? 'stale'
+            : [413, 415, 422].includes(response.status)
+              ? 'invalid'
+              : 'unavailable',
+      );
+    }
+    const parsed = GetCandidateConversionProvenanceOutputSchema.safeParse(
+      await jsonBody(response, signal),
+    );
+    if (
+      !parsed.success ||
+      candidateSavedReferenceKey(parsed.data.reference) !==
+        candidateSavedReferenceKey(request.data) ||
+      parsed.data.preparedAssetId.toLowerCase() !==
+        request.data.preparedAssetId.toLowerCase()
+    )
+      throw new CandidateReaderError('invalid');
+    current(signal);
+    return parsed.data;
   } catch (error) {
     if (signal.aborted) throw new CandidateReaderError('cancelled');
     if (error instanceof CandidateReaderError) throw error;
