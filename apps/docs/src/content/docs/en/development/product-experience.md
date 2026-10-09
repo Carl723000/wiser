@@ -16,7 +16,7 @@ checkPaths:
   - apps/web/src/**
   - apps/web/e2e/**
 lastReviewedAt: 2026-10-09
-lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
+lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
 ---
 
 ## What this guide governs
@@ -239,3 +239,5 @@ Candidate reading and the readiness gap inspector provide list, create, act and 
 After native candidate pixel values load, the map and its window/grid actions remain within the page width. The complete original values and mask codes stay in the result table, which scrolls horizontally inside the panel. Users can reach map actions and the table with the keyboard; ordinary page scrolling remains available when a control is farther down the page. Language and theme changes preserve the same reading and action path. The layout regression uses explicit synthetic results; real-account native-image reading remains a separate acceptance path.
 
 Candidate readers can explicitly open relationship evidence from the current authorized selection. Each page is bounded; opening a relation rechecks its fixed revision and decision version. Evidence excerpts and source locators explain the connection. Current source permissions still govern the read, including complete saved-manifest checks. This is a read-only workflow: it does not approve knowledge or assign observations to a basin merely because a filter is selected. Synthetic interaction tests, native HTTP authorization and real business-data coverage are recorded separately.
+
+From relation detail, users can return to an explicitly identified record in the current candidate. The reader first verifies the exact source asset and original hash, then locates the exact row. It does not substitute the first result, resolve a text locator into an identity, or silently switch to another candidate. Reaching the bounded search limit is not proof that the source has no such record.

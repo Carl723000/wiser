@@ -2954,6 +2954,11 @@ const zhCN = {
         next: '下一页关系',
         scope: '关系决定不代表专业批准，也不据此确定需求、区域或地图归属。',
         source: '固定来源与记录定位',
+        matchingRecord: '查看对应记录',
+        otherCandidate: '此证据来自其他候选资料，请在对应资料中查阅。',
+        noRecord: '此证据未标明对应记录，可查阅原文摘录与来源定位。',
+        assetSearchLimit:
+          '本次已查阅十页来源文件，暂未定位证据来源；可返回来源清单继续查阅。',
         fixed: '固定关系与规则',
         ingestion: '接入任务编号',
         record: '原生记录编号',
@@ -7216,6 +7221,13 @@ const en: typeof zhCN = {
         scope:
           'Relation decisions do not grant professional approval or establish requirement, region or map membership.',
         source: 'Fixed source and record location',
+        matchingRecord: 'View matching record',
+        otherCandidate:
+          'This evidence comes from another candidate. Open that material to inspect it.',
+        noRecord:
+          'This evidence does not identify a record. Its excerpt and source location remain available.',
+        assetSearchLimit:
+          'The source was not located within ten pages. Return to the source list to continue reading.',
         fixed: 'Fixed relation and rules',
         ingestion: 'Ingestion identifier',
         record: 'Native record identifier',

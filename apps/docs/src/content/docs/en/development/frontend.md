@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-09
-lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
+lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
 ---
 
 ## Two frontend applications
@@ -369,3 +369,5 @@ The intake reader also exposes existing versioned topics through the read-only s
 The shared followup panel extends candidate reading and gap details through the same-origin`/api/data-foundation/candidate-followups/[action]` proxy. Each of the five actions uses its strict capability schema. Browsers supply no actor, project scope, role or target authority; handoff supplies only a target UUID. Context help and collapsed technical details keep bilingual labels in the shared dictionary. Actual authority, source and browser acceptance are verified separately from mocked component tests.
 
 Candidate relationship reading uses `candidate-relation-reader.ts` and the same-origin `candidate-relations/[action]` POST handler for existing list/get capabilities. The browser owner brackets each read with current source checks, keeps pagination finite and opens an exact revision/decision pair. Both dictionaries label candidate states independently of professional approval. Relation data is never an authorization substitute or automatic region/requirement mapping.
+
+Relation-evidence backflow remains in the existing candidate reader owner. Only evidence with a record ID and the exact current candidate reference can initiate it. The same cancellable execution reads bounded asset pages, checks the asset ID and source hash, and then seeks the exact record through existing bounded record pages. Each page retains current-source and saved-manifest checks; stale, denied or cancelled work cannot adopt a selection. No public capability or cross-candidate navigation is added.

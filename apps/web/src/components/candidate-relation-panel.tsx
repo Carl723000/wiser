@@ -1,9 +1,15 @@
 'use client';
 
+import {
+  candidateSavedReferenceKey,
+  type IngestionCandidateReference,
+} from '@wiser/data-contracts';
 import type { CandidateRelationPages } from '@/lib/candidate-relation-reader';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import styles from './ingestion-candidate-reader.module.css';
 type CandidateRelationSnapshot = CandidateRelationPages['get']['relation'];
+type CandidateRelationEvidence =
+  CandidateRelationSnapshot['revision']['content']['evidence'][number];
 
 /** The surrounding candidate owner holds and invalidates every read result. */
 export function CandidateRelationPanel({
@@ -12,6 +18,8 @@ export function CandidateRelationPanel({
   page,
   detail,
   canPrevious,
+  reference,
+  onSourceRow,
   onRead,
   onInspect,
   onNext,
@@ -22,6 +30,8 @@ export function CandidateRelationPanel({
   page: CandidateRelationPages['list'] | null;
   detail: CandidateRelationSnapshot | null;
   canPrevious: boolean;
+  reference: IngestionCandidateReference;
+  onSourceRow: (evidence: CandidateRelationEvidence) => void;
   onRead: () => void;
   onInspect: (relation: CandidateRelationSnapshot) => void;
   onNext: () => void;
@@ -147,6 +157,20 @@ export function CandidateRelationPanel({
                 <span>{shared.polarities[evidence.polarity]}</span>
                 <p>{evidence.excerpt ?? reader.unknown}</p>
                 <p>{evidence.locator}</p>
+                {candidateSavedReferenceKey(evidence.reference) !==
+                candidateSavedReferenceKey(reference) ? (
+                  <p>{copy.otherCandidate}</p>
+                ) : !evidence.recordId ? (
+                  <p>{copy.noRecord}</p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onSourceRow(evidence)}
+                  >
+                    {copy.matchingRecord}
+                  </button>
+                )}
                 <details>
                   <summary>{copy.source}</summary>
                   <dl className={styles.technical}>

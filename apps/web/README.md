@@ -116,3 +116,5 @@ pnpm --filter @wiser/web test:e2e
 候选查阅与就绪缺口明细共用持久跟进面板，复用既有五项能力、幂等键、当前版本和服务端逐来源核权。补证可选择清单内另一真实候选，整记录更正保留明确新旧对应；技术办结与专业批准分开显示。 / Candidate reading and readiness gap details share the persistent followup panel, existing five capabilities, idempotency, current version and server source checks. Supplements can select another actual candidate in the manifest; whole-record corrections retain explicit correspondence. Technical closure and professional approval remain distinct.
 
 候选页“关系依据”按需读取当前获权清单内的关系，分页显示主体、关系、客体和候选决定；详情固定修订及决定版本，保留原文摘录和来源定位。此入口不创建或批准关系，不自动生成流域／需求归属。 / The candidate Relationship evidence panel reads a finite authorized selection, pages subject/predicate/object and candidate decisions, and opens exact revision/decision details with source excerpts and locators. It neither creates nor approves relations or infers basin/requirement assignments.
+
+关系证据可在同一候选内通过“查看对应记录”回到确切行；先核当前资产身份与原件哈希，沿有界分页定位。跨候选或无记录身份时保留原文依据，不推测跳转。 / Relation evidence can return to the exact row within the same candidate after current asset and original-hash verification and bounded page lookup. Cross-candidate or unidentified evidence retains its text without inferred navigation.

@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-09
-lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
+lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
 ---
 
 ## What runs today
@@ -700,3 +700,5 @@ Candidate reading and the nine-question gap inspector reuse one followup panel. 
 The candidate reader uses the existing `relations.list/get` capabilities through authenticated, same-origin POST handlers. A list request keeps the full finite candidate manifest and one opaque cursor; the interface requests at most 25 relations at a time. Opening an entry fixes its content revision and decision version. Server and browser validate returned source references against the selected manifest, without widening source access or substituting published catalog identities. The transport limits requests to 64 KiB and responses to 1 MiB, with bounded deadlines and cancellation.
 
 Relation evidence is displayed only after the existing reading owner and, when applicable, the complete saved manifest are checked before and after the read. Replacement, recovery, cancellation or denied access clears stale relation content. A confirmed candidate decision remains distinct from professional approval. This path reads evidence; it does not create relationships, infer regional or requirement assignments, or change roles, SQL policies or public contracts.
+
+The web reader can follow explicitly identified relation evidence back to a record of the current candidate. It verifies the fixed candidate tuple and current asset metadata, including original SHA-256, before bounded record lookup. Text locators alone and cross-candidate evidence are not navigation identities. This uses existing candidate reads and changes neither authorization nor relation semantics.

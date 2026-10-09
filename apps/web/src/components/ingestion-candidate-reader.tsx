@@ -51,6 +51,8 @@ type OpenedReading =
   | CandidateSavedPages['open']
   | Exclude<CandidateTopicPages['open'], { status: 'UNAVAILABLE' }>;
 type CandidateRelationSnapshot = CandidateRelationPages['get']['relation'];
+type CandidateRelationEvidence =
+  CandidateRelationSnapshot['revision']['content']['evidence'][number];
 async function openReading(
   viewId: string,
   signal: AbortSignal,
@@ -675,9 +677,23 @@ function CandidateSession({
   }
   function seek(
     kind: 'records' | 'geometry',
-    target?: { assetId: string; recordId: string },
+    target?: {
+      assetId: string;
+      recordId: string;
+      evidence?: CandidateRelationEvidence;
+    },
   ) {
     if (recoveryGate.current || mutationPending.current) return;
+    const evidence = target?.evidence;
+    if (
+      evidence &&
+      (!evidence.recordId ||
+        candidateSavedReferenceKey(evidence.reference) !==
+          candidateSavedReferenceKey(fixed) ||
+        evidence.assetId !== target.assetId ||
+        evidence.recordId !== target.recordId)
+    )
+      return;
     const chosenAsset = target?.assetId ?? assetId,
       chosenRecord = target?.recordId ?? selected;
     if (!chosenAsset || !chosenRecord) return;
@@ -692,6 +708,46 @@ function CandidateSession({
     }
     setTab(kind === 'geometry' ? 'map' : 'records');
     return execute(async (signal) => {
+      if (evidence) {
+        let assetPosition = firstPosition();
+        let verified = false;
+        // Evidence must match fresh metadata, never the cached current asset page.
+        // The public get contract has no asset filter: bound this lookup to ten pages.
+        for (let page = 0; page < 10; page++) {
+          const value = await readPage(
+            'get',
+            {
+              ...fixed,
+              first: 200,
+              ...(assetPosition.after ? { after: assetPosition.after } : {}),
+            },
+            signal,
+          );
+          if (signal.aborted || !owner.current) return;
+          const asset = value.assets.find(
+            (item) => item.assetId.toLowerCase() === chosenAsset.toLowerCase(),
+          );
+          if (asset) {
+            if (asset.sourceHash !== evidence.sourceHash)
+              throw new CandidateReaderError('stale');
+            // Background verification must not replace the user's visible asset
+            // page or its saveable cursor/anchor and page-size position.
+            verified = true;
+            break;
+          }
+          if (!value.nextCursor || value.assets.length === 0)
+            throw new CandidateReaderError('stale');
+          assetPosition = nextPosition(
+            assetPosition,
+            value.nextCursor,
+            undefined,
+          );
+        }
+        if (!verified) {
+          setNotice(copy.relations.assetSearchLimit);
+          return;
+        }
+      }
       let position = firstPosition();
       // Each explicit selection reads at most ten server pages; there is no full-batch prefetch.
       for (let page = 0; page < 10; page++) {
@@ -700,7 +756,7 @@ function CandidateSession({
           input(position, chosenAsset),
           signal,
         );
-        if (signal.aborted) return;
+        if (signal.aborted || !owner.current) return;
         const rows = 'records' in value ? value.records : value.features;
         if (kind === 'records') {
           setRecords(value as IngestionCandidateRecordPage);
@@ -1385,6 +1441,15 @@ function CandidateSession({
             page={relationPage}
             detail={relationDetail}
             canPrevious={relationNav.previous.length > 0}
+            reference={fixed}
+            onSourceRow={(evidence) => {
+              if (evidence.recordId)
+                void seek('records', {
+                  assetId: evidence.assetId,
+                  recordId: evidence.recordId,
+                  evidence,
+                });
+            }}
             onRead={() => void loadRelations()}
             onInspect={(relation) => void inspectRelation(relation)}
             onNext={() => {

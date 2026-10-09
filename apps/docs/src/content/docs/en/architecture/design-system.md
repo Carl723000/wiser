@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-09
-lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
+lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
 ---
 
 ## Design direction
@@ -174,3 +174,5 @@ Candidate followups reuse shared themes, compact state badges, type, assignee, r
 Candidate native-raster result tables keep the panel and map controls within the configured viewport after values appear. Their single content grid column can shrink below table intrinsic width; the unchanged eight-column table retains horizontal scrolling inside its own focusable area. Map actions remain keyboard-focusable and ordinary clicks may scroll vertically before checking the complete visible hit target. Chromium coverage mounts explicit synthetic one-cell and six-cell results with the actual styles in both languages/themes at 390×844 mobile and 1440×900 desktop sizes. This layout coverage does not establish authenticated four-file processing or native map-gesture acceptance.
 
 The candidate relationship panel uses a named list and an explicitly opened evidence detail. Subject, predicate, object and decision state remain visible; full source identifiers and locators are available in labelled details. Paging reads one finite page on request. Loading, empty, denied and stale states remain distinct. Candidate confirmation is labelled as a candidate decision rather than professional approval; cancellation or ownership changes remove old evidence.
+
+Evidence with an explicit record identity in the current candidate offers a named “View matching record” action. The action locates the exact source and row through bounded, currently authorized reads. Evidence without that identity or from another candidate keeps its excerpt and locator without a guessed jump. Failure removes obsolete selection and offers the existing recovery action.
