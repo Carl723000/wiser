@@ -146,6 +146,8 @@ function collapseGeometryCollection(
   const populated = [points, lines, polygons].filter(
     (coordinates) => coordinates.length > 0,
   );
+  // A mixed asset extent preserves source member order; it is not a record projection.
+  if (populated.length > 1) return { type: 'GeometryCollection', geometries };
   if (populated.length !== 1) return undefined;
   if (points.length > 0) return { type: 'MultiPoint', coordinates: points };
   if (lines.length > 0) return { type: 'MultiLineString', coordinates: lines };

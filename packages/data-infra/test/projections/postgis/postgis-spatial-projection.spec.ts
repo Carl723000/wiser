@@ -208,6 +208,135 @@ describe('PostGIS spatial projection identity and validation', () => {
     );
   });
 
+  describe('mixed geometry projection compatibility', () => {
+    const members = [
+      {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+      { type: 'Point', coordinates: [2, 3] },
+      {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    ];
+    it.each([
+      { type: 'GeometryCollection', geometries: members },
+      {
+        type: 'GeometryCollection',
+        geometries: [
+          members[0],
+          { type: 'GeometryCollection', geometries: members.slice(1) },
+        ],
+      },
+    ])(
+      'accepts governed mixed collection without losing order or coordinates %#',
+      async (sourceGeoJson) => {
+        const before = JSON.stringify(sourceGeoJson);
+        const pool = new FakePool();
+        await expect(
+          new PostgisSpatialProjection(pool).put({ ...input, sourceGeoJson }),
+        ).resolves.toMatchObject({ replayed: false });
+        const insert = pool.client.queries.find(({ text }) =>
+          /insert into catalog\.spatial_extent/i.test(text),
+        );
+        expect(insert?.values).toContain(before);
+        expect(JSON.stringify(sourceGeoJson)).toBe(before);
+        expect(pool.client.released).toBe(true);
+      },
+    );
+    it('shares the 100000-position limit across collection members', async () => {
+      const points = (count: number) => ({
+        type: 'MultiPoint',
+        coordinates: Array.from({ length: count }, () => [0, 0]),
+      });
+      const pool = new FakePool();
+      await expect(
+        new PostgisSpatialProjection(pool).put({
+          ...input,
+          sourceGeoJson: {
+            type: 'GeometryCollection',
+            geometries: [points(50_000), points(50_000)],
+          },
+        }),
+      ).resolves.toMatchObject({ replayed: false });
+      const rejected = new FakePool();
+      await expect(
+        new PostgisSpatialProjection(rejected).put({
+          ...input,
+          sourceGeoJson: {
+            type: 'GeometryCollection',
+            geometries: [points(50_000), points(50_001)],
+          },
+        }),
+      ).rejects.toBeInstanceOf(SpatialProjectionError);
+      expect(rejected.client.queries).toHaveLength(0);
+    });
+    it('accepts depth eight and rejects depth nine before database access', async () => {
+      const nested = (depth: number) =>
+        Array.from({ length: depth }).reduce<unknown>(
+          (geometry) => ({
+            type: 'GeometryCollection',
+            geometries: [geometry],
+          }),
+          members[1],
+        );
+      await expect(
+        new PostgisSpatialProjection(new FakePool()).put({
+          ...input,
+          sourceGeoJson: nested(8),
+        }),
+      ).resolves.toMatchObject({ replayed: false });
+      const rejected = new FakePool();
+      await expect(
+        new PostgisSpatialProjection(rejected).put({
+          ...input,
+          sourceGeoJson: nested(9),
+        }),
+      ).rejects.toBeInstanceOf(SpatialProjectionError);
+      expect(rejected.client.queries).toHaveLength(0);
+    });
+    it.each([
+      { type: 'GeometryCollection', geometries: [] },
+      { type: 'GeometryCollection', geometries: [members[0], null] },
+      {
+        type: 'GeometryCollection',
+        geometries: [
+          members[0],
+          { type: 'Point', coordinates: [1, Number.NaN] },
+        ],
+      },
+      {
+        type: 'GeometryCollection',
+        geometries: [members[0], { type: 'Point', coordinates: [1, 2, 3] }],
+      },
+      { type: 'GeometryCollection', geometries: members, coordinates: [] },
+      Array.from({ length: 11 }).reduce<unknown>(
+        (geometry) => ({ type: 'GeometryCollection', geometries: [geometry] }),
+        members[1],
+      ),
+    ])(
+      'rejects malformed or over-depth collection before database access %#',
+      async (sourceGeoJson) => {
+        const pool = new FakePool();
+        await expect(
+          new PostgisSpatialProjection(pool).put({ ...input, sourceGeoJson }),
+        ).rejects.toBeInstanceOf(SpatialProjectionError);
+        expect(pool.client.queries).toHaveLength(0);
+      },
+    );
+  });
+
   it.each([
     ['EPSG:4326', 4326],
     ['EPSG:4490', 4490],

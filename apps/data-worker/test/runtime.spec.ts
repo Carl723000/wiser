@@ -164,6 +164,115 @@ describe('default Data Worker runtime', () => {
     });
   });
 
+  describe('mixed source geometry compatibility', () => {
+    const assetId = '51000000-0000-4000-8000-000000000008';
+    const geometries = [
+      {
+        type: 'LineString',
+        coordinates: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+      { type: 'Point', coordinates: [2, 3] },
+      {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    ];
+    const align = (sourceGeoJson: unknown) => {
+      const pipeline = createDefaultIngestionPipelineOptions({
+        authority: {} as never,
+        reader: {
+          readQuarantineObject: () => Promise.reject(new Error('unused')),
+          statQuarantineObject: () => Promise.reject(new Error('unused')),
+        },
+        config: {
+          scope,
+          ingestion: {
+            clamavHost: 'clamav',
+            clamavPort: 3310,
+            clamavTimeoutMs: 1_000,
+            clamavMaximumResponseBytes: 4_096,
+            tikaEndpoint: 'http://tika:9998',
+            tikaTimeoutMs: 1_000,
+            maximumObjectBytes: 1_048_576,
+            tikaMaximumResponseBytes: 1_048_576,
+            minimumQualityScore: 0.75,
+            minimumAiConfidence: 0.8,
+          },
+        } as never,
+      });
+      return pipeline.aligner.align({
+        parsedAssets: [
+          {
+            assetId,
+            kind: 'geojson',
+            metadata: { sourceCrs: 'EPSG:4326', sourceGeoJson },
+          },
+        ],
+      });
+    };
+    it.each(['FeatureCollection', 'GeometryCollection'])(
+      'retains mixed %s member order and coordinates in one asset fact',
+      async (type) => {
+        const source =
+          type === 'FeatureCollection'
+            ? {
+                type,
+                features: geometries.map((geometry, index) => ({
+                  type: 'Feature',
+                  id: `synthetic-${index}`,
+                  properties: { ordinal: index },
+                  geometry,
+                })),
+              }
+            : { type, geometries };
+        const before = JSON.stringify(source);
+        const result = await align(source);
+        expect(result).toMatchObject({
+          spatialFacts: [
+            {
+              assetId,
+              sourceCrs: 'EPSG:4326',
+              sourceGeoJson: { type: 'GeometryCollection', geometries },
+            },
+          ],
+        });
+        expect(result.spatialFacts).toHaveLength(1);
+        expect(JSON.stringify(source)).toBe(before);
+        expect(await align(source)).toEqual(result);
+      },
+    );
+    it.each([
+      { type: 'GeometryCollection', geometries: [] },
+      { type: 'GeometryCollection', geometries: [geometries[0], null] },
+      {
+        type: 'GeometryCollection',
+        geometries: [{ type: 'Unknown', coordinates: [0, 0] }],
+      },
+      Array.from({ length: 11 }).reduce<unknown>(
+        (geometry) => ({ type: 'GeometryCollection', geometries: [geometry] }),
+        geometries[1],
+      ),
+    ])(
+      'retains malformed/empty/over-depth collection rejection %#',
+      async (source) => {
+        await expect(align(source)).rejects.toMatchObject({
+          category: 'UNSUPPORTED_GEOJSON',
+          retryable: false,
+        });
+      },
+    );
+  });
+
   it('publishes only after all five ledgers succeed and retries publication without replaying targets', async () => {
     const delegate = new MemoryRepository();
     let unavailable = true;

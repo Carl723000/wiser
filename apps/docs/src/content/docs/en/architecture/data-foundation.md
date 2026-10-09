@@ -175,6 +175,8 @@ If all five completion targets succeeded but the matching Operation is already `
 - Neo4j uses fixed parameterized `MERGE` facts;
 - pgSTAC writes STAC 1.1 Collections/Items whose asset href reaches the governed API download endpoint.
 
+The default aligner retains homogeneous Multi* outputs and preserves ordered mixed geometry members in an asset-level GeometryCollection. This extent does not replace independently parsed Feature records or their source identity. Internal PostGIS projection validation accepts nonempty collections, shares a 100,000-position budget and one coordinate dimension across the complete tree, rejects unknown keys and invalid members, and permits depth zero through eight. No public HTTP contract, permission or migration changes; native PostGIS transformation and governed publication remain separate acceptance checks.
+
 ### Chinese and mixed-language retrieval contract
 
 Content is primarily Chinese with optional English and code-switching, but the three search projections do not duplicate the same signal:

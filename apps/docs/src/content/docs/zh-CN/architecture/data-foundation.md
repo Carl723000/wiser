@@ -175,6 +175,8 @@ Worker 使用 PostgreSQL `FOR UPDATE SKIP LOCKED`、lease owner/expiry、heartbe
 - Neo4j 使用固定参数化 `MERGE`；
 - pgSTAC 写 STAC 1.1 Collection/Item，asset href 指向受控 API 下载入口。
 
+默认对齐器保持同质集合原有 Multi* 结果，混合几何按原成员顺序形成资产级 GeometryCollection 范围；范围不替代独立解析的 Feature 记录及来源身份。内部 PostGIS 投影校验接受非空集合，整棵几何共用 100,000 个位置上限和统一坐标维度，拒绝未知键及非法成员，允许根深度 0 至最大深度 8。不修改公共 HTTP 契约、权限或迁移；实际 PostGIS 变换与受治理发布仍需分别验收。
+
 ### 中文与中英混合检索合同
 
 正文以中文为主、允许英文与中英混合，但三个检索投影不重复承担同一信号：

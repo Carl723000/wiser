@@ -115,10 +115,28 @@ function ring(
   return result;
 }
 
-function geometry(value: unknown): SupportedGeoJsonGeometry {
+function geometry(
+  value: unknown,
+  counter: CoordinateCounter = { count: 0, dimensions: undefined },
+  depth = 0,
+): SupportedGeoJsonGeometry {
+  if (depth > 8) invalid('GeoJSON geometry nesting is too deep.');
   const candidate = object(value, 'sourceGeoJson');
+  if (candidate.type === 'GeometryCollection') {
+    exactKeys(candidate, ['type', 'geometries'], 'sourceGeoJson');
+    if (
+      !Array.isArray(candidate.geometries) ||
+      candidate.geometries.length === 0
+    )
+      invalid('GeoJSON GeometryCollection must not be empty.');
+    return {
+      type: 'GeometryCollection',
+      geometries: candidate.geometries.map((member) =>
+        geometry(member, counter, depth + 1),
+      ),
+    };
+  }
   exactKeys(candidate, ['type', 'coordinates'], 'sourceGeoJson');
-  const counter: CoordinateCounter = { count: 0, dimensions: undefined };
   switch (candidate.type) {
     case 'Point':
       return {
