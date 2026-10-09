@@ -23,6 +23,58 @@ function definition(sql: string, name: string): string {
   return sql.slice(start, end + 3);
 }
 
+function nestedMigration(): string {
+  const path = resolve(
+    directory,
+    'migrations/0050_candidate_followup_nested_geometry.sql',
+  );
+  return existsSync(path) ? readFileSync(path, 'utf8') : '';
+}
+
+describe('whole-record nested geometry authority compatibility', () => {
+  it('changes only the private geometry expression without rewriting 0047 authority', () => {
+    expect(createHash('sha256').update(migration()).digest('hex')).toBe(
+      '35e06ac3886c9236807ded3652c0f89c696ebe126ebc2036cc08282cfccae47a',
+    );
+    const sql = nestedMigration();
+    expect(sql).toContain(
+      'create or replace function ingestion.candidate_followup_sources_readable(',
+    );
+    const original = definition(
+      migration(),
+      'candidate_followup_sources_readable',
+    );
+    const next = sql.slice(
+      sql.indexOf('create or replace function'),
+      sql.indexOf('$$;') + 3,
+    );
+    const start = next.indexOf('(WITH RECURSIVE geometry_root');
+    const end = next.indexOf("::jsonb=evidence->'geometry'", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const restored = (
+      next.slice(0, start) +
+      'public.st_asgeojson(record.geom,15)' +
+      next.slice(end)
+    ).replace('create or replace function', 'create function');
+    expect(restored).toBe(original);
+    expect(sql).not.toMatch(
+      /security\s+definer|\bgrant\b|\brevoke\b|\bST_Equals\b|\bST_Dump\b|\bcreate\s+(?:role|table|trigger)\b/i,
+    );
+  });
+  it('retains exact native precision and ordered direct members without new thresholds', () => {
+    const sql = nestedMigration();
+    expect(sql).toContain('record.geom::public.geometry');
+    expect(sql).toContain('public.ST_AsGeoJSON(geom,15,0)');
+    expect(sql).toContain('ELSE public.st_asgeojson(record.geom,15) END');
+    expect(sql).toContain("string_agg(token,'' ORDER BY path)");
+    expect(sql).toContain('path||(public.ST_NumGeometries(geom)+1)');
+    expect(sql).not.toMatch(
+      /\blimit\b|statement_timeout|set_config\([^)]*(?:maintainer|reviewer)/i,
+    );
+  });
+});
+
 // Static migration guards are not live PostgreSQL, RLS or Auth acceptance.
 describe('private candidate followup migration safety', () => {
   it('retains private forced-RLS roots and append-only event history', () => {
@@ -210,7 +262,13 @@ async function freezeFollowupSource(
   actorType = 'human',
   delegatedBy: string | null = null,
   requestedAsset?: string,
+  suppliedGeometry?: unknown,
+  unsupportedWkt?: string,
 ) {
+  const geometry =
+    suppliedGeometry === undefined
+      ? { type: 'Point', coordinates: [coordinate, coordinate] }
+      : suppliedGeometry;
   const ingestion = randomUUID(),
     asset = requestedAsset ?? randomUUID(),
     blob = randomUUID(),
@@ -307,12 +365,20 @@ async function freezeFollowupSource(
   );
   await client.query(
     `insert into ingestion.candidate_record(processing_batch_id,record_id,asset_id,tenant_id,project_id,record_index,source_id,record_values,geom,source_crs,security_level,policy_version)
- values($1,$2,$3,$4,$5,1,'table:1/row:1','{"c1":"synthetic"}',public.st_setsrid(public.st_makepoint($6,$6),4326),'EPSG:4326','L0_PUBLIC',1)`,
-    [batch, record, asset, tenant, project, coordinate],
+ values($1,$2,$3,$4,$5,1,'table:1/row:1','{"c1":"synthetic"}',case when $7::text is not null then public.st_geomfromtext($7,4326) when $6::text is null then null else public.st_setsrid(public.st_geomfromgeojson($6::text),4326) end,'EPSG:4326','L0_PUBLIC',1)`,
+    [
+      batch,
+      record,
+      asset,
+      tenant,
+      project,
+      geometry === null ? null : JSON.stringify(geometry),
+      unsupportedWkt ?? null,
+    ],
   );
   await client.query(
-    `update ingestion.candidate_asset set status='READY',record_count=1,feature_count=1,columns='[{"key":"c1","label":"c1"}]' where processing_batch_id=$1`,
-    [batch],
+    `update ingestion.candidate_asset set status='READY',record_count=1,feature_count=$2,columns='[{"key":"c1","label":"c1"}]' where processing_batch_id=$1`,
+    [batch, geometry === null ? 0 : 1],
   );
   await client.query(
     "update ingestion.candidate_batch set status='READY',completed_at=clock_timestamp() where processing_batch_id=$1",
@@ -341,7 +407,7 @@ async function freezeFollowupSource(
       recordId: record,
       sourceHash,
       locator: 'table:1/row:1',
-      geometry: { type: 'Point', coordinates: [coordinate, coordinate] },
+      geometry,
       sourceCrs: 'EPSG:4326',
     },
   };
@@ -359,6 +425,324 @@ async function deniedFollowup(
 
 /** Disposable migrated PostgreSQL only. Conditional skips prove no SQL/RLS. */
 describe('private candidate followup native PostgreSQL authority', () => {
+  it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
+    'keeps nested whole-record equality and restores fixed references on success denial and serializer exception',
+    async () => {
+      const pool = new Pool({
+        connectionString: process.env['DATA_TEST_DATABASE_URL'],
+        max: 1,
+      });
+      const client = await pool.connect();
+      const tenant = randomUUID(),
+        project = randomUUID(),
+        actor = randomUUID();
+      const point = {
+        type: 'Point',
+        coordinates: [1.123456789123, 2.234567891234],
+      };
+      const multi = {
+        type: 'MultiPoint',
+        coordinates: [
+          [3, 4],
+          [3, 4],
+        ],
+      };
+      const nested = {
+        type: 'GeometryCollection',
+        geometries: [
+          { type: 'GeometryCollection', geometries: [point, point] },
+          multi,
+        ],
+      };
+      const shapes = [
+        point,
+        { type: 'GeometryCollection', geometries: [point, multi] },
+        nested,
+        null,
+        {
+          type: 'GeometryCollection',
+          geometries: [{ type: 'GeometryCollection', geometries: [point] }],
+        },
+      ];
+      try {
+        await client.query('begin');
+        await client.query(
+          "select set_config('wiser.tenant_id',$1,true),set_config('wiser.project_id',$2,true),set_config('wiser.max_security_level','L0_PUBLIC',true),set_config('wiser.policy_version','1',true)",
+          [tenant, project],
+        );
+        await client.query(
+          "insert into ingestion.project_review_policy(tenant_id,project_id,mode,revision) values($1,$2,'REQUIRE_INDEPENDENT_REVIEW',1)",
+          [tenant, project],
+        );
+        const sources = [];
+        for (const geometry of shapes)
+          sources.push(
+            await freezeFollowupSource(
+              client,
+              tenant,
+              project,
+              actor,
+              0,
+              'human',
+              null,
+              undefined,
+              geometry,
+            ),
+          );
+        // A private database rejection fixture, not a publicly accepted candidate type.
+        const unsupported = await freezeFollowupSource(
+          client,
+          tenant,
+          project,
+          actor,
+          0,
+          'human',
+          null,
+          undefined,
+          point,
+          'CIRCULARSTRING(0 0,1 1,2 0)',
+        );
+        const previousRefs = `[\n  ${JSON.stringify(sources[0]!.reference)}\n]`;
+        await client.query('set local role wiser_data_api');
+        expect(
+          (await client.query('select current_user::text role')).rows,
+        ).toEqual([{ role: 'wiser_data_api' }]);
+        expect(
+          (
+            await client.query(
+              'select rolsuper,rolbypassrls from pg_roles where rolname=current_user',
+            )
+          ).rows,
+        ).toEqual([{ rolsuper: false, rolbypassrls: false }]);
+        await client.query(
+          "select set_config('wiser.actor_id',$1,true),set_config('wiser.actor_type','human',true),set_config('wiser.delegated_by','',true),set_config('wiser.purpose','synthetic-nested-authority',true),set_config('wiser.candidate_purpose','synthetic-nested-authority',true),set_config('wiser.candidate_maintainer','true',true),set_config('wiser.candidate_reviewer','false',true),set_config('wiser.candidate_view_deadline',(clock_timestamp()+interval '1 hour')::text,true),set_config('wiser.resource_scope','',true),set_config('wiser.candidate_fixed_refs',$2,true)",
+          [actor, previousRefs],
+        );
+        const readable = async (evidence: unknown, expected: boolean) => {
+          expect(
+            (
+              await client.query(
+                'select ingestion.candidate_followup_sources_readable($1,$2,$3::jsonb) readable',
+                [tenant, project, JSON.stringify([evidence])],
+              )
+            ).rows,
+          ).toEqual([{ readable: expected }]);
+          expect(
+            (
+              await client.query(
+                "select current_setting('wiser.candidate_fixed_refs') refs",
+              )
+            ).rows,
+          ).toEqual([{ refs: previousRefs }]);
+        };
+        await client.query(
+          "select set_config('wiser.candidate_fixed_refs',$1,true)",
+          [JSON.stringify([sources[3]!.reference])],
+        );
+        expect(
+          (
+            await client.query(
+              'select geom is null missing from ingestion.candidate_record where record_id=$1',
+              [sources[3]!.record],
+            )
+          ).rows,
+        ).toEqual([{ missing: true }]);
+        await client.query(
+          "select set_config('wiser.candidate_fixed_refs',$1,true)",
+          [previousRefs],
+        );
+        for (const source of sources) {
+          const { geometry, sourceCrs, ...without } = source.evidence;
+          void sourceCrs;
+          await readable(without, true);
+          if (geometry !== null) await readable(source.evidence, true);
+          else
+            await readable(
+              { ...without, geometry: point, sourceCrs: 'EPSG:4326' },
+              false,
+            );
+          await readable({ ...without, sourceHash: '0'.repeat(64) }, false);
+        }
+        const source = sources[2]!;
+        await readable(
+          {
+            ...source.evidence,
+            geometry: {
+              geometries: nested.geometries,
+              type: 'GeometryCollection',
+            },
+          },
+          true,
+        );
+        await readable(
+          {
+            ...source.evidence,
+            geometry: {
+              type: 'GeometryCollection',
+              geometries: [
+                multi,
+                { type: 'GeometryCollection', geometries: [point, point] },
+              ],
+            },
+          },
+          false,
+        );
+        await readable(
+          {
+            ...source.evidence,
+            geometry: {
+              type: 'GeometryCollection',
+              geometries: [point, point, multi],
+            },
+          },
+          false,
+        );
+        await readable(
+          {
+            ...source.evidence,
+            geometry: {
+              type: 'GeometryCollection',
+              geometries: [
+                { type: 'GeometryCollection', geometries: [point] },
+                multi,
+              ],
+            },
+          },
+          false,
+        );
+        await readable(
+          {
+            ...source.evidence,
+            geometry: {
+              type: 'GeometryCollection',
+              geometries: [
+                {
+                  type: 'GeometryCollection',
+                  geometries: [
+                    { type: 'Point', coordinates: [1.123456789, 2.234567891] },
+                    point,
+                  ],
+                },
+                multi,
+              ],
+            },
+          },
+          false,
+        );
+        await readable(
+          {
+            ...source.evidence,
+            geometry: {
+              type: 'GeometryCollection',
+              geometries: [
+                nested.geometries[0],
+                {
+                  type: 'GeometryCollection',
+                  geometries: [
+                    { type: 'Point', coordinates: [3, 4] },
+                    { type: 'Point', coordinates: [3, 4] },
+                  ],
+                },
+              ],
+            },
+          },
+          false,
+        );
+        await readable({ ...source.evidence, sourceCrs: 'EPSG:3857' }, false);
+        const {
+          geometry: unsupportedGeometry,
+          sourceCrs: unsupportedCrs,
+          ...unsupportedWithout
+        } = unsupported.evidence;
+        void unsupportedGeometry;
+        void unsupportedCrs;
+        await readable(unsupportedWithout, true);
+        // Prove the private fixture actually reaches the old serializer exception.
+        await client.query('savepoint unsupported_serializer');
+        await client.query(
+          "select set_config('wiser.candidate_fixed_refs',$1,true)",
+          [JSON.stringify([unsupported.reference])],
+        );
+        expect(
+          (
+            await client.query(
+              'select public.st_geometrytype(geom) kind from ingestion.candidate_record where record_id=$1',
+              [unsupported.record],
+            )
+          ).rows,
+        ).toEqual([{ kind: 'ST_CircularString' }]);
+        await expect(
+          client.query(
+            'select public.st_asgeojson(geom,15) from ingestion.candidate_record where record_id=$1',
+            [unsupported.record],
+          ),
+        ).rejects.toThrow();
+        await client.query('rollback to savepoint unsupported_serializer');
+        await readable(unsupported.evidence, false);
+        const id = randomUUID();
+        await client.query(
+          `insert into ingestion.candidate_followup(followup_id,tenant_id,project_id,type,source,rule_id,rule_version,reason,created_by_actor_id,created_actor_type,purpose,security_level,policy_version)
+         values($1,$2,$3,'GAP',$4::jsonb,'synthetic-nested','1','Synthetic nested record',$5,'human','synthetic-nested-authority','L0_PUBLIC',1)`,
+          [id, tenant, project, JSON.stringify(source.evidence), actor],
+        );
+        await client.query(
+          `insert into ingestion.candidate_followup_event(event_id,tenant_id,project_id,followup_id,expected_version,row_version,action,actor_id,actor_type,purpose,evidence,note,idempotency_key,request_fingerprint,state_after,assignee_after,evidence_after,responsibilities_after)
+         values($1,$2,$3,$4,0,1,'CREATE',$5,'human','synthetic-nested-authority','[]','Synthetic nested create',$6,decode($7,'hex'),'OPEN',null,'[]','[]')`,
+          [
+            randomUUID(),
+            tenant,
+            project,
+            id,
+            actor,
+            randomUUID(),
+            'a'.repeat(64),
+          ],
+        );
+        await client.query('set constraints all immediate');
+        expect(
+          (
+            await client.query(
+              'select row_version from ingestion.candidate_followup where followup_id=$1',
+              [id],
+            )
+          ).rows,
+        ).toEqual([{ row_version: 1 }]);
+        expect(
+          (
+            await client.query(
+              'select action from ingestion.candidate_followup_event where followup_id=$1',
+              [id],
+            )
+          ).rows,
+        ).toEqual([{ action: 'CREATE' }]);
+        await client.query(
+          "select set_config('wiser.candidate_view_deadline','2000-01-01T00:00:00Z',true)",
+        );
+        await readable(source.evidence, false);
+        expect(
+          (
+            await client.query(
+              'select followup_id from ingestion.candidate_followup where followup_id=$1',
+              [id],
+            )
+          ).rows,
+        ).toEqual([]);
+        expect(
+          (
+            await client.query(
+              'select event_id from ingestion.candidate_followup_event where followup_id=$1',
+              [id],
+            )
+          ).rows,
+        ).toEqual([]);
+      } finally {
+        await client.query('rollback');
+        client.release();
+        await pool.end();
+      }
+    },
+  );
+
   it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
     'denies an asset UUID case-only repeat after an accepted GAP supplement without correction masking',
     async () => {
