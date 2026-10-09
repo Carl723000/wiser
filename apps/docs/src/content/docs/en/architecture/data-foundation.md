@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-10
-lastReviewedCommit: b83eeb49ef14bd24c84d5e5bdf1bbf2e79092988
+lastReviewedCommit: 33bfb6abc1c51f1cda6701060e2d1ae8e172ce12
 ---
 
 ## What runs today
@@ -692,6 +692,8 @@ Candidate intake reading lists existing saved topics with their actual v1/v2 ver
 Private `ingestion.candidate_followup` roots keep original source, rule version, reason and creation responsibility immutable. Append-only events derive current state, assignee, cumulative evidence and all historical responsibilities. Supplements first pass standard candidate intake; spatial correction explicitly links whole old/new geometry, source CRS, original hash and actual locator without inventing component identities.
 
 The technical lifecycle is `OPEN → WORKING → REVIEW_PENDING → CLOSED`. Closing resolves a technical issue only. Independent review excludes every creator, handler, handoff target, supplementer, actual source submitter and delegator. Entire-task and history reads require current access to every original/supplemental source. The five operations reuse existing transactions, idempotency, Audit and Outbox; see [REST](/en/protocols/data-rest/#candidate-followups).
+
+The event adapter binds absent `target` and `correction` as SQL NULL, preserving the database action discriminator. Actual handoff and correction objects remain JSONB; evidence remains an array. The event guard derives the projected state, assignee, evidence and responsibilities from the current root and authorized action. This parameter binding changes neither public schemas nor migrations or permissions. Binding-level regression tests do not substitute for native transaction, Auth, HTTP or browser acceptance.
 
 Candidate followup evidence comparison canonicalizes only identity UUID spelling. Hashes, literal locators, source CRS, geometry and original values stay unchanged. Create and same-key replay use the same canonical identity. Incremental migration 0049 adds a duplicate-denial guard while retaining 0047 append-only events, source checks and historic bytes; only the existing managed API gets exact execution access to its two private helpers. Native SQL and browser acceptance remain separate evidence.
 

@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-10
-lastReviewedCommit: b83eeb49ef14bd24c84d5e5bdf1bbf2e79092988
+lastReviewedCommit: 33bfb6abc1c51f1cda6701060e2d1ae8e172ce12
 ---
 
 ## 当前可运行能力
@@ -692,6 +692,8 @@ API 将独立的内部 `data.ingestion.candidate.original.output` 事件追加�
 候选缺口与位置更正保存在私有 `ingestion.candidate_followup` 中。原来源、规则版本、原因与创建责任保持不可变，追加事件推导当前状态、办理人、证据与完整责任集合。补证先经标准候选接收流程；空间更正显式保留整记录新旧几何、原 CRS、来源哈希和定位信息，不构造几何分量身份。
 
 技术闭环使用 `OPEN → WORKING → REVIEW_PENDING → CLOSED`。`CLOSED` 只表示技术问题处理完毕。独立复核排除历次创建、办理、交接、补证及实际来源提交者和委托责任；读取整单与完整历史时，原来源及全部累计证据都须通过当前权限核验。五个操作复用现有事务、幂等、审计与 Outbox，见[REST 协议](/protocols/data-rest/#候选跟进)。
+
+事件适配器将缺省 `target` 和 `correction` 绑定为 SQL NULL，使其符合数据库的动作字段判别。实际交接与更正对象仍保存为 JSONB，证据保持数组。事件守卫依据当前根记录与获权动作推导状态、办理人、证据及责任投影。此处参数绑定不改变公共 schema、迁移或权限；绑定层回归不能代替原生事务、Auth、HTTP 或浏览器验收。
 
 候选跟进的证据去重仅规范身份 UUID 的大小写；原件哈希、定位字符串、坐标系、几何与原值保持字面。创建及同键重放使用同一规范身份。0049增量迁移只追加重复证据否定守卫，保留0047追加事件、来源核权与历史字节；受管API获得这两项私有函数的精确执行权限。原生SQL与浏览器贯通仍按独立回执验收。
 
