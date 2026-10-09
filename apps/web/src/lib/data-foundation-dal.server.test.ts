@@ -2858,3 +2858,337 @@ describe('fixed candidate conversion provenance transport', () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 });
+
+function candidateRelationSnapshot() {
+  return {
+    revision: {
+      revisionId: SESSION_ID,
+      relationId: USER_ID,
+      lineageId: USER_ID,
+      revision: 2,
+      supersedesId: TENANT_ID,
+      reference: candidateReference,
+      mappingVersion: 'source/1',
+      ruleVersion: 'candidate-relations/1',
+      content: {
+        subject: {
+          key: 'a',
+          label: 'Upstream',
+          kind: 'EXTERNAL_ENTITY',
+          externalId: null,
+        },
+        predicate: 'FLOWS_TO',
+        object: {
+          key: 'b',
+          label: 'Downstream',
+          kind: 'EXTERNAL_ENTITY',
+          externalId: null,
+        },
+        qualifiers: {
+          measure: null,
+          unit: null,
+          observedAt: null,
+          missing: false,
+          spatialScope: null,
+          limitations: [],
+          reportedConclusion: null,
+          reportedValue: null,
+          reportedLimit: null,
+          context: {
+            recordNature: 'SOURCE_RELATION',
+            timeRole: 'PUBLICATION_TIME',
+            validFrom: null,
+            validTo: null,
+            locationRole: 'REFERENCE_LOCATION',
+            applicability: 'Background only',
+          },
+        },
+        generation: { method: 'SOURCE_FIELDS', model: null },
+        evidence: [
+          {
+            reference: candidateReference,
+            assetId: USER_ID,
+            sourceHash: 'b'.repeat(64),
+            locator: 'row:1',
+            excerpt: null,
+            polarity: 'SUPPORTS',
+          },
+        ],
+      },
+    },
+    decisionVersion: 3,
+    state: 'CORRECTION_REQUIRED',
+    createdAt: '2026-10-09T00:00:00Z',
+  };
+}
+const candidateRelationGetInput = {
+  relationId: USER_ID,
+  revision: 2,
+  decisionVersion: 3,
+  references: [candidateReference],
+};
+const candidateRelationListInput = {
+  references: [candidateReference],
+  first: 2,
+  after: 'opaque-in',
+};
+
+describe('bounded candidate relationship reads', () => {
+  for (const action of ['Get', 'List'] as const) {
+    const input =
+      action === 'Get' ? candidateRelationGetInput : candidateRelationListInput;
+    const output = () =>
+      action === 'Get'
+        ? { relation: candidateRelationSnapshot() }
+        : {
+            relations: [candidateRelationSnapshot()],
+            nextCursor: 'opaque-out',
+          };
+    it(`${action} sends the fixed manifest once through the native readonly POST with verified scope`, async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json(output()));
+      const result =
+        await candidateDal(fetch)[`candidateRelation${action}`](input);
+      expect(result).toEqual(output());
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = fetch.mock.calls[0];
+      expect(url).toBe(
+        `http://api:3001/api/data/v1/ingestion-candidate-relations/${action === 'Get' ? `${USER_ID}/read` : 'list'}`,
+      );
+      expect(init).toMatchObject({
+        method: 'POST',
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      const headers = new Headers(init?.headers);
+      expect(headers.get('authorization')).toMatch(/^Bearer /u);
+      expect(headers.get('X-WISER-Tenant-ID')).toBe(TENANT_ID);
+      expect(headers.get('X-WISER-Project-ID')).toBe(PROJECT_ID);
+      expect(headers.get('X-WISER-Purpose')).toBe('review');
+      expect(headers.has('Idempotency-Key')).toBe(false);
+      expect(headers.has('If-Match')).toBe(false);
+      const expected =
+        action === 'Get'
+          ? {
+              revision: 2,
+              decisionVersion: 3,
+              references: [candidateReference],
+            }
+          : input;
+      if (typeof init?.body !== 'string') throw Error('Expected JSON request');
+      expect(JSON.parse(init.body)).toEqual(expected);
+    });
+    it.each([
+      { references: [] },
+      { references: [candidateReference, candidateReference] },
+      { references: [{ ...candidateReference, reviewHash: 'bad' }] },
+      { unexpected: true },
+    ])(
+      `${action} refuses malformed input before session access: %j`,
+      async (change) => {
+        const auth = vi.fn(() => Promise.resolve(authClient([])));
+        const fetch = vi.fn<typeof globalThis.fetch>();
+        await expect(
+          candidateDal(fetch, {}, auth)[`candidateRelation${action}`]({
+            ...input,
+            ...change,
+          }),
+        ).rejects.toMatchObject({ kind: 'invalid-request', status: 422 });
+        expect(auth).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
+      },
+    );
+    it(`${action} rejects unrecognized response fields`, async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          Response.json({ ...output(), internalUrl: 'private' }),
+        );
+      await expect(
+        candidateDal(fetch)[`candidateRelation${action}`](input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    });
+    it.each(['root', 'evidence'])(
+      `${action} rejects a response dependency outside the complete manifest (%s)`,
+      async (field) => {
+        const relation = candidateRelationSnapshot();
+        const foreign = { ...candidateReference, reviewHash: 'c'.repeat(64) };
+        if (field === 'root') relation.revision.reference = foreign;
+        else relation.revision.content.evidence[0].reference = foreign;
+        const fetch = vi
+          .fn<typeof globalThis.fetch>()
+          .mockResolvedValue(
+            Response.json(
+              action === 'Get'
+                ? { relation }
+                : { relations: [relation], nextCursor: null },
+            ),
+          );
+        await expect(
+          candidateDal(fetch)[`candidateRelation${action}`](input),
+        ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+      },
+    );
+    it.each([403, 404, 409])(
+      `${action} preserves HTTP failure %i without fixture fallback or raw diagnostics`,
+      async (status) => {
+        const fetch = vi
+          .fn<typeof globalThis.fetch>()
+          .mockResolvedValue(
+            new Response('private source details', { status }),
+          );
+        await expect(
+          candidateDal(fetch)[`candidateRelation${action}`](input),
+        ).rejects.toMatchObject({ status });
+        expect(fetch).toHaveBeenCalledOnce();
+      },
+    );
+    it(`${action} requires verified session`, async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, () =>
+          Promise.resolve({
+            auth: {
+              ...authClient([]).auth,
+              getClaims: () => Promise.resolve({ data: null, error: null }),
+            },
+          }),
+        )[`candidateRelation${action}`](input),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+    it(`${action} respects pre-cancellation without session or network`, async () => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth)[`candidateRelation${action}`](
+          input,
+          AbortSignal.abort(),
+        ),
+      ).rejects.toMatchObject({ status: 499 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+    it(`${action} enforces the configured response budget`, async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json(output()));
+      await expect(
+        candidateDal(fetch, { responseLimitBytes: 20 })[
+          `candidateRelation${action}`
+        ](input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    });
+    it(`${action} bounds a stalled response body and cancels the stream`, async () => {
+      const cancel = vi.fn();
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      await expect(
+        candidateDal(fetch, { requestTimeoutMs: 20 })[
+          `candidateRelation${action}`
+        ](input),
+      ).rejects.toMatchObject({ status: 504 });
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+    it(`${action} aborts an active streamed response`, async () => {
+      const cancel = vi.fn();
+      const controller = new AbortController();
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const result = candidateDal(fetch)[`candidateRelation${action}`](
+        input,
+        controller.signal,
+      );
+      setTimeout(() => controller.abort(), 10);
+      await expect(result).rejects.toMatchObject({ status: 499 });
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+  }
+  it.each([
+    { relationId: PROJECT_ID },
+    { revision: 1 },
+    { decisionVersion: 2 },
+  ])('get rejects a changed fixed identity: %j', async (change) => {
+    const relation = candidateRelationSnapshot();
+    if (change.decisionVersion !== undefined)
+      relation.decisionVersion = change.decisionVersion;
+    else Object.assign(relation.revision, change);
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ relation }));
+    await expect(
+      candidateDal(fetch).candidateRelationGet(candidateRelationGetInput),
+    ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+  });
+  it.each(['oversized', 'duplicate', 'empty-cursor', 'repeated-cursor'])(
+    'list rejects invalid pagination: %s',
+    async (kind) => {
+      const relation = candidateRelationSnapshot();
+      const output = {
+        relations: [relation],
+        nextCursor: 'next' as string | null,
+      };
+      if (kind === 'oversized')
+        output.relations = [relation, relation, relation];
+      if (kind === 'duplicate') output.relations = [relation, relation];
+      if (kind === 'empty-cursor') output.relations = [];
+      if (kind === 'repeated-cursor')
+        output.nextCursor = candidateRelationListInput.after;
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json(output));
+      await expect(
+        candidateDal(fetch).candidateRelationList(candidateRelationListInput),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it('list accepts an empty terminal page without inventing a relation', async () => {
+    const output = { relations: [], nextCursor: null };
+    expect(
+      await candidateDal(
+        vi.fn().mockResolvedValue(Response.json(output)),
+      ).candidateRelationList({ references: [candidateReference] }),
+    ).toEqual(output);
+  });
+  it('preserves a complete multi-source manifest without narrowing the selection', async () => {
+    const second = { ...candidateReference, ingestionId: TENANT_ID };
+    const relation = candidateRelationSnapshot();
+    relation.revision.content.evidence[0].reference = second;
+    relation.revision.content.evidence[0].locator = '  row:一  ';
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ relation }));
+    const result = await candidateDal(fetch).candidateRelationGet({
+      ...candidateRelationGetInput,
+      references: [candidateReference, second],
+    });
+    expect(result.relation.revision.content.evidence[0].reference).toEqual(
+      second,
+    );
+    // The public schema intentionally trims the locator; the manifest remains complete.
+    const body = fetch.mock.calls[0][1]?.body;
+    if (typeof body !== 'string') throw Error('Expected JSON request');
+    expect(JSON.parse(body)).toMatchObject({
+      references: [candidateReference, second],
+    });
+  });
+});

@@ -2,6 +2,11 @@ import 'server-only';
 
 import { connection } from 'next/server';
 import {
+  GetCandidateRelationInputSchema,
+  GetCandidateRelationOutputSchema,
+  ListCandidateRelationsInputSchema,
+  ListCandidateRelationsOutputSchema,
+  type CandidateRelationSnapshot,
   ExternalMetadataInputSchema,
   ExternalMetadataOutputSchema,
   type ExternalMetadataOutput,
@@ -199,6 +204,14 @@ export interface DataFoundationDal {
     input: unknown,
     signal?: AbortSignal,
   ): Promise<CandidatePage>;
+  candidateRelationGet(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<ReturnType<typeof GetCandidateRelationOutputSchema.parse>>;
+  candidateRelationList(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<ReturnType<typeof ListCandidateRelationsOutputSchema.parse>>;
   candidateConversionProvenance(
     input: unknown,
     signal?: AbortSignal,
@@ -562,6 +575,25 @@ export function createDataFoundationDal(
       if (error instanceof DataFoundationApiError) throw error;
       throw new DataFoundationApiError('contract', 502);
     }
+  }
+
+  function assertCandidateRelationSources(
+    relation: CandidateRelationSnapshot,
+    references: ReturnType<
+      typeof GetCandidateRelationInputSchema.parse
+    >['references'],
+  ): void {
+    const selected = new Set(references.map(candidateSavedReferenceKey));
+    const required = [
+      relation.revision.reference,
+      ...relation.revision.content.evidence.map((item) => item.reference),
+    ];
+    if (
+      required.some(
+        (reference) => !selected.has(candidateSavedReferenceKey(reference)),
+      )
+    )
+      throw new DataFoundationApiError('contract', 502);
   }
 
   const dal: DataFoundationDal = {
@@ -1014,6 +1046,73 @@ export function createDataFoundationDal(
           )
             throw new DataFoundationApiError('contract', 502);
           return page;
+        },
+      );
+    },
+    candidateRelationGet: async (input, signal) => {
+      const checked = GetCandidateRelationInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const { relationId, ...body } = checked.data;
+      const capability =
+        DATA_CAPABILITY_REGISTRY['data.ingestion.candidate.relations.get'];
+      const path = capability.restMapping.path.replace(
+        ':relationId',
+        encodeURIComponent(relationId),
+      );
+      return parsed(
+        () =>
+          call(path, {
+            method: capability.restMapping.method as 'POST',
+            body,
+            signal,
+            responseLimitBytes: 1024 * 1024,
+          }),
+        (value) => {
+          const output = GetCandidateRelationOutputSchema.parse(value);
+          const { relation } = output;
+          if (
+            !sameUuid(relation.revision.relationId, relationId) ||
+            relation.revision.revision !== body.revision ||
+            relation.decisionVersion !== body.decisionVersion
+          )
+            throw new DataFoundationApiError('contract', 502);
+          assertCandidateRelationSources(relation, body.references);
+          return output;
+        },
+      );
+    },
+    candidateRelationList: async (input, signal) => {
+      const checked = ListCandidateRelationsInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data;
+      const capability =
+        DATA_CAPABILITY_REGISTRY['data.ingestion.candidate.relations.list'];
+      return parsed(
+        () =>
+          call(capability.restMapping.path, {
+            method: capability.restMapping.method as 'POST',
+            body: data,
+            signal,
+            responseLimitBytes: 1024 * 1024,
+          }),
+        (value) => {
+          const output = ListCandidateRelationsOutputSchema.parse(value);
+          if (
+            output.relations.length > data.first ||
+            (output.relations.length === 0 && output.nextCursor !== null) ||
+            (output.nextCursor !== null && output.nextCursor === data.after) ||
+            new Set(
+              output.relations.map((item) =>
+                item.revision.relationId.toLowerCase(),
+              ),
+            ).size !== output.relations.length
+          )
+            throw new DataFoundationApiError('contract', 502);
+          for (const relation of output.relations)
+            assertCandidateRelationSources(relation, data.references);
+          return output;
         },
       );
     },

@@ -35,6 +35,11 @@ import {
   type CandidateMonthlySemanticRead,
 } from '@/lib/candidate-monthly-semantic-reader';
 import { CandidateMonthlyPanel } from './candidate-monthly-panel';
+import { CandidateRelationPanel } from './candidate-relation-panel';
+import {
+  readCandidateRelation,
+  type CandidateRelationPages,
+} from '@/lib/candidate-relation-reader';
 import { CandidateFollowupPanel } from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
@@ -45,6 +50,7 @@ import styles from './ingestion-candidate-reader.module.css';
 type OpenedReading =
   | CandidateSavedPages['open']
   | Exclude<CandidateTopicPages['open'], { status: 'UNAVAILABLE' }>;
+type CandidateRelationSnapshot = CandidateRelationPages['get']['relation'];
 async function openReading(
   viewId: string,
   signal: AbortSignal,
@@ -263,6 +269,12 @@ function CandidateSession({
   const [monthly, setMonthly] = useState<CandidateMonthlySemanticRead | null>(
     null,
   );
+  const [relationPage, setRelationPage] = useState<
+    CandidateRelationPages['list'] | null
+  >(null);
+  const [relationDetail, setRelationDetail] =
+    useState<CandidateRelationSnapshot | null>(null);
+  const [relationNav, setRelationNav] = useState(firstPosition);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('originals');
@@ -299,6 +311,8 @@ function CandidateSession({
     // Browser events must block new navigation before React commits a render.
     recoveryGate.current = true;
     setMonthly(null);
+    setRelationPage(null);
+    setRelationDetail(null);
     restricted.current?.setAttribute('inert', '');
     setRecovering(true);
     rasterCancel.current?.();
@@ -351,6 +365,9 @@ function CandidateSession({
 
   function clearContent() {
     setMonthly(null);
+    setRelationPage(null);
+    setRelationDetail(null);
+    setRelationNav(firstPosition());
     contentAvailable.current = false;
     rasterCancel.current?.();
     setAssets(null);
@@ -381,6 +398,8 @@ function CandidateSession({
   ) {
     if (recoveryGate.current && kind !== 'recovery') return;
     setMonthly(null);
+    setRelationPage(null);
+    setRelationDetail(null);
     mutationPending.current = kind === 'mutation';
     setMutating(mutationPending.current);
     rasterCancel.current?.();
@@ -464,6 +483,58 @@ function CandidateSession({
     const result = await readCandidatePage(action, value, signal);
     await savedAuthority(signal);
     return result;
+  }
+  async function relationAuthority(
+    references: IngestionCandidateSavedReferences,
+    signal: AbortSignal,
+  ) {
+    await savedAuthority(signal);
+    // The complete source selection is checked, including a source with no
+    // returned relations. Neither an empty page nor a topic grants source access.
+    for (const reference of references)
+      await readCandidatePage('get', { ...reference, first: 1 }, signal);
+  }
+  function loadRelations(position = firstPosition()) {
+    if (recoveryGate.current || mutationPending.current) return;
+    const references = openedView?.references ?? manifest;
+    return execute(async (signal) => {
+      await relationAuthority(references, signal);
+      const page = await readCandidateRelation(
+        'list',
+        {
+          references,
+          first: 25,
+          ...(position.after ? { after: position.after } : {}),
+        },
+        signal,
+      );
+      await relationAuthority(references, signal);
+      if (signal.aborted || !owner.current) return;
+      setRelationPage(page);
+      setRelationNav(position);
+    });
+  }
+  function inspectRelation(snapshot: CandidateRelationSnapshot) {
+    if (recoveryGate.current || mutationPending.current) return;
+    const references = openedView?.references ?? manifest;
+    const page = relationPage;
+    return execute(async (signal) => {
+      await relationAuthority(references, signal);
+      const value = await readCandidateRelation(
+        'get',
+        {
+          references,
+          relationId: snapshot.revision.relationId,
+          revision: snapshot.revision.revision,
+          decisionVersion: snapshot.decisionVersion,
+        },
+        signal,
+      );
+      await relationAuthority(references, signal);
+      if (signal.aborted || !owner.current) return;
+      setRelationPage(page);
+      setRelationDetail(value.relation);
+    });
   }
   function loadAssets(position = firstPosition()) {
     if (recoveryGate.current) return Promise.resolve();
@@ -1308,6 +1379,29 @@ function CandidateSession({
               parentBusy={busy}
             />
           </details>
+          <CandidateRelationPanel
+            locale={locale}
+            busy={busy || recovering}
+            page={relationPage}
+            detail={relationDetail}
+            canPrevious={relationNav.previous.length > 0}
+            onRead={() => void loadRelations()}
+            onInspect={(relation) => void inspectRelation(relation)}
+            onNext={() => {
+              if (relationPage?.nextCursor)
+                void loadRelations(
+                  nextPosition(relationNav, relationPage.nextCursor, undefined),
+                );
+            }}
+            onPrevious={() => {
+              const previous = relationNav.previous.at(-1);
+              if (previous)
+                void loadRelations({
+                  ...previous,
+                  previous: relationNav.previous.slice(0, -1),
+                });
+            }}
+          />
           {monthly && (
             <CandidateMonthlyPanel
               key={`${candidateSavedReferenceKey(fixed)}:${monthly.assetId}`}
