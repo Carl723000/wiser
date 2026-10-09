@@ -19,8 +19,8 @@ checkPaths:
   - apps/mcp/src/data-foundation/**
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
-lastReviewedAt: 2026-10-09
-lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
+lastReviewedAt: 2026-10-10
+lastReviewedCommit: b83eeb49ef14bd24c84d5e5bdf1bbf2e79092988
 ---
 
 ## What runs today
@@ -563,6 +563,8 @@ Candidate original delivery uses a separate authenticated REST content route wit
 
 The API signs only the canonical internal quarantine object, verifies its full SHA-256 and exact size before releasing any byte, then rechecks current authority and the frozen reference. GET, HEAD and single byte ranges share this verification. The prototype accepts originals from 1 byte through 32 MiB; larger originals fail explicitly. An API-instance admission budget reserves declared bytes before upstream GET: at most 128 MiB and four active candidate-original requests overall, with two per tenant/project responsible actor. The reservation lasts through response delivery or cancellation cleanup, including a slow or unconsumed stream; saturation fails with `503` and `Retry-After: 1` before fetching the object. These thresholds bound one instance's concurrent buffer exposure, not measured throughput or cross-instance usage. Delivery is private/no-store, sandboxed and attachment-only, with per-chunk authority rechecks. An authorization audit is not proof of completed download. These implementation checks do not establish live Auth/PostgreSQL/storage/browser acceptance or a saved-candidate workflow.
 
+The same-origin original route binds its Supabase client factory to the current request with `AsyncLocalStorage.bind`. Delayed stream authorization can therefore read the same request cookies after the handler returns. Each authorization still invokes the factory and verifies claims and the current token, reopens the complete saved-view/topic manifest and retains immutable topic comparison. No client, claims or permission snapshot is shared across requests; cancellation and per-chunk revocation remain effective. This lifecycle binding neither grants original access nor enables setting response cookies after streaming starts. Native byte delivery and browser recovery require separate acceptance.
+
 ### Durable fixed candidate views (1.0)
 
 `data.ingestion.candidate.view.create/list/open/revoke` saves a bounded reading configuration in `service.ingestion_candidate_saved_view`, separate from published `data.explore.view.*`. A view fixes 1–100 unique ingestion/review-hash/batch references, a strict assets/records/geometry page, optional original-record focus, map camera/layers and year/month display period. The UTF-8 create/open envelope is at most 128 KiB. It stores no original bytes, parsed records, authority snapshot, signed URL or published `versionId`/`queryId`. Display periods do not add server-side temporal filtering to the candidate readers.
@@ -683,7 +685,7 @@ The shared command executor retries `data.operation.cancel` once only after Post
 
 The public executor locks the ingestion session before jobs and the operation. A native direct-helper deadlock probe has a different entry path; fault-injected executor tests establish bounded recovery, not HTTP deadlock reproduction or removal of the lock cycle. Live Auth/HTTP and concurrent database acceptance remain separate.
 
-Candidate intake reading lists existing saved topics with their actual v1/v2 version and restores them through topic.list/open. The optional `candidateTopic` link uses the server-authorized fixed request even without a current candidate; it omits the ordinary intake summary. Full-spec and manifest checks run before and after reads and on visible-page recovery. UNAVAILABLE, changed pins or lost authority clear materials, titles, counts and fixed references. Cross-intake or cancelled proposals retain the adopted reading owner. Topic reading preserves the complete v2 question, period and pins; edit/save, original download and native raster actions remain unavailable there. Legacy `candidateView` links and their original authorization remain unchanged. No browser pin bootstrap or topic creation is added. Synthetic transport/component verification is separate from real account, HTTP and native browser acceptance.
+Candidate intake reading lists existing saved topics with their actual v1/v2 version and restores them through topic.list/open. The optional `candidateTopic` link uses the server-authorized fixed request even without a current candidate; it omits the ordinary intake summary. Full-spec and manifest checks run before and after reads and on visible-page recovery. UNAVAILABLE, changed pins or lost authority clear materials, titles, counts and fixed references. Cross-intake or cancelled proposals retain the adopted reading owner. Topic reading preserves the complete v2 question, period and pins; edit/save and native raster actions remain unavailable there. Legacy `candidateView` links and their original authorization remain unchanged. No browser pin bootstrap or topic creation is added. Synthetic transport/component verification is separate from real account, HTTP and native browser acceptance.
 
 ## Candidate followups and whole-record correction
 

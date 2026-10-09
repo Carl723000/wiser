@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   DataFoundationApiError,
   loadDataFoundationWebConfig,
@@ -24,8 +25,10 @@ async function handle(
       request,
       ...(await context.params),
       config,
-      createAuthClient: async () =>
-        (await createWiserServerSupabaseClient()) as DataFoundationAuthClient | null,
+      createAuthClient: AsyncLocalStorage.bind(
+        async () =>
+          (await createWiserServerSupabaseClient()) as DataFoundationAuthClient | null,
+      ),
     });
   } catch (error) {
     const locale = new URL(request.url).searchParams.get('locale');
