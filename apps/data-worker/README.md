@@ -29,6 +29,8 @@ lastReviewedCommit: bc7730a30d7724ea80dc450fd2bde1f8fc2a35c1
 
 它负责租约、heartbeat、重试、dead letter、取消和优雅排空，但不提供公共业务 API、不建立第二套 Auth，也不把外部投影当作 authority。`catalog.spatial_extent` 等 data-postgres 权威记录不能按缓存处理。 / It owns leases, heartbeats, retries, dead letters, cancellation, and graceful draining, but exposes no public business API, creates no second Auth system, and never treats external projections as authority. Authoritative data-postgres rows such as `catalog.spatial_extent` are not caches.
 
+Worker 的提交后空间读回保留 source CRS、canonical→WGS84 变换、bbox 和固定 extent 顺序；嵌套 GeometryCollection 只按直接成员补齐 JSON 容器，叶几何继续使用 PostGIS 的 9 位小数、options 0 序列化，保留成员顺序、重复项与 Multi*。简单、扁平及数据库全空根仍走原直接序列化路径，非空树内的空子集合不因当前写入校验而被删除。此私有读取适配不增加几何准入阈值、超时、迁移或权限；同一四 GUC 只读事务及失败回滚保持不变。原生几何读回、受治理提交与全部投影发布分别验收。 / Post-commit Worker spatial readback retains the source CRS, canonical-to-WGS84 transformation, bounding box and fixed extent order. Nested GeometryCollections rebuild only JSON containers from direct members; leaves retain PostGIS nine-decimal, options-0 serialization, member order, duplicates and Multi* containers. Simple, flat and database-empty roots retain the direct serializer; empty children in a nonempty tree are not removed by applying current write validation to historical reads. This private adapter adds no geometry admission limit, timeout, migration or permission. The same four-GUC read-only transaction and safe rollback remain unchanged. Native geometry readback, governed commitment and publication across all targets are separate acceptance checks.
+
 ## Entrypoints / 入口
 
 - Process composition / 进程组合：`src/main.ts`

@@ -1,3 +1,4 @@
+import { projectionGeometryJsonSql } from './projection-geometry-json-sql.js';
 import type {
   DataPostgresClient,
   DataPostgresPool,
@@ -95,8 +96,8 @@ order by array_position($5::uuid[], evidence_fragment_id)
 const SPATIAL_SQL = `
 /* data-worker.projection-hydration.spatial */
 select spatial_extent_id, source_crs,
-  ST_AsGeoJSON(source_geometry, 9, 0)::jsonb as source_geojson,
-  ST_AsGeoJSON(ST_Transform(canonical_geometry, 4326), 9, 0)::jsonb as wgs84_geojson,
+  ${projectionGeometryJsonSql('source_geometry')}::jsonb as source_geojson,
+  ${projectionGeometryJsonSql('ST_Transform(canonical_geometry, 4326)')}::jsonb as wgs84_geojson,
   array[
     ST_XMin(ST_Extent(ST_Transform(canonical_geometry, 4326))),
     ST_YMin(ST_Extent(ST_Transform(canonical_geometry, 4326))),

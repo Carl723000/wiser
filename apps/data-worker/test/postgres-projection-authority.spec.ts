@@ -267,6 +267,112 @@ describe('PostgreSQL projection authority', () => {
     );
   });
 
+  it('wires both nested serializers without changing scoped authority facts', async () => {
+    const point = { type: 'Point', coordinates: [1.123456789, 2.987654321] };
+    const nested = {
+      type: 'GeometryCollection',
+      geometries: [
+        point,
+        {
+          type: 'GeometryCollection',
+          geometries: [
+            {
+              type: 'MultiPoint',
+              coordinates: [point.coordinates, point.coordinates],
+            },
+            { type: 'GeometryCollection', geometries: [] },
+          ],
+        },
+        point,
+      ],
+    };
+    const client = new FakeClient();
+    const query = client.query.bind(client);
+    client.query = async (text, values) => {
+      const result = await query(text, values);
+      if (!text.includes('projection-hydration.spatial')) return result;
+      return {
+        rows: result.rows.map((row) => ({
+          ...row,
+          source_crs: 'EPSG:4490',
+          source_geojson: nested,
+          wgs84_geojson: nested,
+        })),
+      };
+    };
+    const pool = new FakePool();
+    pool.connect = () => Promise.resolve(client);
+    const result = await new PostgresProjectionHydrationAuthority(pool).load(
+      event,
+      ids,
+    );
+    expect(result.spatial).toEqual([
+      {
+        spatialExtentId: ids.spatialExtentIds[0],
+        sourceCrs: 'EPSG:4490',
+        sourceGeoJson: nested,
+        wgs84GeoJson: nested,
+        bbox: [116, 40, 116, 40],
+      },
+    ]);
+    const spatial = client.queries.find(({ text }) =>
+      text.includes('projection-hydration.spatial'),
+    )!;
+    // Wiring assertions only: native PostGIS tests establish actual serialization semantics.
+    expect(spatial.text.match(/WITH RECURSIVE/g)).toHaveLength(2);
+    expect(spatial.text).toContain('SELECT source_geometry AS geom');
+    expect(spatial.text).toContain(
+      'SELECT ST_Transform(canonical_geometry, 4326) AS geom',
+    );
+    expect(spatial.text).toContain(
+      'security.authorized_row(tenant_id, project_id,',
+    );
+    expect(spatial.text).toContain(
+      'order by array_position($5::uuid[], spatial_extent_id)',
+    );
+    expect(spatial.text).toContain(
+      'ST_XMin(ST_Extent(ST_Transform(canonical_geometry, 4326)))',
+    );
+    expect(spatial.values).toEqual([
+      event.tenantId,
+      event.projectId,
+      ids.dataItemId,
+      ids.versionId,
+      ids.spatialExtentIds,
+      event.securityLevel,
+      event.policyVersion,
+    ]);
+    expect(client.queries.at(-1)?.text).toBe('COMMIT');
+    expect(client.released).toBe(true);
+  });
+
+  it('rolls back and releases without partial hydration when spatial SQL fails', async () => {
+    const client = new FakeClient();
+    const query = client.query.bind(client);
+    client.query = async (text, values) => {
+      const result = await query(text, values);
+      if (text.includes('projection-hydration.spatial'))
+        throw new Error('private spatial failure');
+      return result;
+    };
+    const pool = new FakePool();
+    pool.connect = () => Promise.resolve(client);
+    await expect(
+      new PostgresProjectionHydrationAuthority(pool).load(event, ids),
+    ).rejects.toThrow('Projection authority transaction failed safely.');
+    expect(client.queries.at(0)?.text).toBe('BEGIN READ ONLY');
+    expect(client.queries.at(-1)?.text).toBe('ROLLBACK');
+    expect(
+      client.queries.some(
+        ({ text }) =>
+          text === 'COMMIT' ||
+          text.includes('projection-hydration.quality') ||
+          text.includes('projection-hydration.lineage'),
+      ),
+    ).toBe(false);
+    expect(client.released).toBe(true);
+  });
+
   it('serializes all reads made through the same transaction client', async () => {
     const pool = new ConcurrentQueryDetectingPool();
     const authority = new PostgresProjectionHydrationAuthority(pool);

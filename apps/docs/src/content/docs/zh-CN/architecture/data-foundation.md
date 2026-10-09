@@ -177,6 +177,8 @@ Worker 使用 PostgreSQL `FOR UPDATE SKIP LOCKED`、lease owner/expiry、heartbe
 
 默认对齐器保持同质集合原有 Multi* 结果，混合几何按原成员顺序形成资产级 GeometryCollection 范围；范围不替代独立解析的 Feature 记录及来源身份。内部 PostGIS 投影校验接受非空集合，整棵几何共用 100,000 个位置上限和统一坐标维度，拒绝未知键及非法成员，允许根深度 0 至最大深度 8。不修改公共 HTTP 契约、权限或迁移；实际 PostGIS 变换与受治理发布仍需分别验收。
 
+Worker 的提交后空间读回保留 source CRS、canonical→WGS84 变换、bbox 和固定 extent 顺序；嵌套 GeometryCollection 只按直接成员补齐 JSON 容器，叶几何继续使用 PostGIS 的 9 位小数、options 0 序列化，保留成员顺序、重复项与 Multi*。简单、扁平及数据库全空根仍走原直接序列化路径，非空树内的空子集合不因当前写入校验而被删除。此私有读取适配不增加几何准入阈值、超时、迁移或权限；同一四 GUC 只读事务及失败回滚保持不变。原生几何读回、受治理提交与全部投影发布分别验收。
+
 ### 中文与中英混合检索合同
 
 正文以中文为主、允许英文与中英混合，但三个检索投影不重复承担同一信号：

@@ -177,6 +177,8 @@ If all five completion targets succeeded but the matching Operation is already `
 
 The default aligner retains homogeneous Multi* outputs and preserves ordered mixed geometry members in an asset-level GeometryCollection. This extent does not replace independently parsed Feature records or their source identity. Internal PostGIS projection validation accepts nonempty collections, shares a 100,000-position budget and one coordinate dimension across the complete tree, rejects unknown keys and invalid members, and permits depth zero through eight. No public HTTP contract, permission or migration changes; native PostGIS transformation and governed publication remain separate acceptance checks.
 
+Post-commit Worker spatial readback retains the source CRS, canonical-to-WGS84 transformation, bounding box and fixed extent order. Nested GeometryCollections rebuild only JSON containers from direct members; leaves retain PostGIS nine-decimal, options-0 serialization, member order, duplicates and Multi* containers. Simple, flat and database-empty roots retain the direct serializer; empty children in a nonempty tree are not removed by applying current write validation to historical reads. This private adapter adds no geometry admission limit, timeout, migration or permission. The same four-GUC read-only transaction and safe rollback remain unchanged. Native geometry readback, governed commitment and publication across all targets are separate acceptance checks.
+
 ### Chinese and mixed-language retrieval contract
 
 Content is primarily Chinese with optional English and code-switching, but the three search projections do not duplicate the same signal:
