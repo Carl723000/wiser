@@ -240,16 +240,23 @@ export function candidateOriginalUrl(
   assetId: string,
   locale: string,
   savedViewId?: string,
+  savedTopicId?: string,
 ): string {
+  if (savedViewId !== undefined && savedTopicId !== undefined)
+    throw new CandidateReaderError('invalid');
   const ref = IngestionCandidateReferenceSchema.parse(reference);
   const asset = PlatformUuidSchema.parse(assetId);
   const saved =
     savedViewId === undefined
       ? undefined
       : PlatformUuidSchema.parse(savedViewId);
+  const topic =
+    savedTopicId === undefined
+      ? undefined
+      : PlatformUuidSchema.parse(savedTopicId);
   if (locale !== 'zh-CN' && locale !== 'en')
     throw new CandidateReaderError('invalid');
-  return `/api/data-foundation/candidate-assets/${ref.ingestionId.toLowerCase()}/${ref.processingBatchId.toLowerCase()}/${asset.toLowerCase()}?reviewHash=${ref.reviewHash}&locale=${locale}${saved === undefined ? '' : `&savedViewId=${saved.toLowerCase()}`}`;
+  return `/api/data-foundation/candidate-assets/${ref.ingestionId.toLowerCase()}/${ref.processingBatchId.toLowerCase()}/${asset.toLowerCase()}?reviewHash=${ref.reviewHash}&locale=${locale}${saved === undefined ? '' : `&savedViewId=${saved.toLowerCase()}`}${topic === undefined ? '' : `&savedTopicId=${topic.toLowerCase()}`}`;
 }
 
 export interface CandidateDisplayFeatures {

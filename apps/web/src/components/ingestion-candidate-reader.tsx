@@ -476,6 +476,35 @@ function CandidateSession({
     )
       throw new CandidateReaderError('invalid');
   }
+  function originalUrl(chosenAsset: string) {
+    if (!topicMode)
+      return candidateOriginalUrl(
+        fixed,
+        chosenAsset,
+        locale,
+        openedView?.savedView.viewId,
+      );
+    if (
+      !openedView ||
+      !('specVersion' in openedView) ||
+      openedView.specVersion !== 2 ||
+      !openedView.viewSpec.dependencyPins.some(
+        (pin) =>
+          pin.kind === 'asset' &&
+          pin.assetId.toLowerCase() === chosenAsset.toLowerCase() &&
+          candidateSavedReferenceKey(pin.reference) ===
+            candidateSavedReferenceKey(fixed),
+      )
+    )
+      return undefined;
+    return candidateOriginalUrl(
+      fixed,
+      chosenAsset,
+      locale,
+      undefined,
+      openedView.savedView.viewId,
+    );
+  }
   async function readPage<A extends CandidateReadAction>(
     action: A,
     value: unknown,
@@ -1561,18 +1590,11 @@ function CandidateSession({
                           </div>
                         </dl>
                         <div className={styles.actions}>
-                          {topicMode ? null : (
-                            <a
-                              href={candidateOriginalUrl(
-                                fixed,
-                                asset.assetId,
-                                locale,
-                                openedView?.savedView.viewId,
-                              )}
-                            >
+                          {originalUrl(asset.assetId) ? (
+                            <a href={originalUrl(asset.assetId)}>
                               {copy.downloadOriginal}
                             </a>
-                          )}
+                          ) : null}
                           <button
                             type="button"
                             disabled={
@@ -1624,11 +1646,7 @@ function CandidateSession({
                       </li>
                     ))}
                   </ul>
-                  {topicMode ? (
-                    <p className={styles.notice}>
-                      {copy.topicOriginalUnavailable}
-                    </p>
-                  ) : (
+                  {topicMode ? null : (
                     <IngestionCandidateRasterPanel
                       key={`${candidateSavedReferenceKey(fixed)}:${openedView?.savedView.viewId ?? ''}:${rasterEpoch}`}
                       reference={fixed}
@@ -1836,18 +1854,11 @@ function CandidateSession({
                   <button type="button" onClick={() => setSelected(null)}>
                     {copy.clearSelection}
                   </button>
-                  {topicMode ? null : (
-                    <a
-                      href={candidateOriginalUrl(
-                        fixed,
-                        selectedRow.assetId,
-                        locale,
-                        openedView?.savedView.viewId,
-                      )}
-                    >
+                  {originalUrl(selectedRow.assetId) ? (
+                    <a href={originalUrl(selectedRow.assetId)}>
                       {copy.downloadOriginal}
                     </a>
-                  )}
+                  ) : null}
                 </div>
                 {currentGeometry && tab === 'map' ? (
                   <details>

@@ -157,6 +157,274 @@ function savedManifest() {
 }
 const savedQuery = (id = savedViewId) =>
   'reviewHash=' + fixedReference.reviewHash + '&savedViewId=' + id;
+function topicManifest() {
+  const view = savedManifest();
+  return {
+    status: 'READABLE',
+    specVersion: 2,
+    savedView: { ...view.savedView, specVersion: 2 },
+    references: view.references,
+    viewSpec: {
+      schemaVersion: 2,
+      ...view.viewSpec,
+      period: {
+        windowMode: 'month',
+        timeRole: 'REPORT_PERIOD',
+        from: null,
+        to: null,
+        displayUnit: 'month',
+        includeUndated: true,
+      },
+      topic: {
+        question: 'Pending source inspection',
+        regionIds: ['inspection-region'],
+        needIds: ['inspection-need'],
+        recordPins: [],
+      },
+      rulePins: ['projection', 'readiness', 'requirement', 'impact'].map(
+        (kind) => ({
+          kind,
+          ruleId: `inspection-${kind}`,
+          version: 'inspection/1',
+        }),
+      ),
+      dependencyPins: [
+        {
+          kind: 'asset',
+          reference: fixedReference,
+          assetId,
+          sourceHash: 'b'.repeat(64),
+          parserVersion: 'inspection/1',
+        },
+      ],
+      relationPins: [],
+    },
+    request: view.request,
+  };
+}
+function topicFixture(
+  open: (index: number) => Response | Promise<Response> = () =>
+    Response.json(topicManifest()),
+  content: () => Response | Promise<Response> = () => original(),
+  init: RequestInit = {},
+) {
+  let opens = 0;
+  const download = vi.fn(content);
+  const fetch = vi.fn<typeof globalThis.fetch>((url) =>
+    Promise.resolve(
+      fetchUrl(url).includes('/ingestion-candidate-topics/')
+        ? open(++opens)
+        : download(),
+    ),
+  );
+  return {
+    input: options(
+      fetch,
+      'reviewHash=' +
+        fixedReference.reviewHash +
+        '&savedTopicId=' +
+        savedViewId,
+      init,
+    ),
+    fetch,
+    download,
+  };
+}
+it('delivers a strict-v2 topic original through repeated complete-owner checks', async () => {
+  const fixture = topicFixture();
+  const response = await proxyCandidateOriginal(fixture.input);
+  expect(await response.text()).toBe('world');
+  expect(fixture.download).toHaveBeenCalledOnce();
+  const opens = fixture.fetch.mock.calls.filter(([url]) =>
+    fetchUrl(url).includes('/ingestion-candidate-topics/'),
+  );
+  expect(opens.length).toBeGreaterThanOrEqual(3);
+  expect(
+    opens.every(
+      ([url, init]) =>
+        fetchUrl(url).includes(`/${savedViewId}/open`) &&
+        init?.method === 'POST',
+    ),
+  ).toBe(true);
+  expect(
+    fixture.fetch.mock.calls.some(([url]) =>
+      fetchUrl(url).includes('/ingestion-candidate-views/'),
+    ),
+  ).toBe(false);
+});
+it.each([
+  'UNAVAILABLE',
+  'legacy',
+  'wrong-owner',
+  'wrong-reference',
+  'unpinned-asset',
+])('rejects topic %s before fetching its original', async (fault) => {
+  const value = topicManifest();
+  if (fault === 'wrong-owner') value.savedView.viewId = assetId;
+  if (fault === 'wrong-reference') {
+    value.references = [value.references[1]];
+    value.viewSpec.page.reference = value.references[0];
+    value.viewSpec.dependencyPins[0].reference = value.references[0];
+    value.request.input = { ...value.request.input, ...value.references[0] };
+  }
+  const fixture = topicFixture(() =>
+    Response.json(
+      fault === 'UNAVAILABLE'
+        ? { status: 'UNAVAILABLE', viewId: savedViewId }
+        : fault === 'legacy'
+          ? {
+              status: 'READABLE',
+              specVersion: 1,
+              ...savedManifest(),
+              savedView: { ...savedManifest().savedView, specVersion: 1 },
+              kind: undefined,
+            }
+          : value,
+    ),
+  );
+  if (fault === 'unpinned-asset')
+    fixture.input = { ...fixture.input, assetId: savedViewId };
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: fault === 'wrong-owner' ? 502 : 404,
+  });
+  expect(fixture.download).not.toHaveBeenCalled();
+});
+it.each([
+  '',
+  'bad',
+  savedViewId + '&savedTopicId=' + savedViewId,
+  savedViewId + '&savedViewId=' + savedViewId,
+])(
+  'rejects invalid or competing topic owner %s before authentication',
+  async (id) => {
+    const input = options(
+      undefined,
+      'reviewHash=' + 'a'.repeat(64) + '&savedTopicId=' + id,
+    );
+    const createAuthClient = vi.fn(input.createAuthClient);
+    await expect(
+      proxyCandidateOriginal({ ...input, createAuthClient }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(createAuthClient).not.toHaveBeenCalled();
+  },
+);
+it.each([{ method: 'HEAD' }, { headers: { range: 'bytes=1-2' } }])(
+  'retains topic owner on authorized HEAD/Range reads %j',
+  async (init) => {
+    const fixture = topicFixture(
+      undefined,
+      () =>
+        init.method
+          ? original(null)
+          : original('or', 206, {
+              'content-length': '2',
+              'content-range': 'bytes 1-2/5',
+            }),
+      init,
+    );
+    const response = await proxyCandidateOriginal(fixture.input);
+    expect(response.status).toBe(init.method ? 200 : 206);
+    expect(await response.text()).toBe(init.method ? '' : 'or');
+  },
+);
+it('retains original-read denial even when a complete topic is readable', async () => {
+  const fixture = topicFixture(
+    undefined,
+    () => new Response(null, { status: 403 }),
+  );
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: 403,
+  });
+});
+it.each(['withdrawn', 'changed-pin'])(
+  'cancels delivery when the complete topic becomes %s between chunks',
+  async (fault) => {
+    let denied = false,
+      cancelled = false,
+      part = 0;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(part++ === 0 ? 'wo' : 'rld'),
+          );
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const fixture = topicFixture(
+      () => {
+        if (denied && fault === 'withdrawn')
+          return Response.json({ status: 'UNAVAILABLE', viewId: savedViewId });
+        const value = topicManifest();
+        if (denied) value.viewSpec.rulePins[0].version = 'inspection/2';
+        return Response.json(value);
+      },
+      () => original(body),
+    );
+    const response = await proxyCandidateOriginal(fixture.input);
+    const reader = response.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('wo');
+    denied = true;
+    await expect(reader.read()).rejects.toBeInstanceOf(DataFoundationApiError);
+    expect(cancelled).toBe(true);
+    expect(body.locked).toBe(false);
+  },
+);
+it('does not replace immutable topic pins when the fresh resume cursor changes', async () => {
+  const fixture = topicFixture((index) => {
+    const value = topicManifest();
+    return Response.json({
+      ...value,
+      viewSpec: {
+        ...value.viewSpec,
+        page: { ...value.viewSpec.page, afterAssetId: assetId },
+      },
+      request: {
+        ...value.request,
+        input: { ...value.request.input, after: `fresh-${index}` },
+      },
+    });
+  });
+  expect(await (await proxyCandidateOriginal(fixture.input)).text()).toBe(
+    'world',
+  );
+});
+it('rejects a denial in the complete topic authority before fetching the original', async () => {
+  const fixture = topicFixture(() => new Response(null, { status: 403 }));
+  await expect(proxyCandidateOriginal(fixture.input)).rejects.toMatchObject({
+    status: 403,
+  });
+  expect(fixture.download).not.toHaveBeenCalled();
+});
+it('cancels the topic original stream when its consumer leaves', async () => {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const fixture = topicFixture(undefined, () => original(body));
+  const response = await proxyCandidateOriginal(fixture.input);
+  await response.body!.cancel();
+  expect(cancelled).toBe(true);
+  expect(body.locked).toBe(false);
+});
+it('cancels pending complete-topic admission before any original fetch', async () => {
+  const abort = new AbortController();
+  const fixture = topicFixture(() => new Promise(() => undefined), undefined, {
+    signal: abort.signal,
+  });
+  const pending = proxyCandidateOriginal(fixture.input);
+  void pending.catch(() => undefined);
+  await vi.waitFor(() => expect(fixture.fetch).toHaveBeenCalled());
+  abort.abort();
+  await expect(pending).rejects.toMatchObject({ status: 499 });
+  expect(fixture.download).not.toHaveBeenCalled();
+});
 const fetchUrl = (url: Parameters<typeof globalThis.fetch>[0]) =>
   typeof url === 'string' ? url : url instanceof Request ? url.url : url.href;
 function savedFixture(
