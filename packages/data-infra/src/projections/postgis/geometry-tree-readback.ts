@@ -71,7 +71,7 @@ export function rebuildPostgisGeometryTree(
   ]);
   const maxDepth = integer(config.maxDepth, 0, 8);
   const maxNodes = integer(config.maxNodes, 1);
-  const maxPositions = integer(config.maxPositions, 1, 100_000);
+  const maxPositions = integer(config.maxPositions, 1);
   const maxBytes = integer(config.maxBytes, 1);
   if (!Array.isArray(input) || input.length === 0 || input.length > maxNodes)
     invalid();
@@ -110,8 +110,7 @@ export function rebuildPostgisGeometryTree(
   }
   if (!nodes.has('') || children !== input.length - 1) invalid();
   let bytes = 0,
-    positions = 0,
-    dimensions: number | undefined;
+    positions = 0;
   function charge(size: number) {
     bytes += size;
     if (bytes > maxBytes) invalid();
@@ -130,8 +129,6 @@ export function rebuildPostgisGeometryTree(
   function position(value: unknown): number[] {
     if (!Array.isArray(value) || (value.length !== 2 && value.length !== 3))
       invalid();
-    if (dimensions !== undefined && dimensions !== value.length) invalid();
-    dimensions = value.length;
     positions += 1;
     if (positions > maxPositions) invalid();
     charge(2 + value.length - 1);
@@ -149,8 +146,7 @@ export function rebuildPostgisGeometryTree(
     const last = result.at(-1)!;
     if (
       first.length !== last.length ||
-      first.some((ordinate, index) => ordinate !== last[index]) ||
-      new Set(result.slice(0, -1).map((entry) => entry.join(','))).size < 3
+      first.some((ordinate, index) => ordinate !== last[index])
     )
       invalid();
     return result;

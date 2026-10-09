@@ -537,3 +537,7 @@ GET list uses `kind=ingestion-candidate`, `ingestionId`, `processingBatchId`, `r
 Create/act require `data.operation.read` plus `data.ingestion.write`; review requires `data.operation.read`, `data.publish` and an independent non-delegated human. Reads also require current maintenance/review eligibility. Every read and replay rechecks all current sources. Outputs mark `technicalOnly: true`; closing grants no professional approval, publication or source permission.
 
 Followup commands canonicalize only UUID identity spelling while preserving literal hashes, locators, source CRS and geometry; same-key replay compares the same canonical identity. Increment 0049 rejects spelling-only duplicates within an event and across cumulative evidence after 0047 source, responsibility, version and append-only guards. Only the existing API receives exact private-function execution; prior migrations and rows remain intact. Native SQL, HTTP and browser evidence remain separate checks.
+
+### Nested candidate geometry readback
+
+The same geometry response preserves nested collections, member order, duplicate members and Multi types. This is an internal read compatibility fix; request fields, current authorization, cursors and the 3 MiB complete-response budget are unchanged.

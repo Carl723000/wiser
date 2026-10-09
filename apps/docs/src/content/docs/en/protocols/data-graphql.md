@@ -356,3 +356,7 @@ Startup configuration explicitly adopts `goal101-engineering-inspection/1`: `DAT
 Mutations are `createDataIngestionCandidateFollowup`, `actDataIngestionCandidateFollowup`, `reviewDataIngestionCandidateFollowup`; queries are `dataIngestionCandidateFollowup`, `dataIngestionCandidateFollowups`. They share strict Capability schemas, current source authority, version checks and independent review, without a separate GraphQL authorization path. Handoff accepts a target identifier only. Input, paging, budgets and technical-only closure are described in [REST](/en/protocols/data-rest/#candidate-followups).
 
 Followup commands canonicalize only UUID identity spelling while preserving literal hashes, locators, source CRS and geometry; same-key replay compares the same canonical identity. Increment 0049 rejects spelling-only duplicates within an event and across cumulative evidence after 0047 source, responsibility, version and append-only guards. Only the existing API receives exact private-function execution; prior migrations and rows remain intact. Native SQL, HTTP and browser evidence remain separate checks.
+
+### Nested candidate geometry readback
+
+The same geometry response preserves nested collections, member order, duplicate members and Multi types. This is an internal read compatibility fix; request fields, current authorization, cursors and the 3 MiB complete-response budget are unchanged.

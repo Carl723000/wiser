@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { IngestionCandidateGeometrySchema } from '@wiser/data-contracts';
 import { rebuildPostgisGeometryTree } from '../../../src/projections/postgis/geometry-tree-readback.js';
 import { SpatialProjectionError } from '../../../src/projections/postgis/errors.js';
 
@@ -118,6 +119,29 @@ describe('private PostGIS geometry tree readback', () => {
       read([branch([], 2), leaf([1], geometry), leaf([2], geometry)]),
     ).toEqual(collection([geometry, geometry]));
   });
+  it('retains candidate-schema mixed 2D/3D leaves without applying projection write rules', () => {
+    const threeDimensional = { type: 'Point', coordinates: [1, 2, 3] };
+    const expected = collection([point, threeDimensional]);
+    expect(IngestionCandidateGeometrySchema.parse(expected)).toEqual(expected);
+    expect(
+      read([branch([], 2), leaf([1], point), leaf([2], threeDimensional)]),
+    ).toEqual(expected);
+  });
+  it('retains a candidate-schema closed degenerate ring without granting publication validity', () => {
+    const expected = {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [0, 0],
+          [0, 0],
+        ],
+      ],
+    };
+    expect(IngestionCandidateGeometrySchema.parse(expected)).toEqual(expected);
+    expect(read([leaf([], expected)])).toEqual(expected);
+  });
   it('counts all positions and nodes across branches and respects caller depth', () => {
     expect(
       read(nodes, { ...limits, maxNodes: 11, maxPositions: 15, maxDepth: 3 }),
@@ -131,6 +155,25 @@ describe('private PostGIS geometry tree readback', () => {
         SpatialProjectionError,
       );
     }
+  });
+  it('uses the caller position budget without inheriting the projection write limit', () => {
+    // Candidate reads and projection writes have different existing budgets.
+    const geometry = {
+      type: 'LineString',
+      coordinates: Array.from({ length: 100_001 }, () => [0, 0]),
+    };
+    const input = [leaf([], geometry)];
+    const bounds = {
+      ...limits,
+      maxDepth: 0,
+      maxNodes: 1,
+      maxPositions: 100_001,
+      maxBytes: 1_000_000,
+    };
+    expect(read(input, bounds)).toEqual(geometry);
+    expect(() => read(input, { ...bounds, maxPositions: 100_000 })).toThrow(
+      SpatialProjectionError,
+    );
   });
   it('counts complete final JSON bytes including collection shells and separators', () => {
     const size = new TextEncoder().encode(JSON.stringify(original)).length;
@@ -186,24 +229,6 @@ describe('private PostGIS geometry tree readback', () => {
         ],
       }),
     ],
-    [
-      leaf([], {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [0, 0],
-            [1, 0],
-            [0, 0],
-            [0, 0],
-          ],
-        ],
-      }),
-    ],
-    [
-      branch([], 2),
-      leaf([1], point),
-      leaf([2], { type: 'Point', coordinates: [1, 2, 3] }),
-    ],
   ])('rejects malformed, incomplete or mismatched trees %#', (value) => {
     expect(() => read(value)).toThrow(SpatialProjectionError);
   });
@@ -212,7 +237,7 @@ describe('private PostGIS geometry tree readback', () => {
     { maxDepth: 9 },
     { maxNodes: 0 },
     { maxPositions: 0 },
-    { maxPositions: 100_001 },
+    { maxPositions: Number.MAX_SAFE_INTEGER + 1 },
     { maxBytes: 0 },
     { maxBytes: Number.POSITIVE_INFINITY },
     { maxDepth: 1.5 },

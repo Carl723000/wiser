@@ -356,3 +356,7 @@ mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTo
 同步字段为 mutations `createDataIngestionCandidateFollowup`、`actDataIngestionCandidateFollowup`、`reviewDataIngestionCandidateFollowup`，queries `dataIngestionCandidateFollowup`、`dataIngestionCandidateFollowups`。它们复用同一严格 Capability schema、当前来源核权、版本与独立复核规则，不另设 GraphQL 授权路径。办理只接受目标标识；完整输入、分页、大小与技术关闭边界见[REST 候选跟进](/protocols/data-rest/#候选跟进)。
 
 候选跟进命令仅统一 UUID 身份大小写，保留哈希、原文定位、坐标系和几何字面；同键重放按同一规范身份比较。0049在0047既有来源、责任、版本和追加事件守卫之后，另拒绝单事件及累计证据中的身份拼写重复。只给既有 API 精确私有函数执行权限，不改旧迁移或既有行；本机原生SQL、HTTP和浏览器仍需分别核验。
+
+### 候选嵌套几何读取
+
+同一几何响应保留嵌套集合、成员顺序、重复成员及 Multi 类型。这是内部读取兼容修复，请求字段、当前核权、游标及完整响应3 MiB上限不变。
