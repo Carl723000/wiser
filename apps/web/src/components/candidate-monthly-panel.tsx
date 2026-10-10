@@ -6,7 +6,10 @@ import type {
   CandidateMonthlySemanticRead,
   CandidateMonthlySemanticRecord,
 } from '@/lib/candidate-monthly-semantic-reader';
-import { buildCandidateMonthlyOriginals } from '@/lib/candidate-monthly-readiness';
+import {
+  buildCandidateMonthlyScopedReadiness,
+  CANDIDATE_MONTHLY_SCOPE_RULE,
+} from '@/lib/candidate-monthly-readiness';
 import styles from './ingestion-candidate-reader.module.css';
 
 /** All content is owned and invalidated by the surrounding candidate session. */
@@ -25,13 +28,34 @@ export function CandidateMonthlyPanel({
   const reader = dictionary.candidateReader;
   const copy = reader.monthly;
   const [limit, setLimit] = useState(40);
-  const originals = useMemo(
+  const scoped = useMemo(
     () =>
       result.kind === 'READY'
-        ? buildCandidateMonthlyOriginals(result).originals
-        : [],
+        ? buildCandidateMonthlyScopedReadiness(result)
+        : null,
     [result],
   );
+  const originals = scoped?.originals ?? [];
+  const originalByKey = new Map(
+    originals.map((entry) => [entry.recordKey, entry]),
+  );
+  const originalById = new Map(
+    originals.map((entry) => [
+      entry.record.sourceLocalIdentity.recordId,
+      entry,
+    ]),
+  );
+  const questionNames = {
+    KINDS: 'inventory',
+    COUNTS: 'quantity',
+    QUALITY: 'quality',
+    STRUCTURE: 'structure',
+    DENSITY: 'density',
+    GAPS: 'gaps',
+    CLEANING: 'cleaning',
+    QUALITY_CONTROL: 'quality-control',
+    COMPUTATIONS: 'computations',
+  } as const;
   return (
     <section className={styles.tabPanel} aria-label={copy.title}>
       <h3>{copy.title}</h3>
@@ -56,7 +80,91 @@ export function CandidateMonthlyPanel({
             </div>
           </dl>
           <p>{copy.noLocation}</p>
-          <p>{copy.noScope}</p>
+          <p>{copy.scopeBoundary}</p>
+          {scoped && (
+            <section role="region" aria-label={copy.readiness}>
+              <h4>{copy.readiness}</h4>
+              <p>
+                <span>{dictionary.spatialReadiness.needLabels['K5-001']}</span>
+                {' · '}
+                <span>{copy.chaobai}</span>
+              </p>
+              <p>
+                {copy.mapped}: {scoped.readiness.records.length}
+              </p>
+              <p>
+                {copy.unmapped}: {scoped.unmappedRecordIds.length}
+              </p>
+              <p>{copy.coverageBoundary}</p>
+              {scoped.readiness.records.slice(0, limit).map((entry) => {
+                const original = originalById.get(entry.id);
+                if (!original) return null;
+                return (
+                  <p key={original.recordKey}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onSelect(original.record)}
+                      aria-label={`${copy.mappedRow}: ${original.record.originalName}`}
+                    >
+                      {original.record.originalName}
+                    </button>
+                    {' · '}
+                    {original.record.time.value ?? reader.unknown}
+                    {' · '}
+                    <code>{original.record.rawCategory || copy.empty}</code>
+                  </p>
+                );
+              })}
+              {scoped.readiness.questions.map((question) => (
+                <details
+                  key={question.id}
+                  role="group"
+                  aria-label={
+                    dictionary.spatialReadiness.questionLabels[
+                      questionNames[question.id]
+                    ]
+                  }
+                >
+                  <summary>
+                    {
+                      dictionary.spatialReadiness.questionLabels[
+                        questionNames[question.id]
+                      ]
+                    }
+                    :{' '}
+                    {dictionary.spatialReadiness.questionStates[question.state]}
+                  </summary>
+                  {question.drilldowns.map((detail, index) => (
+                    <div key={index}>
+                      <p>
+                        {dictionary.spatialReadiness.grains[detail.grain]}:{' '}
+                        {detail.ids.length}
+                      </p>
+                      {detail.ids.slice(0, limit).map((key) => {
+                        const original = originalByKey.get(key);
+                        return original ? (
+                          <p key={key}>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => onSelect(original.record)}
+                            >
+                              {copy.sourceRow}: {original.record.originalName}
+                            </button>
+                            {' · '}
+                            <code>
+                              {original.record.rawCategory || copy.empty}
+                            </code>
+                          </p>
+                        ) : null;
+                      })}
+                    </div>
+                  ))}
+                </details>
+              ))}
+            </section>
+          )}
           {result.conversionEvidence && <p>{copy.verified}</p>}
           <ul className={styles.assetList}>
             {result.conversionMembers.map((member) => (
@@ -134,6 +242,10 @@ export function CandidateMonthlyPanel({
             <dl className={styles.technical}>
               <dt>{copy.rule}</dt>
               <dd>{result.processingRuleVersion}</dd>
+              <dt>{copy.scopeRule}</dt>
+              <dd>{CANDIDATE_MONTHLY_SCOPE_RULE}</dd>
+              <dt>{copy.requirementCatalog}</dt>
+              <dd>{scoped?.readiness.requirement.version}</dd>
               <dt>{reader.processingBatch}</dt>
               <dd>{result.candidateReference.processingBatchId}</dd>
               <dt>{reader.reviewHash}</dt>

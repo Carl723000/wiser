@@ -91,6 +91,18 @@ export type CandidateMonthlyConversionEvidence = Pick<
   | 'comparisonDigest'
 >;
 
+export interface CandidateMonthlyRecordPosition {
+  readonly recordId: string;
+  readonly first: number;
+  readonly after?: string;
+  readonly anchor?: string;
+  readonly previous: readonly {
+    readonly first?: number;
+    readonly after?: string;
+    readonly anchor?: string;
+  }[];
+}
+
 export type CandidateMonthlySemanticRead =
   | {
       readonly kind: 'READY';
@@ -113,6 +125,8 @@ export type CandidateMonthlySemanticRead =
         | typeof CANDIDATE_MONTHLY_RULE_VERSION_V2
         | typeof CANDIDATE_MONTHLY_RULE_VERSION_V3;
       readonly records: readonly CandidateMonthlySemanticRecord[];
+      /** Bounded positions acquired by this same current semantic read, not cached row authority. */
+      readonly recordPageIndex?: readonly CandidateMonthlyRecordPosition[];
     }
   | {
       readonly kind: 'NOT_PARSED';
@@ -519,6 +533,25 @@ export async function readCandidateMonthlySemantics(
       ? { reportPeriod: projection.reportPeriod }
       : {}),
     processingRuleVersion: projection.ruleVersion,
+    recordPageIndex: pages.flatMap((page, index) => {
+      const position = (pageIndex: number) => ({
+        first: PAGE_SIZE,
+        ...(pageIndex > 0
+          ? {
+              after: pages[pageIndex - 1].nextCursor!,
+              anchor: pages[pageIndex - 1].records.at(-1)!.recordId,
+            }
+          : {}),
+      });
+      const previous = Array.from({ length: index }, (_, i) =>
+        position(i),
+      ).slice(-32);
+      return page.records.map((record) => ({
+        recordId: record.recordId,
+        ...position(index),
+        previous,
+      }));
+    }),
     records: projection.records.map((record) => ({
       ...record,
       source: {

@@ -22,6 +22,7 @@ import {
   candidateMapFeatures,
   candidateOriginalUrl,
   readCandidatePage,
+  readCandidateConversionProvenance,
   readCandidateSavedView,
   readCandidateTopic,
   type CandidateTopicPages,
@@ -69,7 +70,12 @@ async function openReading(
 }
 
 type Tab = 'originals' | 'records' | 'map';
-type Position = { after?: string; anchor?: string; savedStart?: boolean };
+type Position = {
+  after?: string;
+  anchor?: string;
+  savedStart?: boolean;
+  first?: number;
+};
 interface Navigation extends Position {
   readonly previous: readonly Position[];
 }
@@ -458,7 +464,7 @@ function CandidateSession({
   }
   const input = (position: Position, chosenAsset?: string) => ({
     ...fixed,
-    first: pageSize,
+    first: position.first ?? pageSize,
     ...(chosenAsset ? { assetId: chosenAsset } : {}),
     ...(position.after ? { after: position.after } : {}),
   });
@@ -690,10 +696,16 @@ function CandidateSession({
   ): Navigation {
     return {
       after: cursor,
+      ...(nav.first ? { first: nav.first } : {}),
       ...(anchor ? { anchor } : {}),
       previous: [
         ...nav.previous,
-        { after: nav.after, anchor: nav.anchor, savedStart: nav.savedStart },
+        {
+          after: nav.after,
+          anchor: nav.anchor,
+          savedStart: nav.savedStart,
+          ...(nav.first ? { first: nav.first } : {}),
+        },
       ].slice(-32),
     };
   }
@@ -718,9 +730,34 @@ function CandidateSession({
       assetId: string;
       recordId: string;
       evidence?: CandidateRelationEvidence;
+      monthly?: Extract<CandidateMonthlySemanticRead, { kind: 'READY' }>;
     },
   ) {
     if (recoveryGate.current || mutationPending.current) return;
+    const monthlyRead = target?.monthly;
+    const monthlyRecord = monthlyRead?.records.find(
+      (record) =>
+        record.sourceLocalIdentity.recordId.toLowerCase() ===
+        target?.recordId.toLowerCase(),
+    );
+    if (
+      monthlyRead &&
+      (!monthlyRecord ||
+        candidateSavedReferenceKey(monthlyRead.candidateReference) !==
+          candidateSavedReferenceKey(fixed) ||
+        monthlyRead.assetId.toLowerCase() !== target.assetId.toLowerCase() ||
+        monthlyRecord.processingRuleVersion !==
+          monthlyRead.processingRuleVersion)
+    )
+      return;
+    // Page delivery can be shortened by byte budgets, so row ordinals cannot
+    // determine page distance. Every indexed monthly selection reuses its exact
+    // acquired page; ordinary non-monthly seeking remains bounded below.
+    const indexed = monthlyRead?.recordPageIndex?.find(
+      (entry) =>
+        entry.recordId.toLowerCase() ===
+        monthlyRecord?.sourceLocalIdentity.recordId.toLowerCase(),
+    );
     const evidence = target?.evidence;
     if (
       evidence &&
@@ -785,6 +822,60 @@ function CandidateSession({
           return;
         }
       }
+      if (indexed && monthlyRead && monthlyRecord && kind === 'records') {
+        const checkProvenance = async () => {
+          if (
+            monthlyRead.processingRuleVersion ===
+            CANDIDATE_MONTHLY_RULE_VERSION_V3
+          ) {
+            const provenance = await readCandidateConversionProvenance(
+              { ...fixed, preparedAssetId: chosenAsset },
+              signal,
+            );
+            const expected = monthlyRead.conversionEvidence;
+            const check = provenance.check;
+            if (
+              (expected === null) !== (check === null) ||
+              (expected &&
+                check &&
+                Object.entries(expected).some(
+                  ([key, value]) =>
+                    JSON.stringify(check[key as keyof typeof check]) !==
+                    JSON.stringify(value),
+                ))
+            )
+              throw new CandidateReaderError('stale');
+          }
+        };
+        await checkProvenance();
+        const value = await readPage(
+          'records',
+          {
+            ...fixed,
+            assetId: chosenAsset,
+            first: indexed.first,
+            ...(indexed.after ? { after: indexed.after } : {}),
+          },
+          signal,
+        );
+        if (signal.aborted || !owner.current) return;
+        await checkProvenance();
+        if (signal.aborted || !owner.current) return;
+        const row = value.records.find(
+          (record) =>
+            record.recordId.toLowerCase() === chosenRecord.toLowerCase(),
+        );
+        if (
+          !row ||
+          row.index !== monthlyRecord.sourceLocalIdentity.index ||
+          row.sourceId !== monthlyRecord.sourceLocalIdentity.sourceId
+        )
+          throw new CandidateReaderError('stale');
+        setRecords(value);
+        setRecordNav({ ...indexed, previous: [...indexed.previous] });
+        setSelected(chosenRecord);
+        return;
+      }
       let position = firstPosition();
       // Each explicit selection reads at most ten server pages; there is no full-batch prefetch.
       for (let page = 0; page < 10; page++) {
@@ -848,7 +939,7 @@ function CandidateSession({
       page = {
         kind: 'assets',
         reference: fixed,
-        first: pageSize,
+        first: nav.first ?? pageSize,
         ...(nav.anchor ? { afterAssetId: nav.anchor } : {}),
       };
     else {
@@ -857,7 +948,7 @@ function CandidateSession({
         kind: tab === 'map' ? 'geometry' : 'records',
         reference: fixed,
         assetId,
-        first: pageSize,
+        first: nav.first ?? pageSize,
         ...(nav.anchor ? { afterRecordId: nav.anchor } : {}),
       };
     }
@@ -1515,6 +1606,7 @@ function CandidateSession({
                 void seek('records', {
                   assetId: record.source.assetId,
                   recordId: record.sourceLocalIdentity.recordId,
+                  monthly: monthly.kind === 'READY' ? monthly : undefined,
                 })
               }
             />

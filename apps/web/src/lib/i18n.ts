@@ -3007,6 +3007,17 @@ const zhCN = {
         shown: '已显示',
         noLocation: '位置尚未核定；原值可按原表查阅。',
         noScope: '需求与区域归属尚未指定，不据此计算业务覆盖。',
+        scopeBoundary:
+          '本明细仅反映当前月报。原表明确为潮白河水系的河段纳入地表水水质需求；其他原值保留未映射。',
+        readiness: '当前月报就绪明细',
+        chaobai: '潮白河',
+        mapped: '已映射原行',
+        unmapped: '未映射原行',
+        mappedRow: '查看归属原行',
+        coverageBoundary:
+          '月份覆盖与跨月对象对应仍未核定。报告期不代表采样日期；类别查证不提供浓度或负荷计算依据。',
+        scopeRule: '逐行归属解释规则',
+        requirementCatalog: '19项需求目录源码依据',
         verified: '原件与转换件的结构一致性已核验。',
         unavailable: '暂不能读取月报原值。可先查阅原件与解析记录。',
         technical: '月报来源与转换依据',
@@ -7273,6 +7284,17 @@ const en: typeof zhCN = {
         },
       },
       monthly: {
+        scopeBoundary:
+          'These details describe only the current monthly report. Only river rows explicitly declaring the Chaobai water system enter surface-water quality demand; all other originals remain unmapped.',
+        readiness: 'Current monthly report readiness',
+        chaobai: 'Chaobai River',
+        mapped: 'Mapped original rows',
+        unmapped: 'Unmapped original rows',
+        mappedRow: 'View mapped source row',
+        coverageBoundary:
+          'Month coverage and object correspondence remain unconfirmed. Report period is not sampling date; category inspection supplies no concentration or load calculation evidence.',
+        scopeRule: 'Row-scope interpretation rule',
+        requirementCatalog: '19-need catalog source reference',
         read: 'Read monthly originals',
         ruleUnavailable:
           'This topic does not pin a supported monthly reading rule. Inspect the originals and parsed records.',

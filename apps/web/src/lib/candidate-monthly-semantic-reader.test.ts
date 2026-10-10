@@ -288,6 +288,18 @@ describe('current-authority candidate monthly semantic read', () => {
     expect(result.kind).toBe('READY');
     if (result.kind !== 'READY') return;
     expect(result.records).toHaveLength(3);
+    if (result.kind !== 'READY') throw new Error('Expected READY');
+    expect(
+      result.recordPageIndex?.find(
+        (position) => position.recordId === records[8].recordId,
+      ),
+    ).toEqual({
+      recordId: records[8].recordId,
+      first: 200,
+      after: 'record-after-5',
+      anchor: records[4].recordId,
+      previous: [{ first: 200 }],
+    });
     expect(result.records[0]).toMatchObject({
       candidateReference: reference,
       source: {

@@ -120,3 +120,5 @@ pnpm --filter @wiser/web test:e2e
 关系证据可在同一候选内通过“查看对应记录”回到确切行；先核当前资产身份与原件哈希，沿有界分页定位。跨候选或无记录身份时保留原文依据，不推测跳转。 / Relation evidence can return to the exact row within the same candidate after current asset and original-hash verification and bounded page lookup. Cross-candidate or unidentified evidence retains its text without inferred navigation.
 
 普通接收详情的跟进面板可按接收任务编号查询一个获权补证来源；来源选择与主阅览分离，刷新重读同单且不重发办理动作。保存视图及只读专题不提供该入口。 / Ordinary intake followups can look up one authorized supplemental intake by ID, independently of the primary reading source. Refresh rereads the same followup without replaying actions; saved views and readonly topics do not expose this lookup.
+
+候选月报保留全部原值，仅凭明确的潮白河水系原格接入K5-001就绪九问。跨月覆盖与专业审核仍未核定。已索引原行统一通过本次有界语义读取取得的游标重读，保持当前核权及固定记录身份。 / Candidate monthly originals retain every row and enter K5-001 readiness questions only through explicit Chaobai water-system cell evidence. Cross-month coverage and professional review remain unconfirmed. Every indexed original row rereads its exact cursor page acquired by the bounded current semantic read, preserving current authority and exact native identity.

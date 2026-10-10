@@ -6,6 +6,7 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type {
@@ -18,6 +19,7 @@ import {
   CANDIDATE_MONTHLY_RULE_VERSION,
   CANDIDATE_MONTHLY_RULE_VERSION_V2,
 } from '@wiser/data-core/candidate-monthly-projection';
+import * as monthlyReader from '@/lib/candidate-monthly-semantic-reader';
 import type { CandidateMonthlyReadInput } from '@/lib/candidate-monthly-semantic-reader';
 import { IngestionCandidateReader } from './ingestion-candidate-reader';
 vi.mock('./data-foundation-map', () => ({
@@ -32,6 +34,7 @@ vi.mock('./ingestion-candidate-raster-panel', () => ({
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 const reference = {
   kind: 'ingestion-candidate' as const,
@@ -294,9 +297,13 @@ function fakeHttp(
   vi.stubGlobal('fetch', fetch);
   return { fetch, data, check };
 }
-async function openMonthly() {
+async function openMonthly(readOnly = true) {
   render(
-    <IngestionCandidateReader reference={reference} locale="en" readOnly />,
+    <IngestionCandidateReader
+      reference={reference}
+      locale="en"
+      readOnly={readOnly}
+    />,
   );
   fireEvent.click(
     await screen.findByRole('button', { name: 'Read monthly originals' }),
@@ -566,7 +573,16 @@ it('immediately clears monthly output on browser restoration and rechecks the cu
   expect(screen.queryByText('封闭无法监测')).toBeNull();
 });
 
-it('bounds source-row seeking and never selects an unrelated row when the native ID is absent', async () => {
+it('preserves bounded seeking without a semantic cursor index and never selects an unrelated row', async () => {
+  const actualRead = monthlyReader.readCandidateMonthlySemantics;
+  vi.spyOn(monthlyReader, 'readCandidateMonthlySemantics').mockImplementation(
+    async (...args) => {
+      const value = await actualRead(...args);
+      return value.kind === 'READY'
+        ? { ...value, recordPageIndex: undefined }
+        : value;
+    },
+  );
   let seeking = false;
   let reads = 0;
   const { data } = convertedFixture();
@@ -610,4 +626,316 @@ it('keeps report period, actual partial state and review limits visible in Chine
   expect(
     panel.getByRole('button', { name: '查看原表行: 密云水库' }),
   ).toBeDefined();
+});
+
+it('connects the production panel to evidenced Chaobai K5-001 monthly readiness without district or lake inference', async () => {
+  const { data } = convertedFixture();
+  const scoped = data.recordPages.map((page) => ({
+    ...page,
+    records: page.records.map((record) =>
+      record.index === 5
+        ? {
+            ...record,
+            values: {
+              ...record.values,
+              c1: '潮白河水系 | 清水涧 | 密云 | 无水',
+              c3: {
+                ...(record.values.c3 as object),
+                cells: [
+                  cell(1, '潮白河水系', 'restart'),
+                  cell(2, '清水涧'),
+                  cell(3, '密云'),
+                  cell(4, '无水'),
+                ],
+              },
+            },
+          }
+        : record,
+    ),
+  }));
+  fakeHttp((path, body) =>
+    path.endsWith('/candidates/records')
+      ? Response.json(scoped[body.after ? 1 : 0])
+      : undefined,
+  );
+  const panel = within(await openMonthly());
+  const scope = within(
+    panel.getByRole('region', { name: 'Current monthly report readiness' }),
+  );
+  expect(scope.getByText('Surface water quality monitoring')).toBeDefined();
+  expect(scope.getByText('Chaobai River')).toBeDefined();
+  expect(scope.getByText('Mapped original rows: 1')).toBeDefined();
+  expect(scope.getByText('Unmapped original rows: 2')).toBeDefined();
+  expect(
+    scope.getByRole('button', { name: 'View mapped source row: 清水涧' }),
+  ).toBeDefined();
+  expect(
+    scope
+      .getAllByRole('button')
+      .every((button) => button.textContent?.includes('清水涧')),
+  ).toBe(true);
+  expect(scope.getAllByText('无水').length).toBeGreaterThan(0);
+  expect(scope.queryByText('密云水库')).toBeNull();
+  expect(scope.getAllByRole('group')).toHaveLength(9);
+  expect(
+    scope.getByText(
+      'Month coverage and object correspondence remain unconfirmed. Report period is not sampling date; category inspection supplies no concentration or load calculation evidence.',
+    ),
+  ).toBeDefined();
+});
+
+it('selects a legitimate monthly original beyond row 500 using the acquired bounded cursor page', async () => {
+  const { data } = convertedFixture();
+  const expanded = [
+    ...Array.from({ length: 520 }, (_, index) =>
+      paragraph(index + 1, 'Synthetic non-table paragraph'),
+    ),
+    ...records.map((record) => ({
+      ...record,
+      index: record.index + 520,
+      recordId: `20000000-0000-4000-8000-${String(record.index + 520).padStart(12, '0')}`,
+    })),
+  ];
+  const get = {
+    ...data.assetPages[0],
+    assets: data.assetPages
+      .flatMap((p) => p.assets)
+      .map((asset) =>
+        asset.assetId === assetId
+          ? { ...asset, recordCount: expanded.length }
+          : asset,
+      ),
+    knownRecordCount: expanded.length,
+    nextCursor: null,
+  };
+  let seeking = false;
+  let savedInput: Record<string, unknown> | null = null;
+  const requested: Record<string, unknown>[] = [];
+  fakeHttp((path, body) => {
+    if (path.endsWith('/candidate-saved-views/create')) {
+      savedInput = body;
+      return Response.json({}, { status: 403 });
+    }
+    if (path.endsWith('/candidates/get')) return Response.json(get);
+    if (path.endsWith('/candidates/records')) {
+      if (seeking) requested.push(body);
+      const start = body.after
+        ? Number(
+            (typeof body.after === 'string' ? body.after : '').replace(
+              'page-',
+              '',
+            ),
+          )
+        : 0;
+      const first = Number(body.first);
+      return Response.json({
+        reference,
+        assetId,
+        columns,
+        records: expanded.slice(start, start + first),
+        nextCursor:
+          start + first < expanded.length ? `page-${start + first}` : null,
+      });
+    }
+    return undefined;
+  });
+  const panel = within(await openMonthly(false));
+  seeking = true;
+  fireEvent.click(
+    panel.getByRole('button', { name: 'View source row: 密云水库' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Select record 529' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true'),
+  );
+  expect(requested).toHaveLength(1);
+  expect(requested[0]).toMatchObject({
+    ...reference,
+    assetId,
+    after: 'page-400',
+    first: 200,
+  });
+  fireEvent.change(screen.getByLabelText('View name'), {
+    target: { value: 'Synthetic far-row read' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+  await waitFor(() => expect(savedInput).not.toBeNull());
+  expect(savedInput).toMatchObject({
+    viewSpec: {
+      page: {
+        kind: 'records',
+        reference,
+        assetId,
+        first: 200,
+        afterRecordId: expanded[399].recordId,
+      },
+      focus: { reference, assetId, recordId: expanded[528].recordId },
+    },
+  });
+  expect(JSON.stringify(savedInput)).not.toContain('page-400');
+  await screen.findByRole('alert');
+});
+
+for (const change of [
+  'reference',
+  'asset',
+  'denied',
+  'rule',
+  'late-rule',
+  'record',
+] as const) {
+  it(`clears indexed monthly selection beyond row 500 after fresh ${change} changes`, async () => {
+    const { data, check } = convertedFixture();
+    const expanded = [
+      ...Array.from({ length: 520 }, (_, index) =>
+        paragraph(index + 1, 'Synthetic non-table paragraph'),
+      ),
+      ...records.map((record) => ({
+        ...record,
+        index: record.index + 520,
+        recordId: `20000000-0000-4000-8000-${String(record.index + 520).padStart(12, '0')}`,
+      })),
+    ];
+    const get = {
+      ...data.assetPages[0],
+      assets: data.assetPages
+        .flatMap((p) => p.assets)
+        .map((asset) =>
+          asset.assetId === assetId
+            ? { ...asset, recordCount: expanded.length }
+            : asset,
+        ),
+      knownRecordCount: expanded.length,
+      nextCursor: null,
+    };
+    let seeking = false;
+    let provenanceReads = 0;
+    fakeHttp((path, body) => {
+      if (seeking && path.endsWith('/candidate-provenance')) provenanceReads++;
+      if (path.endsWith('/candidates/get')) return Response.json(get);
+      if (
+        seeking &&
+        path.endsWith('/candidate-provenance') &&
+        (change === 'rule' || (change === 'late-rule' && provenanceReads > 1))
+      )
+        return Response.json({
+          reference,
+          preparedAssetId: assetId,
+          check: { ...check, rule: { ...check.rule, version: '2.0.0' } },
+        });
+      if (path.endsWith('/candidates/records')) {
+        if (seeking && change === 'denied')
+          return Response.json({}, { status: 403 });
+        const start = body.after
+          ? Number(
+              (typeof body.after === 'string' ? body.after : '').replace(
+                'page-',
+                '',
+              ),
+            )
+          : 0;
+        const first = Number(body.first);
+        return Response.json({
+          reference:
+            seeking && change === 'reference'
+              ? { ...reference, reviewHash: 'f'.repeat(64) }
+              : reference,
+          assetId: seeking && change === 'asset' ? otherAssetId : assetId,
+          columns,
+          records: expanded
+            .slice(start, start + first)
+            .map((record) =>
+              seeking && change === 'record' && record.index === 529
+                ? { ...record, sourceId: 'table:999/row:2' }
+                : record,
+            ),
+          nextCursor:
+            start + first < expanded.length ? `page-${start + first}` : null,
+        });
+      }
+      return undefined;
+    });
+    const panel = within(await openMonthly());
+    seeking = true;
+    fireEvent.click(
+      panel.getByRole('button', { name: 'View source row: 密云水库' }),
+    );
+    await screen.findByRole('alert');
+    expect(
+      screen.queryByRole('region', { name: 'Monthly originals' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Select record 529' }),
+    ).toBeNull();
+    expect(screen.queryByText('封闭无法监测')).toBeNull();
+  });
+}
+
+it('uses the acquired monthly cursor when legitimate short pages place a nearby row beyond ten pages', async () => {
+  const { data } = convertedFixture();
+  const expanded = [
+    ...Array.from({ length: 220 }, (_, index) =>
+      paragraph(index + 1, 'Synthetic non-table paragraph'),
+    ),
+    ...records.map((record) => ({
+      ...record,
+      index: record.index + 220,
+      recordId: `20000000-0000-4000-8000-${String(record.index + 220).padStart(12, '0')}`,
+    })),
+  ];
+  const get = {
+    ...data.assetPages[0],
+    assets: data.assetPages
+      .flatMap((p) => p.assets)
+      .map((asset) =>
+        asset.assetId === assetId
+          ? { ...asset, recordCount: expanded.length }
+          : asset,
+      ),
+    knownRecordCount: expanded.length,
+    nextCursor: null,
+  };
+  let seeking = false;
+  const requested: Record<string, unknown>[] = [];
+  fakeHttp((path, body) => {
+    if (path.endsWith('/candidates/get')) return Response.json(get);
+    if (path.endsWith('/candidates/records')) {
+      if (seeking) requested.push(body);
+      const start =
+        typeof body.after === 'string'
+          ? Number(body.after.replace('short-page-', ''))
+          : 0;
+      // The records contract permits byte-budget-shortened pages below requested first.
+      const delivered = Math.min(Number(body.first), 20);
+      return Response.json({
+        reference,
+        assetId,
+        columns,
+        records: expanded.slice(start, start + delivered),
+        nextCursor:
+          start + delivered < expanded.length
+            ? `short-page-${start + delivered}`
+            : null,
+      });
+    }
+    return undefined;
+  });
+  const panel = within(await openMonthly());
+  seeking = true;
+  fireEvent.click(
+    panel.getByRole('button', { name: 'View source row: 密云水库' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: 'Select record 229' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true'),
+  );
+  expect(requested).toEqual([
+    { ...reference, assetId, first: 200, after: 'short-page-220' },
+  ]);
 });

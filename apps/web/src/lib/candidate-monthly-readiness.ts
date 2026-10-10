@@ -109,6 +109,7 @@ export function buildCandidateMonthlyOriginals(
         candidateSavedReferenceKey(record.candidateReference) !==
           referenceKey ||
         record.source.assetId.toLowerCase() !== read.assetId.toLowerCase() ||
+        record.processingRuleVersion !== read.processingRuleVersion ||
         seen.has(nativeId)
       )
         invalid();
@@ -238,4 +239,78 @@ export function buildCandidateMonthlyReadiness(
     monthly: buildMonthlyReadout(readiness),
     unmappedRecordIds,
   };
+}
+
+/** The existing K5-001 label is surface-water quality monitoring (i18n.needLabels).
+ * This pins only the existing 19-need catalog IDs/labels at this source revision,
+ * not a complete business-requirement specification or approved definition.
+ * It is distinct from the deterministic row-interpretation rule below.
+ */
+export const CANDIDATE_MONTHLY_REQUIREMENT_CATALOG_REFERENCE =
+  'K5-catalog:52b1c5f3381db4f977944f3bae805ff46effed96';
+export const CANDIDATE_MONTHLY_SCOPE_RULE =
+  'candidate-monthly-chaobai-water-system/1.0.0';
+
+/** Only native river rows declaring the exact water-system value qualify.
+ * A merged source cell may precede this row, but must remain in its same table.
+ * Names, districts, UI selections, pack titles and lakes never supply scope.
+ */
+export function buildCandidateMonthlyScopeMappings(
+  read: CandidateMonthlyReadyRead,
+): readonly CandidateMonthlyReadinessMapping[] {
+  buildCandidateMonthlyOriginals(read);
+  return read.records.flatMap((record) => {
+    const row = /^(word\/document\.xml#table:\d+)\/row:(\d+)$/u.exec(
+      record.locators.row,
+    );
+    const cell =
+      /^(word\/document\.xml#table:\d+)\/row:(\d+)\/column:(\d+)$/u.exec(
+        record.locators.waterSystemCell ?? '',
+      );
+    if (
+      record.objectType !== 'RIVER_REACH' ||
+      record.waterSystemOriginal !== '潮白河水系' ||
+      !row ||
+      !cell ||
+      row[1] !== cell[1] ||
+      Number(cell[2]) > Number(row[2]) ||
+      Number(cell[3]) !== 1
+    )
+      return [];
+    return [
+      {
+        recordId: record.sourceLocalIdentity.recordId,
+        needId: 'K5-001',
+        regionId: 'chaobai',
+        evidence: [
+          {
+            locator: record.locators.waterSystemCell!,
+            excerpt: record.waterSystemOriginal,
+          },
+        ],
+      },
+    ];
+  });
+}
+
+/** One bounded existing requirement/region cell; all other rows remain originals. */
+export function buildCandidateMonthlyScopedReadiness(
+  read: CandidateMonthlyReadyRead,
+): CandidateMonthlyReadiness {
+  return buildCandidateMonthlyReadiness(
+    read,
+    {
+      needId: 'K5-001',
+      regionId: 'chaobai',
+      // Catalog revision is an input reference, not a complete business specification.
+      version: CANDIDATE_MONTHLY_REQUIREMENT_CATALOG_REFERENCE,
+      purpose: 'monthly-category-inspection',
+      track: 'REAL',
+      // A report-period row is not a declared cross-month publication series.
+      window: read.reportPeriod
+        ? { start: read.reportPeriod, end: read.reportPeriod }
+        : null,
+    },
+    buildCandidateMonthlyScopeMappings(read),
+  );
 }

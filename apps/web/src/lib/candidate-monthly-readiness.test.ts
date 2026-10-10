@@ -7,6 +7,8 @@ import {
 import type { CandidateMonthlySemanticRead } from './candidate-monthly-semantic-reader';
 import {
   buildCandidateMonthlyReadiness,
+  buildCandidateMonthlyScopeMappings,
+  buildCandidateMonthlyScopedReadiness,
   buildCandidateMonthlyOriginals,
   type CandidateMonthlyReadinessRequirement,
   type CandidateMonthlyReadinessMapping,
@@ -289,4 +291,102 @@ describe('candidate monthly readiness adapter', () => {
       buildCandidateMonthlyReadiness(otherAsset, requirement, []),
     ).toThrow();
   });
+});
+
+describe('fixed K5-001 Chaobai row interpretation', () => {
+  it('requires exact river water-system evidence and keeps all other original rows unmapped', () => {
+    const read = semantic(Array.from({ length: 7 }, () => 'Ⅱ'));
+    read.records.forEach((record) =>
+      Object.assign(record, {
+        waterSystemOriginal: '潮白河水系',
+        locators: {
+          ...record.locators,
+          waterSystemCell: record.locators.waterSystemCell!.replace(
+            '/cell:',
+            '/column:',
+          ),
+        },
+      }),
+    );
+    Object.assign(read.records[1], { objectType: 'LAKE' });
+    Object.assign(read.records[2], {
+      waterSystemOriginal: null,
+      originalName: '潮白河',
+      districtOriginal: '密云',
+    });
+    Object.assign(read.records[3], { waterSystemOriginal: '潮白河水系附近' });
+    Object.assign(read.records[4], {
+      locators: { ...read.records[4].locators, waterSystemCell: null },
+    });
+    Object.assign(read.records[5], {
+      locators: {
+        ...read.records[5].locators,
+        waterSystemCell: 'word/document.xml#table:9/row:2/column:1',
+      },
+    });
+    Object.assign(read.records[6], {
+      locators: {
+        ...read.records[6].locators,
+        waterSystemCell: 'word/document.xml#table:1/row:999/column:1',
+      },
+    });
+    const mappings = buildCandidateMonthlyScopeMappings(read);
+    expect(mappings).toEqual([
+      {
+        recordId: read.records[0].sourceLocalIdentity.recordId,
+        needId: 'K5-001',
+        regionId: 'chaobai',
+        evidence: [
+          {
+            locator: read.records[0].locators.waterSystemCell,
+            excerpt: '潮白河水系',
+          },
+        ],
+      },
+    ]);
+    const result = buildCandidateMonthlyScopedReadiness(read);
+    expect(result.originals).toHaveLength(7);
+    expect(result.unmappedRecordIds).toHaveLength(6);
+    expect(result.readiness.candidateCounts?.records).toBe(1);
+    expect(result.readiness.records[0]).toMatchObject({
+      professionalState: 'PENDING_REVIEW',
+      series: null,
+      spatial: { geometryKey: null, role: null },
+    });
+    expect(result.monthly).toEqual([]);
+  });
+  it('does not map a record whose producer-rule differs from the current read', () => {
+    const read = semantic(['Ⅱ']);
+    Object.assign(read.records[0], {
+      waterSystemOriginal: '潮白河水系',
+      processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION,
+    });
+    expect(() => buildCandidateMonthlyScopedReadiness(read)).toThrow();
+  });
+});
+
+it('retains the verified predecessor water-system cell for a merged river row', () => {
+  const read = semantic(['Ⅱ', 'Ⅲ']);
+  read.records.forEach((record) =>
+    Object.assign(record, {
+      waterSystemOriginal: '潮白河水系',
+      locators: {
+        ...record.locators,
+        waterSystemCell: 'word/document.xml#table:1/row:2/column:1',
+      },
+    }),
+  );
+  const result = buildCandidateMonthlyScopedReadiness(read);
+  expect(result.readiness.candidateCounts?.records).toBe(2);
+  expect(result.readiness.records[1].evidence).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        locator: 'word/document.xml#table:1/row:2/column:1',
+        excerpt: '潮白河水系',
+      }),
+    ]),
+  );
+  expect(result.readiness.records[1].evidence[0].locator).toBe(
+    'word/document.xml#table:1/row:3',
+  );
 });
