@@ -7,6 +7,14 @@ import {
   type IngestionCandidateRecordPage,
   type IngestionCandidateReference,
 } from '@wiser/data-contracts';
+import {
+  CandidateConversionCheckSchema,
+  type CandidateConversionCheck,
+} from '@wiser/data-contracts/candidate-conversion';
+import {
+  candidateConversionEligibility,
+  CANDIDATE_WORD_EQUIVALENCE_RULE,
+} from './candidate-conversion.ts';
 
 export const CANDIDATE_MONTHLY_RULE_VERSION = 'beijing-monthly-docx-c3/1.0.0';
 
@@ -246,6 +254,8 @@ export function projectCandidateMonthlyReport(
 
 export const CANDIDATE_MONTHLY_RULE_VERSION_V2 =
   'beijing-monthly-docx-c3/2.0.0';
+export const CANDIDATE_MONTHLY_RULE_VERSION_V3 =
+  'beijing-monthly-docx-c3/2.1.0';
 export interface CandidateMonthlyDeclaredTime {
   readonly value: string;
   readonly precision: 'YEAR' | 'MONTH' | 'DAY';
@@ -288,6 +298,35 @@ export type CandidateMonthlyProjectionV2 =
       readonly kind: 'NOT_PARSED';
       readonly reason: CandidateMonthlyUnparsedReason;
       readonly ruleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V2;
+      readonly reportPeriod: null;
+      readonly publicationTime: null;
+      readonly observationTime: null;
+      readonly records: readonly [];
+    };
+export interface CandidateMonthlyProjectionInputV3 extends CandidateMonthlyProjectionInputV2 {
+  /** Server-produced evidence, never a caller's eligibility assertion. Auth remains upstream. */
+  readonly conversionCheck?: CandidateConversionCheck | null;
+}
+export type CandidateMonthlyProjectedRecordV3 = Omit<
+  CandidateMonthlyProjectedRecordV2,
+  'processingRuleVersion'
+> & {
+  readonly processingRuleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V3;
+};
+export type CandidateMonthlyProjectionV3 =
+  | {
+      readonly kind: 'READY';
+      readonly reason: null;
+      readonly ruleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V3;
+      readonly reportPeriod: string;
+      readonly publicationTime: CandidateMonthlyDeclaredTime | null;
+      readonly observationTime: CandidateMonthlyDeclaredTime | null;
+      readonly records: readonly CandidateMonthlyProjectedRecordV3[];
+    }
+  | {
+      readonly kind: 'NOT_PARSED';
+      readonly reason: CandidateMonthlyUnparsedReason;
+      readonly ruleVersion: typeof CANDIDATE_MONTHLY_RULE_VERSION_V3;
       readonly reportPeriod: null;
       readonly publicationTime: null;
       readonly observationTime: null;
@@ -375,9 +414,92 @@ export function projectCandidateMonthlyReportV2(
     })),
   };
 }
+/** Explicit 2.1.0 conversion-aware semantics. The caller's declarations do not establish conversion trust or Auth. */
+export function projectCandidateMonthlyReportV3(
+  input: CandidateMonthlyProjectionInputV3,
+): CandidateMonthlyProjectionV3 {
+  const refused = (
+    reason: CandidateMonthlyUnparsedReason,
+  ): CandidateMonthlyProjectionV3 => ({
+    kind: 'NOT_PARSED',
+    reason,
+    ruleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V3,
+    reportPeriod: null,
+    publicationTime: null,
+    observationTime: null,
+    records: [],
+  });
+  if (
+    Object.hasOwn(input.fixed, 'workId') ||
+    Object.hasOwn(input.fixed, 'versionId') ||
+    (input.fixed.sourceLocalWorkId !== null &&
+      (typeof input.fixed.sourceLocalWorkId !== 'string' ||
+        !input.fixed.sourceLocalWorkId.trim() ||
+        input.fixed.sourceLocalWorkId.length > 256)) ||
+    !validDeclaredTime(input.publicationTime) ||
+    !validDeclaredTime(input.observationTime)
+  )
+    return refused('INVALID_INPUT');
+  const conversion =
+    input.conversionCheck == null
+      ? null
+      : CandidateConversionCheckSchema.safeParse(input.conversionCheck);
+  if (
+    conversion !== null &&
+    (!conversion.success ||
+      conversion.data.sourceLocalWorkId !== input.fixed.sourceLocalWorkId ||
+      conversion.data.prepared.assetId.toLowerCase() !==
+        input.fixed.assetId.toLowerCase() ||
+      conversion.data.prepared.sha256 !== input.fixed.sourceHash)
+  )
+    return refused('SOURCE_CHANGED');
+  const projected = projectMonthlyRows(
+    input,
+    conversion?.success ? conversion.data : undefined,
+  );
+  if (projected.kind !== 'READY') return refused(projected.reason);
+  return {
+    kind: 'READY',
+    reason: null,
+    ruleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V3,
+    reportPeriod: projected.month,
+    publicationTime: input.publicationTime ?? null,
+    observationTime: input.observationTime ?? null,
+    records: projected.records.map((record) => ({
+      ...record,
+      source: {
+        ...record.source,
+        originalSha256: conversion?.success
+          ? conversion.data.original.sha256
+          : record.source.originalSha256,
+        sourceLocalWorkId: input.fixed.sourceLocalWorkId,
+      },
+      time: {
+        value: projected.month,
+        role: 'REPORT_PERIOD',
+        precision: 'MONTH',
+      },
+      processingRuleVersion: CANDIDATE_MONTHLY_RULE_VERSION_V3,
+    })),
+  };
+}
 /** Pure projection only: the candidate authority and current read permission live upstream. */
-function projectMonthlyRows(input: MonthlyRowsInput): MonthlyRowsProjection {
-  if (input.batch.status !== 'READY') return rowsUnparsed('SOURCE_NOT_READY');
+function projectMonthlyRows(
+  input: MonthlyRowsInput,
+  conversionCheck?: CandidateConversionCheck,
+): MonthlyRowsProjection {
+  if (conversionCheck !== undefined) {
+    if (
+      !['READY', 'PARTIAL'].includes(input.batch.status) ||
+      !candidateConversionEligibility(
+        input.batch,
+        conversionCheck,
+        CANDIDATE_WORD_EQUIVALENCE_RULE,
+      ).eligible
+    )
+      return rowsUnparsed('SOURCE_NOT_READY');
+  } else if (input.batch.status !== 'READY')
+    return rowsUnparsed('SOURCE_NOT_READY');
   if (!/^[a-f0-9]{64}$/u.test(input.fixed.sourceHash))
     return rowsUnparsed('INVALID_INPUT');
   const batch = IngestionCandidateBatchSchema.safeParse(input.batch);

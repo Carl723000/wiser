@@ -70,6 +70,14 @@ class Store {
   targetLive = true;
   targetReads = 0;
   statements: string[] = [];
+  // Observe pg bind values before JSON decoding erases SQL NULL / JSONB null.
+  // This is not a simulation of the database's event guard or RLS.
+  appendBindings: {
+    action: unknown;
+    target: unknown;
+    evidence: unknown;
+    correction: unknown;
+  }[] = [];
   connect() {
     let before: unknown;
     return Promise.resolve({
@@ -155,6 +163,12 @@ class Store {
             return out([], 1);
           }
           if (sql.includes('candidate.followup.append')) {
+            this.appendBindings.push({
+              action: values[5],
+              target: values[10],
+              evidence: values[11],
+              correction: values[12],
+            });
             const row = this.rows.get(String(values[3]))!;
             const actor = {
               actorId: values[6],
@@ -507,4 +521,150 @@ it('normalizes source UUID spelling before persistence and same-key replay, pres
     first.followup['followupId'],
   );
   expect(s.store.rows.size).toBe(1);
+});
+
+describe('followup event SQL parameter boundary', () => {
+  const actions = [
+    'CREATE',
+    'CLAIM',
+    'HANDOFF',
+    'SUPPLEMENT',
+    'SUBMIT_REVIEW',
+    'CLOSE',
+    'RETURN',
+    'REOPEN',
+  ] as const;
+  type Action = (typeof actions)[number];
+  async function bindingsFor(action: Action, withCorrection = false) {
+    const s = setup();
+    const recordEvidence = (n: number) => ({
+      ...evidence(n),
+      recordId: id(n + 300),
+      locator: `synthetic-record:${n}`,
+      geometry: { type: 'Point' as const, coordinates: [116 + n, 40] },
+      sourceCrs: 'EPSG:4326',
+    });
+    const source = withCorrection ? recordEvidence(1) : evidence();
+    const supplemental = withCorrection ? recordEvidence(2) : evidence(2);
+    const correction = {
+      scope: 'WHOLE_RECORD',
+      old: source,
+      new: supplemental,
+      mappingReason: 'Synthetic whole-record correspondence',
+    };
+    const made = await s.run('create', {
+      ...createInput(),
+      type: withCorrection ? 'CORRECTION' : 'GAP',
+      source,
+    });
+    const followupId = made.followup['followupId'];
+    const result = () => ({
+      binding: s.store.appendBindings.at(-1)!,
+      supplemental,
+      correction,
+    });
+    if (action === 'CREATE') return result();
+    await s.run(
+      'act',
+      { followupId, expectedVersion: 1, action: 'CLAIM', note: 'Claim' },
+      ctx(10, 81),
+    );
+    if (action === 'CLAIM') return result();
+    if (action === 'HANDOFF') {
+      await s.run(
+        'act',
+        {
+          followupId,
+          expectedVersion: 2,
+          action,
+          targetActorId: id(12),
+          note: 'Handoff',
+        },
+        ctx(10, 82),
+      );
+      return result();
+    }
+    await s.run(
+      'act',
+      {
+        followupId,
+        expectedVersion: 2,
+        action: 'SUPPLEMENT',
+        evidence: [supplemental],
+        ...(withCorrection ? { correction } : {}),
+        note: 'Synthetic supplemental candidate',
+      },
+      ctx(10, 83),
+    );
+    if (action === 'SUPPLEMENT') return result();
+    await s.run(
+      'act',
+      {
+        followupId,
+        expectedVersion: 3,
+        action: 'SUBMIT_REVIEW',
+        note: 'Ready',
+      },
+      ctx(10, 84),
+    );
+    if (action === 'SUBMIT_REVIEW') return result();
+    await s.run(
+      'review',
+      {
+        followupId,
+        expectedVersion: 4,
+        decision: action === 'RETURN' ? 'RETURN' : 'CLOSE',
+        note: 'Independent technical review',
+      },
+      ctx(13, 85),
+    );
+    if (action !== 'REOPEN') return result();
+    await s.run(
+      'act',
+      { followupId, expectedVersion: 5, action, note: 'Reopen' },
+      ctx(10, 86),
+    );
+    return result();
+  }
+
+  it.each(actions)(
+    'binds absent %s action fields as SQL NULL',
+    async (action) => {
+      const { binding, supplemental } = await bindingsFor(action);
+      expect(binding.action).toBe(action);
+      // SQL IS NOT NULL rejects JSONB null for these inapplicable fields (0047).
+      if (action !== 'HANDOFF') expect.soft(binding.target).toBeNull();
+      expect.soft(binding.correction).toBeNull();
+      expect(parseJSON(binding.evidence)).toEqual(
+        action === 'SUPPLEMENT' ? [supplemental] : [],
+      );
+    },
+  );
+
+  it('binds a correction supplement without an inapplicable target', async () => {
+    const { binding } = await bindingsFor('SUPPLEMENT', true);
+    expect(binding.action).toBe('SUPPLEMENT');
+    expect(binding.target).toBeNull();
+  });
+
+  it('preserves the server-resolved HANDOFF responsibility object', async () => {
+    const { binding } = await bindingsFor('HANDOFF');
+    expect(typeof binding.target).toBe('string');
+    expect(parseJSON(binding.target)).toEqual({
+      actorId: id(12),
+      actorType: 'human',
+      delegatedBy: null,
+      purpose: 'candidate-review',
+    });
+  });
+
+  it('preserves SUPPLEMENT evidence and whole-record correction objects', async () => {
+    const { binding, supplemental, correction } = await bindingsFor(
+      'SUPPLEMENT',
+      true,
+    );
+    expect(typeof binding.correction).toBe('string');
+    expect(parseJSON(binding.evidence)).toEqual([supplemental]);
+    expect(parseJSON(binding.correction)).toEqual(correction);
+  });
 });

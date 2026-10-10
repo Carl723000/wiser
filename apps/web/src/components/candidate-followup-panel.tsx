@@ -31,6 +31,15 @@ const isRecord = (value: CandidateFollowupEvidence | null) =>
   Boolean(value?.recordId && value.geometry && value.sourceCrs);
 
 type CandidateFollowup = ReturnType<typeof CandidateFollowupSchema.parse>;
+export interface CandidateSupplementLookup {
+  readonly action: string;
+  readonly requestedIngestionId: string;
+  readonly initialFollowupId?: string;
+  readonly verificationId?: string;
+  readonly source?: CandidateFollowupSource;
+  readonly stateLabel?: string;
+  readonly error?: 'empty' | 'denied' | 'stale' | 'invalid' | 'unavailable';
+}
 interface CandidateFollowupPanelProps {
   readonly locale: Locale;
   readonly references: readonly CandidateFollowupSource[];
@@ -38,8 +47,33 @@ interface CandidateFollowupPanelProps {
   readonly ruleVersion: string;
   readonly readOnly?: boolean;
   readonly parentBusy?: boolean;
+  readonly supplementLookup?: CandidateSupplementLookup;
 }
 export function CandidateFollowupPanel(props: CandidateFollowupPanelProps) {
+  // Retain only the selected identity across owner recovery, never its proof or authority.
+  const targetScope = JSON.stringify([
+    props.references.map((s) => referenceKey(s.reference)),
+    props.ruleId,
+    props.ruleVersion,
+    props.supplementLookup?.initialFollowupId,
+  ]);
+  const target = useRef({
+    scope: targetScope,
+    id: props.supplementLookup?.initialFollowupId,
+  });
+  if (target.current.scope !== targetScope)
+    target.current = {
+      scope: targetScope,
+      id: props.supplementLookup?.initialFollowupId,
+    };
+  const lookupScope = JSON.stringify([
+    targetScope,
+    props.supplementLookup?.requestedIngestionId,
+    props.supplementLookup?.verificationId,
+  ]);
+  const blocked = useRef({ scope: lookupScope, value: false });
+  if (blocked.current.scope !== lookupScope)
+    blocked.current = { scope: lookupScope, value: false };
   return (
     <CandidateFollowupSession
       key={JSON.stringify([
@@ -50,6 +84,18 @@ export function CandidateFollowupPanel(props: CandidateFollowupPanelProps) {
         props.parentBusy,
       ])}
       {...props}
+      supplementLookup={
+        props.supplementLookup
+          ? { ...props.supplementLookup, initialFollowupId: target.current.id }
+          : undefined
+      }
+      initialSupplementBlocked={blocked.current.value}
+      onSupplementBlocked={() => {
+        blocked.current.value = true;
+      }}
+      onTarget={(id) => {
+        target.current.id = id;
+      }}
     />
   );
 }
@@ -60,6 +106,10 @@ function CandidateFollowupSession({
   ruleVersion,
   readOnly = false,
   parentBusy = false,
+  supplementLookup,
+  onTarget,
+  initialSupplementBlocked,
+  onSupplementBlocked,
 }: {
   readonly locale: Locale;
   readonly references: readonly CandidateFollowupSource[];
@@ -67,6 +117,10 @@ function CandidateFollowupSession({
   readonly ruleVersion: string;
   readonly readOnly?: boolean;
   readonly parentBusy?: boolean;
+  readonly supplementLookup?: CandidateSupplementLookup;
+  readonly onTarget: (id: string) => void;
+  readonly initialSupplementBlocked: boolean;
+  readonly onSupplementBlocked: () => void;
 }) {
   const copy = getDictionary(locale).candidateFollowups;
   const id = useId();
@@ -76,15 +130,30 @@ function CandidateFollowupSession({
   const unique = [
     ...new Map(references.map((s) => [referenceKey(s.reference), s])).values(),
   ];
+  const [supplementBlocked, setSupplementBlocked] = useState(
+    initialSupplementBlocked,
+  );
+  const evidenceSources = supplementLookup?.requestedIngestionId
+    ? supplementLookup.source
+      ? [supplementLookup.source]
+      : []
+    : unique;
+  const evidenceScopeKey = JSON.stringify([
+    evidenceSources.map((s) => referenceKey(s.reference)),
+    supplementLookup?.verificationId,
+  ]);
+  const [proofScope, setProofScope] = useState(evidenceScopeKey);
   const [sourceKey, setSourceKey] = useState(
     unique[0] ? referenceKey(unique[0].reference) : '',
   );
   const selected =
     unique.find((s) => referenceKey(s.reference) === sourceKey) ?? unique[0];
-  const [proofSourceKey, setProofSourceKey] = useState(sourceKey);
+  const [proofSourceKey, setProofSourceKey] = useState(
+    evidenceSources[0] ? referenceKey(evidenceSources[0].reference) : '',
+  );
   const evidenceSource =
-    unique.find((s) => referenceKey(s.reference) === proofSourceKey) ??
-    selected;
+    !supplementBlocked &&
+    evidenceSources.find((s) => referenceKey(s.reference) === proofSourceKey);
   const [page, setPage] = useState<FollowupList | null>(null);
   const [task, setTask] = useState<CandidateFollowup | null>(null);
   const [proofs, setProofs] = useState<CandidateFollowupEvidence[]>([]);
@@ -115,10 +184,42 @@ function CandidateFollowupSession({
     setError(null);
     setNotice('');
     setHistoryLimit(20);
-    setProofSourceKey(sourceKey);
+    setProofSourceKey(
+      supplementLookup?.requestedIngestionId
+        ? evidenceSources[0]
+          ? referenceKey(evidenceSources[0].reference)
+          : ''
+        : sourceKey,
+    );
     keys.current.clear();
     return () => active.current?.abort();
   }, [scopeKey, sourceKey, ruleId, ruleVersion]);
+  useEffect(() => {
+    active.current?.abort();
+    setProofs([]);
+    setProofIndex(0);
+    setAssetAfter(null);
+    setGeometryAfter(null);
+    setBusy(false);
+    setNotice('');
+    setProofScope(evidenceScopeKey);
+    setError(null);
+    setSupplementBlocked(initialSupplementBlocked);
+    setProofSourceKey(
+      evidenceSources[0] ? referenceKey(evidenceSources[0].reference) : '',
+    );
+  }, [evidenceScopeKey]);
+  useEffect(() => {
+    const followupId = supplementLookup?.initialFollowupId;
+    if (!followupId || readOnly || parentBusy) return;
+    void run(async (signal) => {
+      accept(
+        (await readCandidateFollowup('get', { followupId }, signal)).followup,
+        signal,
+      );
+    });
+    return () => active.current?.abort();
+  }, [supplementLookup?.initialFollowupId, sourceKey]);
   function mutationKey(action: string, input: unknown) {
     const key = JSON.stringify({ action, input });
     let value = keys.current.get(key);
@@ -141,6 +242,10 @@ function CandidateFollowupSession({
     } catch (e) {
       if (!controller.signal.aborted) {
         setError(e instanceof CandidateReaderError ? e.kind : 'unavailable');
+        if (supplementLookup?.requestedIngestionId) {
+          setSupplementBlocked(true);
+          onSupplementBlocked();
+        }
         setPage(null);
         setTask(null);
         setProofs([]);
@@ -159,6 +264,7 @@ function CandidateFollowupSession({
       referenceKey(value.source.reference) !== referenceKey(selected.reference)
     )
       throw new CandidateReaderError('invalid');
+    onTarget(value.followupId);
     setTask(value);
     setHistoryLimit(20);
     setOldIndex(0);
@@ -183,11 +289,14 @@ function CandidateFollowupSession({
         signal,
       );
     });
-  const proof = proofs[proofIndex] ?? null;
+  const visibleProofs =
+    !supplementBlocked && proofScope === evidenceScopeKey ? proofs : [];
+  const proof = visibleProofs[proofIndex] ?? null;
   function loadProof(after?: string) {
     return run(async (signal) => {
       if (!evidenceSource) return;
       setProofs([]);
+      setProofScope(evidenceScopeKey);
       setGeometryAfter(null);
       const result = await readCandidatePage(
         'get',
@@ -439,6 +548,56 @@ function CandidateFollowupSession({
       ) : (
         <details className={styles.evidence}>
           <summary>{copy.evidence}</summary>
+          {supplementLookup ? (
+            <form
+              action={supplementLookup.action}
+              method="get"
+              className={styles.form}
+              onSubmit={() => {
+                active.current?.abort();
+                setProofs([]);
+                setAssetAfter(null);
+                setGeometryAfter(null);
+                setBusy(false);
+              }}
+            >
+              <label htmlFor={`${id}-lookup`}>{copy.supplementIntake}</label>
+              <input
+                key={supplementLookup.requestedIngestionId}
+                id={`${id}-lookup`}
+                name="supplementIngestionId"
+                defaultValue={supplementLookup.requestedIngestionId}
+                disabled={busy || parentBusy}
+                aria-describedby={`${id}-lookup-hint`}
+              />
+              {(task?.followupId ?? supplementLookup.initialFollowupId) ? (
+                <input
+                  type="hidden"
+                  name="followupId"
+                  value={task?.followupId ?? supplementLookup.initialFollowupId}
+                />
+              ) : null}
+              <p id={`${id}-lookup-hint`}>{copy.supplementHint}</p>
+              <button type="submit" disabled={busy || parentBusy}>
+                {copy.findSupplement}
+              </button>
+              {(supplementLookup.error || supplementBlocked) && !error ? (
+                <p role="alert">
+                  {supplementLookup.error === 'empty'
+                    ? copy.supplementEmpty
+                    : supplementLookup.error
+                      ? copy[supplementLookup.error]
+                      : copy.supplementRecheck}
+                </p>
+              ) : null}
+              {supplementLookup.source && !supplementBlocked ? (
+                <p>
+                  {copy.supplementSelected}: {supplementLookup.source.label} ·{' '}
+                  <span>{supplementLookup.stateLabel}</span>
+                </p>
+              ) : null}
+            </form>
+          ) : null}
           <label htmlFor={`${id}-evidence-source`}>{copy.evidenceSource}</label>
           <select
             id={`${id}-evidence-source`}
@@ -455,7 +614,7 @@ function CandidateFollowupSession({
               setError(null);
             }}
           >
-            {unique.map((s) => (
+            {(supplementBlocked ? [] : evidenceSources).map((s) => (
               <option
                 key={referenceKey(s.reference)}
                 value={referenceKey(s.reference)}
@@ -467,7 +626,7 @@ function CandidateFollowupSession({
           <div className={styles.actions}>
             <button
               type="button"
-              disabled={busy || parentBusy}
+              disabled={busy || parentBusy || !evidenceSource}
               onClick={() => void loadProof()}
             >
               {copy.loadEvidence}
@@ -502,10 +661,10 @@ function CandidateFollowupSession({
           <select
             id={`${id}-proof`}
             value={proofIndex}
-            disabled={busy || parentBusy || proofs.length === 0}
+            disabled={busy || parentBusy || visibleProofs.length === 0}
             onChange={(e) => setProofIndex(Number(e.target.value))}
           >
-            {proofs.map((p, i) => (
+            {visibleProofs.map((p, i) => (
               <option key={`${p.assetId}:${p.recordId ?? 'asset'}`} value={i}>
                 {p.recordId ? copy.geometry : copy.asset} ·{' '}
                 {p.recordId ?? p.assetId}

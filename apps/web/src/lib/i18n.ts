@@ -36,7 +36,15 @@ const zhCN = {
     dependency:
       '请先选择有固定候选引用的来源。已发布资料编号不能替代候选引用。',
     source: '固定候选来源',
-    evidenceSource: '补充证据来源',
+    evidenceSource: '补证来源',
+    supplementIntake: '补证接收任务编号',
+    supplementHint:
+      '填写本项目中可读取的接收任务编号。查询后重新读取证据，当前跟进单保持不变。清空编号可返回当前来源。',
+    findSupplement: '查询补证来源',
+    supplementSelected: '已选择补证来源',
+    supplementRecheck: '补证来源当前不可用。请重新查询来源后再读取证据。',
+    supplementEmpty:
+      '该接收任务尚无可读取的候选。请核对任务状态或查询其他来源。',
     proofSourceMismatch:
       '创建新单时，来源证据须属于上方所选候选；当前证据可用于已有跟进单的补证。',
     load: '读取跟进清单',
@@ -1822,6 +1830,9 @@ const zhCN = {
       referenceHint: '只显示本批许可几何与经纬网；位置与范围的依据见资料档案。',
       flatView: '切换平面视图',
       spaceView: '切换鸟瞰视图',
+      birdEyePlanar: '当前为平面地图鸟瞰，不表示真实地形。',
+      onlineReferencePaused:
+        '在线底图在当前视角下暂停显示；资料原值与坐标保持不变。',
       resetCamera: '复位相机',
       rotateLeft: '向左旋转',
       rotateRight: '向右旋转',
@@ -2943,6 +2954,98 @@ const zhCN = {
       openAction: '查看接入任务',
     },
     candidateReader: {
+      relations: {
+        title: '关系依据',
+        read: '读取关系依据',
+        inspect: '查看关系',
+        detail: '关系原文依据',
+        loaded: '当前页关系数',
+        empty: '当前页没有可读关系。',
+        previous: '上一页关系',
+        next: '下一页关系',
+        scope: '关系决定不代表专业批准，也不据此确定需求、区域或地图归属。',
+        source: '固定来源与记录定位',
+        matchingRecord: '查看对应记录',
+        otherCandidate: '此证据来自其他候选资料，请在对应资料中查阅。',
+        noRecord: '此证据未标明对应记录，可查阅原文摘录与来源定位。',
+        assetSearchLimit:
+          '本次已查阅十页来源文件，暂未定位证据来源；可返回来源清单继续查阅。',
+        fixed: '固定关系与规则',
+        ingestion: '接入任务编号',
+        record: '原生记录编号',
+        id: '关系编号',
+        revision: '内容修订',
+        decision: '决定版本',
+        mapping: '源内映射规则',
+        subjectKey: '来源对象标识',
+        objectKey: '关联对象标识',
+        states: {
+          PENDING_REVIEW: '关系待审核',
+          CONFIRMED: '关系已确认',
+          REJECTED: '关系已否决',
+          CORRECTION_REQUIRED: '关系需修正',
+          REVOKED: '关系确认已撤销',
+          WITHDRAWN: '关系提议已撤回',
+        },
+        meanings: {
+          PENDING_REVIEW: '此关系提议尚待独立审核。',
+          CONFIRMED: '此关系经独立审核确认；不改变来源资料的专业审核状态。',
+          REJECTED: '此关系提议已被否决。',
+          CORRECTION_REQUIRED: '此关系提议需要修正。',
+          REVOKED: '此前的关系确认已被撤销。',
+          WITHDRAWN: '提议责任人已撤回此待审关系。',
+        },
+      },
+      monthly: {
+        read: '读取月报原值',
+        ruleUnavailable:
+          '此专题未固定适用的月报读取规则。请查阅原件与解析记录。',
+        title: '月报原值',
+        reportPeriod: '报告期',
+        name: '原文名称',
+        value: '原始类别',
+        kind: '原值类型',
+        sourceRow: '查看原表行',
+        more: '显示更多原值',
+        shown: '已显示',
+        noLocation: '位置尚未核定；原值可按原表查阅。',
+        noScope: '需求与区域归属尚未指定，不据此计算业务覆盖。',
+        scopeBoundary:
+          '本明细仅反映当前月报。原表明确为潮白河水系的河段纳入地表水水质需求；其他原值保留未映射。',
+        readiness: '当前月报就绪明细',
+        chaobai: '潮白河',
+        mapped: '已映射原行',
+        unmapped: '未映射原行',
+        mappedRow: '查看归属原行',
+        coverageBoundary:
+          '月份覆盖与跨月对象对应仍未核定。报告期不代表采样日期；类别查证不提供浓度或负荷计算依据。',
+        scopeRule: '逐行归属解释规则',
+        requirementCatalog: '19项需求目录源码依据',
+        verified: '原件与转换件的结构一致性已核验。',
+        unavailable: '暂不能读取月报原值。可先查阅原件与解析记录。',
+        technical: '月报来源与转换依据',
+        original: '历史原件',
+        prepared: '解析转换件',
+        manifest: '来源清单',
+        rule: '读取规则',
+        result: '核验结果',
+        tool: '核验工具',
+        reason: '处理原因',
+        empty: '原始空文本',
+        reasons: {
+          INVALID_INPUT: '读取依据不完整。',
+          INCOMPLETE_RECORD_PAGES: '解析记录尚不完整。',
+          SOURCE_NOT_READY: '所选资料尚未满足月报读取条件。',
+          SOURCE_CHANGED: '固定来源已变化，请刷新候选。',
+          UNKNOWN_LAYOUT: '当前表格结构尚不能识别为月报。',
+          MISSING_SOURCE_LOCAL_IDENTITY: '缺少源内作品声明。',
+          MISSING_ORIGINAL_HASH: '缺少可核对的原件依据。',
+          CONVERSION_PROVENANCE_UNAVAILABLE:
+            '原件与转换件的核验依据尚不满足要求。',
+          RULE_VERSION_CHANGED: '读取规则已变化，请刷新候选。',
+        },
+      },
+
       title: '候选资料查阅',
       topicList: '已保存专题',
       loadTopics: '读取已保存专题',
@@ -3996,6 +4099,15 @@ const en: typeof zhCN = {
       'Select a fixed candidate source first. Published material identities cannot replace candidate references.',
     source: 'Fixed candidate source',
     evidenceSource: 'Evidence source',
+    supplementIntake: 'Supplement intake ID',
+    supplementHint:
+      'Enter a readable intake ID in this project. Load its evidence after the lookup; the current followup stays fixed. Clear the ID to return to the current source.',
+    findSupplement: 'Find evidence source',
+    supplementSelected: 'Selected evidence source',
+    supplementRecheck:
+      'This evidence source is currently unavailable. Find the source again before loading its evidence.',
+    supplementEmpty:
+      'This intake has no readable candidate yet. Check its status or find another source.',
     proofSourceMismatch:
       'A new followup must use the selected fixed source. This evidence can supplement an existing followup.',
     load: 'Load followups',
@@ -5949,6 +6061,9 @@ const en: typeof zhCN = {
         'Only licensed geometries from this batch and a graticule are shown. Read the material dossier for location and extent evidence.',
       flatView: 'Switch to planar view',
       spaceView: 'Switch to bird’s-eye view',
+      birdEyePlanar: 'This is a tilted planar map, not terrain.',
+      onlineReferencePaused:
+        'The online basemap is hidden for this camera view. Original data values and coordinates remain unchanged.',
       resetCamera: 'Reset camera',
       rotateLeft: 'Rotate left',
       rotateRight: 'Rotate right',
@@ -7128,6 +7243,110 @@ const en: typeof zhCN = {
       openAction: 'View ingestion task',
     },
     candidateReader: {
+      relations: {
+        title: 'Relation evidence',
+        read: 'Read relation evidence',
+        inspect: 'Inspect relation',
+        detail: 'Original relation evidence',
+        loaded: 'Relations in this page',
+        empty: 'No readable relations in this page.',
+        previous: 'Previous relation page',
+        next: 'Next relation page',
+        scope:
+          'Relation decisions do not grant professional approval or establish requirement, region or map membership.',
+        source: 'Fixed source and record location',
+        matchingRecord: 'View matching record',
+        otherCandidate:
+          'This evidence comes from another candidate. Open that material to inspect it.',
+        noRecord:
+          'This evidence does not identify a record. Its excerpt and source location remain available.',
+        assetSearchLimit:
+          'The source was not located within ten pages. Return to the source list to continue reading.',
+        fixed: 'Fixed relation and rules',
+        ingestion: 'Ingestion identifier',
+        record: 'Native record identifier',
+        id: 'Relation identifier',
+        revision: 'Content revision',
+        decision: 'Decision version',
+        mapping: 'Source mapping rule',
+        subjectKey: 'Source object key',
+        objectKey: 'Related object key',
+        states: {
+          PENDING_REVIEW: 'Relation pending review',
+          CONFIRMED: 'Relation confirmed',
+          REJECTED: 'Relation rejected',
+          CORRECTION_REQUIRED: 'Relation requires correction',
+          REVOKED: 'Relation confirmation revoked',
+          WITHDRAWN: 'Relation proposal withdrawn',
+        },
+        meanings: {
+          PENDING_REVIEW: 'This relation proposal awaits independent review.',
+          CONFIRMED:
+            'This relation was independently confirmed; the source material professional review state is unchanged.',
+          REJECTED: 'This relation proposal was rejected.',
+          CORRECTION_REQUIRED: 'This relation proposal requires correction.',
+          REVOKED: 'The earlier relation confirmation was revoked.',
+          WITHDRAWN: 'The responsible proposer withdrew this pending relation.',
+        },
+      },
+      monthly: {
+        scopeBoundary:
+          'These details describe only the current monthly report. Only river rows explicitly declaring the Chaobai water system enter surface-water quality demand; all other originals remain unmapped.',
+        readiness: 'Current monthly report readiness',
+        chaobai: 'Chaobai River',
+        mapped: 'Mapped original rows',
+        unmapped: 'Unmapped original rows',
+        mappedRow: 'View mapped source row',
+        coverageBoundary:
+          'Month coverage and object correspondence remain unconfirmed. Report period is not sampling date; category inspection supplies no concentration or load calculation evidence.',
+        scopeRule: 'Row-scope interpretation rule',
+        requirementCatalog: '19-need catalog source reference',
+        read: 'Read monthly originals',
+        ruleUnavailable:
+          'This topic does not pin a supported monthly reading rule. Inspect the originals and parsed records.',
+        title: 'Monthly originals',
+        reportPeriod: 'Report period',
+        name: 'Original name',
+        value: 'Original category',
+        kind: 'Value kind',
+        sourceRow: 'View source row',
+        more: 'Show more original values',
+        shown: 'Shown',
+        noLocation:
+          'Location is not established; original values remain traceable to their source rows.',
+        noScope:
+          'Requirement and region membership are not assigned; these values do not establish business coverage.',
+        verified:
+          'Original and prepared document structures were verified as equivalent.',
+        unavailable:
+          'Monthly originals cannot be read yet. You can inspect the original files and parsed records.',
+        technical: 'Monthly source and conversion evidence',
+        original: 'Historical original',
+        prepared: 'Parsed document',
+        manifest: 'Source manifest',
+        rule: 'Reading rule',
+        result: 'Verification result',
+        tool: 'Verification tool',
+        reason: 'Processing reason',
+        empty: 'Original empty text',
+        reasons: {
+          INVALID_INPUT: 'Reading evidence is incomplete.',
+          INCOMPLETE_RECORD_PAGES: 'Parsed records are incomplete.',
+          SOURCE_NOT_READY:
+            'The selected material is not ready for monthly reading.',
+          SOURCE_CHANGED: 'The fixed source changed. Refresh the candidate.',
+          UNKNOWN_LAYOUT:
+            'This table structure is not recognized as a monthly report.',
+          MISSING_SOURCE_LOCAL_IDENTITY:
+            'The source-local work declaration is missing.',
+          MISSING_ORIGINAL_HASH: 'Verifiable original evidence is missing.',
+          CONVERSION_PROVENANCE_UNAVAILABLE:
+            'Original and prepared document verification does not yet meet the reading conditions.',
+          RULE_VERSION_CHANGED:
+            'The reading rule changed. Refresh the candidate.',
+        },
+      },
+
       title: 'Candidate materials',
       topicList: 'Saved topics',
       loadTopics: 'Load saved topics',

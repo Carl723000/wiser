@@ -2606,3 +2606,589 @@ describe('fixed-source candidate followup transport', () => {
     ).rejects.toMatchObject({ status: 502 });
   });
 });
+
+describe('fixed candidate conversion provenance transport', () => {
+  const input = { ...candidateReference, preparedAssetId: USER_ID };
+  const output = {
+    reference: candidateReference,
+    preparedAssetId: USER_ID,
+    check: null,
+  };
+
+  it('reads the registered fixed candidate member under the verified server scope', async () => {
+    const order: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(() => {
+      order.push('fetch');
+      return Promise.resolve(Response.json(output));
+    });
+    await expect(
+      candidateDal(fetch, {}, () =>
+        Promise.resolve(authClient(order)),
+      ).candidateConversionProvenance(input),
+    ).resolves.toEqual(output);
+    expect(order).toEqual(['claims', 'session', 'fetch']);
+    const url = new URL(fetch.mock.calls[0][0] as string);
+    expect(url.pathname).toBe(
+      `/api/data/v1/ingestions/${PROJECT_ID}/candidates/${GEO_VERSION_ID}/${USER_ID}/provenance`,
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      kind: input.kind,
+      reviewHash: input.reviewHash,
+    });
+    const init = fetch.mock.calls[0][1];
+    const headers = new Headers(init?.headers);
+    expect(headers.get('authorization')).toBe(`Bearer ${accessToken()}`);
+    expect(headers.get('x-wiser-tenant-id')).toBe(TENANT_ID);
+    expect(headers.get('x-wiser-project-id')).toBe(PROJECT_ID);
+    expect(headers.get('x-wiser-purpose')).toBe('review');
+    expect(init).toMatchObject({
+      method: 'GET',
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    expect(init?.body).toBeUndefined();
+  });
+
+  it.each([
+    { ...input, preparedAssetId: '../private' },
+    { ...input, reviewHash: 'A'.repeat(64) },
+    { ...input, tenantId: TENANT_ID },
+    { ...input, versionId: USER_ID },
+  ])(
+    'rejects malformed or caller-scoped input before authentication %j',
+    async (invalid) => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth).candidateConversionProvenance(invalid),
+      ).rejects.toMatchObject({ kind: 'invalid-request', status: 422 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { ...output, preparedAssetId: SESSION_ID },
+    {
+      ...output,
+      reference: { ...candidateReference, ingestionId: SESSION_ID },
+    },
+    {
+      ...output,
+      reference: { ...candidateReference, processingBatchId: SESSION_ID },
+    },
+    {
+      ...output,
+      reference: { ...candidateReference, reviewHash: 'b'.repeat(64) },
+    },
+    { ...output, check: {} },
+    { ...output, internalUrl: 'private/path' },
+  ])(
+    'rejects another fixed identity or malformed response %j',
+    async (invalid) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(Response.json(invalid)),
+      );
+      await expect(
+        candidateDal(fetch).candidateConversionProvenance(input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('retains the complete verified conversion check without relabelling authority', async () => {
+    const check = {
+      schemaVersion: 1,
+      resultId: TENANT_ID,
+      reference: candidateReference,
+      kind: 'HISTORICAL_EQUIVALENCE',
+      state: 'VERIFIED_EQUIVALENT',
+      original: { assetId: SESSION_ID, sha256: 'b'.repeat(64), byteSize: 12 },
+      prepared: { assetId: USER_ID, sha256: 'c'.repeat(64), byteSize: 18 },
+      manifest: { assetId: GEO_VERSION_ID, sha256: 'd'.repeat(64) },
+      sourceLocalWorkId: 'monthly-synthetic-2023-04',
+      historicalToolVersion: null,
+      rule: { id: 'candidate-word-equivalence', version: '1.0.0' },
+      tool: {
+        name: 'trusted-converter',
+        version: 'synthetic-test',
+        digest: 'e'.repeat(64),
+      },
+      reconvertedSha256: 'f'.repeat(64),
+      comparisonDigest: '1'.repeat(64),
+      comparison: {
+        tableCount: 1,
+        physicalCellCount: 2,
+        emptyCellCount: 1,
+        paragraphCount: 1,
+        monthTitleCount: 1,
+        differenceCount: 0,
+        differences: [],
+      },
+      failureReason: null,
+    };
+    const response = { ...output, check };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(response)),
+    );
+    await expect(
+      candidateDal(fetch).candidateConversionProvenance(input),
+    ).resolves.toEqual(response);
+    const mismatched = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        Response.json({
+          ...response,
+          check: {
+            ...check,
+            reference: { ...candidateReference, reviewHash: 'b'.repeat(64) },
+          },
+        }),
+      ),
+    );
+    await expect(
+      candidateDal(mismatched).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+  });
+
+  it('compares fixed UUID identities case-insensitively', async () => {
+    const reference = {
+      ...candidateReference,
+      ingestionId: 'abcdefab-cdef-4abc-8abc-abcdefabcdef',
+      processingBatchId: 'bcdefabc-defa-4bcd-8bcd-bcdefabcdefa',
+    };
+    const preparedAssetId = 'cdefabcd-efab-4cde-8cde-cdefabcdefab';
+    const response = { reference, preparedAssetId, check: null };
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(Response.json(response)),
+    );
+    await expect(
+      candidateDal(fetch).candidateConversionProvenance({
+        ...reference,
+        ingestionId: reference.ingestionId.toUpperCase(),
+        processingBatchId: reference.processingBatchId.toUpperCase(),
+        preparedAssetId: preparedAssetId.toUpperCase(),
+      }),
+    ).resolves.toEqual(response);
+  });
+
+  it.each([401, 403, 404, 409])(
+    'retains upstream denial %i without fallback or diagnostics',
+    async (status) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(() =>
+        Promise.resolve(new Response('private diagnostic', { status })),
+      );
+      await expect(
+        candidateDal(fetch).candidateConversionProvenance(input),
+      ).rejects.toMatchObject({ status });
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('requires verified claims before contacting the service', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const auth = () =>
+      Promise.resolve({
+        auth: {
+          ...authClient([]).auth,
+          getClaims: () => Promise.resolve({ data: null, error: null }),
+        },
+      });
+    await expect(
+      candidateDal(fetch, {}, auth).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects pre-cancelled reads before session access', async () => {
+    const auth = vi.fn(() => Promise.resolve(authClient([])));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    await expect(
+      candidateDal(fetch, {}, auth).candidateConversionProvenance(
+        input,
+        AbortSignal.abort(),
+      ),
+    ).rejects.toMatchObject({ status: 499 });
+    expect(auth).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('cancels a stalled response body at the existing request deadline', async () => {
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch, {
+        requestTimeoutMs: 20,
+      }).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ status: 504 });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('bounds response bytes before parsing any provenance', async () => {
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(129));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      candidateDal(fetch, {
+        responseLimitBytes: 128,
+      }).candidateConversionProvenance(input),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+});
+
+function candidateRelationSnapshot() {
+  return {
+    revision: {
+      revisionId: SESSION_ID,
+      relationId: USER_ID,
+      lineageId: USER_ID,
+      revision: 2,
+      supersedesId: TENANT_ID,
+      reference: candidateReference,
+      mappingVersion: 'source/1',
+      ruleVersion: 'candidate-relations/1',
+      content: {
+        subject: {
+          key: 'a',
+          label: 'Upstream',
+          kind: 'EXTERNAL_ENTITY',
+          externalId: null,
+        },
+        predicate: 'FLOWS_TO',
+        object: {
+          key: 'b',
+          label: 'Downstream',
+          kind: 'EXTERNAL_ENTITY',
+          externalId: null,
+        },
+        qualifiers: {
+          measure: null,
+          unit: null,
+          observedAt: null,
+          missing: false,
+          spatialScope: null,
+          limitations: [],
+          reportedConclusion: null,
+          reportedValue: null,
+          reportedLimit: null,
+          context: {
+            recordNature: 'SOURCE_RELATION',
+            timeRole: 'PUBLICATION_TIME',
+            validFrom: null,
+            validTo: null,
+            locationRole: 'REFERENCE_LOCATION',
+            applicability: 'Background only',
+          },
+        },
+        generation: { method: 'SOURCE_FIELDS', model: null },
+        evidence: [
+          {
+            reference: candidateReference,
+            assetId: USER_ID,
+            sourceHash: 'b'.repeat(64),
+            locator: 'row:1',
+            excerpt: null,
+            polarity: 'SUPPORTS',
+          },
+        ],
+      },
+    },
+    decisionVersion: 3,
+    state: 'CORRECTION_REQUIRED',
+    createdAt: '2026-10-09T00:00:00Z',
+  };
+}
+const candidateRelationGetInput = {
+  relationId: USER_ID,
+  revision: 2,
+  decisionVersion: 3,
+  references: [candidateReference],
+};
+const candidateRelationListInput = {
+  references: [candidateReference],
+  first: 2,
+  after: 'opaque-in',
+};
+
+describe('bounded candidate relationship reads', () => {
+  for (const action of ['Get', 'List'] as const) {
+    const input =
+      action === 'Get' ? candidateRelationGetInput : candidateRelationListInput;
+    const output = () =>
+      action === 'Get'
+        ? { relation: candidateRelationSnapshot() }
+        : {
+            relations: [candidateRelationSnapshot()],
+            nextCursor: 'opaque-out',
+          };
+    it(`${action} sends the fixed manifest once through the native readonly POST with verified scope`, async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json(output()));
+      const result =
+        await candidateDal(fetch)[`candidateRelation${action}`](input);
+      expect(result).toEqual(output());
+      expect(fetch).toHaveBeenCalledOnce();
+      const [url, init] = fetch.mock.calls[0];
+      expect(url).toBe(
+        `http://api:3001/api/data/v1/ingestion-candidate-relations/${action === 'Get' ? `${USER_ID}/read` : 'list'}`,
+      );
+      expect(init).toMatchObject({
+        method: 'POST',
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      const headers = new Headers(init?.headers);
+      expect(headers.get('authorization')).toMatch(/^Bearer /u);
+      expect(headers.get('X-WISER-Tenant-ID')).toBe(TENANT_ID);
+      expect(headers.get('X-WISER-Project-ID')).toBe(PROJECT_ID);
+      expect(headers.get('X-WISER-Purpose')).toBe('review');
+      expect(headers.has('Idempotency-Key')).toBe(false);
+      expect(headers.has('If-Match')).toBe(false);
+      const expected =
+        action === 'Get'
+          ? {
+              revision: 2,
+              decisionVersion: 3,
+              references: [candidateReference],
+            }
+          : input;
+      if (typeof init?.body !== 'string') throw Error('Expected JSON request');
+      expect(JSON.parse(init.body)).toEqual(expected);
+    });
+    it.each([
+      { references: [] },
+      { references: [candidateReference, candidateReference] },
+      { references: [{ ...candidateReference, reviewHash: 'bad' }] },
+      { unexpected: true },
+    ])(
+      `${action} refuses malformed input before session access: %j`,
+      async (change) => {
+        const auth = vi.fn(() => Promise.resolve(authClient([])));
+        const fetch = vi.fn<typeof globalThis.fetch>();
+        await expect(
+          candidateDal(fetch, {}, auth)[`candidateRelation${action}`]({
+            ...input,
+            ...change,
+          }),
+        ).rejects.toMatchObject({ kind: 'invalid-request', status: 422 });
+        expect(auth).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
+      },
+    );
+    it(`${action} rejects unrecognized response fields`, async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          Response.json({ ...output(), internalUrl: 'private' }),
+        );
+      await expect(
+        candidateDal(fetch)[`candidateRelation${action}`](input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    });
+    it.each(['root', 'evidence'])(
+      `${action} rejects a response dependency outside the complete manifest (%s)`,
+      async (field) => {
+        const relation = candidateRelationSnapshot();
+        const foreign = { ...candidateReference, reviewHash: 'c'.repeat(64) };
+        if (field === 'root') relation.revision.reference = foreign;
+        else relation.revision.content.evidence[0].reference = foreign;
+        const fetch = vi
+          .fn<typeof globalThis.fetch>()
+          .mockResolvedValue(
+            Response.json(
+              action === 'Get'
+                ? { relation }
+                : { relations: [relation], nextCursor: null },
+            ),
+          );
+        await expect(
+          candidateDal(fetch)[`candidateRelation${action}`](input),
+        ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+      },
+    );
+    it.each([403, 404, 409])(
+      `${action} preserves HTTP failure %i without fixture fallback or raw diagnostics`,
+      async (status) => {
+        const fetch = vi
+          .fn<typeof globalThis.fetch>()
+          .mockResolvedValue(
+            new Response('private source details', { status }),
+          );
+        await expect(
+          candidateDal(fetch)[`candidateRelation${action}`](input),
+        ).rejects.toMatchObject({ status });
+        expect(fetch).toHaveBeenCalledOnce();
+      },
+    );
+    it(`${action} requires verified session`, async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, () =>
+          Promise.resolve({
+            auth: {
+              ...authClient([]).auth,
+              getClaims: () => Promise.resolve({ data: null, error: null }),
+            },
+          }),
+        )[`candidateRelation${action}`](input),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+    it(`${action} respects pre-cancellation without session or network`, async () => {
+      const auth = vi.fn(() => Promise.resolve(authClient([])));
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      await expect(
+        candidateDal(fetch, {}, auth)[`candidateRelation${action}`](
+          input,
+          AbortSignal.abort(),
+        ),
+      ).rejects.toMatchObject({ status: 499 });
+      expect(auth).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+    it(`${action} enforces the configured response budget`, async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json(output()));
+      await expect(
+        candidateDal(fetch, { responseLimitBytes: 20 })[
+          `candidateRelation${action}`
+        ](input),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    });
+    it(`${action} bounds a stalled response body and cancels the stream`, async () => {
+      const cancel = vi.fn();
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      await expect(
+        candidateDal(fetch, { requestTimeoutMs: 20 })[
+          `candidateRelation${action}`
+        ](input),
+      ).rejects.toMatchObject({ status: 504 });
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+    it(`${action} aborts an active streamed response`, async () => {
+      const cancel = vi.fn();
+      const controller = new AbortController();
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('{'));
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const result = candidateDal(fetch)[`candidateRelation${action}`](
+        input,
+        controller.signal,
+      );
+      setTimeout(() => controller.abort(), 10);
+      await expect(result).rejects.toMatchObject({ status: 499 });
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+  }
+  it.each([
+    { relationId: PROJECT_ID },
+    { revision: 1 },
+    { decisionVersion: 2 },
+  ])('get rejects a changed fixed identity: %j', async (change) => {
+    const relation = candidateRelationSnapshot();
+    if (change.decisionVersion !== undefined)
+      relation.decisionVersion = change.decisionVersion;
+    else Object.assign(relation.revision, change);
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ relation }));
+    await expect(
+      candidateDal(fetch).candidateRelationGet(candidateRelationGetInput),
+    ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+  });
+  it.each(['oversized', 'duplicate', 'empty-cursor', 'repeated-cursor'])(
+    'list rejects invalid pagination: %s',
+    async (kind) => {
+      const relation = candidateRelationSnapshot();
+      const output = {
+        relations: [relation],
+        nextCursor: 'next' as string | null,
+      };
+      if (kind === 'oversized')
+        output.relations = [relation, relation, relation];
+      if (kind === 'duplicate') output.relations = [relation, relation];
+      if (kind === 'empty-cursor') output.relations = [];
+      if (kind === 'repeated-cursor')
+        output.nextCursor = candidateRelationListInput.after;
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json(output));
+      await expect(
+        candidateDal(fetch).candidateRelationList(candidateRelationListInput),
+      ).rejects.toMatchObject({ kind: 'contract', status: 502 });
+    },
+  );
+  it('list accepts an empty terminal page without inventing a relation', async () => {
+    const output = { relations: [], nextCursor: null };
+    expect(
+      await candidateDal(
+        vi.fn().mockResolvedValue(Response.json(output)),
+      ).candidateRelationList({ references: [candidateReference] }),
+    ).toEqual(output);
+  });
+  it('preserves a complete multi-source manifest without narrowing the selection', async () => {
+    const second = { ...candidateReference, ingestionId: TENANT_ID };
+    const relation = candidateRelationSnapshot();
+    relation.revision.content.evidence[0].reference = second;
+    relation.revision.content.evidence[0].locator = '  row:一  ';
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ relation }));
+    const result = await candidateDal(fetch).candidateRelationGet({
+      ...candidateRelationGetInput,
+      references: [candidateReference, second],
+    });
+    expect(result.relation.revision.content.evidence[0].reference).toEqual(
+      second,
+    );
+    // The public schema intentionally trims the locator; the manifest remains complete.
+    const body = fetch.mock.calls[0][1]?.body;
+    if (typeof body !== 'string') throw Error('Expected JSON request');
+    expect(JSON.parse(body)).toMatchObject({
+      references: [candidateReference, second],
+    });
+  });
+});

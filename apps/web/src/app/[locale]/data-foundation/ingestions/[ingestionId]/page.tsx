@@ -1,3 +1,5 @@
+import { loadPublicReferences } from '@/lib/spatial-public-reference.server';
+import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -16,7 +18,11 @@ import {
   formatDataDate,
 } from '@/components/data-foundation-workspace';
 import { parseDataRouteUuid, type IngestionDto } from '@/lib/data-foundation';
-import { getDataFoundationDal } from '@/lib/data-foundation-dal.server';
+import {
+  DataFoundationApiError,
+  getDataFoundationDal,
+} from '@/lib/data-foundation-dal.server';
+import type { CandidateSupplementLookup } from '@/components/candidate-followup-panel';
 import {
   dataFoundationMetadata,
   handleDataPageError,
@@ -32,6 +38,8 @@ interface IngestionPageProps {
   readonly searchParams?: Promise<{
     candidateView?: string | string[];
     candidateTopic?: string | string[];
+    supplementIngestionId?: string | string[];
+    followupId?: string | string[];
   }>;
 }
 
@@ -57,10 +65,43 @@ export default async function IngestionPage({
   let candidateReference: IngestionCandidateReference | null = null;
   let savedViewId: string | undefined;
   let savedTopicId: string | undefined;
+  let supplementLookup: CandidateSupplementLookup | undefined;
   let failure: ReturnType<typeof handleDataPageError> | undefined;
   try {
     if (ingestionId === null) throw invalidDataPageRequest();
     const query = await searchParams;
+    const supplementary = query?.supplementIngestionId;
+    const followup = query?.followupId;
+    if (
+      (supplementary !== undefined || followup !== undefined) &&
+      (query?.candidateView !== undefined ||
+        query?.candidateTopic !== undefined)
+    )
+      throw invalidDataPageRequest();
+    if (
+      supplementary !== undefined &&
+      (typeof supplementary !== 'string' ||
+        (supplementary !== '' && parseDataRouteUuid(supplementary) === null))
+    )
+      throw invalidDataPageRequest();
+    if (
+      followup !== undefined &&
+      (typeof followup !== 'string' || parseDataRouteUuid(followup) === null)
+    )
+      throw invalidDataPageRequest();
+    const supplementId =
+      typeof supplementary === 'string' && supplementary
+        ? parseDataRouteUuid(supplementary)!
+        : undefined;
+    const initialFollowupId =
+      typeof followup === 'string' ? parseDataRouteUuid(followup)! : undefined;
+    const supplementAction = route;
+    const supplementaryQuery = new URLSearchParams();
+    if (supplementId)
+      supplementaryQuery.set('supplementIngestionId', supplementId);
+    if (initialFollowupId)
+      supplementaryQuery.set('followupId', initialFollowupId);
+    if (supplementaryQuery.size) route += '?' + supplementaryQuery.toString();
     if (query?.candidateTopic !== undefined) {
       if (
         query.candidateView !== undefined ||
@@ -85,11 +126,57 @@ export default async function IngestionPage({
       const detail = await dal.ingestionDetail(ingestionId);
       ingestion = detail.ingestion;
       candidateReference = detail.candidateReference;
+      if (savedViewId === undefined && candidateReference !== null) {
+        supplementLookup = {
+          action: supplementAction,
+          requestedIngestionId: supplementId ?? '',
+          ...(initialFollowupId ? { initialFollowupId } : {}),
+        };
+        if (supplementId) {
+          try {
+            const extra =
+              supplementId === ingestionId
+                ? detail
+                : await dal.ingestionDetail(supplementId);
+            supplementLookup =
+              extra.candidateReference === null
+                ? { ...supplementLookup, error: 'empty' }
+                : {
+                    ...supplementLookup,
+                    verificationId: randomUUID(),
+                    source: {
+                      reference: extra.candidateReference,
+                      label: extra.ingestion.ingestionId,
+                    },
+                    stateLabel: copy.status.ingestion[extra.ingestion.state],
+                  };
+          } catch (error) {
+            if (
+              error instanceof DataFoundationApiError &&
+              error.kind === 'authentication'
+            )
+              throw error;
+            supplementLookup = {
+              ...supplementLookup,
+              error:
+                error instanceof DataFoundationApiError &&
+                error.kind === 'authorization'
+                  ? 'denied'
+                  : error instanceof DataFoundationApiError &&
+                      error.kind === 'not-found'
+                    ? 'stale'
+                    : 'unavailable',
+            };
+          }
+        }
+      }
     }
   } catch (error) {
     failure = handleDataPageError(error, locale, route);
   }
 
+  const publicReferenceInput =
+    failure === undefined ? await loadPublicReferences(process.env) : {};
   return (
     <DataPageMain>
       <DataPageHeader
@@ -105,6 +192,7 @@ export default async function IngestionPage({
       savedTopicId !== undefined &&
       ingestionId !== null ? (
         <IngestionCandidateReader
+          {...publicReferenceInput}
           locale={locale}
           reference={null}
           savedTopicId={savedTopicId}
@@ -121,10 +209,12 @@ export default async function IngestionPage({
             </p>
           )}
           <IngestionCandidateReader
+            {...publicReferenceInput}
             locale={locale}
             reference={candidateReference}
             savedViewId={savedViewId}
             ingestionId={ingestion.ingestionId}
+            {...(supplementLookup ? { supplementLookup } : {})}
           />
           <DataSection>
             <SectionHeading title={copy.ingestionPage.authorityTitle} />

@@ -2,6 +2,10 @@ export type GeoJsonPosition =
   readonly [number, number] | readonly [number, number, number];
 
 export type SupportedGeoJsonGeometry =
+  | {
+      readonly type: 'GeometryCollection';
+      readonly geometries: readonly SupportedGeoJsonGeometry[];
+    }
   | { readonly type: 'Point'; readonly coordinates: GeoJsonPosition }
   | {
       readonly type: 'MultiPoint';

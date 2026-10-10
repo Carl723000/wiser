@@ -1,3 +1,4 @@
+import type { CandidateConversionCheck } from '@wiser/data-contracts/candidate-conversion';
 import { describe, expect, it } from 'vitest';
 import * as monthlyProjection from '../src/candidate-monthly-projection.ts';
 import type {
@@ -462,5 +463,164 @@ describe('explicit monthly report-period projection v2', () => {
       observationTime: null,
       records: [],
     });
+  });
+});
+
+function convertedFixture() {
+  const data = fixture();
+  const originalId = '30000000-0000-4000-8000-000000000001';
+  const manifestId = '30000000-0000-4000-8000-000000000002';
+  const check: CandidateConversionCheck = {
+    schemaVersion: 1,
+    resultId: '30000000-0000-4000-8000-000000000003',
+    reference,
+    kind: 'HISTORICAL_EQUIVALENCE',
+    state: 'VERIFIED_EQUIVALENT',
+    original: { assetId: originalId, sha256: 'c'.repeat(64), byteSize: 12 },
+    prepared: { assetId, sha256: sourceHash, byteSize: 18 },
+    manifest: { assetId: manifestId, sha256: 'd'.repeat(64) },
+    sourceLocalWorkId: 'server-monthly-work',
+    historicalToolVersion: null,
+    rule: { id: 'candidate-word-equivalence', version: '1.0.0' },
+    tool: {
+      name: 'test-converter',
+      version: 'test-only',
+      digest: 'e'.repeat(64),
+    },
+    reconvertedSha256: 'f'.repeat(64),
+    comparisonDigest: '1'.repeat(64),
+    comparison: {
+      tableCount: 4,
+      physicalCellCount: 31,
+      emptyCellCount: 1,
+      paragraphCount: 3,
+      monthTitleCount: 3,
+      differenceCount: 0,
+      differences: [],
+    },
+    failureReason: null,
+  };
+  data.batch.status = 'PARTIAL';
+  data.batch.assets.push(
+    {
+      assetId: originalId,
+      sourceHash: check.original.sha256,
+      status: 'UNSUPPORTED',
+      reason: 'UNSUPPORTED_FORMAT',
+      recordCount: null,
+      featureCount: null,
+    },
+    {
+      assetId: manifestId,
+      sourceHash: check.manifest.sha256,
+      status: 'UNSUPPORTED',
+      reason: 'SOURCE_MANIFEST',
+      recordCount: null,
+      featureCount: null,
+    },
+  );
+  return {
+    batch: data.batch,
+    pages: data.pages,
+    fixed: { assetId, sourceHash, sourceLocalWorkId: check.sourceLocalWorkId },
+    conversionCheck: check,
+  };
+}
+
+describe('v3 verified conversion consumption', () => {
+  it('projects only the verified prepared member without changing the actual PARTIAL batch', () => {
+    const data = convertedFixture();
+    const original = structuredClone(data);
+    const result = monthlyProjection.projectCandidateMonthlyReportV3(data);
+    expect(result).toMatchObject({
+      kind: 'READY',
+      reportPeriod: '2023-04',
+      ruleVersion: 'beijing-monthly-docx-c3/2.1.0',
+    });
+    expect(result.records).toHaveLength(4);
+    expect(result.records[0]!.source).toMatchObject({
+      assetId,
+      sourceLocalWorkId: 'server-monthly-work',
+      originalSha256: data.conversionCheck.original.sha256,
+    });
+    expect(data).toEqual(original);
+    expect(projectCandidateMonthlyReport({ ...data, fixed })).toMatchObject({
+      kind: 'NOT_PARSED',
+      reason: 'SOURCE_NOT_READY',
+    });
+  });
+
+  it.each([
+    'missing',
+    'member',
+    'rule',
+    'hash',
+    'other-failure',
+    'prepared-partial',
+    'work',
+    'unverified',
+  ])(
+    'rejects %s conversion evidence without partial semantic output',
+    (caseName) => {
+      const data = convertedFixture();
+      if (caseName === 'missing')
+        data.conversionCheck = null as unknown as CandidateConversionCheck;
+      if (caseName === 'member')
+        data.conversionCheck.prepared.assetId =
+          data.conversionCheck.original.assetId;
+      if (caseName === 'rule') data.conversionCheck.rule.version = 'unapproved';
+      if (caseName === 'hash')
+        data.conversionCheck.original.sha256 = '9'.repeat(64);
+      if (caseName === 'work') data.fixed.sourceLocalWorkId = 'caller-work';
+      if (caseName === 'prepared-partial')
+        data.batch.assets[0]!.status = 'PARTIAL';
+      if (caseName === 'other-failure')
+        data.batch.assets.push({
+          ...data.batch.assets[1]!,
+          assetId: '30000000-0000-4000-8000-000000000004',
+          status: 'INVALID',
+          reason: 'PARSE_FAILED',
+        });
+      if (caseName === 'unverified')
+        data.conversionCheck = {
+          ...data.conversionCheck,
+          state: 'UNVERIFIABLE',
+          comparison: null,
+          failureReason: 'TOOL_UNAVAILABLE',
+        };
+      expect(
+        monthlyProjection.projectCandidateMonthlyReportV3(data),
+      ).toMatchObject({ kind: 'NOT_PARSED', records: [] });
+    },
+  );
+});
+
+it('keeps the fixed 2.0.0 producer closed for verified PARTIAL input', () => {
+  expect(
+    monthlyProjection.projectCandidateMonthlyReportV2(convertedFixture()),
+  ).toMatchObject({
+    kind: 'NOT_PARSED',
+    reason: 'SOURCE_NOT_READY',
+    ruleVersion: 'beijing-monthly-docx-c3/2.0.0',
+    records: [],
+  });
+});
+it('does not let an added conversionCheck change an old 2.0.0 READY result', () => {
+  const data = fixture();
+  const input = {
+    ...data,
+    fixed: { assetId, sourceHash, sourceLocalWorkId: 'existing-work' },
+  };
+  const old = monthlyProjection.projectCandidateMonthlyReportV2(input);
+  const withExtra = {
+    ...input,
+    conversionCheck: convertedFixture().conversionCheck,
+  };
+  expect(monthlyProjection.projectCandidateMonthlyReportV2(withExtra)).toEqual(
+    old,
+  );
+  expect(old).toMatchObject({
+    kind: 'READY',
+    ruleVersion: 'beijing-monthly-docx-c3/2.0.0',
   });
 });

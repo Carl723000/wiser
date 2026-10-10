@@ -1,3 +1,4 @@
+import { EXPLORATION_GEOMETRY_JSON_SQL } from './exploration-geometry-json-sql.js';
 import {
   businessRecordPredicate,
   projectBusinessRecord,
@@ -235,7 +236,7 @@ export async function queryAnalysisView(
           })),
         }
       : await client.query(
-          `select record.*,ref->>'dataItemId' data_item_id,ref->>'versionId' version_id,st_asgeojson(record.geom)::jsonb geometry ${RECORDS}
+          `select record.*,ref->>'dataItemId' data_item_id,ref->>'versionId' version_id,${EXPLORATION_GEOMETRY_JSON_SQL}::jsonb geometry ${RECORDS}
       order by ref->>'dataItemId',ref->>'versionId',record.asset_id,record.record_index limit $9::integer offset $10::integer`,
           [...params, input.first + 1, offset],
         );

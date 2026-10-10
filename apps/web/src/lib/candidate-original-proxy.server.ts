@@ -2,6 +2,7 @@ import 'server-only';
 import {
   candidateSavedReferenceKey,
   IngestionCandidateReferenceSchema,
+  type IngestionCandidateReference,
 } from '@wiser/data-contracts';
 import { PlatformUuidSchema } from '@wiser/platform-contracts';
 import {
@@ -207,16 +208,22 @@ export async function proxyCandidateOriginal(
   const saved = search.has('savedViewId')
     ? PlatformUuidSchema.safeParse(search.get('savedViewId'))
     : undefined;
+  const topic = search.has('savedTopicId')
+    ? PlatformUuidSchema.safeParse(search.get('savedTopicId'))
+    : undefined;
   const range = request.headers.get('range');
   if (
     !reference.success ||
     !asset.success ||
     (saved && !saved.success) ||
+    (topic && !topic.success) ||
+    (saved !== undefined && topic !== undefined) ||
     !['GET', 'HEAD'].includes(request.method) ||
     [...search.keys()].some(
       (key) =>
-        !['reviewHash', 'locale', 'savedViewId'].includes(key) ||
-        search.getAll(key).length !== 1,
+        !['reviewHash', 'locale', 'savedViewId', 'savedTopicId'].includes(
+          key,
+        ) || search.getAll(key).length !== 1,
     ) ||
     (search.has('locale') &&
       !['zh-CN', 'en'].includes(search.get('locale') ?? '')) ||
@@ -224,7 +231,13 @@ export async function proxyCandidateOriginal(
   ) {
     throw new DataFoundationApiError('invalid-request', 422);
   }
-  const savedCancellation = saved?.success ? new AbortController() : undefined;
+  const ownerId = topic?.success
+    ? topic.data
+    : saved?.success
+      ? saved.data
+      : undefined;
+  const savedCancellation =
+    ownerId !== undefined ? new AbortController() : undefined;
   const signal = AbortSignal.any([
     request.signal,
     AbortSignal.timeout(120_000),
@@ -249,40 +262,84 @@ export async function proxyCandidateOriginal(
     }
   };
   const token = await authenticate();
-  const authorizeSaved = saved?.success
-    ? async () => {
-        // Each call performs the standard API's complete-manifest check.
-        // A view ID is navigation context; it never grants original access.
-        const dal = createDataFoundationDal({
-          config: options.config,
-          createAuthClient: options.createAuthClient,
-          fetch: options.fetch,
-          now: options.now,
-        });
-        const opened = await within(
-          dal.candidateSavedView(
-            'open',
-            { viewId: saved.data.toLowerCase() },
-            undefined,
-            signal,
-          ),
-          signal,
-          request,
-        );
-        if (!('references' in opened))
-          throw new DataFoundationApiError('contract', 502);
-        if (
-          !opened.references.some(
-            (ref) =>
-              candidateSavedReferenceKey(ref) ===
-              candidateSavedReferenceKey(reference.data),
+  let fixedTopic: string | undefined;
+  const authorizeSaved =
+    ownerId !== undefined
+      ? async () => {
+          // Each call performs the standard API's complete-manifest check.
+          // A view ID is navigation context; it never grants original access.
+          const dal = createDataFoundationDal({
+            config: options.config,
+            createAuthClient: options.createAuthClient,
+            fetch: options.fetch,
+            now: options.now,
+          });
+          let references: IngestionCandidateReference[];
+          if (topic?.success) {
+            const opened = await within(
+              dal.candidateTopic(
+                'open',
+                { viewId: topic.data.toLowerCase() },
+                signal,
+              ),
+              signal,
+              request,
+            );
+            if (
+              !('status' in opened) ||
+              opened.status !== 'READABLE' ||
+              opened.specVersion !== 2 ||
+              opened.savedView.viewId.toLowerCase() !== topic.data.toLowerCase()
+            )
+              throw new DataFoundationApiError('not-found', 404);
+            if (
+              !opened.viewSpec.dependencyPins.some(
+                (pin) =>
+                  pin.kind === 'asset' &&
+                  pin.assetId.toLowerCase() === asset.data.toLowerCase() &&
+                  candidateSavedReferenceKey(pin.reference) ===
+                    candidateSavedReferenceKey(reference.data),
+              )
+            )
+              throw new DataFoundationApiError('not-found', 404);
+            // Fresh resume cursors may change; the immutable topic and its full
+            // manifest must remain the same for every delivered chunk.
+            const binding = JSON.stringify({
+              savedView: opened.savedView,
+              references: opened.references,
+              viewSpec: opened.viewSpec,
+            });
+            if (fixedTopic !== undefined && binding !== fixedTopic)
+              throw new DataFoundationApiError('not-found', 404);
+            fixedTopic = binding;
+            references = opened.references;
+          } else {
+            const opened = await within(
+              dal.candidateSavedView(
+                'open',
+                { viewId: ownerId.toLowerCase() },
+                undefined,
+                signal,
+              ),
+              signal,
+              request,
+            );
+            if (!('references' in opened))
+              throw new DataFoundationApiError('contract', 502);
+            references = opened.references;
+          }
+          if (
+            !references.some(
+              (ref) =>
+                candidateSavedReferenceKey(ref) ===
+                candidateSavedReferenceKey(reference.data),
+            )
           )
-        )
-          throw new DataFoundationApiError('not-found', 404);
-        if ((await authenticate()) !== token)
-          throw new DataFoundationApiError('authentication', 401);
-      }
-    : undefined;
+            throw new DataFoundationApiError('not-found', 404);
+          if ((await authenticate()) !== token)
+            throw new DataFoundationApiError('authentication', 401);
+        }
+      : undefined;
   if (authorizeSaved) await authorizeSaved();
   const url = new URL(
     `/api/data/v1/tenants/${options.config.tenantId}/projects/${options.config.projectId}/ingestions/${reference.data.ingestionId}/candidates/${reference.data.processingBatchId}/assets/${asset.data}/content`,

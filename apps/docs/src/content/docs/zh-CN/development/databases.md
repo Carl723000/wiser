@@ -308,3 +308,11 @@ grant select, insert on ingestion.candidate_conversion_check to wiser_data_worke
 两表使用 forced RLS、invoker 函数和 API 的精确表/列权限。运行 provision 明确清除 worker、metadata 和公共继承的宽权限，不新增全局角色。静态迁移检查与原生测试分开；`ingestion-candidate-followups.spec.ts` 的条件原生用例覆盖实际 RLS、完整责任、委托、版本并发与补证来源失效，须在隔离数据库实际执行后才可宣称数据库验收通过。
 
 候选跟进命令仅统一 UUID 身份大小写，保留哈希、原文定位、坐标系和几何字面；同键重放按同一规范身份比较。0049在0047既有来源、责任、版本和追加事件守卫之后，另拒绝单事件及累计证据中的身份拼写重复。只给既有 API 精确私有函数执行权限，不改旧迁移或既有行；本机原生SQL、HTTP和浏览器仍需分别核验。
+
+### 跟进几何兼容迁移0050
+
+在0049之后按既有校验和迁移器应用0050；它仅用 `CREATE OR REPLACE` 替换原 invoker 来源核验函数内的几何序列化表达式，不创建函数入口、授予权限或改写0047及既有行。保留 `search_path=pg_catalog`，PostGIS名称显式限定为public。`candidate_record.geom`为4326；嵌套集合使用15,0叶序列化，直接路径仍用原默认options。禁止用拓扑等值、扁平化或降精度替代整记录JSONB等值。
+
+新增原生回归在既有串行跟进测试文件中核简单／平面／嵌套、真实NULL记录与省略几何断言证据，并核错序、丢重复、扁平化、坐标精度、来源失效及固定引用恢复。数据库私有曲线夹具只验证原序列化异常的拒绝与上下文恢复，不宣称公共候选接受曲线。条件跳过不是原生通过。执行前核库归属、旧迁移校验和、函数权限及强制RLS；恢复采用停用入口或前向兼容修复，保留历史，不倒改已应用迁移。
+
+语义参考：[ST_AsGeoJSON](https://postgis.net/docs/ST_AsGeoJSON.html)说明默认geometry参数为9位／options8，8仅在非4326时附CRS；[ST_GeometryN](https://postgis.net/docs/ST_GeometryN.html)及[ST_NumGeometries](https://postgis.net/docs/ST_NumGeometries.html)说明直属成员序号与空集合计数。此修复保留既有15位覆盖值；文档不替代当前PostGIS版本的嵌套原生验收。

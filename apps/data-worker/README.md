@@ -29,6 +29,8 @@ lastReviewedCommit: bc7730a30d7724ea80dc450fd2bde1f8fc2a35c1
 
 它负责租约、heartbeat、重试、dead letter、取消和优雅排空，但不提供公共业务 API、不建立第二套 Auth，也不把外部投影当作 authority。`catalog.spatial_extent` 等 data-postgres 权威记录不能按缓存处理。 / It owns leases, heartbeats, retries, dead letters, cancellation, and graceful draining, but exposes no public business API, creates no second Auth system, and never treats external projections as authority. Authoritative data-postgres rows such as `catalog.spatial_extent` are not caches.
 
+Worker 的提交后空间读回保留 source CRS、canonical→WGS84 变换、bbox 和固定 extent 顺序；嵌套 GeometryCollection 只按直接成员补齐 JSON 容器，叶几何继续使用 PostGIS 的 9 位小数、options 0 序列化，保留成员顺序、重复项与 Multi*。简单、扁平及数据库全空根仍走原直接序列化路径，非空树内的空子集合不因当前写入校验而被删除。此私有读取适配不增加几何准入阈值、超时、迁移或权限；同一四 GUC 只读事务及失败回滚保持不变。原生几何读回、受治理提交与全部投影发布分别验收。 / Post-commit Worker spatial readback retains the source CRS, canonical-to-WGS84 transformation, bounding box and fixed extent order. Nested GeometryCollections rebuild only JSON containers from direct members; leaves retain PostGIS nine-decimal, options-0 serialization, member order, duplicates and Multi* containers. Simple, flat and database-empty roots retain the direct serializer; empty children in a nonempty tree are not removed by applying current write validation to historical reads. This private adapter adds no geometry admission limit, timeout, migration or permission. The same four-GUC read-only transaction and safe rollback remain unchanged. Native geometry readback, governed commitment and publication across all targets are separate acceptance checks.
+
 ## Entrypoints / 入口
 
 - Process composition / 进程组合：`src/main.ts`
@@ -71,6 +73,12 @@ pnpm --filter @wiser/data-worker dev
 Worker 的 authority 写入必须沿合法状态边且每次精确推进一个 `row_version`；review checkpoint 只有在 ID、plan、hash、状态、批准者、安全等级和 policy 全部相同时才允许幂等重放，批准转换使用独立的受控 SQL。数据库 trigger 会对 runtime role 再次执行这些约束。 / Worker authority writes must follow legal state edges and advance exactly one `row_version`. Review checkpoints permit idempotent replay only when identity, plan, hash, status, approver, security level, and policy all match; approval uses its dedicated guarded SQL. Database triggers enforce the same boundary for the runtime role.
 
 服务器独立审核策略启用后，即使公开且高置信度，Worker 仍冻结策略修订并返回待审；客户端参数不能覆盖。load/freeze/commit 均核对当前策略，旧检查点或撤销策略不能继续提交；正式版本保留同一绑定。提交／委托责任不可改，最终批准须由独立真人经 API 执行。/ With server independent review enabled, Worker freezes the policy revision and waits even for public, high-confidence input. Client flags cannot override it. Load/freeze/commit recheck current policy; stale checkpoints or withdrawn policies cannot proceed. Version manifests retain the binding, submission/delegation responsibility is immutable, and final approval goes through the API as an independent human.
+
+## Mixed spatial geometry / 混合空间几何
+
+默认对齐器将同质集合保持为既有 MultiPoint／MultiLineString／MultiPolygon；混合集合保留原几何成员顺序和坐标，形成同一资产的 GeometryCollection 范围。该范围不替代逐 Feature 的候选记录、属性、源 ID 或原件哈希。内部 PostGIS 投影校验接受非空嵌套集合，整棵几何共用 100,000 个位置上限和统一二维／三维维度；以根几何深度为0，最大深度8，非法成员及未知键拒绝。/ The default aligner keeps existing MultiPoint/MultiLineString/MultiPolygon results for homogeneous collections. Mixed collections retain member order and coordinates as one asset-level GeometryCollection extent, without replacing per-Feature candidate records, properties, source IDs or original hashes. Internal PostGIS projection validation accepts nonempty nested collections with one shared 100,000-position budget and consistent two- or three-dimensional positions. Root geometry has depth zero; maximum depth is eight. Invalid members and unknown keys are rejected.
+
+上述为内部适配兼容，不新增公共 HTTP 契约、权限或迁移。单元测试不代替实际 PostGIS 构造／变换、候选原记录或审核发布验收。/ This is internal adapter compatibility, with no new public HTTP contract, authority or migration. Unit tests do not replace native PostGIS construction/transformation, candidate-record readback or governed publication acceptance.
 
 ## Health and metrics / 健康与指标
 

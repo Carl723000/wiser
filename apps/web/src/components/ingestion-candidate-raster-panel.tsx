@@ -1,4 +1,5 @@
 'use client';
+import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
 import {
   useCallback,
   useEffect,
@@ -32,6 +33,8 @@ function integer(value: string): number {
 export function IngestionCandidateRasterPanel({
   reference,
   locale,
+  publicReferences,
+  publicReferenceState,
   savedViewId,
   parentBusy,
   cancelSlot,
@@ -43,7 +46,7 @@ export function IngestionCandidateRasterPanel({
   readonly parentBusy: boolean;
   readonly cancelSlot: RefObject<(() => void) | null>;
   readonly onAuthorityFailure: (kind: 'denied' | 'stale') => void;
-}) {
+} & PublicReferenceInput) {
   const copy = getDictionary(locale).dataFoundation.candidateReader.raster;
   const [open, setOpen] = useState(false);
   const [row, setRow] = useState('0');
@@ -254,6 +257,8 @@ export function IngestionCandidateRasterPanel({
           </button>
           {mapReady ? (
             <CandidateRasterMap
+              publicReferences={publicReferences}
+              publicReferenceState={publicReferenceState}
               locale={locale}
               window={mapWindow}
               result={result}

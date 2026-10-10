@@ -5,8 +5,12 @@ const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   local: vi.fn(),
   reader: vi.fn(),
+  background: vi.fn(),
 }));
 vi.mock('server-only', () => ({}));
+vi.mock('@/lib/spatial-public-reference.server', () => ({
+  loadPublicReferences: mocks.background,
+}));
 vi.mock('next/headers', () => ({
   headers: () => Promise.resolve(new Map([['host', 'localhost:3422']])),
 }));
@@ -59,6 +63,8 @@ const query = {
 const params = Promise.resolve({ locale: 'en' });
 afterEach(() => vi.resetAllMocks());
 function page(search: Record<string, string | string[] | undefined> = query) {
+  if (!mocks.background.getMockImplementation())
+    mocks.background.mockResolvedValue({});
   mocks.local.mockResolvedValue({ state: 'disabled', pack: null });
   return Page({ params, searchParams: Promise.resolve(search) });
 }
@@ -146,4 +152,25 @@ it('preserves the existing explicit local path when no candidate navigation is p
   renderToStaticMarkup(await page({}));
   expect(mocks.local).toHaveBeenCalledOnce();
   expect(mocks.detail).not.toHaveBeenCalled();
+});
+
+it('passes separately verified public references after current candidate authority succeeds', async () => {
+  const background = {
+    publicReferenceState: 'ready',
+    publicReferences: { type: 'FeatureCollection', features: [] },
+  };
+  mocks.background.mockResolvedValue(background);
+  mocks.detail.mockResolvedValue({
+    ingestion: { ingestionId: reference.ingestionId },
+    candidateReference: reference,
+  });
+  renderToStaticMarkup(await page());
+  expect(mocks.background).toHaveBeenCalledWith(process.env);
+  expect(mocks.reader).toHaveBeenCalledWith({
+    reference,
+    locale: 'en',
+    readOnly: true,
+    ...background,
+  });
+  expect(mocks.local).not.toHaveBeenCalled();
 });

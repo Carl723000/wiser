@@ -9,13 +9,19 @@ import {
   type StyleSpecification,
   type FilterSpecification,
 } from 'maplibre-gl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type {
   MapFeatureCollectionDto,
   StacExtentDto,
 } from '@/lib/data-foundation';
 
+import type { Geometry } from 'geojson';
+import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
+import {
+  publicReferenceKinds,
+  type PublicReferenceVisibility,
+} from '@/lib/spatial-public-reference';
 import styles from './data-foundation-map.module.css';
 import { requireIntegerMapZoom } from '@/lib/map-integer-zoom';
 import { DataRasterDisplay } from './data-raster-display';
@@ -187,6 +193,8 @@ export function DataFoundationMap({
   selectedRecordId,
   initialReadingCamera,
   onReadingCamera,
+  publicReferences,
+  publicReferenceState,
 }: {
   readonly locale: Locale;
   readonly ariaLabel: string;
@@ -206,12 +214,29 @@ export function DataFoundationMap({
   /** Authority-coordinate reading state, independent of source geometries. */
   readonly initialReadingCamera?: MapCamera;
   readonly onReadingCamera?: (camera: MapCamera) => void;
-}) {
+} & PublicReferenceInput) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const basemap = useRef<AmapBasemapHandle>(null);
+  const onlineEnhancement = useRef<HTMLDivElement>(null);
   const amapCopy = getDictionary(locale).dataFoundation.amap;
   const mapCopy = getDictionary(locale).dataFoundation.mapPage;
+  const referenceCopy = getDictionary(locale).dataFoundation.spatialWorkspace;
+  const [tilted, setTilted] = useState(
+    () => (supportedReadingCamera(initialReadingCamera)?.pitch ?? 0) !== 0,
+  );
+  const [onlineAligned, setOnlineAligned] = useState(
+    () =>
+      (supportedReadingCamera(initialReadingCamera)?.pitch ?? 0) === 0 &&
+      (supportedReadingCamera(initialReadingCamera)?.bearing ?? 0) === 0,
+  );
+  const [referenceVisibility, setReferenceVisibility] =
+    useState<PublicReferenceVisibility>({
+      administrative: true,
+      watercourse: true,
+      'reference-reach': true,
+      'reference-anchor': true,
+    });
   const rasterCopy = getDictionary(locale).rasterDisplay;
   const rasterRef = useRef<ReturnType<typeof registerAmapRaster> | null>(null);
   const displayRef = useRef<RasterDisplay | null>(null);
@@ -289,6 +314,25 @@ export function DataFoundationMap({
     const sources: StyleSpecification['sources'] = {
       authority: { type: 'geojson', data: geoJsonData(features, displayCrs) },
     };
+    if (publicReferences?.features.length) {
+      const transform = (geometry: Geometry): Geometry =>
+        geometry.type === 'GeometryCollection'
+          ? { ...geometry, geometries: geometry.geometries.map(transform) }
+          : ({
+              ...geometry,
+              coordinates: amapCoordinates(geometry.coordinates, 'EPSG:4326'),
+            } as Geometry);
+      sources['public-reference'] = {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: publicReferences.features.map((feature) => ({
+            ...feature,
+            geometry: transform(feature.geometry),
+          })),
+        },
+      };
+    }
     if (stacExtents.length > 0) {
       sources['stac-extents'] = {
         type: 'geojson',
@@ -320,6 +364,72 @@ export function DataFoundationMap({
     const visibility = (layer: MapLayer) =>
       visible[layer] ? ('visible' as const) : ('none' as const);
     const layers: StyleSpecification['layers'] = [];
+    if (publicReferences?.features.length) {
+      const referenceLayout = (kind: keyof PublicReferenceVisibility) => ({
+        visibility: referenceVisibility[kind]
+          ? ('visible' as const)
+          : ('none' as const),
+      });
+      const border = color('--border-strong', '#516d74'),
+        accent = color('--accent-bright', '#5cc7d2'),
+        warning = color('--warning-bright', '#dfa33e');
+      layers.push(
+        {
+          id: 'public-reference-administrative-fill',
+          type: 'fill',
+          source: 'public-reference',
+          filter: ['==', ['get', 'kind'], 'administrative'],
+          layout: referenceLayout('administrative'),
+          paint: { 'fill-color': border, 'fill-opacity': 0.08 },
+        },
+        {
+          id: 'public-reference-administrative-line',
+          type: 'line',
+          source: 'public-reference',
+          filter: ['==', ['get', 'kind'], 'administrative'],
+          layout: referenceLayout('administrative'),
+          paint: {
+            'line-color': border,
+            'line-width': 1,
+            'line-dasharray': [2, 2],
+          },
+        },
+        {
+          id: 'public-reference-watercourse',
+          type: 'line',
+          source: 'public-reference',
+          filter: ['==', ['get', 'kind'], 'watercourse'],
+          layout: referenceLayout('watercourse'),
+          paint: { 'line-color': accent, 'line-width': 1.5 },
+        },
+        {
+          id: 'public-reference-reach',
+          type: 'line',
+          source: 'public-reference',
+          filter: ['==', ['get', 'kind'], 'reference-reach'],
+          layout: referenceLayout('reference-reach'),
+          paint: {
+            'line-color': warning,
+            'line-width': 1.5,
+            'line-dasharray': [3, 2],
+          },
+        },
+        {
+          id: 'public-reference-anchor',
+          type: 'circle',
+          source: 'public-reference',
+          filter: ['==', ['get', 'kind'], 'reference-anchor'],
+          layout: referenceLayout('reference-anchor'),
+          paint: {
+            'circle-radius': 4,
+            'circle-color': warning,
+            'circle-opacity': 0,
+            'circle-stroke-color': warning,
+            'circle-stroke-width': 1.5,
+          },
+        },
+      );
+    }
     if (rasterTileUrl !== undefined) {
       layers.push({
         id: 'governed-raster-layer',
@@ -473,6 +583,11 @@ export function DataFoundationMap({
     const style: StyleSpecification = { version: 8, sources, layers };
     const restoredCamera = supportedReadingCamera(readingCameraRef.current);
     const restoredDisplay = restoredCamera && displayCamera(restoredCamera);
+    setTilted((restoredDisplay?.pitch ?? 0) !== 0);
+    setOnlineAligned(
+      (restoredDisplay?.pitch ?? 0) === 0 &&
+        (restoredDisplay?.bearing ?? 0) === 0,
+    );
     const map = new MapLibreMap({
       container: container.current,
       style,
@@ -482,9 +597,11 @@ export function DataFoundationMap({
       zoom: restoredDisplay?.zoom ?? 2.3,
       minZoom: 1,
       maxZoom: 21,
+      bearing: restoredDisplay?.bearing ?? 0,
+      pitch: restoredDisplay?.pitch ?? 0,
       dragRotate: false,
       pitchWithRotate: false,
-      maxPitch: 0,
+      maxPitch: 85,
       attributionControl: false,
       cooperativeGestures: true,
       locale: {
@@ -536,7 +653,22 @@ export function DataFoundationMap({
     });
     map.touchZoomRotate.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+    const suspendOnline = () => {
+      if (mapRef.current !== map) return;
+      // Native animated camera input may precede React's next commit. Hide its
+      // planar enhancement immediately, before the next rendered camera frame.
+      if (onlineEnhancement.current) onlineEnhancement.current.hidden = true;
+      setOnlineAligned(false);
+    };
     const sync = () => {
+      if (mapRef.current !== map) return;
+      const pitch = map.getPitch();
+      const bearing = map.getBearing();
+      const aligned = pitch === 0 && bearing === 0;
+      if (!aligned) suspendOnline();
+      setTilted(pitch !== 0);
+      setOnlineAligned(aligned);
+      if (!aligned) return;
       const center = map.getCenter();
       basemap.current?.syncCamera({
         longitude: center.lng,
@@ -545,20 +677,27 @@ export function DataFoundationMap({
         bearing: 0,
         pitch: 0,
       });
+      if (basemap.current && onlineEnhancement.current)
+        onlineEnhancement.current.hidden = false;
     };
+    map.on('rotatestart', suspendOnline);
+    map.on('pitchstart', suspendOnline);
     map.on('move', sync);
     map.on('resize', sync);
     map.on('load', sync);
     map.on('moveend', () => {
       if (mapRef.current !== map) return;
       const center = map.getCenter();
+      const bearing = map.getBearing();
+      const pitch = map.getPitch();
+      sync();
       reportReadingCameraRef.current?.(
         authorityCamera({
           longitude: center.lng,
           latitude: center.lat,
           zoom: map.getZoom(),
-          bearing: 0,
-          pitch: 0,
+          bearing,
+          pitch,
         }),
       );
     });
@@ -600,6 +739,31 @@ export function DataFoundationMap({
         'authority-background',
         'background-color',
         color('--surface-strong', '#071a21'),
+      );
+      update(
+        'public-reference-administrative-fill',
+        'fill-color',
+        color('--border-strong', '#516d74'),
+      );
+      update(
+        'public-reference-administrative-line',
+        'line-color',
+        color('--border-strong', '#516d74'),
+      );
+      update(
+        'public-reference-watercourse',
+        'line-color',
+        color('--accent-bright', '#5cc7d2'),
+      );
+      update(
+        'public-reference-reach',
+        'line-color',
+        color('--warning-bright', '#dfa33e'),
+      );
+      update(
+        'public-reference-anchor',
+        'circle-stroke-color',
+        color('--warning-bright', '#dfa33e'),
       );
       update(
         'authority-polygons',
@@ -668,6 +832,7 @@ export function DataFoundationMap({
     stacExtents,
     vectorTileUrl,
     displayCrs,
+    publicReferences,
   ]);
   useEffect(() => {
     const instance = mapRef.current;
@@ -767,6 +932,61 @@ export function DataFoundationMap({
     };
   }, [rasterOpacity, rasterTileUrl]);
 
+  useEffect(() => {
+    const instance = mapRef.current;
+    if (!instance) return;
+    const update = () => {
+      for (const [kind, ids] of Object.entries({
+        administrative: [
+          'public-reference-administrative-fill',
+          'public-reference-administrative-line',
+        ],
+        watercourse: ['public-reference-watercourse'],
+        'reference-reach': ['public-reference-reach'],
+        'reference-anchor': ['public-reference-anchor'],
+      })) {
+        for (const id of ids)
+          if (instance.getLayer(id))
+            instance.setLayoutProperty(
+              id,
+              'visibility',
+              referenceVisibility[kind as keyof PublicReferenceVisibility]
+                ? 'visible'
+                : 'none',
+            );
+      }
+    };
+    update();
+    instance.on('load', update);
+    return () => {
+      instance.off('load', update);
+    };
+  }, [publicReferences, referenceVisibility]);
+  const changePerspective = (pitch: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Hide the planar SDK before changing pitch; jumpTo has no animation even under reduced motion.
+    setTilted(pitch !== 0);
+    if ((pitch !== 0 || map.getBearing() !== 0) && onlineEnhancement.current)
+      onlineEnhancement.current.hidden = true;
+    setOnlineAligned(pitch === 0 && map.getBearing() === 0);
+    map.jumpTo({ pitch });
+  };
+
+  useLayoutEffect(() => {
+    const instance = mapRef.current;
+    if (!onlineAligned || !instance || !basemap.current) return;
+    const center = instance.getCenter();
+    basemap.current.syncCamera({
+      longitude: center.lng,
+      latitude: center.lat,
+      zoom: instance.getZoom(),
+      bearing: 0,
+      pitch: 0,
+    });
+    if (onlineEnhancement.current) onlineEnhancement.current.hidden = false;
+  }, [onlineAligned]);
+
   const controls: readonly {
     readonly id: MapLayer;
     readonly label: string;
@@ -812,6 +1032,105 @@ export function DataFoundationMap({
             </label>
           ))}
         </fieldset>
+        <div className={styles.perspectiveControls}>
+          <button
+            type="button"
+            aria-pressed={!tilted}
+            onClick={() => changePerspective(0)}
+          >
+            {referenceCopy.flatView}
+          </button>
+          <button
+            type="button"
+            aria-pressed={tilted}
+            onClick={() => changePerspective(50)}
+          >
+            {referenceCopy.spaceView}
+          </button>
+          {tilted ? <p role="status">{referenceCopy.birdEyePlanar}</p> : null}
+          {!onlineAligned ? (
+            <p role="status">{referenceCopy.onlineReferencePaused}</p>
+          ) : null}
+        </div>
+        {publicReferences?.features.length ? (
+          <fieldset>
+            <legend>{referenceCopy.publicReferenceLayers}</legend>
+            {publicReferenceKinds.map((kind) => (
+              <label key={kind}>
+                <input
+                  type="checkbox"
+                  checked={referenceVisibility[kind] ?? false}
+                  disabled={
+                    !publicReferences.features.some(
+                      (feature) => feature.properties.kind === kind,
+                    )
+                  }
+                  onChange={(event) =>
+                    setReferenceVisibility((previous) => ({
+                      ...previous,
+                      [kind]: event.target.checked,
+                    }))
+                  }
+                />
+                <span>{referenceCopy.publicReferenceKinds[kind]}</span>
+              </label>
+            ))}
+            <p>{referenceCopy.publicReferenceLimit}</p>
+            <details>
+              <summary>{referenceCopy.publicReferenceEvidence}</summary>
+              {publicReferences.manifest ? (
+                <p>
+                  {referenceCopy.publicReferenceManifestSummary
+                    .replace('{version}', publicReferences.manifest.version)
+                    .replace(
+                      '{files}',
+                      String(publicReferences.manifest.files.length),
+                    )
+                    .replace(
+                      '{total}',
+                      String(publicReferences.features.length),
+                    )
+                    .replace(
+                      '{shown}',
+                      String(
+                        publicReferences.features.filter(
+                          (feature) =>
+                            referenceVisibility[feature.properties.kind],
+                        ).length,
+                      ),
+                    )}
+                </p>
+              ) : null}
+              {publicReferences.manifest?.files.map((file) => (
+                <p key={file.id}>
+                  {file.id} · {referenceCopy.publicReferenceManifestFeatures}:{' '}
+                  {file.featureCount} · {file.license.attribution}
+                  <br />
+                  {referenceCopy.publicReferenceFileHash}:{' '}
+                  <code>{file.sha256}</code>
+                  <br />
+                  {referenceCopy.publicReferenceOriginalHash}:{' '}
+                  <code>{file.originalSha256.join(', ')}</code>
+                </p>
+              ))}
+              {publicReferences.features.map((feature) => (
+                <p key={feature.id}>
+                  {feature.properties.label} ·{' '}
+                  <a
+                    href={feature.properties.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {referenceCopy.publicReferenceSource}
+                  </a>
+                </p>
+              ))}
+            </details>
+          </fieldset>
+        ) : publicReferenceState === 'invalid' ||
+          publicReferenceState === 'unavailable' ? (
+          <p role="status">{referenceCopy.publicReferenceUnavailable}</p>
+        ) : null}
         {rasterTileUrl ? (
           <div className={styles.rasterControls}>
             <label>
@@ -867,17 +1186,43 @@ export function DataFoundationMap({
         aria-label={ariaLabel}
         data-testid="data-foundation-map"
       >
-        <AmapBasemap
-          ref={basemap}
-          locale={locale}
-          onIntegerZoom={() => {
-            if (integerZoomRef.current) return;
-            integerZoomRef.current = true;
-            setIntegerZoom(true);
-            if (mapRef.current) requireIntegerMapZoom(mapRef.current);
-          }}
-        />
+        <div
+          ref={onlineEnhancement}
+          hidden={!onlineAligned}
+          className={styles.onlineEnhancement}
+          data-testid="online-map-enhancement"
+        >
+          {onlineAligned ? (
+            <AmapBasemap
+              ref={basemap}
+              locale={locale}
+              onIntegerZoom={() => {
+                if (integerZoomRef.current) return;
+                integerZoomRef.current = true;
+                setIntegerZoom(true);
+                if (mapRef.current) requireIntegerMapZoom(mapRef.current);
+              }}
+            />
+          ) : null}
+        </div>
         <div ref={container} className={styles.overlay} />
+        {publicReferences?.features.some(
+          (feature) => referenceVisibility[feature.properties.kind],
+        ) ? (
+          <div className={styles.referenceAttribution}>
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {
+                publicReferences.features.find(
+                  (feature) => referenceVisibility[feature.properties.kind],
+                )?.properties.attribution
+              }
+            </a>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -22,6 +22,7 @@ import {
   candidateMapFeatures,
   candidateOriginalUrl,
   readCandidatePage,
+  readCandidateConversionProvenance,
   readCandidateSavedView,
   readCandidateTopic,
   type CandidateTopicPages,
@@ -29,9 +30,24 @@ import {
   type CandidateReadAction,
   type CandidateSavedPages,
 } from '@/lib/ingestion-candidate-reader';
-import { CandidateFollowupPanel } from './candidate-followup-panel';
+import { CANDIDATE_MONTHLY_RULE_VERSION_V3 } from '@wiser/data-core/candidate-monthly-projection';
+import {
+  readCandidateMonthlySemantics,
+  type CandidateMonthlySemanticRead,
+} from '@/lib/candidate-monthly-semantic-reader';
+import { CandidateMonthlyPanel } from './candidate-monthly-panel';
+import { CandidateRelationPanel } from './candidate-relation-panel';
+import {
+  readCandidateRelation,
+  type CandidateRelationPages,
+} from '@/lib/candidate-relation-reader';
+import {
+  CandidateFollowupPanel,
+  type CandidateSupplementLookup,
+} from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
+import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
 import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
 import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-panel';
 import styles from './ingestion-candidate-reader.module.css';
@@ -39,6 +55,9 @@ import styles from './ingestion-candidate-reader.module.css';
 type OpenedReading =
   | CandidateSavedPages['open']
   | Exclude<CandidateTopicPages['open'], { status: 'UNAVAILABLE' }>;
+type CandidateRelationSnapshot = CandidateRelationPages['get']['relation'];
+type CandidateRelationEvidence =
+  CandidateRelationSnapshot['revision']['content']['evidence'][number];
 async function openReading(
   viewId: string,
   signal: AbortSignal,
@@ -52,7 +71,12 @@ async function openReading(
 }
 
 type Tab = 'originals' | 'records' | 'map';
-type Position = { after?: string; anchor?: string; savedStart?: boolean };
+type Position = {
+  after?: string;
+  anchor?: string;
+  savedStart?: boolean;
+  first?: number;
+};
 interface Navigation extends Position {
   readonly previous: readonly Position[];
 }
@@ -78,6 +102,9 @@ export function IngestionCandidateReader({
   savedTopicId,
   ingestionId,
   readOnly = false,
+  supplementLookup,
+  publicReferences,
+  publicReferenceState,
 }: {
   readonly reference: IngestionCandidateReference | null;
   readonly locale: Locale;
@@ -85,12 +112,15 @@ export function IngestionCandidateReader({
   readonly savedTopicId?: string;
   readonly ingestionId?: string;
   readonly readOnly?: boolean;
-}) {
+  readonly supplementLookup?: CandidateSupplementLookup;
+} & PublicReferenceInput) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const routeIntake = ingestionId ?? reference?.ingestionId;
   if ((savedViewId || savedTopicId) && routeIntake && !readOnly)
     return (
       <SavedCandidateBootstrap
+        publicReferences={publicReferences}
+        publicReferenceState={publicReferenceState}
         key={`${routeIntake}:${savedTopicId ? 'topic' : 'view'}:${savedTopicId ?? savedViewId}`}
         ingestionId={routeIntake}
         savedViewId={savedViewId}
@@ -107,11 +137,14 @@ export function IngestionCandidateReader({
     );
   return (
     <CandidateSession
+      publicReferences={publicReferences}
+      publicReferenceState={publicReferenceState}
       key={`${candidateSavedReferenceKey(reference)}:${readOnly ? 'read' : (savedViewId ?? 'managed')}`}
       reference={reference}
       locale={locale}
       savedViewId={readOnly ? undefined : savedViewId}
       readOnly={readOnly}
+      supplementLookup={supplementLookup}
     />
   );
 }
@@ -121,12 +154,14 @@ function SavedCandidateBootstrap({
   savedViewId,
   savedTopicId,
   locale,
+  publicReferences,
+  publicReferenceState,
 }: {
   ingestionId: string;
   savedViewId?: string;
   savedTopicId?: string;
   locale: Locale;
-}) {
+} & PublicReferenceInput) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const [reference, setReference] =
     useState<IngestionCandidateReference | null>(null);
@@ -169,6 +204,8 @@ function SavedCandidateBootstrap({
   if (reference)
     return (
       <CandidateSession
+        publicReferences={publicReferences}
+        publicReferenceState={publicReferenceState}
         reference={reference}
         locale={locale}
         savedViewId={savedViewId}
@@ -198,13 +235,17 @@ function CandidateSession({
   savedViewId,
   savedTopicId,
   readOnly = false,
+  supplementLookup,
+  publicReferences,
+  publicReferenceState,
 }: {
   reference: IngestionCandidateReference;
   locale: Locale;
   savedViewId?: string;
   savedTopicId?: string;
   readOnly?: boolean;
-}) {
+  supplementLookup?: CandidateSupplementLookup;
+} & PublicReferenceInput) {
   // The keyed owner fixes a complete candidate identity; replacements unmount and cancel it.
   const [fixed, setFixed] = useState(reference);
   const [manifest, setManifest] = useState<IngestionCandidateSavedReferences>([
@@ -254,6 +295,15 @@ function CandidateSession({
     epoch: number;
   } | null>(null);
   const cameraEpoch = useRef(0);
+  const [monthly, setMonthly] = useState<CandidateMonthlySemanticRead | null>(
+    null,
+  );
+  const [relationPage, setRelationPage] = useState<
+    CandidateRelationPages['list'] | null
+  >(null);
+  const [relationDetail, setRelationDetail] =
+    useState<CandidateRelationSnapshot | null>(null);
+  const [relationNav, setRelationNav] = useState(firstPosition);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('originals');
@@ -289,6 +339,9 @@ function CandidateSession({
       return;
     // Browser events must block new navigation before React commits a render.
     recoveryGate.current = true;
+    setMonthly(null);
+    setRelationPage(null);
+    setRelationDetail(null);
     restricted.current?.setAttribute('inert', '');
     setRecovering(true);
     rasterCancel.current?.();
@@ -340,6 +393,10 @@ function CandidateSession({
   }
 
   function clearContent() {
+    setMonthly(null);
+    setRelationPage(null);
+    setRelationDetail(null);
+    setRelationNav(firstPosition());
     contentAvailable.current = false;
     rasterCancel.current?.();
     setAssets(null);
@@ -369,6 +426,9 @@ function CandidateSession({
     kind: 'read' | 'mutation' | 'recovery' = 'read',
   ) {
     if (recoveryGate.current && kind !== 'recovery') return;
+    setMonthly(null);
+    setRelationPage(null);
+    setRelationDetail(null);
     mutationPending.current = kind === 'mutation';
     setMutating(mutationPending.current);
     rasterCancel.current?.();
@@ -417,7 +477,7 @@ function CandidateSession({
   }
   const input = (position: Position, chosenAsset?: string) => ({
     ...fixed,
-    first: pageSize,
+    first: position.first ?? pageSize,
     ...(chosenAsset ? { assetId: chosenAsset } : {}),
     ...(position.after ? { after: position.after } : {}),
   });
@@ -443,6 +503,35 @@ function CandidateSession({
     )
       throw new CandidateReaderError('invalid');
   }
+  function originalUrl(chosenAsset: string) {
+    if (!topicMode)
+      return candidateOriginalUrl(
+        fixed,
+        chosenAsset,
+        locale,
+        openedView?.savedView.viewId,
+      );
+    if (
+      !openedView ||
+      !('specVersion' in openedView) ||
+      openedView.specVersion !== 2 ||
+      !openedView.viewSpec.dependencyPins.some(
+        (pin) =>
+          pin.kind === 'asset' &&
+          pin.assetId.toLowerCase() === chosenAsset.toLowerCase() &&
+          candidateSavedReferenceKey(pin.reference) ===
+            candidateSavedReferenceKey(fixed),
+      )
+    )
+      return undefined;
+    return candidateOriginalUrl(
+      fixed,
+      chosenAsset,
+      locale,
+      undefined,
+      openedView.savedView.viewId,
+    );
+  }
   async function readPage<A extends CandidateReadAction>(
     action: A,
     value: unknown,
@@ -452,6 +541,58 @@ function CandidateSession({
     const result = await readCandidatePage(action, value, signal);
     await savedAuthority(signal);
     return result;
+  }
+  async function relationAuthority(
+    references: IngestionCandidateSavedReferences,
+    signal: AbortSignal,
+  ) {
+    await savedAuthority(signal);
+    // The complete source selection is checked, including a source with no
+    // returned relations. Neither an empty page nor a topic grants source access.
+    for (const reference of references)
+      await readCandidatePage('get', { ...reference, first: 1 }, signal);
+  }
+  function loadRelations(position = firstPosition()) {
+    if (recoveryGate.current || mutationPending.current) return;
+    const references = openedView?.references ?? manifest;
+    return execute(async (signal) => {
+      await relationAuthority(references, signal);
+      const page = await readCandidateRelation(
+        'list',
+        {
+          references,
+          first: 25,
+          ...(position.after ? { after: position.after } : {}),
+        },
+        signal,
+      );
+      await relationAuthority(references, signal);
+      if (signal.aborted || !owner.current) return;
+      setRelationPage(page);
+      setRelationNav(position);
+    });
+  }
+  function inspectRelation(snapshot: CandidateRelationSnapshot) {
+    if (recoveryGate.current || mutationPending.current) return;
+    const references = openedView?.references ?? manifest;
+    const page = relationPage;
+    return execute(async (signal) => {
+      await relationAuthority(references, signal);
+      const value = await readCandidateRelation(
+        'get',
+        {
+          references,
+          relationId: snapshot.revision.relationId,
+          revision: snapshot.revision.revision,
+          decisionVersion: snapshot.decisionVersion,
+        },
+        signal,
+      );
+      await relationAuthority(references, signal);
+      if (signal.aborted || !owner.current) return;
+      setRelationPage(page);
+      setRelationDetail(value.relation);
+    });
   }
   function loadAssets(position = firstPosition()) {
     if (recoveryGate.current) return Promise.resolve();
@@ -482,6 +623,54 @@ function CandidateSession({
       if (signal.aborted) return;
       setRecords(value);
       setRecordNav(position);
+    });
+  }
+  function loadMonthly(chosenAsset: string, preparedSha256: string) {
+    if (recoveryGate.current || mutationPending.current) return;
+    setTab('originals');
+    setAssetId(chosenAsset);
+    setRecords(null);
+    setGeometry(null);
+    setSelected(null);
+    setRecordNav(firstPosition());
+    setGeometryNav(firstPosition());
+    return execute(async (signal) => {
+      // The owner chooses view vs complete topic and checks every saved member.
+      // Do not pass a topic identifier through the semantic reader's v1 view path.
+      await savedAuthority(signal);
+      const pins =
+        openedView && 'rulePins' in openedView.viewSpec
+          ? openedView.viewSpec.rulePins
+          : null;
+      const pin = pins?.find(
+        (item) =>
+          item.kind === 'projection' &&
+          item.ruleId === 'beijing-monthly-docx-c3',
+      );
+      if (topicMode && !pin) {
+        await savedAuthority(signal);
+        if (!signal.aborted) setNotice(copy.monthly.ruleUnavailable);
+        return;
+      }
+      const processingRuleVersion = pin
+        ? pin.version
+        : CANDIDATE_MONTHLY_RULE_VERSION_V3;
+      const value = await readCandidateMonthlySemantics(
+        {
+          reference: fixed,
+          assetId: chosenAsset,
+          fixed: {
+            sourceLocalWorkId: null,
+            originalSha256: null,
+            preparedSha256,
+            processingRuleVersion,
+          },
+        },
+        signal,
+      );
+      await savedAuthority(signal);
+      if (signal.aborted || !owner.current) return;
+      setMonthly(value);
     });
   }
   function loadGeometry(chosenAsset: string, position = firstPosition()) {
@@ -520,10 +709,16 @@ function CandidateSession({
   ): Navigation {
     return {
       after: cursor,
+      ...(nav.first ? { first: nav.first } : {}),
       ...(anchor ? { anchor } : {}),
       previous: [
         ...nav.previous,
-        { after: nav.after, anchor: nav.anchor, savedStart: nav.savedStart },
+        {
+          after: nav.after,
+          anchor: nav.anchor,
+          savedStart: nav.savedStart,
+          ...(nav.first ? { first: nav.first } : {}),
+        },
       ].slice(-32),
     };
   }
@@ -542,13 +737,158 @@ function CandidateSession({
     )
       setSelected(recordId);
   }
-  function seek(kind: 'records' | 'geometry') {
-    if (recoveryGate.current) return;
-    if (!assetId || !selected) return;
-    const chosenAsset = assetId,
-      chosenRecord = selected;
+  function seek(
+    kind: 'records' | 'geometry',
+    target?: {
+      assetId: string;
+      recordId: string;
+      evidence?: CandidateRelationEvidence;
+      monthly?: Extract<CandidateMonthlySemanticRead, { kind: 'READY' }>;
+    },
+  ) {
+    if (recoveryGate.current || mutationPending.current) return;
+    const monthlyRead = target?.monthly;
+    const monthlyRecord = monthlyRead?.records.find(
+      (record) =>
+        record.sourceLocalIdentity.recordId.toLowerCase() ===
+        target?.recordId.toLowerCase(),
+    );
+    if (
+      monthlyRead &&
+      (!monthlyRecord ||
+        candidateSavedReferenceKey(monthlyRead.candidateReference) !==
+          candidateSavedReferenceKey(fixed) ||
+        monthlyRead.assetId.toLowerCase() !== target.assetId.toLowerCase() ||
+        monthlyRecord.processingRuleVersion !==
+          monthlyRead.processingRuleVersion)
+    )
+      return;
+    // Page delivery can be shortened by byte budgets, so row ordinals cannot
+    // determine page distance. Every indexed monthly selection reuses its exact
+    // acquired page; ordinary non-monthly seeking remains bounded below.
+    const indexed = monthlyRead?.recordPageIndex?.find(
+      (entry) =>
+        entry.recordId.toLowerCase() ===
+        monthlyRecord?.sourceLocalIdentity.recordId.toLowerCase(),
+    );
+    const evidence = target?.evidence;
+    if (
+      evidence &&
+      (!evidence.recordId ||
+        candidateSavedReferenceKey(evidence.reference) !==
+          candidateSavedReferenceKey(fixed) ||
+        evidence.assetId !== target.assetId ||
+        evidence.recordId !== target.recordId)
+    )
+      return;
+    const chosenAsset = target?.assetId ?? assetId,
+      chosenRecord = target?.recordId ?? selected;
+    if (!chosenAsset || !chosenRecord) return;
+    if (target) {
+      setSelected(null);
+      setRecords(null);
+      setAssetId(chosenAsset);
+      if (chosenAsset !== assetId) {
+        setGeometry(null);
+        setGeometryNav(firstPosition());
+      }
+    }
     setTab(kind === 'geometry' ? 'map' : 'records');
     return execute(async (signal) => {
+      if (evidence) {
+        let assetPosition = firstPosition();
+        let verified = false;
+        // Evidence must match fresh metadata, never the cached current asset page.
+        // The public get contract has no asset filter: bound this lookup to ten pages.
+        for (let page = 0; page < 10; page++) {
+          const value = await readPage(
+            'get',
+            {
+              ...fixed,
+              first: 200,
+              ...(assetPosition.after ? { after: assetPosition.after } : {}),
+            },
+            signal,
+          );
+          if (signal.aborted || !owner.current) return;
+          const asset = value.assets.find(
+            (item) => item.assetId.toLowerCase() === chosenAsset.toLowerCase(),
+          );
+          if (asset) {
+            if (asset.sourceHash !== evidence.sourceHash)
+              throw new CandidateReaderError('stale');
+            // Background verification must not replace the user's visible asset
+            // page or its saveable cursor/anchor and page-size position.
+            verified = true;
+            break;
+          }
+          if (!value.nextCursor || value.assets.length === 0)
+            throw new CandidateReaderError('stale');
+          assetPosition = nextPosition(
+            assetPosition,
+            value.nextCursor,
+            undefined,
+          );
+        }
+        if (!verified) {
+          setNotice(copy.relations.assetSearchLimit);
+          return;
+        }
+      }
+      if (indexed && monthlyRead && monthlyRecord && kind === 'records') {
+        const checkProvenance = async () => {
+          if (
+            monthlyRead.processingRuleVersion ===
+            CANDIDATE_MONTHLY_RULE_VERSION_V3
+          ) {
+            const provenance = await readCandidateConversionProvenance(
+              { ...fixed, preparedAssetId: chosenAsset },
+              signal,
+            );
+            const expected = monthlyRead.conversionEvidence;
+            const check = provenance.check;
+            if (
+              (expected === null) !== (check === null) ||
+              (expected &&
+                check &&
+                Object.entries(expected).some(
+                  ([key, value]) =>
+                    JSON.stringify(check[key as keyof typeof check]) !==
+                    JSON.stringify(value),
+                ))
+            )
+              throw new CandidateReaderError('stale');
+          }
+        };
+        await checkProvenance();
+        const value = await readPage(
+          'records',
+          {
+            ...fixed,
+            assetId: chosenAsset,
+            first: indexed.first,
+            ...(indexed.after ? { after: indexed.after } : {}),
+          },
+          signal,
+        );
+        if (signal.aborted || !owner.current) return;
+        await checkProvenance();
+        if (signal.aborted || !owner.current) return;
+        const row = value.records.find(
+          (record) =>
+            record.recordId.toLowerCase() === chosenRecord.toLowerCase(),
+        );
+        if (
+          !row ||
+          row.index !== monthlyRecord.sourceLocalIdentity.index ||
+          row.sourceId !== monthlyRecord.sourceLocalIdentity.sourceId
+        )
+          throw new CandidateReaderError('stale');
+        setRecords(value);
+        setRecordNav({ ...indexed, previous: [...indexed.previous] });
+        setSelected(chosenRecord);
+        return;
+      }
       let position = firstPosition();
       // Each explicit selection reads at most ten server pages; there is no full-batch prefetch.
       for (let page = 0; page < 10; page++) {
@@ -557,7 +897,7 @@ function CandidateSession({
           input(position, chosenAsset),
           signal,
         );
-        if (signal.aborted) return;
+        if (signal.aborted || !owner.current) return;
         const rows = 'records' in value ? value.records : value.features;
         if (kind === 'records') {
           setRecords(value as IngestionCandidateRecordPage);
@@ -570,8 +910,10 @@ function CandidateSession({
           rows.some(
             (row) => row.recordId.toLowerCase() === chosenRecord.toLowerCase(),
           )
-        )
+        ) {
+          setSelected(chosenRecord);
           return;
+        }
         if (!value.nextCursor || rows.length === 0) break;
         position = nextPosition(
           position,
@@ -610,7 +952,7 @@ function CandidateSession({
       page = {
         kind: 'assets',
         reference: fixed,
-        first: pageSize,
+        first: nav.first ?? pageSize,
         ...(nav.anchor ? { afterAssetId: nav.anchor } : {}),
       };
     else {
@@ -619,7 +961,7 @@ function CandidateSession({
         kind: tab === 'map' ? 'geometry' : 'records',
         reference: fixed,
         assetId,
-        first: pageSize,
+        first: nav.first ?? pageSize,
         ...(nav.anchor ? { afterRecordId: nav.anchor } : {}),
       };
     }
@@ -1232,8 +1574,56 @@ function CandidateSession({
               }))}
               readOnly={readOnly || topicMode}
               parentBusy={busy}
+              supplementLookup={openedView ? undefined : supplementLookup}
             />
           </details>
+          <CandidateRelationPanel
+            locale={locale}
+            busy={busy || recovering}
+            page={relationPage}
+            detail={relationDetail}
+            canPrevious={relationNav.previous.length > 0}
+            reference={fixed}
+            onSourceRow={(evidence) => {
+              if (evidence.recordId)
+                void seek('records', {
+                  assetId: evidence.assetId,
+                  recordId: evidence.recordId,
+                  evidence,
+                });
+            }}
+            onRead={() => void loadRelations()}
+            onInspect={(relation) => void inspectRelation(relation)}
+            onNext={() => {
+              if (relationPage?.nextCursor)
+                void loadRelations(
+                  nextPosition(relationNav, relationPage.nextCursor, undefined),
+                );
+            }}
+            onPrevious={() => {
+              const previous = relationNav.previous.at(-1);
+              if (previous)
+                void loadRelations({
+                  ...previous,
+                  previous: relationNav.previous.slice(0, -1),
+                });
+            }}
+          />
+          {monthly && (
+            <CandidateMonthlyPanel
+              key={`${candidateSavedReferenceKey(fixed)}:${monthly.assetId}`}
+              result={monthly}
+              locale={locale}
+              busy={busy || recovering}
+              onSelect={(record) =>
+                void seek('records', {
+                  assetId: record.source.assetId,
+                  recordId: record.sourceLocalIdentity.recordId,
+                  monthly: monthly.kind === 'READY' ? monthly : undefined,
+                })
+              }
+            />
+          )}
           <div
             className={styles.tabs}
             role="tablist"
@@ -1314,18 +1704,11 @@ function CandidateSession({
                           </div>
                         </dl>
                         <div className={styles.actions}>
-                          {topicMode ? null : (
-                            <a
-                              href={candidateOriginalUrl(
-                                fixed,
-                                asset.assetId,
-                                locale,
-                                openedView?.savedView.viewId,
-                              )}
-                            >
+                          {originalUrl(asset.assetId) ? (
+                            <a href={originalUrl(asset.assetId)}>
                               {copy.downloadOriginal}
                             </a>
-                          )}
+                          ) : null}
                           <button
                             type="button"
                             disabled={
@@ -1337,6 +1720,22 @@ function CandidateSession({
                           >
                             {copy.readRecords}
                           </button>
+                          {asset.status === 'READY' &&
+                            asset.recordCount !== null &&
+                            asset.recordCount > 0 && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void loadMonthly(
+                                    asset.assetId,
+                                    asset.sourceHash,
+                                  )
+                                }
+                              >
+                                {copy.monthly.read}
+                              </button>
+                            )}
                           <button
                             type="button"
                             disabled={
@@ -1361,12 +1760,10 @@ function CandidateSession({
                       </li>
                     ))}
                   </ul>
-                  {topicMode ? (
-                    <p className={styles.notice}>
-                      {copy.topicOriginalUnavailable}
-                    </p>
-                  ) : (
+                  {topicMode ? null : (
                     <IngestionCandidateRasterPanel
+                      publicReferences={publicReferences}
+                      publicReferenceState={publicReferenceState}
                       key={`${candidateSavedReferenceKey(fixed)}:${openedView?.savedView.viewId ?? ''}:${rasterEpoch}`}
                       reference={fixed}
                       locale={locale}
@@ -1493,6 +1890,8 @@ function CandidateSession({
                   <p className={styles.notice}>{copy.geometryPending}</p>
                   {geometry.features.length ? (
                     <DataFoundationMap
+                      publicReferences={publicReferences}
+                      publicReferenceState={publicReferenceState}
                       key={
                         cameraRestore?.drawingKey ===
                         geometryDrawingKey(mapGeometry)
@@ -1573,18 +1972,11 @@ function CandidateSession({
                   <button type="button" onClick={() => setSelected(null)}>
                     {copy.clearSelection}
                   </button>
-                  {topicMode ? null : (
-                    <a
-                      href={candidateOriginalUrl(
-                        fixed,
-                        selectedRow.assetId,
-                        locale,
-                        openedView?.savedView.viewId,
-                      )}
-                    >
+                  {originalUrl(selectedRow.assetId) ? (
+                    <a href={originalUrl(selectedRow.assetId)}>
                       {copy.downloadOriginal}
                     </a>
-                  )}
+                  ) : null}
                 </div>
                 {currentGeometry && tab === 'map' ? (
                   <details>

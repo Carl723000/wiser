@@ -869,7 +869,7 @@ function topicResponses(url: RequestInfo | URL) {
     return respondJson(assets);
   throw new Error('Unexpected topic transport');
 }
-it('restores the complete topic from its authorized request with no current candidate and never downgrades originals or saving', async () => {
+it('restores the complete topic and retains its owner on original links without enabling saving', async () => {
   expect(
     OpenIngestionCandidateTopicOutputSchema.safeParse(topicOpened).success,
   ).toBe(true);
@@ -896,7 +896,15 @@ it('restores the complete topic from its authorized request with no current cand
   ).toBe('true');
   expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Revoke view' })).toBeNull();
-  expect(screen.queryByRole('link', { name: 'Download original' })).toBeNull();
+  expect(
+    screen
+      .getAllByRole('link', { name: 'Download original' })
+      .every(
+        (link) =>
+          link.getAttribute('href')?.includes(`savedTopicId=${viewId}`) &&
+          !link.getAttribute('href')?.includes('savedViewId'),
+      ),
+  ).toBe(true);
   await waitFor(() =>
     expect(
       screen
@@ -906,7 +914,23 @@ it('restores the complete topic from its authorized request with no current cand
   );
   fireEvent.click(screen.getByRole('tab', { name: 'Originals' }));
   await screen.findByRole('button', { name: 'Read records' });
-  expect(screen.queryByRole('link', { name: 'Download original' })).toBeNull();
+  expect(
+    screen
+      .getAllByRole('link', { name: 'Download original' })
+      .every(
+        (link) =>
+          link.getAttribute('href')?.includes(`savedTopicId=${viewId}`) &&
+          !link.getAttribute('href')?.includes('savedViewId'),
+      ),
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('tab', { name: 'Records' }));
+  await screen.findByText('Synthetic river');
+  expect(
+    screen
+      .getByRole('button', { name: 'Select record 1' })
+      .getAttribute('aria-pressed'),
+  ).toBe('true');
+  expect(screen.getByText(topicOpened.viewSpec.topic.question)).toBeDefined();
   expect(
     screen.queryByRole('button', { name: 'Read native raster' }),
   ).toBeNull();
@@ -918,6 +942,52 @@ it('restores the complete topic from its authorized request with no current cand
     ),
   ).toBe(true);
 });
+it.each([
+  {
+    locale: 'en' as const,
+    originals: 'Originals',
+    download: 'Download original',
+  },
+  { locale: 'zh-CN' as const, originals: '原件', download: '下载原件' },
+])(
+  'offers only the fixed topic original in $locale without binding other assets',
+  async ({ locale, originals, download }) => {
+    fetch.mockImplementation((url) =>
+      requestUrl(url) === '/api/data-foundation/candidates/get'
+        ? respondJson({
+            ...assets,
+            assets: [
+              ...assets.assets,
+              { ...assets.assets[0], assetId: otherId },
+            ],
+          })
+        : topicResponses(url),
+    );
+    render(
+      <IngestionCandidateReader
+        reference={null}
+        ingestionId={ref.ingestionId}
+        savedTopicId={viewId}
+        locale={locale}
+      />,
+    );
+    await screen.findByText('Synthetic river');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('tab', { name: originals }).hasAttribute('disabled'),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: originals }));
+    const originalPanel = screen.getByRole('tabpanel', { name: originals });
+    const links = await within(originalPanel).findAllByRole('link', {
+      name: download,
+    });
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute('href')).toContain(`/${assetId}?`);
+    expect(links[0].getAttribute('href')).toContain(`savedTopicId=${viewId}`);
+    expect(links[0].getAttribute('href')).not.toContain('savedViewId');
+  },
+);
 it('lists actual mixed-version topics and opens v2 through the topic ability; UNAVAILABLE clears titles, counts, references and material', async () => {
   let available = true;
   fetch.mockImplementation((url) =>
@@ -1083,4 +1153,44 @@ it('keeps the adopted legacy view when a topic belongs to another intake', async
       .getByRole('link', { name: 'Download original' })
       .getAttribute('href'),
   ).toContain(`savedViewId=${viewId}`);
+});
+
+it('wires supplemental evidence independently of the ordinary reader fixed manifest', async () => {
+  const otherRef = { ...ref, ingestionId: otherId, reviewHash: 'c'.repeat(64) };
+  fetch.mockImplementation((_url, init) =>
+    respondJson(
+      requestBody(init).ingestionId === otherId
+        ? { ...assets, reference: otherRef }
+        : assets,
+    ),
+  );
+  render(
+    <IngestionCandidateReader
+      reference={ref}
+      locale="en"
+      supplementLookup={{
+        action: '/en/data-foundation/ingestions/' + ref.ingestionId,
+        requestedIngestionId: otherId,
+        source: { reference: otherRef, label: 'Source B' },
+        stateLabel: 'Review required',
+      }}
+    />,
+  );
+  await screen.findByRole('button', { name: 'Read records' });
+  const panel = screen.getByRole('region', {
+    name: 'Candidate followups and corrections',
+  });
+  expect(
+    within(within(panel).getByLabelText('Fixed candidate source'))
+      .getAllByRole('option')
+      .map((o) => o.textContent),
+  ).toEqual([ref.ingestionId]);
+  fireEvent.click(
+    within(panel).getByRole('button', { name: 'Load source evidence' }),
+  );
+  await within(panel).findByRole('option', { name: `Original · ${assetId}` });
+  expect(fetch.mock.calls.map((c) => requestBody(c[1]).ingestionId)).toEqual([
+    ref.ingestionId,
+    otherId,
+  ]);
 });

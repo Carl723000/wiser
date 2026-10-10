@@ -110,6 +110,7 @@
 }
 
 .map {
+  align-self: start;
   position: relative;
   min-height: clamp(330px, 55vw, 620px);
   border: 1px solid var(--border-strong);
@@ -171,4 +172,59 @@
   position: absolute;
   inset: 0;
   clip-path: inset(0 0 28px 0);
+}
+
+.perspectiveControls {
+  display: grid;
+  gap: 0.5rem;
+}
+.perspectiveControls button {
+  min-height: 44px;
+  border: 1px solid var(--border-on-strong);
+  border-radius: 6px;
+  color: var(--text-on-strong);
+  background: var(--surface-glass);
+  cursor: pointer;
+}
+.perspectiveControls button[aria-pressed='true'] {
+  border-color: var(--accent-bright);
+}
+.perspectiveControls button:focus-visible,
+.layerControls summary:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 3px;
+}
+.referenceAttribution {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  z-index: 2;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  color: var(--text-primary);
+  background: var(--surface-glass);
+}
+.referenceAttribution a {
+  color: inherit;
+}
+.layerControls p,
+.layerControls summary {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.layerControls summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.layerControls code {
+  overflow-wrap: anywhere;
+}
+
+.onlineEnhancement {
+  position: absolute;
+  inset: 0;
+}
+.onlineEnhancement[hidden] {
+  display: none;
 }

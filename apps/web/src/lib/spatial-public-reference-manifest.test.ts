@@ -2,8 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadLocalSpatialWorkspace } from './spatial-workspace-local';
+import { loadPublicReferences } from './spatial-public-reference.server';
+vi.mock('server-only', () => ({}));
 import { parsePublicReferenceManifest } from './spatial-public-reference';
 
 const attribution = '© OpenStreetMap contributors · ODbL 1.0';
@@ -326,4 +328,36 @@ describe('versioned public geographic reference manifest', () => {
       await rm(fixture.directory, { recursive: true, force: true });
     }
   });
+});
+
+it('loads the pinned public background in production without opening the local business pack', async () => {
+  const fixture = await setup();
+  try {
+    await fixture.add('third', 'osm-reference-reach-v1', [thirdReach]);
+    const environment = {
+      ...(await fixture.save()),
+      NODE_ENV: 'production',
+      WISER_AUTH_MODE: 'supabase',
+    };
+    expect(
+      await loadLocalSpatialWorkspace(environment, 'public.example'),
+    ).toEqual({ state: 'disabled', pack: null });
+    const loaded = await loadPublicReferences(environment);
+    expect(loaded.publicReferenceState).toBe('ready');
+    expect(loaded.publicReferences?.features).toHaveLength(1);
+    expect(JSON.stringify(loaded)).not.toContain(fixture.directory);
+    await writeFile(String(fixture.files[0].path), '{}');
+    expect(await loadPublicReferences(environment)).toEqual({
+      publicReferenceState: 'invalid',
+      publicReferences: null,
+    });
+    expect(
+      await loadPublicReferences({
+        WISER_SPATIAL_PUBLIC_REFERENCE_MANIFEST:
+          environment.WISER_SPATIAL_PUBLIC_REFERENCE_MANIFEST,
+      }),
+    ).toEqual({ publicReferenceState: 'invalid', publicReferences: null });
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true });
+  }
 });

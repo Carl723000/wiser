@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/data-foundation/schema.graphql
   - apps/api/src/data-foundation/graphql-module.ts
   - packages/data-contracts/src/capability/**
-lastReviewedAt: 2026-10-08
-lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
+lastReviewedAt: 2026-10-10
+lastReviewedCommit: 33bfb6abc1c51f1cda6701060e2d1ae8e172ce12
 ---
 
 ## 入口与权威契约
@@ -195,6 +195,8 @@ Query 可按相同 cursor 安全重试。Mutation 只能以相同身份、operat
 
 探索契约 1.1 将已完成的分析批次与已发布版本共同固定。`view: "records"` 必须提供 `queryId` 和 `versionId`，返回逐资产字段定义、稳定的记录/要素 ID 及有界分页。`view: "map"` 复用同一结果集，支持可选的 WGS84 `[west,south,east,north]` 范围。游标绑定视图与过滤条件。要纳入原查询之后完成的分析，需要重新运行查询条件。数量表示已索引记录，资源就绪状态与覆盖信息同时披露未解析来源。
 
+探索地图读取既有 EPSG:4326 分析记录中的嵌套几何集合，保留成员顺序、重复成员及 Multi 类型，不展开为独立记录。内部序列化沿用九位精度；空值、简单几何、平面集合和数据库空几何仍使用原默认 PostGIS 序列化。查询清单、记录身份、筛选、分页及当前核权不变，也不扩展独立的 `data.geo.query/intersect` 契约。原生 SQL 与登录后的地图验收分别核实。
+
 探索契约 1.2 在同一授权清单上增加 `view: "graph"`。可选 `versionId` 缩小资源图范围；`recordId` 还要求该版本及其固定分析批次中的记录。资源、版本、文件和证据节点具有明确类型，关系表示权威包含关系；聚焦记录与表格、地图共用身份，文件节点保留来源哈希。这一溯源视图不推断科学关系。每页最多包含 100 个版本、200 个文件和 100 个证据片段；`truncated` 披露省略节点，`nextCursor` 翻阅后续版本，改变聚焦条件不能复用游标。此前 1.0 与 1.1 的契约定义保留在归档中。
 
 探索契约 1.3 在 `QuerySpec` 中增加提供机构完整名称、登记类型以及内容/空间就绪状态筛选。汇总统计整个已授权且固定版本的结果集，与当前资源页分别显示。分析完成但没有内容资产时为 `METADATA_ONLY`；已解析的空内容为 `EMPTY`；已解析内容没有验证几何时为 `NO_SPATIAL_DATA`，坐标系未知或无法可靠转换时为 `CRS_UNVERIFIED`。无效、受限或不支持的未解析内容保留未知数量；物理格式伴随文件不能证明分析内容可用。已索引内容记录包括来源的多种表示、文档和压缩包记录，不表示已去重的科学观测。契约归档中的 1.0–1.2 定义保持不变。
@@ -345,7 +347,7 @@ mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTo
 
 ### 有限专题宿主配置
 
-启动配置显式采用 `goal101-engineering-inspection/1` 工程检查配方：`DATA_CANDIDATE_TOPIC_PROFILE` 选择固定配方，`DATA_CANDIDATE_TOPIC_TENANT_ID`、`DATA_CANDIDATE_TOPIC_PROJECT_ID` 和 `DATA_CANDIDATE_TOPIC_PURPOSE` 精确绑定已配置的项目及现有 Auth 用途。四字段必须完整，禁止通配或首请求自注册；缺配置时专题权威继续失败关闭。运行时将提供者注入实际候选保存 executor。两套月报规则分别保留：旧 1.0.0 调用原 PUBLICATION 投影，新 2.0.0 调用 REPORT_PERIOD 投影；不能把旧路径称为新版本。需求规则定义摘要与需求输入版本分别记录，登录读取不查本机固定包。六区域与19需求仅为选择目录，不授资料读取权、不生成归属事实或专业批准。关系在同一保存 client 上读取固定修订和当前决定，并重核引用与权限；无可信源内对象映射时 `sourceObjectKey` 继续拒绝，整记录兼容路径保留。私有宿主模块记录定义摘要及本轮工程采用，不创建外部专业标准或公共协议。真实 SQL／Auth／浏览器验收另行记录。
+启动配置显式采用 `goal101-engineering-inspection/1` 工程检查配方：`DATA_CANDIDATE_TOPIC_PROFILE` 选择固定配方，`DATA_CANDIDATE_TOPIC_TENANT_ID`、`DATA_CANDIDATE_TOPIC_PROJECT_ID` 和 `DATA_CANDIDATE_TOPIC_PURPOSE` 精确绑定已配置的项目及现有 Auth 用途。四字段必须完整，禁止通配或首请求自注册；缺配置时专题权威继续失败关闭。运行时将提供者注入实际候选保存 executor。月报配方分别保留：1.0.0沿用原PUBLICATION规则，2.0.0保留仅READY批次的REPORT_PERIOD行为；独立2.1.0仅对服务端已核验的转换成员启用限定PARTIAL读取，并保留原件O哈希。历史保存引用不自动升级，旧源码摘要连同冻结提交保留，新转换实现另记采用摘要。需求规则定义摘要与需求输入版本分别记录，登录读取不查本机固定包。六区域与19需求仅为选择目录，不授资料读取权、不生成归属事实或专业批准。关系在同一保存 client 上读取固定修订和当前决定，并重核引用与权限；无可信源内对象映射时 `sourceObjectKey` 继续拒绝，整记录兼容路径保留。私有宿主模块记录定义摘要及本轮工程采用，不创建外部专业标准或公共协议。真实 SQL／Auth／浏览器验收另行记录。
 
 ### 取消命令恢复
 
@@ -356,3 +358,7 @@ mutation `createDataIngestionCandidateTopic` 及 query `dataIngestionCandidateTo
 同步字段为 mutations `createDataIngestionCandidateFollowup`、`actDataIngestionCandidateFollowup`、`reviewDataIngestionCandidateFollowup`，queries `dataIngestionCandidateFollowup`、`dataIngestionCandidateFollowups`。它们复用同一严格 Capability schema、当前来源核权、版本与独立复核规则，不另设 GraphQL 授权路径。办理只接受目标标识；完整输入、分页、大小与技术关闭边界见[REST 候选跟进](/protocols/data-rest/#候选跟进)。
 
 候选跟进命令仅统一 UUID 身份大小写，保留哈希、原文定位、坐标系和几何字面；同键重放按同一规范身份比较。0049在0047既有来源、责任、版本和追加事件守卫之后，另拒绝单事件及累计证据中的身份拼写重复。只给既有 API 精确私有函数执行权限，不改旧迁移或既有行；本机原生SQL、HTTP和浏览器仍需分别核验。
+
+### 候选嵌套几何读取
+
+同一几何响应保留嵌套集合、成员顺序、重复成员及 Multi 类型。这是内部读取兼容修复，请求字段、当前核权、游标及完整响应3 MiB上限不变。

@@ -4,6 +4,7 @@ import {
 } from './candidate-read-authority.js';
 import { applyResourceReadScope } from './resource-read-scope.js';
 import { createCandidateConversionProvenanceReader } from './ingestion-candidate-provenance.js';
+import { CANDIDATE_GEOMETRY_ROWS_SQL } from './candidate-geometry-readback-sql.js';
 import {
   pendingIntakeAuthority,
   canReadPendingSubmission,
@@ -81,6 +82,7 @@ select asset_id,encode(source_hash,'hex') as source_hash,status,reason,record_co
 from ingestion.candidate_asset where processing_batch_id=$1::uuid and asset_id=$2::uuid
 `;
 function candidateRowsSql(geometry: boolean): string {
+  if (geometry) return CANDIDATE_GEOMETRY_ROWS_SQL;
   const content = geometry
     ? 'st_asgeojson(record.geom,15,0)::jsonb as geometry,record.source_crs'
     : 'record.record_values,record.geom is not null as has_geometry';
@@ -1418,6 +1420,15 @@ function candidateReadExecutors(
                 first + 1,
               ],
             );
+            if (
+              name === 'geometry' &&
+              result.rows.some((row) => row['geometry_guard'] != null)
+            )
+              throw new PostgresDataReadError(
+                'DATA_READ_FAILED',
+                503,
+                'The data authority read failed.',
+              );
             if (result.rows.some((row) => row['budget_exceeded'] === true))
               throw new PostgresDataReadError(
                 'CANDIDATE_ROW_TOO_LARGE',

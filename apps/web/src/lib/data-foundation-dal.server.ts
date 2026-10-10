@@ -2,6 +2,11 @@ import 'server-only';
 
 import { connection } from 'next/server';
 import {
+  GetCandidateRelationInputSchema,
+  GetCandidateRelationOutputSchema,
+  ListCandidateRelationsInputSchema,
+  ListCandidateRelationsOutputSchema,
+  type CandidateRelationSnapshot,
   ExternalMetadataInputSchema,
   ExternalMetadataOutputSchema,
   type ExternalMetadataOutput,
@@ -38,6 +43,11 @@ import {
 } from '@wiser/data-contracts';
 
 import { candidateSavedReferenceKey } from '@wiser/data-contracts';
+import {
+  GetCandidateConversionProvenanceInputSchema,
+  GetCandidateConversionProvenanceOutputSchema,
+  type GetCandidateConversionProvenanceOutput,
+} from '@wiser/data-contracts/candidate-conversion';
 import { sameCandidateFollowupEvidence } from './candidate-followup-reader';
 import type {
   CandidateFollowupOutputSchema,
@@ -194,6 +204,18 @@ export interface DataFoundationDal {
     input: unknown,
     signal?: AbortSignal,
   ): Promise<CandidatePage>;
+  candidateRelationGet(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<ReturnType<typeof GetCandidateRelationOutputSchema.parse>>;
+  candidateRelationList(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<ReturnType<typeof ListCandidateRelationsOutputSchema.parse>>;
+  candidateConversionProvenance(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<GetCandidateConversionProvenanceOutput>;
   candidateSavedView(
     action: 'create' | 'list' | 'open' | 'revoke',
     input: unknown,
@@ -553,6 +575,25 @@ export function createDataFoundationDal(
       if (error instanceof DataFoundationApiError) throw error;
       throw new DataFoundationApiError('contract', 502);
     }
+  }
+
+  function assertCandidateRelationSources(
+    relation: CandidateRelationSnapshot,
+    references: ReturnType<
+      typeof GetCandidateRelationInputSchema.parse
+    >['references'],
+  ): void {
+    const selected = new Set(references.map(candidateSavedReferenceKey));
+    const required = [
+      relation.revision.reference,
+      ...relation.revision.content.evidence.map((item) => item.reference),
+    ];
+    if (
+      required.some(
+        (reference) => !selected.has(candidateSavedReferenceKey(reference)),
+      )
+    )
+      throw new DataFoundationApiError('contract', 502);
   }
 
   const dal: DataFoundationDal = {
@@ -1005,6 +1046,110 @@ export function createDataFoundationDal(
           )
             throw new DataFoundationApiError('contract', 502);
           return page;
+        },
+      );
+    },
+    candidateRelationGet: async (input, signal) => {
+      const checked = GetCandidateRelationInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const { relationId, ...body } = checked.data;
+      const capability =
+        DATA_CAPABILITY_REGISTRY['data.ingestion.candidate.relations.get'];
+      const path = capability.restMapping.path.replace(
+        ':relationId',
+        encodeURIComponent(relationId),
+      );
+      return parsed(
+        () =>
+          call(path, {
+            method: capability.restMapping.method as 'POST',
+            body,
+            signal,
+            responseLimitBytes: 1024 * 1024,
+          }),
+        (value) => {
+          const output = GetCandidateRelationOutputSchema.parse(value);
+          const { relation } = output;
+          if (
+            !sameUuid(relation.revision.relationId, relationId) ||
+            relation.revision.revision !== body.revision ||
+            relation.decisionVersion !== body.decisionVersion
+          )
+            throw new DataFoundationApiError('contract', 502);
+          assertCandidateRelationSources(relation, body.references);
+          return output;
+        },
+      );
+    },
+    candidateRelationList: async (input, signal) => {
+      const checked = ListCandidateRelationsInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data;
+      const capability =
+        DATA_CAPABILITY_REGISTRY['data.ingestion.candidate.relations.list'];
+      return parsed(
+        () =>
+          call(capability.restMapping.path, {
+            method: capability.restMapping.method as 'POST',
+            body: data,
+            signal,
+            responseLimitBytes: 1024 * 1024,
+          }),
+        (value) => {
+          const output = ListCandidateRelationsOutputSchema.parse(value);
+          if (
+            output.relations.length > data.first ||
+            (output.relations.length === 0 && output.nextCursor !== null) ||
+            (output.nextCursor !== null && output.nextCursor === data.after) ||
+            new Set(
+              output.relations.map((item) =>
+                item.revision.relationId.toLowerCase(),
+              ),
+            ).size !== output.relations.length
+          )
+            throw new DataFoundationApiError('contract', 502);
+          for (const relation of output.relations)
+            assertCandidateRelationSources(relation, data.references);
+          return output;
+        },
+      );
+    },
+    candidateConversionProvenance: async (input, signal) => {
+      const checked =
+        GetCandidateConversionProvenanceInputSchema.safeParse(input);
+      if (!checked.success)
+        throw new DataFoundationApiError('invalid-request', 422);
+      const data = checked.data;
+      const capability =
+        DATA_CAPABILITY_REGISTRY['data.ingestion.candidate.provenance.get'];
+      let path: string = capability.restMapping.path;
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(data)) {
+        if (path.includes(`:${key}`))
+          path = path.replace(`:${key}`, encodeURIComponent(value));
+        else query.set(key, value);
+      }
+      return parsed(
+        () =>
+          call(`${path}?${query}`, {
+            signal,
+            responseLimitBytes: CANDIDATE_RESPONSE_LIMIT_BYTES,
+          }),
+        (value) => {
+          const output =
+            GetCandidateConversionProvenanceOutputSchema.parse(value);
+          const reference = output.reference;
+          if (
+            reference.kind !== data.kind ||
+            !sameUuid(reference.ingestionId, data.ingestionId) ||
+            !sameUuid(reference.processingBatchId, data.processingBatchId) ||
+            reference.reviewHash !== data.reviewHash ||
+            !sameUuid(output.preparedAssetId, data.preparedAssetId)
+          )
+            throw new DataFoundationApiError('contract', 502);
+          return output;
         },
       );
     },

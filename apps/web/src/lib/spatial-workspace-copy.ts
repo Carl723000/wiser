@@ -58,6 +58,8 @@ export interface SpatialWorkspaceCopy {
   referenceHint: string;
   flatView: string;
   spaceView: string;
+  birdEyePlanar: string;
+  onlineReferencePaused: string;
   resetCamera: string;
   rotateLeft: string;
   rotateRight: string;

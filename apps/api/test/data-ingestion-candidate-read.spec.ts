@@ -409,6 +409,132 @@ describe('pending candidate standard read executors', () => {
     });
   });
 
+  it('measures bounded nested geometry tokens before the original byte prefix and renders only admitted rows', async () => {
+    const client = new Client();
+    await read(client, 'geometry', { ...reference, assetId: id(3), first: 2 });
+    const query = client.queries.find((q) =>
+      q.text.includes('data.ingestion.candidate.geometry'),
+    )!;
+    expect(query.values).toEqual([id(2), id(3), 0, 3]);
+    expect(query.text).toContain('parent_rows AS MATERIALIZED');
+    expect(query.text).toContain('WITH RECURSIVE');
+    expect(query.text).toContain("string_agg(token,'' ORDER BY token_path)");
+    expect(query.text).toContain('LIMIT 266667');
+    expect(query.text).toContain('running_bytes<=2621440');
+    expect(query.text).toContain('ST_AsGeoJSON(geom,15,0)');
+    expect(query.text).not.toContain('jsonb_agg');
+  });
+
+  it.each([
+    'DEPTH_LIMIT',
+    'NODE_COUNT_LIMIT',
+    'ROOT_POSITION_LIMIT',
+    'EMPTY_GEOMETRY',
+    'NODE_TYPE_UNSUPPORTED',
+    'TOKEN_PATH_COLLISION',
+  ])(
+    'rejects %s even if an adapter supplied apparently valid partial geometry',
+    async (guard) => {
+      const client = new Client();
+      const query = client.query.bind(client);
+      client.query = async (sql, values) => {
+        const result = await query(sql, values);
+        return sql.includes('data.ingestion.candidate.geometry')
+          ? {
+              rows: result.rows.map((row) => ({
+                ...row,
+                geometry_guard: guard,
+              })),
+            }
+          : result;
+      };
+      await expect(
+        read(client, 'geometry', { ...reference, assetId: id(3) }),
+      ).rejects.toMatchObject({
+        code: 'DATA_READ_FAILED',
+        message: 'The data authority read failed.',
+      });
+      expect(client.queries.some((q) => q.text === 'ROLLBACK')).toBe(true);
+      expect(client.released).toBe(true);
+    },
+  );
+
+  it('retains the complete nested geometry, duplicates, Multi leaf and native identity without private guard fields', async () => {
+    const client = new Client();
+    const query = client.query.bind(client);
+    const point = { type: 'Point', coordinates: [116.12345678912345, 40.2] };
+    const geometry = {
+      type: 'GeometryCollection',
+      geometries: [
+        point,
+        {
+          type: 'GeometryCollection',
+          geometries: [
+            {
+              type: 'MultiPoint',
+              coordinates: [
+                [1, 2],
+                [3, 4],
+              ],
+            },
+            point,
+          ],
+        },
+      ],
+    };
+    client.query = async (sql, values) => {
+      const result = await query(sql, values);
+      return sql.includes('data.ingestion.candidate.geometry')
+        ? {
+            rows: result.rows.map((row) => ({
+              ...row,
+              geometry,
+              geometry_guard: null,
+            })),
+          }
+        : result;
+    };
+    const page = await read(client, 'geometry', {
+      ...reference,
+      assetId: id(3),
+    });
+    expect(page).toMatchObject({
+      reference,
+      assetId: id(3),
+      features: [
+        { recordId: id(21), index: 2, sourceId: 'table:1/row:2', geometry },
+      ],
+    });
+    expect(JSON.stringify(page)).not.toContain('geometry_guard');
+    expect(client.queries.some((q) => q.text === 'COMMIT')).toBe(true);
+  });
+
+  it('preserves the original oversized-first-geometry error and rolls back instead of returning null', async () => {
+    const client = new Client();
+    const query = client.query.bind(client);
+    client.query = async (sql, values) => {
+      const result = await query(sql, values);
+      return sql.includes('data.ingestion.candidate.geometry')
+        ? {
+            rows: result.rows.map((row) => ({
+              ...row,
+              geometry: null,
+              geometry_guard: null,
+              budget_exceeded: true,
+            })),
+          }
+        : result;
+    };
+    await expect(
+      read(client, 'geometry', { ...reference, assetId: id(3) }),
+    ).rejects.toMatchObject({
+      code: 'CANDIDATE_ROW_TOO_LARGE',
+      statusCode: 422,
+    });
+    expect(client.queries.some((q) => q.text === 'ROLLBACK')).toBe(true);
+    expect(client.released).toBe(true);
+  });
+
   it('fails closed on current authority withdrawal and rolls back sanitized database failures', async () => {
     const hidden = new Client();
     hidden.visible = false;

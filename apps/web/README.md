@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-10-08
-lastReviewedCommit: 9ea7300fb5952eca8e0e03f5abb2c38553aca0f4
+lastReviewedAt: 2026-10-09
+lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
 ---
 
 # WISER Web / 产品界面
@@ -97,7 +97,7 @@ pnpm --filter @wiser/web test:e2e
 
 候选固定视图的共享范围标为“本人及获权独立审核人”；保存范围帮助说明分享不授予资料访问权限。现有`project`枚举及全部候选权限核验保持不变。 / Candidate fixed-view sharing is labelled “Me and authorized independent reviewers”; contextual help explains that sharing grants no material access. The existing `project` enum and all-member authorization remain unchanged.
 
-候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态。受支持的二维中心和缩放可恢复并以当前阅读位置另存新视图；不支持的相机、图层及时段配置原样保留，明确未应用，时段不筛选原记录。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state. Supported planar center/zoom can be restored and current reading position saved as a new view; unsupported camera, layer and period settings remain intact and visibly unapplied, with no period filtering of raw records.
+候选地图复用现有组件，仅展开组合几何的绘制部分，不添加发布版本或猜测位置角色。双语、语义主题、键盘操作、窄屏表格和工作区全屏共用查阅状态。受支持的中心、缩放、旋转和倾斜可恢复并以当前阅读位置另存新视图；不支持的相机、图层及时段配置原样保留，明确未应用，时段不筛选原记录。 / Candidate maps reuse the existing component without published identities or inferred location roles. Both locales, semantic themes, keyboard controls, narrow table panels and fullscreen share reading state. Supported center/zoom/bearing/pitch can be restored and current reading position saved as a new view; unsupported camera, layer and period settings remain intact and visibly unapplied, with no period filtering of raw records.
 
 真实账号、候选持久保存、原件读取和浏览器验证需在获准运行环境另行完成，不以合成回归代替。 / Real accounts, persisted candidates, originals and browser behavior require their authorized runtime checks, not synthetic substitutes.
 
@@ -114,3 +114,13 @@ pnpm --filter @wiser/web test:e2e
 已有专题可在接收页“已保存专题”中读取并重开，固定深链使用`?candidateTopic=<UUID>`，与旧`candidateView`互斥。此入口恢复完整服务端专题，不显示普通接收摘要；不可用时清空资料、标题、计数和引用。专题修改／另存、原件下载与原生影像读取暂不可用，旧视图原件授权保留。 / Existing topics can be listed and reopened from intake reading or a mutually exclusive `candidateTopic` deep link. The server-authorized complete specification remains intact; unavailability clears content, titles, counts and references. Topic editing/saving, original downloads and native raster reading remain unavailable. Legacy view-original authorization is preserved. Real Auth/HTTP and native browser acceptance remain separate from synthetic tests.
 
 候选查阅与就绪缺口明细共用持久跟进面板，复用既有五项能力、幂等键、当前版本和服务端逐来源核权。补证可选择清单内另一真实候选，整记录更正保留明确新旧对应；技术办结与专业批准分开显示。 / Candidate reading and readiness gap details share the persistent followup panel, existing five capabilities, idempotency, current version and server source checks. Supplements can select another actual candidate in the manifest; whole-record corrections retain explicit correspondence. Technical closure and professional approval remain distinct.
+
+候选页“关系依据”按需读取当前获权清单内的关系，分页显示主体、关系、客体和候选决定；详情固定修订及决定版本，保留原文摘录和来源定位。此入口不创建或批准关系，不自动生成流域／需求归属。 / The candidate Relationship evidence panel reads a finite authorized selection, pages subject/predicate/object and candidate decisions, and opens exact revision/decision details with source excerpts and locators. It neither creates nor approves relations or infers basin/requirement assignments.
+
+关系证据可在同一候选内通过“查看对应记录”回到确切行；先核当前资产身份与原件哈希，沿有界分页定位。跨候选或无记录身份时保留原文依据，不推测跳转。 / Relation evidence can return to the exact row within the same candidate after current asset and original-hash verification and bounded page lookup. Cross-candidate or unidentified evidence retains its text without inferred navigation.
+
+普通接收详情的跟进面板可按接收任务编号查询一个获权补证来源；来源选择与主阅览分离，刷新重读同单且不重发办理动作。保存视图及只读专题不提供该入口。 / Ordinary intake followups can look up one authorized supplemental intake by ID, independently of the primary reading source. Refresh rereads the same followup without replaying actions; saved views and readonly topics do not expose this lookup.
+
+候选月报保留全部原值，仅凭明确的潮白河水系原格接入K5-001就绪九问。跨月覆盖与专业审核仍未核定。已索引原行统一通过本次有界语义读取取得的游标重读，保持当前核权及固定记录身份。 / Candidate monthly originals retain every row and enter K5-001 readiness questions only through explicit Chaobai water-system cell evidence. Cross-month coverage and professional review remain unconfirmed. Every indexed original row rereads its exact cursor page acquired by the bounded current semantic read, preserving current authority and exact native identity.
+
+候选地图与原生影像阅读可在认证入口加载逐文件核验的独立公共地理参照；失败关闭整组，不回落本机业务包。平面／鸟瞰切换保留中心、缩放和选择；旋转或倾斜时隐藏在线平面底图，合法既有相机字段沿原固定引用保存。公共背景不进入业务计数、点击、取景或保存记录引用，背景版本未纳入固定视图。配置与限制见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#获权候选地图的公共背景与视角)。 / Authorized candidate maps and native raster reading can receive independently verified public backgrounds. Planar/bird’s-eye switching preserves reading state and suspends the planar online enhancement while tilted. Public references never enter business counts, hits, framing or saved record pins, and their manifest version is not saved. See [Frontend development](../docs/src/content/docs/en/development/frontend.md#authorized-candidate-map-backgrounds-and-perspective).

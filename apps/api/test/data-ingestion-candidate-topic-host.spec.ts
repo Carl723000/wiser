@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { CreateIngestionCandidateTopicInput } from '@wiser/data-contracts';
 import {
   createCandidateTopicHost,
+  CANDIDATE_TOPIC_ENGINEERING_ADOPTION,
   loadCandidateTopicHostConfig,
 } from '../src/data-foundation/ingestion-candidate-topic-host.js';
 import { assertCandidateTopicPinProviders } from '../src/data-foundation/ingestion-candidate-topic-pins.js';
@@ -123,6 +124,38 @@ describe('bounded engineering topic host adoption', () => {
         { ...period, timeRole: 'REPORT_PERIOD' },
       ),
     ).resolves.toEqual(pins('beijing-monthly-docx-c3/2.0.0'));
+  });
+  it('adopts the explicit 2.1.0 bundle without replacing the fixed 2.0.0 bundle', async () => {
+    const host = createCandidateTopicHost(config)!;
+    for (const version of [
+      'beijing-monthly-docx-c3/2.0.0',
+      'beijing-monthly-docx-c3/2.1.0',
+    ]) {
+      await expect(
+        host.loadRules(
+          new Source().client,
+          context(),
+          selection,
+          pins(version),
+          {
+            windowMode: 'month',
+            from: '2026-01',
+            to: '2026-02',
+            timeRole: 'REPORT_PERIOD',
+            displayUnit: 'month',
+            includeUndated: false,
+          },
+        ),
+      ).resolves.toEqual(pins(version));
+    }
+    await expect(
+      host.loadRules(
+        new Source().client,
+        context(),
+        selection,
+        pins('beijing-monthly-docx-c3/2.2.0'),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
   it('loads only complete explicit startup binding and keeps absent configuration closed', () => {
     expect(createCandidateTopicHost()).toBeUndefined();
@@ -251,9 +284,19 @@ describe('bounded engineering topic host adoption', () => {
     expect(pins()[3]!.version).toBe(
       `sha256:${digest('../../web/src/lib/spatial-version-impact.ts')}`,
     );
+    // Preserve the historical adoption; current bytes belong to the explicit 2.1.0 producer.
+    expect(CANDIDATE_TOPIC_ENGINEERING_ADOPTION.projection).toEqual({
+      sourceRevision: 'a32ad00c148bc1de08b18cfa168e0ee9952784e2',
+      source: 'packages/data-core/src/candidate-monthly-projection.ts',
+      sha256:
+        '729b83e1fe6d3e34be916278bbaacf0ccc09566591485c72d8d5d1568ae6c220',
+    });
+    expect(
+      CANDIDATE_TOPIC_ENGINEERING_ADOPTION.conversionProjection.version,
+    ).toBe('beijing-monthly-docx-c3/2.1.0');
     expect(
       digest('../../../packages/data-core/src/candidate-monthly-projection.ts'),
-    ).toBe('729b83e1fe6d3e34be916278bbaacf0ccc09566591485c72d8d5d1568ae6c220');
+    ).toBe(CANDIDATE_TOPIC_ENGINEERING_ADOPTION.conversionProjection.sha256);
     expect(digest('../../../packages/data-core/src/project-readiness.ts')).toBe(
       '3b1f8b28333514e06f8e2bc0864065ebbca36402658c9d3132b0bcaeabbd1757',
     );
