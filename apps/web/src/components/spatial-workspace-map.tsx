@@ -95,6 +95,11 @@ const grid: FeatureCollection = {
 
 export interface SpatialWorkspaceMapProps {
   active?: boolean;
+  /** Geographic comparison viewport only; omit the surrounding evidence controls. */
+  surfaceOnly?: boolean;
+  /** Render the controlled geographic surface without input, links or duplicate controls. */
+  passive?: boolean;
+  onSurfaceRenderer?: (renderer: 'maplibre' | 'planar' | 'pending') => void;
   features: WorkspaceMapFeatures;
   publicReferences?: PublicReferences | null;
   publicReferenceState?: 'absent' | 'ready' | 'invalid' | 'unavailable';
@@ -261,6 +266,9 @@ function geometryPaths(
 
 export function SpatialWorkspaceMap({
   active = true,
+  surfaceOnly = false,
+  passive = false,
+  onSurfaceRenderer,
   features,
   publicReferences = null,
   publicReferenceState = 'absent',
@@ -598,6 +606,16 @@ export function SpatialWorkspaceMap({
     setHits([]);
   };
   const flat = !available || failed;
+  const interactive = active && !passive;
+  useEffect(() => {
+    onSurfaceRenderer?.(
+      available === null || (!flat && !ready)
+        ? 'pending'
+        : flat
+          ? 'planar'
+          : 'maplibre',
+    );
+  }, [available, flat, ready, onSurfaceRenderer]);
   const selectedFeature = features.features.find(
     (feature) =>
       feature.properties.recordId === selection?.recordId &&
@@ -613,32 +631,43 @@ export function SpatialWorkspaceMap({
       .filter(Boolean)
       .join(' · ');
   return (
-    <div className={styles.mapPanel}>
+    <div
+      className={styles.mapPanel}
+      aria-hidden={passive || undefined}
+      inert={passive || undefined}
+      data-passive-surface={passive || undefined}
+    >
       <div
         ref={container}
         className={styles.mapCanvas}
         data-testid="spatial-geographic-map"
-        data-camera={JSON.stringify(camera)}
+        data-camera={JSON.stringify(effectiveCamera)}
         data-renderer={flat ? 'planar' : 'maplibre'}
       >
-        <div className={styles.mapZoom} role="group" aria-label={copy.mapTitle}>
-          <button
-            type="button"
-            onClick={() =>
-              changeCamera({ zoom: Math.min(16, camera.zoom + 0.5) })
-            }
+        {!passive ? (
+          <div
+            className={styles.mapZoom}
+            role="group"
+            aria-label={copy.mapTitle}
           >
-            {copy.zoomIn}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              changeCamera({ zoom: Math.max(3, camera.zoom - 0.5) })
-            }
-          >
-            {copy.zoomOut}
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() =>
+                changeCamera({ zoom: Math.min(16, camera.zoom + 0.5) })
+              }
+            >
+              {copy.zoomIn}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                changeCamera({ zoom: Math.max(3, camera.zoom - 0.5) })
+              }
+            >
+              {copy.zoomOut}
+            </button>
+          </div>
+        ) : null}
         {available && !failed ? (
           <Map
             key={retry}
@@ -649,11 +678,14 @@ export function SpatialWorkspaceMap({
             pitch={mode === '2d' ? 0 : camera.pitch}
             style={{ width: '100%', height: 460 }}
             attributionControl={false}
-            dragRotate
-            pitchWithRotate
-            touchPitch={mode === '3d'}
-            dragPan={!drawBounds}
-            touchZoomRotate={!drawBounds}
+            dragRotate={interactive}
+            pitchWithRotate={interactive}
+            keyboard={interactive}
+            scrollZoom={interactive}
+            doubleClickZoom={interactive}
+            touchPitch={interactive && mode === '3d'}
+            dragPan={interactive && !drawBounds}
+            touchZoomRotate={interactive && !drawBounds}
             boxZoom={false}
             maxPitch={70}
             minZoom={3}
@@ -663,7 +695,7 @@ export function SpatialWorkspaceMap({
             onLoad={() => setReady(true)}
             onWheel={({ originalEvent, target }) => {
               if (
-                active &&
+                interactive &&
                 target === map.current?.getMap() &&
                 originalEvent instanceof WheelEvent
               )
@@ -685,7 +717,7 @@ export function SpatialWorkspaceMap({
                 target === native &&
                 native?.scrollZoom?.isZooming?.() === true;
               if (
-                !active ||
+                !interactive ||
                 ((!originalEvent || originalEvent.type === 'wheel') &&
                   !nativeScroll)
               )
@@ -703,16 +735,16 @@ export function SpatialWorkspaceMap({
             onMoveEnd={() => {
               // Reapply the latest controlled props after the binding stops
               // deferring them during movement; never write an end proposal.
-              if (active) settleCamera((value) => value + 1);
+              if (interactive) settleCamera((value) => value + 1);
             }}
             onMouseDown={(event) => {
-              if (active && drawBounds) {
+              if (interactive && drawBounds) {
                 drawStart.current = [event.lngLat.lng, event.lngLat.lat];
                 setPendingBounds(null);
               }
             }}
             onMouseMove={(event) => {
-              if (active && drawBounds && drawStart.current)
+              if (interactive && drawBounds && drawStart.current)
                 setPendingBounds(
                   rectangle(drawStart.current, [
                     event.lngLat.lng,
@@ -721,11 +753,11 @@ export function SpatialWorkspaceMap({
                 );
             }}
             onMouseUp={(event) => {
-              if (active && drawBounds)
+              if (interactive && drawBounds)
                 finishDraw([event.lngLat.lng, event.lngLat.lat]);
             }}
             onTouchStart={(event) => {
-              if (!active || !drawBounds) return;
+              if (!interactive || !drawBounds) return;
               drawStart.current =
                 event.points.length === 1
                   ? [event.lngLat.lng, event.lngLat.lat]
@@ -734,7 +766,7 @@ export function SpatialWorkspaceMap({
               event.preventDefault();
             }}
             onTouchMove={(event) => {
-              if (!active || !drawBounds) return;
+              if (!interactive || !drawBounds) return;
               if (event.points.length !== 1) {
                 drawStart.current = null;
                 setPendingBounds(null);
@@ -749,7 +781,7 @@ export function SpatialWorkspaceMap({
               event.preventDefault();
             }}
             onTouchEnd={(event) => {
-              if (!active || !drawBounds) return;
+              if (!interactive || !drawBounds) return;
               if (event.points.length === 1)
                 finishDraw([event.lngLat.lng, event.lngLat.lat]);
               else {
@@ -762,7 +794,7 @@ export function SpatialWorkspaceMap({
               setPendingBounds(null);
             }}
             onClick={(event) => {
-              if (!active || drawBounds) return;
+              if (!interactive || drawBounds) return;
               if (onCoordinate) {
                 onCoordinate([event.lngLat.lng, event.lngLat.lat]);
                 return;
@@ -1003,7 +1035,7 @@ export function SpatialWorkspaceMap({
             aria-label={copy.planarView}
             className={styles.planar}
             onPointerDown={(event) => {
-              if (!active || !drawBounds) return;
+              if (!interactive || !drawBounds) return;
               if (
                 drawPointer.current !== null &&
                 drawPointer.current !== event.pointerId
@@ -1025,7 +1057,7 @@ export function SpatialWorkspaceMap({
             }}
             onPointerMove={(event) => {
               if (
-                !active ||
+                !interactive ||
                 !drawBounds ||
                 !drawStart.current ||
                 drawPointer.current !== event.pointerId
@@ -1045,7 +1077,7 @@ export function SpatialWorkspaceMap({
             }}
             onPointerUp={(event) => {
               if (
-                !active ||
+                !interactive ||
                 !drawBounds ||
                 drawPointer.current !== event.pointerId
               )
@@ -1066,7 +1098,7 @@ export function SpatialWorkspaceMap({
               setPendingBounds(null);
             }}
             onClick={(event) => {
-              if (!active || drawBounds || !onCoordinate) return;
+              if (!interactive || drawBounds || !onCoordinate) return;
               const box = event.currentTarget.getBoundingClientRect();
               const point = planar.unproject(
                 ((event.clientX - box.left) * size.width) /
@@ -1309,480 +1341,498 @@ export function SpatialWorkspaceMap({
             ))}
           </>
         ) : null}
-        <span className={styles.mapReference}>
-          {copy.offlineReference} · WGS84
-          <br />
-          {camera.longitude.toFixed(3)}° E · {camera.latitude.toFixed(3)}° N
-          {referenceAttributions.map(({ label, href }) => (
-            <a key={`${href}\u0000${label}`} href={href}>
-              {label}
-            </a>
-          ))}
-        </span>
-      </div>
-      <div
-        className={styles.mapToolbar}
-        role="group"
-        aria-label={copy.mapTitle}
-      >
-        {(
-          [
-            [
-              copy.rotateLeft,
-              () =>
-                changeCamera({
-                  bearing: ((camera.bearing - 15 + 540) % 360) - 180,
-                }),
-            ],
-            [
-              copy.rotateRight,
-              () =>
-                changeCamera({
-                  bearing: ((camera.bearing + 15 + 540) % 360) - 180,
-                }),
-            ],
-            [
-              copy.panWest,
-              () =>
-                changeCamera({
-                  longitude: Math.max(-180, camera.longitude - pan),
-                }),
-            ],
-            [
-              copy.panEast,
-              () =>
-                changeCamera({
-                  longitude: Math.min(180, camera.longitude + pan),
-                }),
-            ],
-            [
-              copy.panNorth,
-              () =>
-                changeCamera({
-                  latitude: Math.min(80, camera.latitude + pan),
-                }),
-            ],
-            [
-              copy.panSouth,
-              () =>
-                changeCamera({
-                  latitude: Math.max(-80, camera.latitude - pan),
-                }),
-            ],
-          ] as [string, () => void][]
-        ).map(([label, action]) => (
-          <button type="button" key={label} onClick={action}>
-            {label}
-          </button>
-        ))}
-        {mode === '3d' && !flat ? (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                changeCamera({ pitch: Math.min(70, camera.pitch + 10) })
-              }
-            >
-              {copy.tiltUp}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                changeCamera({ pitch: Math.max(0, camera.pitch - 10) })
-              }
-            >
-              {copy.tiltDown}
-            </button>
-          </>
+        {!passive ? (
+          <span className={styles.mapReference}>
+            {copy.offlineReference} · WGS84
+            <br />
+            {camera.longitude.toFixed(3)}° E · {camera.latitude.toFixed(3)}° N
+            {referenceAttributions.map(({ label, href }) => (
+              <a key={`${href}\u0000${label}`} href={href}>
+                {label}
+              </a>
+            ))}
+          </span>
         ) : null}
       </div>
-      <div
-        className={styles.mapLegend}
-        role="group"
-        aria-label={copy.mapLegend}
-      >
-        <div>
-          <strong>{copy.mapLegend}</strong>
-          <ContextHelp label={copy.mapLegend}>{copy.mapLegendHint}</ContextHelp>
-        </div>
-        <div>
-          {workspaceRecordKinds
-            .filter((kind) =>
-              features.features.some(
-                (feature) => feature.properties.kind === kind,
-              ),
-            )
-            .map((kind) => (
-              <span key={kind}>
-                <i
-                  aria-hidden="true"
-                  style={{
-                    background:
-                      colors.kinds[workspaceRecordKinds.indexOf(kind)],
-                  }}
-                />
-                {copy.kinds[kind]}
-              </span>
-            ))}
-        </div>
-        <div>
-          {Array.from(
-            new Set(
-              features.features.map((feature) => feature.properties.role),
-            ),
-          ).map((role) => (
-            <span key={role}>
-              <svg width="30" height="12" aria-hidden="true">
-                <line
-                  x1="0"
-                  x2="30"
-                  y1="6"
-                  y2="6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeDasharray={planarRoleDashes(role)}
-                />
-              </svg>
-              {copy.positionRoles[role]}
-            </span>
-          ))}
-        </div>
-      </div>
-      {publicReferences?.features.length ? (
-        <fieldset className={styles.publicReferenceControls}>
-          <legend>{copy.publicReferenceLayers}</legend>
-          <div>
-            {publicReferenceKinds.map((kind) => (
-              <label key={kind} className={styles.checkbox}>
-                <input
-                  type="checkbox"
-                  checked={publicReferenceVisibility[kind] ?? false}
-                  disabled={
-                    !publicReferences.features.some(
-                      (feature) => feature.properties.kind === kind,
-                    )
-                  }
-                  onChange={(event) =>
-                    setPublicReferenceVisibility((previous) => ({
-                      ...previous,
-                      [kind]: event.target.checked,
-                    }))
-                  }
-                />
-                <svg
-                  width="28"
-                  height="14"
-                  viewBox="0 0 28 14"
-                  aria-hidden="true"
-                >
-                  {kind === 'administrative' ? (
-                    <rect
-                      x="2"
-                      y="2"
-                      width="24"
-                      height="10"
-                      fill={colors.border}
-                      fillOpacity="0.12"
-                    />
-                  ) : null}
-                  {kind === 'reference-anchor' ? (
-                    <circle
-                      cx="14"
-                      cy="7"
-                      r="4"
-                      fill="none"
-                      stroke={colors.selected}
-                      strokeWidth="1.5"
-                    />
-                  ) : (
-                    <line
-                      x1="2"
-                      x2="26"
-                      y1="7"
-                      y2="7"
-                      stroke={
-                        kind === 'administrative'
-                          ? colors.border
-                          : kind === 'watercourse'
-                            ? colors.accent
-                            : colors.selected
-                      }
-                      strokeWidth="2"
-                      strokeDasharray={
-                        kind === 'administrative'
-                          ? '3 3'
-                          : kind === 'reference-reach'
-                            ? '6 4'
-                            : undefined
-                      }
-                    />
-                  )}
-                </svg>
-                {copy.publicReferenceKinds[kind]}
-              </label>
-            ))}
-          </div>
-          <p>{copy.publicReferenceLimit}</p>
-          {publicReferences.manifest ? (
-            <p>
-              {copy.publicReferenceManifestSummary
-                .replace('{version}', publicReferences.manifest.version)
-                .replace(
-                  '{files}',
-                  String(publicReferences.manifest.files.length),
-                )
-                .replace('{total}', String(publicReferences.features.length))
-                .replace(
-                  '{shown}',
-                  String(shownPublicReferences.features.length),
-                )}
-            </p>
-          ) : null}
-          <details>
-            <summary>{copy.publicReferenceEvidence}</summary>
-            {publicReferences.manifest ? (
-              <ul>
-                {publicReferences.manifest.files.map((file) => (
-                  <li key={file.id}>
-                    <code>{file.id}</code> ·{' '}
-                    {copy.publicReferenceManifestFeatures}：{file.featureCount}{' '}
-                    ·{' '}
-                    <a href={file.license.url} target="_blank" rel="noreferrer">
-                      {file.license.attribution}
-                    </a>
-                    <p>
-                      {copy.publicReferenceFileHash}: <code>{file.sha256}</code>
-                    </p>
-                    <p>
-                      {copy.publicReferenceOriginalHash}:{' '}
-                      {file.originalSha256.map((hash) => (
-                        <code key={hash}>{hash} </code>
-                      ))}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <ul>
-              {publicReferences.features.map((feature) => (
-                <li key={String(feature.id)}>
-                  <strong>{feature.properties.label}</strong> ·{' '}
-                  <a
-                    href={feature.properties.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {copy.publicReferenceSource}
-                  </a>{' '}
-                  ·{' '}
-                  <a
-                    href={feature.properties.licenseUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {feature.properties.attribution}
-                  </a>
-                  <p>
-                    {feature.properties.referenceFileId
-                      ? copy.publicReferenceLimit
-                      : feature.properties.limitation}
-                  </p>
-                  <p>
-                    {copy.publicReferenceFileHash}:{' '}
-                    <code>{feature.properties.sourceFileSha256}</code>
-                  </p>
-                  <p>
-                    {copy.publicReferenceOriginalHash}:{' '}
-                    {feature.properties.originalSha256.map((hash) => (
-                      <code key={hash}>{hash} </code>
-                    ))}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </details>
-        </fieldset>
-      ) : publicReferenceState === 'invalid' ||
-        publicReferenceState === 'unavailable' ? (
-        <p role="status">{copy.publicReferenceUnavailable}</p>
-      ) : null}
-      {selectedFeature ? (
-        <div
-          className={styles.mapSelection}
-          role="region"
-          aria-label={copy.selectedLocation}
-        >
-          <strong>{selectedFeature.properties.label}</strong>
-          <span>{copy.positionRoles[selectedFeature.properties.role]}</span>
-          {selectedFeature.properties.positionExpression ? (
-            <span>{selectedFeature.properties.positionExpression}</span>
-          ) : null}
-          {selectedFeature.properties.role === 'reference' ? (
-            <strong>{copy.referenceLocation}</strong>
-          ) : null}
-          <details key={selectedFeature.id}>
-            <summary>{copy.locationEvidence}</summary>
-            {selectedFeature.properties.sourceTitle ? (
-              <p>{selectedFeature.properties.sourceTitle}</p>
-            ) : null}
-            {selectedFeature.properties.scaleNote ? (
-              <p>{selectedFeature.properties.scaleNote}</p>
-            ) : null}
-          </details>
-        </div>
-      ) : null}
-      {verifiedRaster.length ? (
-        <div className={styles.rasterControls}>
-          <label className={styles.checkbox}>
-            <input
-              type="checkbox"
-              checked={rasterSettings.enabled}
-              onChange={(event) =>
-                onRasterChange?.({
-                  ...rasterSettings,
-                  enabled: event.target.checked,
-                })
-              }
-            />
-            {copy.rasterLayer ?? copy.kinds.raster}
-          </label>
-          <label>
-            {copy.rasterBand ?? copy.rasterTitle}
-            <select
-              value={rasterSettings.band}
-              onChange={(event) =>
-                onRasterChange?.({
-                  ...rasterSettings,
-                  band: event.target.value as WorkspaceRasterSettings['band'],
-                })
-              }
-            >
-              {(['TCI', 'B03', 'B8A', 'SCL'] as const)
-                .filter((band) =>
-                  verifiedRaster.some((report) =>
-                    report.products.some(
-                      (product) =>
-                        product.band === band &&
-                        product.readable &&
-                        product.hashMatches,
-                    ),
-                  ),
-                )
-                .map((band) => (
-                  <option key={band} value={band}>
-                    {band}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label>
-            {copy.rasterOpacity ?? copy.value}
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={rasterSettings.opacity}
-              onChange={(event) =>
-                onRasterChange?.({
-                  ...rasterSettings,
-                  opacity: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              const extent = verifiedRaster[0]?.wgs84Bounds;
-              if (extent)
-                changeCamera({
-                  longitude: (extent[0] + extent[2]) / 2,
-                  latitude: (extent[1] + extent[3]) / 2,
-                  zoom: Math.min(
-                    12,
-                    Math.max(
-                      6,
-                      8 -
-                        Math.log2(
-                          Math.max(
-                            0.01,
-                            extent[2] - extent[0],
-                            extent[3] - extent[1],
-                          ),
-                        ),
-                    ),
-                  ),
-                });
-            }}
+      {!surfaceOnly ? (
+        <>
+          <div
+            className={styles.mapToolbar}
+            role="group"
+            aria-label={copy.mapTitle}
           >
-            {copy.locatePosition} · {copy.kinds.raster}
-          </button>
-        </div>
-      ) : null}
-      {flat ? (
-        <p role="status">
-          {failed ? copy.renderFailed : copy.noWebgl}
-          {failed ? (
-            <button
-              type="button"
-              onClick={() => {
-                setFailed(false);
-                setFrame(null);
-                setReady(false);
-                setRetry((value) => value + 1);
-              }}
-            >
-              {copy.retryMap}
-            </button>
-          ) : null}
-        </p>
-      ) : null}
-      {hits.length > 1 ? (
-        <div
-          className={styles.overlapPicker}
-          role="group"
-          aria-label={copy.overlapPick}
-        >
-          <p>{copy.overlapPick}</p>
-          {hits.map((feature) => (
-            <div key={feature.id}>
-              <button
-                type="button"
-                key={feature.id}
-                onClick={() => choose(feature)}
-              >
-                {featureLabel(feature)}
+            {(
+              [
+                [
+                  copy.rotateLeft,
+                  () =>
+                    changeCamera({
+                      bearing: ((camera.bearing - 15 + 540) % 360) - 180,
+                    }),
+                ],
+                [
+                  copy.rotateRight,
+                  () =>
+                    changeCamera({
+                      bearing: ((camera.bearing + 15 + 540) % 360) - 180,
+                    }),
+                ],
+                [
+                  copy.panWest,
+                  () =>
+                    changeCamera({
+                      longitude: Math.max(-180, camera.longitude - pan),
+                    }),
+                ],
+                [
+                  copy.panEast,
+                  () =>
+                    changeCamera({
+                      longitude: Math.min(180, camera.longitude + pan),
+                    }),
+                ],
+                [
+                  copy.panNorth,
+                  () =>
+                    changeCamera({
+                      latitude: Math.min(80, camera.latitude + pan),
+                    }),
+                ],
+                [
+                  copy.panSouth,
+                  () =>
+                    changeCamera({
+                      latitude: Math.max(-80, camera.latitude - pan),
+                    }),
+                ],
+              ] as [string, () => void][]
+            ).map(([label, action]) => (
+              <button type="button" key={label} onClick={action}>
+                {label}
               </button>
-              <details>
-                <summary>{copy.technicalDetails}</summary>
+            ))}
+            {mode === '3d' && !flat ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeCamera({ pitch: Math.min(70, camera.pitch + 10) })
+                  }
+                >
+                  {copy.tiltUp}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeCamera({ pitch: Math.max(0, camera.pitch - 10) })
+                  }
+                >
+                  {copy.tiltDown}
+                </button>
+              </>
+            ) : null}
+          </div>
+          <div
+            className={styles.mapLegend}
+            role="group"
+            aria-label={copy.mapLegend}
+          >
+            <div>
+              <strong>{copy.mapLegend}</strong>
+              <ContextHelp label={copy.mapLegend}>
+                {copy.mapLegendHint}
+              </ContextHelp>
+            </div>
+            <div>
+              {workspaceRecordKinds
+                .filter((kind) =>
+                  features.features.some(
+                    (feature) => feature.properties.kind === kind,
+                  ),
+                )
+                .map((kind) => (
+                  <span key={kind}>
+                    <i
+                      aria-hidden="true"
+                      style={{
+                        background:
+                          colors.kinds[workspaceRecordKinds.indexOf(kind)],
+                      }}
+                    />
+                    {copy.kinds[kind]}
+                  </span>
+                ))}
+            </div>
+            <div>
+              {Array.from(
+                new Set(
+                  features.features.map((feature) => feature.properties.role),
+                ),
+              ).map((role) => (
+                <span key={role}>
+                  <svg width="30" height="12" aria-hidden="true">
+                    <line
+                      x1="0"
+                      x2="30"
+                      y1="6"
+                      y2="6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray={planarRoleDashes(role)}
+                    />
+                  </svg>
+                  {copy.positionRoles[role]}
+                </span>
+              ))}
+            </div>
+          </div>
+          {publicReferences?.features.length ? (
+            <fieldset className={styles.publicReferenceControls}>
+              <legend>{copy.publicReferenceLayers}</legend>
+              <div>
+                {publicReferenceKinds.map((kind) => (
+                  <label key={kind} className={styles.checkbox}>
+                    <input
+                      type="checkbox"
+                      checked={publicReferenceVisibility[kind] ?? false}
+                      disabled={
+                        !publicReferences.features.some(
+                          (feature) => feature.properties.kind === kind,
+                        )
+                      }
+                      onChange={(event) =>
+                        setPublicReferenceVisibility((previous) => ({
+                          ...previous,
+                          [kind]: event.target.checked,
+                        }))
+                      }
+                    />
+                    <svg
+                      width="28"
+                      height="14"
+                      viewBox="0 0 28 14"
+                      aria-hidden="true"
+                    >
+                      {kind === 'administrative' ? (
+                        <rect
+                          x="2"
+                          y="2"
+                          width="24"
+                          height="10"
+                          fill={colors.border}
+                          fillOpacity="0.12"
+                        />
+                      ) : null}
+                      {kind === 'reference-anchor' ? (
+                        <circle
+                          cx="14"
+                          cy="7"
+                          r="4"
+                          fill="none"
+                          stroke={colors.selected}
+                          strokeWidth="1.5"
+                        />
+                      ) : (
+                        <line
+                          x1="2"
+                          x2="26"
+                          y1="7"
+                          y2="7"
+                          stroke={
+                            kind === 'administrative'
+                              ? colors.border
+                              : kind === 'watercourse'
+                                ? colors.accent
+                                : colors.selected
+                          }
+                          strokeWidth="2"
+                          strokeDasharray={
+                            kind === 'administrative'
+                              ? '3 3'
+                              : kind === 'reference-reach'
+                                ? '6 4'
+                                : undefined
+                          }
+                        />
+                      )}
+                    </svg>
+                    {copy.publicReferenceKinds[kind]}
+                  </label>
+                ))}
+              </div>
+              <p>{copy.publicReferenceLimit}</p>
+              {publicReferences.manifest ? (
                 <p>
-                  {feature.properties.sourceId} · {feature.properties.versionId}{' '}
-                  · {feature.properties.recordId} ·{' '}
-                  {feature.properties.positionId}
+                  {copy.publicReferenceManifestSummary
+                    .replace('{version}', publicReferences.manifest.version)
+                    .replace(
+                      '{files}',
+                      String(publicReferences.manifest.files.length),
+                    )
+                    .replace(
+                      '{total}',
+                      String(publicReferences.features.length),
+                    )
+                    .replace(
+                      '{shown}',
+                      String(shownPublicReferences.features.length),
+                    )}
                 </p>
+              ) : null}
+              <details>
+                <summary>{copy.publicReferenceEvidence}</summary>
+                {publicReferences.manifest ? (
+                  <ul>
+                    {publicReferences.manifest.files.map((file) => (
+                      <li key={file.id}>
+                        <code>{file.id}</code> ·{' '}
+                        {copy.publicReferenceManifestFeatures}：
+                        {file.featureCount} ·{' '}
+                        <a
+                          href={file.license.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {file.license.attribution}
+                        </a>
+                        <p>
+                          {copy.publicReferenceFileHash}:{' '}
+                          <code>{file.sha256}</code>
+                        </p>
+                        <p>
+                          {copy.publicReferenceOriginalHash}:{' '}
+                          {file.originalSha256.map((hash) => (
+                            <code key={hash}>{hash} </code>
+                          ))}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <ul>
+                  {publicReferences.features.map((feature) => (
+                    <li key={String(feature.id)}>
+                      <strong>{feature.properties.label}</strong> ·{' '}
+                      <a
+                        href={feature.properties.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {copy.publicReferenceSource}
+                      </a>{' '}
+                      ·{' '}
+                      <a
+                        href={feature.properties.licenseUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {feature.properties.attribution}
+                      </a>
+                      <p>
+                        {feature.properties.referenceFileId
+                          ? copy.publicReferenceLimit
+                          : feature.properties.limitation}
+                      </p>
+                      <p>
+                        {copy.publicReferenceFileHash}:{' '}
+                        <code>{feature.properties.sourceFileSha256}</code>
+                      </p>
+                      <p>
+                        {copy.publicReferenceOriginalHash}:{' '}
+                        {feature.properties.originalSha256.map((hash) => (
+                          <code key={hash}>{hash} </code>
+                        ))}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </fieldset>
+          ) : publicReferenceState === 'invalid' ||
+            publicReferenceState === 'unavailable' ? (
+            <p role="status">{copy.publicReferenceUnavailable}</p>
+          ) : null}
+          {selectedFeature ? (
+            <div
+              className={styles.mapSelection}
+              role="region"
+              aria-label={copy.selectedLocation}
+            >
+              <strong>{selectedFeature.properties.label}</strong>
+              <span>{copy.positionRoles[selectedFeature.properties.role]}</span>
+              {selectedFeature.properties.positionExpression ? (
+                <span>{selectedFeature.properties.positionExpression}</span>
+              ) : null}
+              {selectedFeature.properties.role === 'reference' ? (
+                <strong>{copy.referenceLocation}</strong>
+              ) : null}
+              <details key={selectedFeature.id}>
+                <summary>{copy.locationEvidence}</summary>
+                {selectedFeature.properties.sourceTitle ? (
+                  <p>{selectedFeature.properties.sourceTitle}</p>
+                ) : null}
+                {selectedFeature.properties.scaleNote ? (
+                  <p>{selectedFeature.properties.scaleNote}</p>
+                ) : null}
               </details>
             </div>
-          ))}
-        </div>
+          ) : null}
+          {verifiedRaster.length ? (
+            <div className={styles.rasterControls}>
+              <label className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={rasterSettings.enabled}
+                  onChange={(event) =>
+                    onRasterChange?.({
+                      ...rasterSettings,
+                      enabled: event.target.checked,
+                    })
+                  }
+                />
+                {copy.rasterLayer ?? copy.kinds.raster}
+              </label>
+              <label>
+                {copy.rasterBand ?? copy.rasterTitle}
+                <select
+                  value={rasterSettings.band}
+                  onChange={(event) =>
+                    onRasterChange?.({
+                      ...rasterSettings,
+                      band: event.target
+                        .value as WorkspaceRasterSettings['band'],
+                    })
+                  }
+                >
+                  {(['TCI', 'B03', 'B8A', 'SCL'] as const)
+                    .filter((band) =>
+                      verifiedRaster.some((report) =>
+                        report.products.some(
+                          (product) =>
+                            product.band === band &&
+                            product.readable &&
+                            product.hashMatches,
+                        ),
+                      ),
+                    )
+                    .map((band) => (
+                      <option key={band} value={band}>
+                        {band}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                {copy.rasterOpacity ?? copy.value}
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={rasterSettings.opacity}
+                  onChange={(event) =>
+                    onRasterChange?.({
+                      ...rasterSettings,
+                      opacity: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const extent = verifiedRaster[0]?.wgs84Bounds;
+                  if (extent)
+                    changeCamera({
+                      longitude: (extent[0] + extent[2]) / 2,
+                      latitude: (extent[1] + extent[3]) / 2,
+                      zoom: Math.min(
+                        12,
+                        Math.max(
+                          6,
+                          8 -
+                            Math.log2(
+                              Math.max(
+                                0.01,
+                                extent[2] - extent[0],
+                                extent[3] - extent[1],
+                              ),
+                            ),
+                        ),
+                      ),
+                    });
+                }}
+              >
+                {copy.locatePosition} · {copy.kinds.raster}
+              </button>
+            </div>
+          ) : null}
+          {flat ? (
+            <p role="status">
+              {failed ? copy.renderFailed : copy.noWebgl}
+              {failed ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFailed(false);
+                    setFrame(null);
+                    setReady(false);
+                    setRetry((value) => value + 1);
+                  }}
+                >
+                  {copy.retryMap}
+                </button>
+              ) : null}
+            </p>
+          ) : null}
+          {hits.length > 1 ? (
+            <div
+              className={styles.overlapPicker}
+              role="group"
+              aria-label={copy.overlapPick}
+            >
+              <p>{copy.overlapPick}</p>
+              {hits.map((feature) => (
+                <div key={feature.id}>
+                  <button
+                    type="button"
+                    key={feature.id}
+                    onClick={() => choose(feature)}
+                  >
+                    {featureLabel(feature)}
+                  </button>
+                  <details>
+                    <summary>{copy.technicalDetails}</summary>
+                    <p>
+                      {feature.properties.sourceId} ·{' '}
+                      {feature.properties.versionId} ·{' '}
+                      {feature.properties.recordId} ·{' '}
+                      {feature.properties.positionId}
+                    </p>
+                  </details>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {mode === '3d' && !flat ? (
+            <p className={styles.hint}>{copy.categoryHeightHint}</p>
+          ) : null}
+          {mode === '3d' &&
+          camera.zoom < 6.5 &&
+          features.features.length > projected.length &&
+          !flat ? (
+            <p className={styles.hint}>
+              {copy.aggregationSummary.replace(
+                '{count}',
+                String(features.features.length - projected.length),
+              )}
+            </p>
+          ) : null}
+          <p className={styles.hint}>
+            {copy.referenceHint} {copy.smallScaleHint}
+          </p>
+        </>
       ) : null}
-      {mode === '3d' && !flat ? (
-        <p className={styles.hint}>{copy.categoryHeightHint}</p>
-      ) : null}
-      {mode === '3d' &&
-      camera.zoom < 6.5 &&
-      features.features.length > projected.length &&
-      !flat ? (
-        <p className={styles.hint}>
-          {copy.aggregationSummary.replace(
-            '{count}',
-            String(features.features.length - projected.length),
-          )}
-        </p>
-      ) : null}
-      <p className={styles.hint}>
-        {copy.referenceHint} {copy.smallScaleHint}
-      </p>
     </div>
   );
 }

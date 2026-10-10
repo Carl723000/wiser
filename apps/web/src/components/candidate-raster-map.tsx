@@ -1,6 +1,6 @@
 'use client';
 import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import type {
   CandidateRasterWindow,
@@ -18,10 +18,19 @@ import type {
   WorkspaceCamera,
   WorkspaceMapFeatures,
 } from '@/lib/spatial-workspace-view';
+import type { SpatialWorkspaceMapProps } from './spatial-workspace-map';
+import { CandidateRasterComparison } from './candidate-raster-comparison';
 import {
-  SpatialWorkspaceMap,
-  type SpatialWorkspaceMapProps,
-} from './spatial-workspace-map';
+  candidateRasterDisplay,
+  initialRasterComparison,
+  moveRasterCamera,
+  rasterCamera,
+  setRasterDisplay,
+  setRasterSynchronization,
+  setRasterViewMode,
+  type RasterSide,
+} from '@/lib/candidate-raster-display';
+import comparisonStyles from './candidate-raster-comparison.module.css';
 import styles from './ingestion-candidate-raster-panel.module.css';
 
 const emptyFeatures: WorkspaceMapFeatures = {
@@ -64,62 +73,87 @@ export function CandidateRasterMap({
 } & PublicReferenceInput) {
   const dictionary = getDictionary(locale).dataFoundation;
   const copy = dictionary.candidateReader.raster;
-  const [camera, setCamera] = useState(() => cameraFor(footprint, 10));
-  const [area, setArea] = useState(false);
-  const ring = window ? rasterWindowMapRing(window) : null;
-  const pixels = useMemo(
-    () =>
-      result
-        ? Array.from(
-            { length: result.window.rows * result.window.columns },
-            (_, index) => ({
-              type: 'Feature' as const,
-              properties: {
-                kind: 'pixel' as const,
-                color: `rgb(${result.values.TCI.map((band) => band[index]).join(',')})`,
-              },
-              geometry: {
-                type: 'Polygon' as const,
-                coordinates: [
-                  rasterWindowMapRing({
-                    row:
-                      result.window.row +
-                      Math.floor(index / result.window.columns),
-                    column:
-                      result.window.column + (index % result.window.columns),
-                    rows: 1,
-                    columns: 1,
-                  }),
-                ],
-              },
-            }),
-          )
-        : [],
-    [result],
+  const [comparison, setComparison] = useState(() =>
+    initialRasterComparison(cameraFor(footprint, 10)),
   );
+  const [split, setSplit] = useState(50);
+  const camera = rasterCamera(comparison, 'left');
+  const displayCopy = copy.display;
+  const comparisonCopy = dictionary.candidateReader.comparison;
+  const generation = useMemo(
+    () => ({}),
+    [result, window, disabled, comparison.display, comparison.mode],
+  );
+  const current = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    current.current = generation;
+    return () => {
+      current.current = null;
+    };
+  }, [generation]);
+  function owns() {
+    return !disabled && current.current === generation;
+  }
+  function setCamera(next: WorkspaceCamera, side: RasterSide = 'left') {
+    if (!owns()) return;
+    setComparison((previous) =>
+      previous.display === comparison.display &&
+      previous.mode === comparison.mode
+        ? moveRasterCamera(previous, side, next)
+        : previous,
+    );
+  }
+  const [area, setArea] = useState(false);
+  function locate(ring: readonly (readonly number[])[], zoom: number) {
+    setCamera({
+      ...cameraFor(ring, zoom),
+      bearing: camera.bearing,
+      pitch: comparison.mode === '3d' ? camera.pitch || 50 : 0,
+    });
+  }
+  const ring = window ? rasterWindowMapRing(window) : null;
+  const windowKey = JSON.stringify(window);
+  const displayData = useMemo(() => {
+    if (!result || disabled || windowKey !== JSON.stringify(result.window))
+      return null;
+    try {
+      return candidateRasterDisplay(result);
+    } catch {
+      return null;
+    }
+  }, [result, disabled, windowKey]);
+  const surround: NonNullable<
+    SpatialWorkspaceMapProps['inspectionGeometry']
+  >['features'] = [
+    {
+      type: 'Feature',
+      properties: { kind: 'footprint' },
+      geometry: { type: 'Polygon', coordinates: [footprint] },
+    },
+    ...(ring
+      ? [
+          {
+            type: 'Feature' as const,
+            properties: { kind: 'selection' as const },
+            geometry: { type: 'Polygon' as const, coordinates: [ring] },
+          },
+        ]
+      : []),
+  ];
   const geometry: NonNullable<SpatialWorkspaceMapProps['inspectionGeometry']> =
     {
       type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          properties: { kind: 'footprint' },
-          geometry: { type: 'Polygon', coordinates: [footprint] },
-        },
-        ...pixels,
-        ...(ring
-          ? [
-              {
-                type: 'Feature' as const,
-                properties: { kind: 'selection' as const },
-                geometry: { type: 'Polygon' as const, coordinates: [ring] },
-              },
-            ]
-          : []),
-      ],
+      features: [...surround, ...(displayData?.tci.features ?? [])],
     };
+  const sclGeometry: NonNullable<
+    SpatialWorkspaceMapProps['inspectionGeometry']
+  > = {
+    type: 'FeatureCollection',
+    features: [...surround, ...(displayData?.scl.features ?? [])],
+  };
+  const display = displayData ? comparison.display : 'single';
   function choose(point: readonly number[]) {
-    if (disabled) return;
+    if (!owns()) return;
     try {
       onWindow({ ...mapRasterPixel(point), rows: 1, columns: 1 });
     } catch {
@@ -127,7 +161,7 @@ export function CandidateRasterMap({
     }
   }
   function chooseBounds(bounds: WorkspaceBounds) {
-    if (disabled) return;
+    if (!owns()) return;
     try {
       onWindow(mapRasterWindowFromBounds(bounds));
     } catch {
@@ -158,7 +192,7 @@ export function CandidateRasterMap({
           type="button"
           disabled={disabled || !ring}
           onClick={() => {
-            if (ring) setCamera(cameraFor(ring, 16));
+            if (ring) locate(ring, 16);
           }}
         >
           {copy.viewSelection}
@@ -166,13 +200,122 @@ export function CandidateRasterMap({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setCamera(cameraFor(footprint, 10))}
+          onClick={() => locate(footprint, 10)}
         >
           {copy.viewGrid}
         </button>
       </div>
       <p>{area ? copy.selectAreaHint : copy.selectPixelHint}</p>
-      {result ? <p>{copy.pixelDisplay}</p> : null}
+      <div className={styles.pager} role="group" aria-label={displayCopy.title}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={comparison.mode === '2d'}
+          onClick={() =>
+            setComparison((previous) => setRasterViewMode(previous, '2d'))
+          }
+        >
+          {dictionary.spatialWorkspace.flatView}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-pressed={comparison.mode === '3d'}
+          onClick={() =>
+            setComparison((previous) => setRasterViewMode(previous, '3d'))
+          }
+        >
+          {dictionary.spatialWorkspace.spaceView}
+        </button>
+        {(['single', 'side-by-side', 'swipe'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            disabled={disabled || !displayData}
+            aria-pressed={display === mode}
+            onClick={() =>
+              setComparison((previous) => setRasterDisplay(previous, mode))
+            }
+          >
+            {mode === 'single'
+              ? displayCopy.single
+              : mode === 'side-by-side'
+                ? displayCopy.sideBySide
+                : displayCopy.swipe}
+          </button>
+        ))}
+      </div>
+      {comparison.mode === '3d' ? (
+        <p>{dictionary.spatialWorkspace.birdEyePlanar}</p>
+      ) : null}
+      {display === 'side-by-side' ? (
+        <div className={styles.pager}>
+          <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={comparison.synchronized}
+            onClick={() =>
+              setComparison((previous) =>
+                setRasterSynchronization(previous, true),
+              )
+            }
+          >
+            {comparisonCopy.synchronized}
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={!comparison.synchronized}
+            onClick={() =>
+              setComparison((previous) =>
+                setRasterSynchronization(previous, false),
+              )
+            }
+          >
+            {comparisonCopy.independent}
+          </button>
+        </div>
+      ) : null}
+      {displayData ? (
+        <>
+          <p>{displayCopy.scope}</p>
+          <p>
+            {result!.sourceProduct} · {result!.sensingTime}
+          </p>
+          <ul
+            className={comparisonStyles.legend}
+            aria-label={displayCopy.legend}
+          >
+            {displayData.legend.map(({ code, count, color }) => (
+              <li key={code}>
+                <i aria-hidden="true" style={{ background: color }} />
+                {code}: {count}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : result && !disabled ? (
+        <p role="alert">{copy.invalid}</p>
+      ) : null}
+      {display === 'swipe' ? (
+        <>
+          <p>{displayCopy.swipeScope}</p>
+          <label className={comparisonStyles.split}>
+            {displayCopy.split}
+            <input
+              type="range"
+              aria-label={displayCopy.split}
+              min="0"
+              max="100"
+              step="1"
+              value={split}
+              disabled={disabled}
+              onChange={(event) => setSplit(Number(event.target.value))}
+            />
+            <output>{split}%</output>
+          </label>
+        </>
+      ) : null}
       <div
         data-testid="candidate-raster-map-selection"
         data-native-window={
@@ -182,21 +325,30 @@ export function CandidateRasterMap({
         }
         data-selection-ring={JSON.stringify(ring)}
       >
-        <SpatialWorkspaceMap
-          publicReferences={publicReferences}
-          publicReferenceState={publicReferenceState}
-          active={!disabled}
-          features={emptyFeatures}
-          camera={camera}
-          mode="2d"
-          selection={null}
-          copy={dictionary.spatialWorkspace}
-          onCamera={setCamera}
-          onSelect={() => {}}
-          drawBounds={area}
-          onBounds={chooseBounds}
-          onCoordinate={choose}
-          inspectionGeometry={geometry}
+        <CandidateRasterComparison
+          key={display}
+          display={display}
+          copy={displayCopy}
+          split={split}
+          sclGeometry={sclGeometry}
+          rightCamera={rasterCamera(comparison, 'right')}
+          onRightCamera={(next) => setCamera(next, 'right')}
+          common={{
+            publicReferences,
+            publicReferenceState,
+            active: !disabled,
+            features: emptyFeatures,
+            camera,
+            mode: comparison.mode,
+            selection: null,
+            copy: dictionary.spatialWorkspace,
+            onCamera: (next) => setCamera(next),
+            onSelect: () => {},
+            drawBounds: area,
+            onBounds: chooseBounds,
+            onCoordinate: choose,
+            inspectionGeometry: geometry,
+          }}
         />
       </div>
       {window ? (

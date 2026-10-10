@@ -9,7 +9,14 @@ import {
   type StyleSpecification,
   type FilterSpecification,
 } from 'maplibre-gl';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 
 import type {
   MapFeatureCollectionDto,
@@ -42,10 +49,14 @@ import {
   supportedReadingCamera,
   type MapCamera,
 } from '@/lib/amap-camera';
+import { createCandidateMapCameraController } from '@/lib/candidate-map-controlled-camera';
 
 setWorkerUrl('/vendor/maplibre/6.11.2/maplibre-gl-worker.mjs');
 
 type Position = [number, number, ...number[]];
+export interface DataFoundationMapReadingHandle {
+  camera: () => MapCamera | undefined;
+}
 
 function array(value: unknown): readonly unknown[] {
   if (!Array.isArray(value)) throw new TypeError('Invalid map geometry.');
@@ -192,6 +203,9 @@ export function DataFoundationMap({
   onSelectRecord,
   selectedRecordId,
   initialReadingCamera,
+  readingCamera,
+  readingCameraOwner,
+  readingHandle,
   onReadingCamera,
   publicReferences,
   publicReferenceState,
@@ -213,6 +227,12 @@ export function DataFoundationMap({
   readonly selectedRecordId?: string | null;
   /** Authority-coordinate reading state, independent of source geometries. */
   readonly initialReadingCamera?: MapCamera;
+  /** Optional controlled authority-coordinate camera; does not recreate the map. */
+  readonly readingCamera?: MapCamera;
+  /** Caller-owned complete reading identity; replacing it invalidates old gestures. */
+  readonly readingCameraOwner?: string;
+  /** Capture the existing native reading view before temporarily unmounting it. */
+  readonly readingHandle?: Ref<DataFoundationMapReadingHandle>;
   readonly onReadingCamera?: (camera: MapCamera) => void;
 } & PublicReferenceInput) {
   const container = useRef<HTMLDivElement>(null);
@@ -223,12 +243,16 @@ export function DataFoundationMap({
   const mapCopy = getDictionary(locale).dataFoundation.mapPage;
   const referenceCopy = getDictionary(locale).dataFoundation.spatialWorkspace;
   const [tilted, setTilted] = useState(
-    () => (supportedReadingCamera(initialReadingCamera)?.pitch ?? 0) !== 0,
+    () =>
+      (supportedReadingCamera(readingCamera ?? initialReadingCamera)?.pitch ??
+        0) !== 0,
   );
   const [onlineAligned, setOnlineAligned] = useState(
     () =>
-      (supportedReadingCamera(initialReadingCamera)?.pitch ?? 0) === 0 &&
-      (supportedReadingCamera(initialReadingCamera)?.bearing ?? 0) === 0,
+      (supportedReadingCamera(readingCamera ?? initialReadingCamera)?.pitch ??
+        0) === 0 &&
+      (supportedReadingCamera(readingCamera ?? initialReadingCamera)?.bearing ??
+        0) === 0,
   );
   const [referenceVisibility, setReferenceVisibility] =
     useState<PublicReferenceVisibility>({
@@ -249,9 +273,24 @@ export function DataFoundationMap({
   const integerZoomRef = useRef(false);
   const selectRecordRef = useRef(onSelectRecord);
   selectRecordRef.current = onSelectRecord;
-  const readingCameraRef = useRef(initialReadingCamera);
-  readingCameraRef.current = initialReadingCamera;
+  const readingCameraRef = useRef(readingCamera ?? initialReadingCamera);
+  readingCameraRef.current = readingCamera ?? initialReadingCamera;
+  const controlledCameraRef = useRef(readingCamera);
+  controlledCameraRef.current = readingCamera;
+  const readingOwnerRef = useRef(readingCameraOwner);
+  readingOwnerRef.current = readingCameraOwner;
+  const cameraController = useRef<ReturnType<
+    typeof createCandidateMapCameraController
+  > | null>(null);
   const reportReadingCameraRef = useRef(onReadingCamera);
+  const captureReadingCamera = useRef<(() => MapCamera | undefined) | null>(
+    null,
+  );
+  useImperativeHandle(
+    readingHandle,
+    () => ({ camera: () => captureReadingCamera.current?.() }),
+    [],
+  );
   reportReadingCameraRef.current = onReadingCamera;
   const drawingFocusUsed = useRef(false);
   function applyDisplay(display: RasterDisplay | null) {
@@ -618,6 +657,75 @@ export function DataFoundationMap({
       },
     });
     mapRef.current = map;
+    const readCamera = () => {
+      const center = map.getCenter();
+      return authorityCamera({
+        longitude: center.lng,
+        latitude: center.lat,
+        zoom: map.getZoom(),
+        bearing: map.getBearing(),
+        pitch: map.getPitch(),
+      });
+    };
+    const capture = () => (mapRef.current === map ? readCamera() : undefined);
+    captureReadingCamera.current = capture;
+    const controller = createCandidateMapCameraController({
+      current: () => mapRef.current === map,
+      read: readCamera,
+      jump: (camera, data) => {
+        const display = displayCamera(camera);
+        // Suspend the planar enhancement before MapLibre emits its first frame.
+        if (
+          (display.pitch !== 0 || display.bearing !== 0) &&
+          onlineEnhancement.current
+        )
+          onlineEnhancement.current.hidden = true;
+        map.jumpTo(
+          {
+            center: [display.longitude, display.latitude],
+            zoom: display.zoom,
+            bearing: display.bearing,
+            pitch: display.pitch,
+          },
+          data,
+        );
+      },
+      scrollZooming: () => map.scrollZoom.isZooming(),
+      report: (camera) => reportReadingCameraRef.current?.(camera),
+    });
+    cameraController.current = controller;
+    controller.setControlled(
+      controlledCameraRef.current,
+      readingOwnerRef.current,
+    );
+    const inputTypes = [
+      'wheel',
+      'keydown',
+      'click',
+      'dblclick',
+      'mousedown',
+      'mouseup',
+      'mousemove',
+      'pointerdown',
+      'pointermove',
+      'pointerup',
+      'pointercancel',
+      'touchstart',
+      'touchmove',
+      'touchend',
+      'touchcancel',
+    ] as const;
+    const captureInput = (event: Event) => {
+      const target = event.target;
+      controller.input(
+        event,
+        target instanceof Node && container.current?.contains(target) === true,
+      );
+    };
+    // Capture precedes native handlers; document also covers drag releases
+    // outside the canvas. Each instance keeps its own input qualifications.
+    for (const type of inputTypes)
+      document.addEventListener(type, captureInput, true);
     const members = new Set(
       features.features.flatMap((feature) =>
         'recordId' in feature.properties &&
@@ -627,7 +735,12 @@ export function DataFoundationMap({
       ),
     );
     map.on('click', (event) => {
-      if (!selectRecordRef.current || members.size === 0) return;
+      if (
+        mapRef.current !== map ||
+        !selectRecordRef.current ||
+        members.size === 0
+      )
+        return;
       const hit = map
         .queryRenderedFeatures(event.point, {
           layers: ['authority-polygons', 'authority-lines', 'authority-points'],
@@ -682,27 +795,24 @@ export function DataFoundationMap({
     };
     map.on('rotatestart', suspendOnline);
     map.on('pitchstart', suspendOnline);
-    map.on('move', sync);
+    map.on('move', (event) => {
+      sync();
+      controller.move(event);
+    });
     map.on('resize', sync);
     map.on('load', sync);
-    map.on('moveend', () => {
+    map.on('moveend', (event) => {
       if (mapRef.current !== map) return;
-      const center = map.getCenter();
-      const bearing = map.getBearing();
-      const pitch = map.getPitch();
       sync();
-      reportReadingCameraRef.current?.(
-        authorityCamera({
-          longitude: center.lng,
-          latitude: center.lat,
-          zoom: map.getZoom(),
-          bearing,
-          pitch,
-        }),
-      );
+      controller.end(event);
     });
     map.once('load', () => {
-      if (restoredCamera) return;
+      if (
+        mapRef.current !== map ||
+        restoredCamera ||
+        controller.hasControlledCamera()
+      )
+        return;
       const bounds = mapDisplayBounds(
         features.features.map((feature) => feature.geometry.coordinates),
         stacExtents.map((extent) => extent.bbox),
@@ -819,6 +929,13 @@ export function DataFoundationMap({
     });
     map.once('remove', () => themeObserver.disconnect());
     return () => {
+      controller.dispose();
+      for (const type of inputTypes)
+        document.removeEventListener(type, captureInput, true);
+      if (cameraController.current === controller)
+        cameraController.current = null;
+      if (captureReadingCamera.current === capture)
+        captureReadingCamera.current = null;
       mapRef.current = null;
       map.remove();
       rasterRef.current?.dispose();
@@ -834,6 +951,9 @@ export function DataFoundationMap({
     displayCrs,
     publicReferences,
   ]);
+  useLayoutEffect(() => {
+    cameraController.current?.setControlled(readingCamera, readingCameraOwner);
+  }, [readingCamera, readingCameraOwner]);
   useEffect(() => {
     const instance = mapRef.current;
     if (!instance) return;
@@ -970,7 +1090,7 @@ export function DataFoundationMap({
     if ((pitch !== 0 || map.getBearing() !== 0) && onlineEnhancement.current)
       onlineEnhancement.current.hidden = true;
     setOnlineAligned(pitch === 0 && map.getBearing() === 0);
-    map.jumpTo({ pitch });
+    cameraController.current?.perspective(() => map.jumpTo({ pitch }));
   };
 
   useLayoutEffect(() => {

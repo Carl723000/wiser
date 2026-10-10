@@ -15,7 +15,7 @@ checkPaths:
   - apps/web/src/**
   - apps/docs/src/**
 lastReviewedAt: 2026-10-10
-lastReviewedCommit: b83eeb49ef14bd24c84d5e5bdf1bbf2e79092988
+lastReviewedCommit: 879a01ab770f27e169b2d51fa718829b138d586a
 ---
 
 ## Design direction
@@ -184,3 +184,7 @@ The ordinary intake followup panel separates its fixed task source from a supple
 Candidate monthly originals include a surface-water quality monitoring (K5-001) readiness detail only for river rows explicitly declaring the Chaobai water system. Evidence retains the current row and the verified water-system cell; a vertical continuation may reuse its predecessor cell in the same table. Lakes, districts, object names and selected scope do not establish this membership. The row-interpretation rule and the 19-need catalog source reference are shown separately. Professional review, precise location and cross-month object/publication-series correspondence remain unconfirmed; all other originals remain unmapped and readable. The nine questions reuse the same readiness calculation and fixed-row drilldown. Every indexed monthly original uses the exact bounded cursor position acquired by the current complete semantic read. Selection still checks current records and conversion evidence, retaining the exact candidate, asset, record and record-mode saving; denied or changed authority clears old content. This adds no authoritative mapping, read API or cross-month identity. Synthetic regressions remain separate from real candidate, authorization, browser and complete business acceptance.
 
 Candidate maps expose keyboard-operable planar and bird’s-eye buttons and independent public-reference checkboxes using shared locale copy and theme tokens. Bird’s-eye is a tilted planar map with no terrain claim. The planar online enhancement is unmounted while bearing or pitch is nonzero and receives the current center/zoom again on an unrotated planar return; the same authorized features and selected record remain mounted. Visible public attribution and hollow reference anchors retain their separate reference role. The responsive canvas height is independent of adjacent control messages and source disclosures, so changing perspective or opening reference evidence does not stretch the map.
+
+Candidate comparison labels both map panes and separates camera synchronization from record selection. The ordinary map unmounts during comparison so only the two comparison map instances remain active; exit and authority failure release them. All controls use the existing dictionary and semantic tokens, with visible keyboard focus and bounded record lists. The original single-view descriptor remains in memory for a fresh read on exit; comparison state is not added to the saved-view schema.
+
+Native raster swipe layers use equal full-size geographic viewports and identical per-cell boundaries, with original TCI RGB values and discrete SCL code colors. The upper drawing surface is passive, inaccessible to pointer and keyboard input, and clipped without changing its viewport size. The lower map owns interaction and the shared camera. A named keyboard-operable range controls the division; 0, 50 and 100 percent remain valid. Both layers are released with the authorized result. Camera equality in component tests does not replace native geographic alignment and lifecycle verification.

@@ -19,7 +19,7 @@ checkPaths:
   - apps/docs/src/**
   - apps/docs/e2e/**
 lastReviewedAt: 2026-10-10
-lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
+lastReviewedCommit: 879a01ab770f27e169b2d51fa718829b138d586a
 ---
 
 ## Two frontend applications
@@ -385,3 +385,9 @@ The server-only public-reference loader is independent from the local business-p
 The MapLibre reading camera accepts the existing longitude/latitude/zoom and bearing[-180,180]/pitch[0,85] contract. Perspective buttons use non-animated `jumpTo`, preserving center/zoom and record state; a nonzero bearing or pitch hides the center/zoom-only online SDK enhancement. An unrotated planar return remounts and synchronizes it; pitch switching alone retains the existing bearing. Reference EPSG:4326 vertices use the same display-only conversion as candidate geometries, which remain unchanged. Candidate fit bounds, hit queries, counts and saved pins exclude public references. Existing save payloads retain unsupported settings and never claim a saved background version. Independent comparison cameras and swipe comparison remain separate work.
 
 Native rotation and pitch start synchronously hide the planar enhancement container before React commits. Every native move rechecks the actual bearing/pitch, and an aligned return synchronizes the current center/zoom before revealing it; a newly mounted SDK is synchronized in a layout effect before paint. Keyboard pan/zoom and native camera inputs retain their existing behavior. Synthetic movement-order checks use an available SDK handle; they do not establish successful external SDK/browser alignment.
+
+### Temporary candidate comparison
+
+`CandidateMapComparison` gives each pane its own cancellable geometry read and camera owner containing the complete reference, asset, page, drawing and generation. Controlled camera replays carry a private per-map marker; they do not emit another user proposal. Switching authority or drawing invalidates old gestures and pending reads. The ordinary map unmounts during comparison, and its native camera plus reading descriptor is captured before entry. Exit rereads that descriptor; saving remains single-view only. Existing saved/topic authority checks bracket every read and exact-record return.
+
+Native raster display shares each cell's geographic polygon between original TCI RGB and discrete SCL code features. `SpatialWorkspaceMap` exposes optional passive/surface-only rendering for the upper swipe layer; both layers retain equal viewport dimensions and controlled cameras. A renderer mismatch hides the upper layer. Changing the display does not invoke the original reader. Original-window, result, mode-generation or authority changes invalidate stale callbacks and release displayed data as appropriate. Test native renderer alignment, real original-byte delivery and context release separately from component/state tests.
