@@ -627,3 +627,350 @@ it('submits only the current version after supplemental evidence has been accept
     note: 'Source evidence ready for independent handling',
   });
 });
+
+const supplementalReference = {
+  ...reference,
+  ingestionId: id(30),
+  reviewHash: 'c'.repeat(64),
+};
+const supplementalLookup = {
+  action: '/en/data-foundation/ingestions/' + id(1),
+  requestedIngestionId: id(30),
+  initialFollowupId: id(5),
+  source: { reference: supplementalReference, label: 'Authorized source B' },
+  stateLabel: 'Review required',
+};
+const assetPage = (ref = supplementalReference) => ({
+  reference: ref,
+  assets: [{ assetId: id(31), sourceHash: 'd'.repeat(64) }],
+  nextCursor: null,
+});
+it('restores the same followup and submits exact cross-source proof without adding B to the task selector', async () => {
+  read.mockResolvedValue({ followup: task('WORKING', 2) });
+  candidate.mockResolvedValue(assetPage());
+  render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  expect(read).toHaveBeenCalledWith(
+    'get',
+    { followupId: id(5) },
+    expect.any(AbortSignal),
+  );
+  expect(
+    within(screen.getByLabelText('Fixed candidate source')).getAllByRole(
+      'option',
+    ),
+  ).toHaveLength(1);
+  expect(screen.getByText('Review required')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  await screen.findByRole('option', { name: `Original · ${id(31)}` });
+  fireEvent.change(screen.getByLabelText('Action note'), {
+    target: { value: 'Distinct evidence' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Supplement evidence' }));
+  await waitFor(() =>
+    expect(read).toHaveBeenCalledWith(
+      'act',
+      {
+        followupId: id(5),
+        expectedVersion: 2,
+        action: 'SUPPLEMENT',
+        note: 'Distinct evidence',
+        evidence: [
+          {
+            reference: supplementalReference,
+            assetId: id(31),
+            sourceHash: 'd'.repeat(64),
+            locator: `asset:${id(31)}`,
+          },
+        ],
+      },
+      expect.any(AbortSignal),
+      expect.any(String),
+    ),
+  );
+  const form = screen
+    .getByRole('button', { name: 'Find evidence source' })
+    .closest('form')!;
+  expect(new FormData(form).get('followupId')).toBe(id(5));
+  expect(new FormData(form).get('supplementIngestionId')).toBe(id(30));
+});
+it('cancels and discards previous supplemental proof while preserving the loaded followup on source replacement', async () => {
+  read.mockResolvedValue({ followup: task('WORKING', 2) });
+  let resolve!: (value: unknown) => void;
+  candidate.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const { rerender } = render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  const signal = candidate.mock.calls[0][2] as AbortSignal;
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={{
+        ...supplementalLookup,
+        source: undefined,
+        error: 'denied',
+      }}
+    />,
+  );
+  expect(signal.aborted).toBe(true);
+  resolve(assetPage());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('option', { name: `Original · ${id(31)}` }),
+    ).toBeNull(),
+  );
+  expect(screen.getByText('Working', { selector: 'strong' })).toBeTruthy();
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Load source evidence',
+    }).disabled,
+  ).toBe(true);
+  expect(
+    within(screen.getByLabelText('Evidence source')).queryAllByRole('option'),
+  ).toHaveLength(0);
+});
+it('submitting a replacement lookup clears a ready proof and carries only the current task identity', async () => {
+  read.mockResolvedValue({ followup: task('WORKING', 2) });
+  candidate.mockResolvedValue(assetPage());
+  render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  await screen.findByRole('option', { name: `Original · ${id(31)}` });
+  fireEvent.submit(
+    screen
+      .getByRole('button', { name: 'Find evidence source' })
+      .closest('form')!,
+  );
+  expect(
+    screen.queryByRole('option', { name: `Original · ${id(31)}` }),
+  ).toBeNull();
+  expect(screen.getByText('Working', { selector: 'strong' })).toBeTruthy();
+});
+it('removes supplemental labels and proof after current read denial without a fallback to A', async () => {
+  read.mockResolvedValue({ followup: task('WORKING', 2) });
+  candidate.mockRejectedValue(new CandidateReaderError('denied'));
+  render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  await screen.findByRole('alert');
+  expect(screen.queryByText(/Authorized source B/)).toBeNull();
+  expect(
+    within(screen.getByLabelText('Evidence source')).queryAllByRole('option'),
+  ).toHaveLength(0);
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Load source evidence',
+    }).disabled,
+  ).toBe(true);
+});
+it('only reopens the supplied target under A and rejects a restored task belonging to B', async () => {
+  read.mockResolvedValue({
+    followup: {
+      ...task(),
+      source: { ...source, reference: supplementalReference },
+    },
+  });
+  render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByRole('alert');
+  expect(screen.queryByLabelText('Action note')).toBeNull();
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(read.mock.calls[0][0]).toBe('get');
+});
+it('reload and return revalidate the same followup with no automatic command or retained proof', async () => {
+  read.mockResolvedValue({ followup: task('WORKING', 2) });
+  candidate.mockResolvedValue(assetPage());
+  const first = render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  await screen.findByRole('option', { name: `Original · ${id(31)}` });
+  first.unmount();
+  render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  expect(
+    screen.queryByRole('option', { name: `Original · ${id(31)}` }),
+  ).toBeNull();
+  expect(read.mock.calls.map((c) => c[0] as unknown)).toEqual(['get', 'get']);
+});
+it('restores after an initially busy owner becomes available', async () => {
+  read.mockResolvedValue({ followup: task() });
+  const { rerender } = render(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={supplementalLookup}
+      parentBusy
+    />,
+  );
+  expect(read).not.toHaveBeenCalled();
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={supplementalLookup}
+      parentBusy={false}
+    />,
+  );
+  await screen.findByText('Open', { selector: 'strong' });
+  expect(read).toHaveBeenCalledOnce();
+});
+it('retains the user-selected task ID across owner recovery instead of reopening the initial URL task', async () => {
+  const otherTask = {
+    ...task(),
+    followupId: id(60),
+    reason: 'Another followup in A',
+  };
+  read.mockImplementation((action: string, input: { followupId?: string }) =>
+    Promise.resolve(
+      action === 'list'
+        ? { items: [otherTask], nextCursor: null }
+        : { followup: input.followupId === id(60) ? otherTask : task() },
+    ),
+  );
+  const { rerender } = render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Open', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load followups' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: otherTask.reason }),
+  );
+  await screen.findByText(otherTask.reason, { selector: 'p' });
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={supplementalLookup}
+      parentBusy
+    />,
+  );
+  expect(screen.queryByText(otherTask.reason, { selector: 'p' })).toBeNull();
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={supplementalLookup}
+      parentBusy={false}
+    />,
+  );
+  await screen.findByText(otherTask.reason, { selector: 'p' });
+  expect(read.mock.calls.at(-1)?.[1]).toEqual({ followupId: id(60) });
+});
+it('does not restore denied supplemental labels on owner recovery without a new server lookup', async () => {
+  read.mockResolvedValue({ followup: task('WORKING', 2) });
+  candidate.mockRejectedValue(new CandidateReaderError('denied'));
+  const { rerender } = render(
+    <CandidateFollowupPanel {...props} supplementLookup={supplementalLookup} />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  await screen.findByRole('alert');
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={supplementalLookup}
+      parentBusy
+    />,
+  );
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={supplementalLookup}
+      parentBusy={false}
+    />,
+  );
+  await screen.findByText('Working', { selector: 'strong' });
+  expect(screen.queryByText(/Authorized source B/)).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Find the source again',
+  );
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Load source evidence',
+    }).disabled,
+  ).toBe(true);
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={{ ...supplementalLookup, verificationId: id(90) }}
+    />,
+  );
+  expect(
+    screen.getByRole('option', { name: 'Authorized source B' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('option', { name: `Original · ${id(31)}` }),
+  ).toBeNull();
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={{
+        action: supplementalLookup.action,
+        requestedIngestionId: '',
+      }}
+    />,
+  );
+  expect(
+    within(screen.getByLabelText('Evidence source')).getByRole('option', {
+      name: 'Fixed source A',
+    }),
+  ).toBeTruthy();
+  rerender(
+    <CandidateFollowupPanel
+      {...props}
+      supplementLookup={{
+        ...supplementalLookup,
+        requestedIngestionId: id(70),
+        verificationId: id(91),
+        source: {
+          reference: { ...supplementalReference, ingestionId: id(70) },
+          label: 'Authorized source C',
+        },
+      }}
+    />,
+  );
+  expect(screen.queryByText(/Authorized source B/)).toBeNull();
+  expect(
+    screen.getByRole('option', { name: 'Authorized source C' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('option', { name: `Original · ${id(31)}` }),
+  ).toBeNull();
+});
+it('keeps legacy source selection linked to evidence when no supplemental lookup is active', async () => {
+  candidate.mockResolvedValue(assetPage());
+  render(
+    <CandidateFollowupPanel
+      {...props}
+      references={[
+        ...props.references,
+        { reference: supplementalReference, label: 'B' },
+      ]}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Fixed candidate source'), {
+    target: { value: candidateSavedReferenceKey(supplementalReference) },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Load source evidence' }));
+  await waitFor(() =>
+    expect(candidate).toHaveBeenCalledWith(
+      'get',
+      { ...supplementalReference, first: 50 },
+      expect.any(AbortSignal),
+    ),
+  );
+});

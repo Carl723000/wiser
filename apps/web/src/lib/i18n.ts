@@ -36,7 +36,15 @@ const zhCN = {
     dependency:
       '请先选择有固定候选引用的来源。已发布资料编号不能替代候选引用。',
     source: '固定候选来源',
-    evidenceSource: '补充证据来源',
+    evidenceSource: '补证来源',
+    supplementIntake: '补证接收任务编号',
+    supplementHint:
+      '填写本项目中可读取的接收任务编号。查询后重新读取证据，当前跟进单保持不变。清空编号可返回当前来源。',
+    findSupplement: '查询补证来源',
+    supplementSelected: '已选择补证来源',
+    supplementRecheck: '补证来源当前不可用。请重新查询来源后再读取证据。',
+    supplementEmpty:
+      '该接收任务尚无可读取的候选。请核对任务状态或查询其他来源。',
     proofSourceMismatch:
       '创建新单时，来源证据须属于上方所选候选；当前证据可用于已有跟进单的补证。',
     load: '读取跟进清单',
@@ -4077,6 +4085,15 @@ const en: typeof zhCN = {
       'Select a fixed candidate source first. Published material identities cannot replace candidate references.',
     source: 'Fixed candidate source',
     evidenceSource: 'Evidence source',
+    supplementIntake: 'Supplement intake ID',
+    supplementHint:
+      'Enter a readable intake ID in this project. Load its evidence after the lookup; the current followup stays fixed. Clear the ID to return to the current source.',
+    findSupplement: 'Find evidence source',
+    supplementSelected: 'Selected evidence source',
+    supplementRecheck:
+      'This evidence source is currently unavailable. Find the source again before loading its evidence.',
+    supplementEmpty:
+      'This intake has no readable candidate yet. Check its status or find another source.',
     proofSourceMismatch:
       'A new followup must use the selected fixed source. This evidence can supplement an existing followup.',
     load: 'Load followups',

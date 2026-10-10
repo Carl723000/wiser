@@ -1,3 +1,4 @@
+import type { CandidateSupplementLookup } from '@/components/candidate-followup-panel';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -70,6 +71,10 @@ it('uses ingestion detail 1.2 and passes the complete candidate without changing
     locale: 'en',
     savedViewId: undefined,
     ingestionId,
+    supplementLookup: {
+      action: `/en/data-foundation/ingestions/${ingestionId}`,
+      requestedIngestionId: '',
+    },
   });
   expect(markup).toContain('Review required');
   const document = new URL(
@@ -158,4 +163,124 @@ it.each([
   expect(mocks.detail).not.toHaveBeenCalled();
   expect(mocks.reader).not.toHaveBeenCalled();
   expect(markup).toContain('role="alert"');
+});
+
+it('resolves one supplemental intake on the server without replacing the reading reference', async () => {
+  const otherId = '10000000-0000-4000-8000-000000000030';
+  const other = {
+    ...reference,
+    ingestionId: otherId,
+    reviewHash: 'b'.repeat(64),
+  };
+  mocks.detail.mockImplementation((id: string) =>
+    Promise.resolve({
+      ingestion: { ...ingestion, ingestionId: id },
+      candidateReference: id === ingestionId ? reference : other,
+    }),
+  );
+  renderToStaticMarkup(
+    await Page({
+      params,
+      searchParams: Promise.resolve({
+        supplementIngestionId: otherId,
+        followupId: viewId,
+      }),
+    }),
+  );
+  expect(mocks.detail.mock.calls.map((c) => c[0] as unknown)).toEqual([
+    ingestionId,
+    otherId,
+  ]);
+  expect(mocks.reader).toHaveBeenCalledWith(
+    expect.objectContaining({ reference }),
+  );
+  const received = mocks.reader.mock.calls[0][0] as {
+    supplementLookup: CandidateSupplementLookup;
+  };
+  expect(received.supplementLookup).toMatchObject({
+    action: `/en/data-foundation/ingestions/${ingestionId}`,
+    requestedIngestionId: otherId,
+    initialFollowupId: viewId,
+    source: { reference: other, label: otherId },
+    stateLabel: 'Review required',
+  });
+  expect(received.supplementLookup.verificationId).toMatch(/^[0-9a-f-]{36}$/);
+});
+it.each(['authorization', 'not-found', 'unavailable'])(
+  'keeps A readable and never supplies fallback evidence after supplemental %s',
+  async (kind) => {
+    mocks.detail
+      .mockResolvedValueOnce({ ingestion, candidateReference: reference })
+      .mockRejectedValueOnce(new DataFoundationApiError(kind as never, 403));
+    const markup = renderToStaticMarkup(
+      await Page({
+        params,
+        searchParams: Promise.resolve({ supplementIngestionId: viewId }),
+      }),
+    );
+    expect(markup).not.toContain('Safe data service error');
+    expect(mocks.reader).toHaveBeenCalledWith(
+      expect.objectContaining({ reference }),
+    );
+    const received = mocks.reader.mock.calls[0][0] as {
+      supplementLookup: CandidateSupplementLookup;
+    };
+    expect(received.supplementLookup.requestedIngestionId).toBe(viewId);
+    expect(received.supplementLookup.error).toBeTypeOf('string');
+    expect(received.supplementLookup.source).toBeUndefined();
+  },
+);
+it('shows an empty supplemental candidate without inventing a source', async () => {
+  mocks.detail
+    .mockResolvedValueOnce({ ingestion, candidateReference: reference })
+    .mockResolvedValueOnce({
+      ingestion: { ...ingestion, ingestionId: viewId },
+      candidateReference: null,
+    });
+  renderToStaticMarkup(
+    await Page({
+      params,
+      searchParams: Promise.resolve({ supplementIngestionId: viewId }),
+    }),
+  );
+  expect(
+    (
+      mocks.reader.mock.calls[0][0] as {
+        supplementLookup: CandidateSupplementLookup;
+      }
+    ).supplementLookup,
+  ).toMatchObject({
+    error: 'empty',
+  });
+});
+it.each([
+  { supplementIngestionId: [viewId, viewId] },
+  { supplementIngestionId: 'bad' },
+  { followupId: 'bad' },
+  { candidateTopic: viewId, supplementIngestionId: viewId },
+  { candidateView: viewId, supplementIngestionId: viewId },
+])(
+  'rejects malformed or saved-reading supplementary parameters',
+  async (query) => {
+    renderToStaticMarkup(
+      await Page({ params, searchParams: Promise.resolve(query) }),
+    );
+    expect(mocks.detail).not.toHaveBeenCalled();
+    expect(mocks.reader).not.toHaveBeenCalled();
+  },
+);
+it('preserves the supplemental source and followup target through sign in', async () => {
+  mocks.detail
+    .mockResolvedValueOnce({ ingestion, candidateReference: reference })
+    .mockRejectedValueOnce(new DataFoundationApiError('authentication', 401));
+  const destination = `/en/data-foundation/ingestions/${ingestionId}?supplementIngestionId=${viewId}&followupId=${viewId}`;
+  await expect(
+    Page({
+      params,
+      searchParams: Promise.resolve({
+        supplementIngestionId: viewId,
+        followupId: viewId,
+      }),
+    }),
+  ).rejects.toThrow(`/en/login?next=${encodeURIComponent(destination)}`);
 });

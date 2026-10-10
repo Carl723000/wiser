@@ -1154,3 +1154,43 @@ it('keeps the adopted legacy view when a topic belongs to another intake', async
       .getAttribute('href'),
   ).toContain(`savedViewId=${viewId}`);
 });
+
+it('wires supplemental evidence independently of the ordinary reader fixed manifest', async () => {
+  const otherRef = { ...ref, ingestionId: otherId, reviewHash: 'c'.repeat(64) };
+  fetch.mockImplementation((_url, init) =>
+    respondJson(
+      requestBody(init).ingestionId === otherId
+        ? { ...assets, reference: otherRef }
+        : assets,
+    ),
+  );
+  render(
+    <IngestionCandidateReader
+      reference={ref}
+      locale="en"
+      supplementLookup={{
+        action: '/en/data-foundation/ingestions/' + ref.ingestionId,
+        requestedIngestionId: otherId,
+        source: { reference: otherRef, label: 'Source B' },
+        stateLabel: 'Review required',
+      }}
+    />,
+  );
+  await screen.findByRole('button', { name: 'Read records' });
+  const panel = screen.getByRole('region', {
+    name: 'Candidate followups and corrections',
+  });
+  expect(
+    within(within(panel).getByLabelText('Fixed candidate source'))
+      .getAllByRole('option')
+      .map((o) => o.textContent),
+  ).toEqual([ref.ingestionId]);
+  fireEvent.click(
+    within(panel).getByRole('button', { name: 'Load source evidence' }),
+  );
+  await within(panel).findByRole('option', { name: `Original · ${assetId}` });
+  expect(fetch.mock.calls.map((c) => requestBody(c[1]).ingestionId)).toEqual([
+    ref.ingestionId,
+    otherId,
+  ]);
+});

@@ -40,7 +40,10 @@ import {
   readCandidateRelation,
   type CandidateRelationPages,
 } from '@/lib/candidate-relation-reader';
-import { CandidateFollowupPanel } from './candidate-followup-panel';
+import {
+  CandidateFollowupPanel,
+  type CandidateSupplementLookup,
+} from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
 import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
@@ -92,6 +95,7 @@ export function IngestionCandidateReader({
   savedTopicId,
   ingestionId,
   readOnly = false,
+  supplementLookup,
 }: {
   readonly reference: IngestionCandidateReference | null;
   readonly locale: Locale;
@@ -99,6 +103,7 @@ export function IngestionCandidateReader({
   readonly savedTopicId?: string;
   readonly ingestionId?: string;
   readonly readOnly?: boolean;
+  readonly supplementLookup?: CandidateSupplementLookup;
 }) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const routeIntake = ingestionId ?? reference?.ingestionId;
@@ -126,6 +131,7 @@ export function IngestionCandidateReader({
       locale={locale}
       savedViewId={readOnly ? undefined : savedViewId}
       readOnly={readOnly}
+      supplementLookup={supplementLookup}
     />
   );
 }
@@ -212,12 +218,14 @@ function CandidateSession({
   savedViewId,
   savedTopicId,
   readOnly = false,
+  supplementLookup,
 }: {
   reference: IngestionCandidateReference;
   locale: Locale;
   savedViewId?: string;
   savedTopicId?: string;
   readOnly?: boolean;
+  supplementLookup?: CandidateSupplementLookup;
 }) {
   // The keyed owner fixes a complete candidate identity; replacements unmount and cancel it.
   const [fixed, setFixed] = useState(reference);
@@ -1462,6 +1470,7 @@ function CandidateSession({
               }))}
               readOnly={readOnly || topicMode}
               parentBusy={busy}
+              supplementLookup={openedView ? undefined : supplementLookup}
             />
           </details>
           <CandidateRelationPanel

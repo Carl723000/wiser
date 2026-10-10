@@ -118,3 +118,5 @@ pnpm --filter @wiser/web test:e2e
 候选页“关系依据”按需读取当前获权清单内的关系，分页显示主体、关系、客体和候选决定；详情固定修订及决定版本，保留原文摘录和来源定位。此入口不创建或批准关系，不自动生成流域／需求归属。 / The candidate Relationship evidence panel reads a finite authorized selection, pages subject/predicate/object and candidate decisions, and opens exact revision/decision details with source excerpts and locators. It neither creates nor approves relations or infers basin/requirement assignments.
 
 关系证据可在同一候选内通过“查看对应记录”回到确切行；先核当前资产身份与原件哈希，沿有界分页定位。跨候选或无记录身份时保留原文依据，不推测跳转。 / Relation evidence can return to the exact row within the same candidate after current asset and original-hash verification and bounded page lookup. Cross-candidate or unidentified evidence retains its text without inferred navigation.
+
+普通接收详情的跟进面板可按接收任务编号查询一个获权补证来源；来源选择与主阅览分离，刷新重读同单且不重发办理动作。保存视图及只读专题不提供该入口。 / Ordinary intake followups can look up one authorized supplemental intake by ID, independently of the primary reading source. Refresh rereads the same followup without replaying actions; saved views and readonly topics do not expose this lookup.
