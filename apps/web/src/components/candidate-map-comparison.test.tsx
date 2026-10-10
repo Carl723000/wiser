@@ -275,11 +275,16 @@ it('unmounts the original canvas before mounting two comparison canvases and rel
   );
 });
 
-it.each([403, 409, 422])(
+it.each([
+  [403, 'denied'],
+  [409, 'stale'],
+  [422, 'invalid'],
+] as const)(
   'clears both windows and cancels the other pending read after a current %s response',
-  async (status) => {
+  async (status, failure) => {
     const panes = await openComparison();
-    const pending = deferred();
+    const pending = deferred(),
+      rejected = deferred();
     let leftSignal: AbortSignal | undefined;
     let count = 0;
     fetch.mockImplementation((_url, init) => {
@@ -287,7 +292,7 @@ it.each([403, 409, 422])(
         leftSignal = init!.signal as AbortSignal;
         return pending.promise;
       }
-      return Promise.resolve(new Response(null, { status }));
+      return rejected.promise;
     });
     fireEvent.click(
       panes.left.getByRole('button', { name: copy.nextGeometry }),
@@ -295,17 +300,30 @@ it.each([403, 409, 422])(
     fireEvent.click(
       panes.right.getByRole('button', { name: copy.nextGeometry }),
     );
-    await screen.findByRole('alert');
+    await waitFor(() => expect(count).toBe(2));
+    expect(leftSignal?.aborted).toBe(false);
+    expect(maps.active).toBe(2);
+    // DOM removal precedes passive map cleanup. Settle the response in act so
+    // lifecycle assertions observe both phases rather than only the alert.
+    await act(async () => {
+      rejected.resolve(new Response(null, { status }));
+      await rejected.promise;
+    });
+    expect(screen.getByRole('alert').textContent).toContain(copy[failure]);
     expect(screen.queryByRole('region', { name: 'Left window' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Right window' })).toBeNull();
     expect(leftSignal?.aborted).toBe(true);
     expect(maps.active).toBe(0);
     expect(maps.maximum).toBe(2);
+    expect(maps.removed).toBe(3);
     await act(async () => {
       pending.resolve(Response.json(geometry(assetA, [recordC], null)));
       await pending.promise;
     });
     expect(screen.queryByText(`synthetic:${recordC}`)).toBeNull();
+    expect(maps.active).toBe(0);
+    expect(maps.removed).toBe(3);
+    expect(screen.getByRole('alert').textContent).toContain(copy[failure]);
   },
 );
 
