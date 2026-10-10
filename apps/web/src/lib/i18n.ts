@@ -1830,6 +1830,9 @@ const zhCN = {
       referenceHint: '只显示本批许可几何与经纬网；位置与范围的依据见资料档案。',
       flatView: '切换平面视图',
       spaceView: '切换鸟瞰视图',
+      birdEyePlanar: '当前为平面地图鸟瞰，不表示真实地形。',
+      onlineReferencePaused:
+        '在线底图在当前视角下暂停显示；资料原值与坐标保持不变。',
       resetCamera: '复位相机',
       rotateLeft: '向左旋转',
       rotateRight: '向右旋转',
@@ -6058,6 +6061,9 @@ const en: typeof zhCN = {
         'Only licensed geometries from this batch and a graticule are shown. Read the material dossier for location and extent evidence.',
       flatView: 'Switch to planar view',
       spaceView: 'Switch to bird’s-eye view',
+      birdEyePlanar: 'This is a tilted planar map, not terrain.',
+      onlineReferencePaused:
+        'The online basemap is hidden for this camera view. Original data values and coordinates remain unchanged.',
       resetCamera: 'Reset camera',
       rotateLeft: 'Rotate left',
       rotateRight: 'Rotate right',

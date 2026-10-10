@@ -8,7 +8,7 @@ export interface MapCamera {
   readonly pitch: number;
 }
 
-/** The current candidate map is planar, with its existing zoom bounds. */
+/** Existing reading contract supports planar bird-eye views within the map zoom bounds. */
 export function supportedReadingCamera(camera: MapCamera | undefined) {
   return camera &&
     Object.values(camera).every(Number.isFinite) &&
@@ -16,8 +16,9 @@ export function supportedReadingCamera(camera: MapCamera | undefined) {
     Math.abs(camera.latitude) <= 85.051129 &&
     camera.zoom >= 1 &&
     camera.zoom <= 21 &&
-    camera.bearing === 0 &&
-    camera.pitch === 0
+    Math.abs(camera.bearing) <= 180 &&
+    camera.pitch >= 0 &&
+    camera.pitch <= 85
     ? camera
     : undefined;
 }
@@ -34,10 +35,10 @@ export function displayCamera(authority: MapCamera): MapCamera {
     authority.longitude,
     authority.latitude,
   ]);
-  return { ...authority, longitude, latitude, bearing: 0, pitch: 0 };
+  return { ...authority, longitude, latitude };
 }
 
 export function authorityCamera(display: MapCamera): MapCamera {
   const [longitude, latitude] = fromAmap([display.longitude, display.latitude]);
-  return { ...display, longitude, latitude, bearing: 0, pitch: 0 };
+  return { ...display, longitude, latitude };
 }

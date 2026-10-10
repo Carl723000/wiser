@@ -18,7 +18,7 @@ checkPaths:
   - apps/docs/package.json
   - apps/docs/src/**
   - apps/docs/e2e/**
-lastReviewedAt: 2026-10-09
+lastReviewedAt: 2026-10-10
 lastReviewedCommit: 51c24ee1d47e6345dd697a0997b5d24f5994f299
 ---
 
@@ -377,3 +377,11 @@ The ordinary intake page accepts a single optional `supplementIngestionId` and o
 The temporary Web lookup marker records a fresh successful server lookup only; it is not a saved identity or authorization token. A denied supplemental source stays hidden across primary-reader recovery until a new server lookup or explicit source change. Only the current followup ID survives owner remounts, and its content and history are read again.
 
 Candidate monthly reading connects the row-level readiness adapter within the existing reading owner. K5-001/Chaobai membership requires an explicit native river water-system value and source-cell locator; verified vertical continuations retain the predecessor cell in the same table, while other rows stay unmapped. The fixed 19-need catalog source reference and interpretation rule remain distinct and grant neither professional approval nor cross-month series identity. Complete semantics remain bounded to 200 rows/page, 100 pages, 10,000 rows and 16 MiB, retaining current page cursors, native record IDs and preceding-page anchors. Ordinary non-monthly seeking still reads at most ten pages; every indexed monthly original rereads its exact page because byte-budget-shortened pages make row ordinals insufficient to determine page distance and checks current fixed-record and conversion evidence. Owner changes, denied access, recovery and rule invalidation clear the index. Cursors are not persisted; existing record-mode saving retains the actual preceding anchor and page size.
+
+### Authorized candidate map backgrounds and perspective
+
+The server-only public-reference loader is independent from the local business-pack gate. Candidate spatial-workspace and intake pages pass its serializable, path-free result to the current/saved reader and native raster map. Configure `WISER_SPATIAL_PUBLIC_REFERENCE_MANIFEST` with an operator-controlled absolute JSON path and `WISER_SPATIAL_PUBLIC_REFERENCE_SHA256` with the verified lowercase SHA-256. The existing bounded manifest/file checks apply in production as well as development. Explicit partial or invalid manifest configuration closes the complete group and never falls back to the legacy two-file subset. Without configuration there is no background; that default is not acceptance evidence. The local WorkspacePack retains all non-production, Auth-off and loopback guards.
+
+The MapLibre reading camera accepts the existing longitude/latitude/zoom and bearing[-180,180]/pitch[0,85] contract. Perspective buttons use non-animated `jumpTo`, preserving center/zoom and record state; a nonzero bearing or pitch hides the center/zoom-only online SDK enhancement. An unrotated planar return remounts and synchronizes it; pitch switching alone retains the existing bearing. Reference EPSG:4326 vertices use the same display-only conversion as candidate geometries, which remain unchanged. Candidate fit bounds, hit queries, counts and saved pins exclude public references. Existing save payloads retain unsupported settings and never claim a saved background version. Independent comparison cameras and swipe comparison remain separate work.
+
+Native rotation and pitch start synchronously hide the planar enhancement container before React commits. Every native move rechecks the actual bearing/pitch, and an aligned return synchronizes the current center/zoom before revealing it; a newly mounted SDK is synchronized in a layout effect before paint. Keyboard pan/zoom and native camera inputs retain their existing behavior. Synthetic movement-order checks use an available SDK handle; they do not establish successful external SDK/browser alignment.

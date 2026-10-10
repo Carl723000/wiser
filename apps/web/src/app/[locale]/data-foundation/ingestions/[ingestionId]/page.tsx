@@ -1,3 +1,4 @@
+import { loadPublicReferences } from '@/lib/spatial-public-reference.server';
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -174,6 +175,8 @@ export default async function IngestionPage({
     failure = handleDataPageError(error, locale, route);
   }
 
+  const publicReferenceInput =
+    failure === undefined ? await loadPublicReferences(process.env) : {};
   return (
     <DataPageMain>
       <DataPageHeader
@@ -189,6 +192,7 @@ export default async function IngestionPage({
       savedTopicId !== undefined &&
       ingestionId !== null ? (
         <IngestionCandidateReader
+          {...publicReferenceInput}
           locale={locale}
           reference={null}
           savedTopicId={savedTopicId}
@@ -205,6 +209,7 @@ export default async function IngestionPage({
             </p>
           )}
           <IngestionCandidateReader
+            {...publicReferenceInput}
             locale={locale}
             reference={candidateReference}
             savedViewId={savedViewId}

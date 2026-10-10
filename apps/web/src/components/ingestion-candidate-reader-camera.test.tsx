@@ -21,6 +21,8 @@ const probe = vi.hoisted(() => ({
     events: Map<string, (value: unknown) => void>;
     filter: ReturnType<typeof vi.fn>;
     fitted: boolean;
+    pitch: number;
+    bearing: number;
   }>,
   hits: [] as Array<{ properties: { recordId: string } }>,
 }));
@@ -33,8 +35,17 @@ vi.mock('maplibre-gl', () => ({
     events = new Map<string, (value: unknown) => void>();
     filter = vi.fn();
     fitted = false;
-    constructor(options: { center: number[]; zoom: number }) {
+    pitch = 0;
+    bearing = 0;
+    constructor(options: {
+      center: number[];
+      zoom: number;
+      pitch?: number;
+      bearing?: number;
+    }) {
       this.camera = { center: options.center, zoom: options.zoom };
+      this.pitch = options.pitch ?? 0;
+      this.bearing = options.bearing ?? 0;
       probe.instances.push(this);
     }
     touchZoomRotate = { disableRotation: vi.fn() };
@@ -57,6 +68,17 @@ vi.mock('maplibre-gl', () => ({
     }
     getCenter() {
       return { lng: this.camera.center[0], lat: this.camera.center[1] };
+    }
+    jumpTo(value: { pitch: number; bearing?: number }) {
+      this.pitch = value.pitch;
+      if (value.bearing !== undefined) this.bearing = value.bearing;
+      this.events.get('moveend')?.(undefined);
+    }
+    getPitch() {
+      return this.pitch;
+    }
+    getBearing() {
+      return this.bearing;
     }
     getZoom() {
       return this.camera.zoom;
@@ -530,8 +552,6 @@ async function openPersistedCamera(camera = savedCamera) {
 }
 
 it.each([
-  { ...savedCamera, bearing: 15 },
-  { ...savedCamera, pitch: 30 },
   { ...savedCamera, zoom: 0 },
   { ...savedCamera, zoom: 24 },
 ])(
@@ -837,4 +857,41 @@ it('saves the current reading camera as a new view without changing fixed member
     },
   });
   expect(opened.viewSpec.map.camera).toEqual(savedCamera);
+});
+
+it('restores and saves a lawful bird-eye camera with the same fixed members and selected record', async () => {
+  const camera = { ...savedCamera, bearing: 32, pitch: 50 };
+  const opened = await openPersistedCamera(camera);
+  const engine = probe.instances[0];
+  act(() => engine.events.get('load')?.(undefined));
+  expect(engine.fitted).toBe(false);
+  expect(engine.pitch).toBe(50);
+  expect(engine.bearing).toBe(32);
+  expect(screen.getByText(copy.cameraRestored)).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Switch to planar view' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Switch to bird’s-eye view' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: copy.save }));
+  await settle();
+  const create = fetch.mock.calls.find(([url]) =>
+    requestUrl(url).endsWith('/create'),
+  );
+  const input = requestInput(create?.[1]);
+  expect(input.references).toEqual(opened.references);
+  expect(input.viewSpec).toMatchObject({
+    page: opened.viewSpec.page,
+    focus: opened.viewSpec.focus,
+    map: { camera: { bearing: 32, pitch: 50, zoom: savedCamera.zoom } },
+    period,
+  });
+  const stored = (
+    input.viewSpec as {
+      map: { camera: { longitude: number; latitude: number } };
+    }
+  ).map.camera;
+  expect(stored.longitude).toBeCloseTo(savedCamera.longitude, 6);
+  expect(stored.latitude).toBeCloseTo(savedCamera.latitude, 6);
 });

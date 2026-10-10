@@ -47,6 +47,7 @@ import {
 } from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
 import { DataFoundationMap } from './data-foundation-map';
+import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
 import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
 import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-panel';
 import styles from './ingestion-candidate-reader.module.css';
@@ -102,6 +103,8 @@ export function IngestionCandidateReader({
   ingestionId,
   readOnly = false,
   supplementLookup,
+  publicReferences,
+  publicReferenceState,
 }: {
   readonly reference: IngestionCandidateReference | null;
   readonly locale: Locale;
@@ -110,12 +113,14 @@ export function IngestionCandidateReader({
   readonly ingestionId?: string;
   readonly readOnly?: boolean;
   readonly supplementLookup?: CandidateSupplementLookup;
-}) {
+} & PublicReferenceInput) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const routeIntake = ingestionId ?? reference?.ingestionId;
   if ((savedViewId || savedTopicId) && routeIntake && !readOnly)
     return (
       <SavedCandidateBootstrap
+        publicReferences={publicReferences}
+        publicReferenceState={publicReferenceState}
         key={`${routeIntake}:${savedTopicId ? 'topic' : 'view'}:${savedTopicId ?? savedViewId}`}
         ingestionId={routeIntake}
         savedViewId={savedViewId}
@@ -132,6 +137,8 @@ export function IngestionCandidateReader({
     );
   return (
     <CandidateSession
+      publicReferences={publicReferences}
+      publicReferenceState={publicReferenceState}
       key={`${candidateSavedReferenceKey(reference)}:${readOnly ? 'read' : (savedViewId ?? 'managed')}`}
       reference={reference}
       locale={locale}
@@ -147,12 +154,14 @@ function SavedCandidateBootstrap({
   savedViewId,
   savedTopicId,
   locale,
+  publicReferences,
+  publicReferenceState,
 }: {
   ingestionId: string;
   savedViewId?: string;
   savedTopicId?: string;
   locale: Locale;
-}) {
+} & PublicReferenceInput) {
   const copy = getDictionary(locale).dataFoundation.candidateReader;
   const [reference, setReference] =
     useState<IngestionCandidateReference | null>(null);
@@ -195,6 +204,8 @@ function SavedCandidateBootstrap({
   if (reference)
     return (
       <CandidateSession
+        publicReferences={publicReferences}
+        publicReferenceState={publicReferenceState}
         reference={reference}
         locale={locale}
         savedViewId={savedViewId}
@@ -225,6 +236,8 @@ function CandidateSession({
   savedTopicId,
   readOnly = false,
   supplementLookup,
+  publicReferences,
+  publicReferenceState,
 }: {
   reference: IngestionCandidateReference;
   locale: Locale;
@@ -232,7 +245,7 @@ function CandidateSession({
   savedTopicId?: string;
   readOnly?: boolean;
   supplementLookup?: CandidateSupplementLookup;
-}) {
+} & PublicReferenceInput) {
   // The keyed owner fixes a complete candidate identity; replacements unmount and cancel it.
   const [fixed, setFixed] = useState(reference);
   const [manifest, setManifest] = useState<IngestionCandidateSavedReferences>([
@@ -1749,6 +1762,8 @@ function CandidateSession({
                   </ul>
                   {topicMode ? null : (
                     <IngestionCandidateRasterPanel
+                      publicReferences={publicReferences}
+                      publicReferenceState={publicReferenceState}
                       key={`${candidateSavedReferenceKey(fixed)}:${openedView?.savedView.viewId ?? ''}:${rasterEpoch}`}
                       reference={fixed}
                       locale={locale}
@@ -1875,6 +1890,8 @@ function CandidateSession({
                   <p className={styles.notice}>{copy.geometryPending}</p>
                   {geometry.features.length ? (
                     <DataFoundationMap
+                      publicReferences={publicReferences}
+                      publicReferenceState={publicReferenceState}
                       key={
                         cameraRestore?.drawingKey ===
                         geometryDrawingKey(mapGeometry)

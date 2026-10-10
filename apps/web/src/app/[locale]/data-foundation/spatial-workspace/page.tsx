@@ -1,3 +1,4 @@
+import { loadPublicReferences } from '@/lib/spatial-public-reference.server';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import {
@@ -72,6 +73,10 @@ export default async function SpatialWorkspacePage({
           : candidateWorkspaceHref(locale, reference),
       );
     }
+    const publicReferenceInput =
+      failure === undefined && reference !== null
+        ? await loadPublicReferences(process.env)
+        : {};
     return (
       <DataPageMain>
         <DataPageHeader
@@ -93,6 +98,7 @@ export default async function SpatialWorkspacePage({
         </p>
         {failure === undefined && reference !== null ? (
           <IngestionCandidateReader
+            {...publicReferenceInput}
             reference={reference}
             locale={locale}
             readOnly

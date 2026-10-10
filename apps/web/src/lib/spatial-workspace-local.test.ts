@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+vi.mock('server-only', () => ({}));
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

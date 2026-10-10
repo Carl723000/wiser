@@ -23,6 +23,8 @@ import { authorityCamera, displayCamera } from '@/lib/amap-camera';
 const probe = vi.hoisted(() => ({
   maps: [] as Array<{
     removed: boolean;
+    bearing: number;
+    pitch: number;
     camera: { center: number[]; zoom: number };
     events: Map<string, (value: unknown) => void>;
   }>,
@@ -32,10 +34,19 @@ vi.mock('maplibre-gl', () => ({
   NavigationControl: class {},
   Map: class {
     removed = false;
+    bearing = 0;
+    pitch = 0;
     camera: { center: number[]; zoom: number };
     events = new Map<string, (value: unknown) => void>();
-    constructor(options: { center: number[]; zoom: number }) {
+    constructor(options: {
+      center: number[];
+      zoom: number;
+      bearing?: number;
+      pitch?: number;
+    }) {
       this.camera = { center: options.center, zoom: options.zoom };
+      this.bearing = options.bearing ?? 0;
+      this.pitch = options.pitch ?? 0;
       probe.maps.push(this);
     }
     touchZoomRotate = { disableRotation: vi.fn() };
@@ -58,6 +69,12 @@ vi.mock('maplibre-gl', () => ({
     }
     getCenter() {
       return { lng: this.camera.center[0], lat: this.camera.center[1] };
+    }
+    getBearing() {
+      return this.bearing;
+    }
+    getPitch() {
+      return this.pitch;
     }
     getZoom() {
       return this.camera.zoom;

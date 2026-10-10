@@ -1,4 +1,5 @@
 'use client';
+import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
 import { useMemo, useState } from 'react';
 import { getDictionary, type Locale } from '@/lib/i18n';
 import type {
@@ -46,6 +47,8 @@ function cameraFor(
 /** Only the current fixed candidate's reading state; nothing is persisted. */
 export function CandidateRasterMap({
   locale,
+  publicReferences,
+  publicReferenceState,
   window,
   result,
   disabled,
@@ -58,7 +61,7 @@ export function CandidateRasterMap({
   readonly disabled: boolean;
   readonly onWindow: (window: CandidateRasterWindow) => void;
   readonly onInvalid: () => void;
-}) {
+} & PublicReferenceInput) {
   const dictionary = getDictionary(locale).dataFoundation;
   const copy = dictionary.candidateReader.raster;
   const [camera, setCamera] = useState(() => cameraFor(footprint, 10));
@@ -180,6 +183,8 @@ export function CandidateRasterMap({
         data-selection-ring={JSON.stringify(ring)}
       >
         <SpatialWorkspaceMap
+          publicReferences={publicReferences}
+          publicReferenceState={publicReferenceState}
           active={!disabled}
           features={emptyFeatures}
           camera={camera}
