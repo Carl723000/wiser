@@ -61,20 +61,67 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       timeoutMs: 30000,
       signal: new AbortController().signal,
     };
+    let phase = 'setup-and-import';
+    // Labels are a fixed whitelist; SQL, parameters and server text stay private.
+    const statementLabel = (sql: string) => {
+      if (sql.startsWith('begin')) return 'begin-savepoint';
+      if (sql === 'commit') return 'commit-savepoint';
+      if (sql === 'rollback') return 'rollback-savepoint';
+      if (sql.includes('with allowed_refs as materialized'))
+        return sql.includes('allowed_pins as materialized')
+          ? 'business-relations-pinned'
+          : 'business-relations-unpinned';
+      if (sql.startsWith('select set_config(')) return 'set-scope';
+      if (sql.startsWith('select pg_advisory_xact_lock('))
+        return 'advisory-lock';
+      if (sql.startsWith('delete from service.exploration_snapshot'))
+        return 'snapshot-cleanup';
+      if (sql.startsWith('insert into service.exploration_snapshot'))
+        return 'snapshot-create';
+      if (sql.startsWith('select * from service.exploration_snapshot'))
+        return 'snapshot-read';
+      if (sql.includes('select item.data_item_id, version.version_id,'))
+        return 'resource-match';
+      if (sql.includes('select authorized.*,')) return 'resources-page';
+      if (sql.includes('select count(*)::int as total from authorized'))
+        return 'resource-authority';
+      if (sql.includes("select ref->>'versionId' version_id, analysis.status"))
+        return 'resource-readiness';
+      if (sql.includes('with refs as materialized')) return 'resource-coverage';
+      return 'other-statement';
+    };
     const transactionalPool = {
       async connect() {
         await client.query(`set local role ${role}`);
         return {
           async query(sql: string, values: readonly unknown[] = []) {
-            if (sql.startsWith('begin'))
-              return client.query('savepoint reconciliation');
-            if (sql === 'commit')
-              return client.query('release savepoint reconciliation');
-            if (sql === 'rollback') {
-              await client.query('rollback to savepoint reconciliation');
-              return client.query('release savepoint reconciliation');
+            const startedAt = performance.now();
+            try {
+              if (sql.startsWith('begin'))
+                return await client.query('savepoint reconciliation');
+              if (sql === 'commit')
+                return await client.query('release savepoint reconciliation');
+              if (sql === 'rollback') {
+                await client.query('rollback to savepoint reconciliation');
+                return await client.query('release savepoint reconciliation');
+              }
+              return await client.query(sql, [...values]);
+            } catch (error) {
+              const code =
+                typeof error === 'object' && error !== null && 'code' in error
+                  ? error.code
+                  : undefined;
+              console.error('project-membership-sql-error', {
+                phase,
+                statement: statementLabel(sql),
+                elapsedMs: Math.round(performance.now() - startedAt),
+                sqlState:
+                  typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)
+                    ? code
+                    : 'unknown',
+              });
+              throw error;
             }
-            return client.query(sql, [...values]);
           },
           release() {},
         };
@@ -278,6 +325,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
         },
       };
       const spec = { scope: 'project', businessQuery };
+      phase = 'initial-and-reopen';
       const initial = ExplorationResultSchema.parse(
         await explore.execute({ spec, view: 'resources', first: 100 }, context),
       );
@@ -473,6 +521,7 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
       );
       expect(fresh.membership?.assertionCount).toBe(2034);
       // Synthetic authority states only, inside the rollback-only isolated fixture.
+      phase = 'synthetic-reviews';
       const reviewer = {
         ...command(),
         principal: { ...context.principal, actorId: randomUUID() },
@@ -501,9 +550,11 @@ it.skipIf(process.env['WISER_DATA_PG_INTEGRATION'] !== '1')(
           status: 'APPROVED_AND_PENDING',
         },
       };
+      phase = 'mixed-resources';
       const mixed = ExplorationResultSchema.parse(
         await explore.execute({ spec: mixedSpec, view: 'resources' }, context),
       );
+      phase = 'mixed-after-resources';
       expect(mixed.membership).toEqual({
         complete: true,
         versionCount: 299,
