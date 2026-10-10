@@ -46,10 +46,19 @@ import {
   type CandidateSupplementLookup,
 } from './candidate-followup-panel';
 import { ContextHelp } from './context-help';
-import { DataFoundationMap } from './data-foundation-map';
+import {
+  DataFoundationMap,
+  type DataFoundationMapReadingHandle,
+} from './data-foundation-map';
 import type { PublicReferenceInput } from '@/lib/spatial-public-reference.server';
 import { supportedReadingCamera, type MapCamera } from '@/lib/amap-camera';
 import { IngestionCandidateRasterPanel } from './ingestion-candidate-raster-panel';
+import {
+  CandidateMapComparison,
+  type CandidateMapComparisonHandle,
+  type CandidateComparisonSelection,
+} from './candidate-map-comparison';
+import type { CandidateComparisonPosition } from '@/lib/candidate-map-comparison';
 import styles from './ingestion-candidate-reader.module.css';
 
 type OpenedReading =
@@ -294,7 +303,17 @@ function CandidateSession({
     camera: MapCamera;
     epoch: number;
   } | null>(null);
+  const [comparisonActive, setComparisonActive] = useState(false);
+  const comparisonActiveRef = useRef(false);
+  const comparison = useRef<CandidateMapComparisonHandle | null>(null);
+  const comparisonSnapshot = useRef<{
+    page: IngestionCandidateGeometryPage;
+    position: Navigation;
+    selected: string | null;
+    camera?: MapCamera;
+  } | null>(null);
   const cameraEpoch = useRef(0);
+  const singleMapReading = useRef<DataFoundationMapReadingHandle | null>(null);
   const [monthly, setMonthly] = useState<CandidateMonthlySemanticRead | null>(
     null,
   );
@@ -331,7 +350,10 @@ function CandidateSession({
   function releaseRecovery() {
     recoveryGate.current = false;
     recoveryQueued.current = false;
-    if (contentAvailable.current) restricted.current?.removeAttribute('inert');
+    if (contentAvailable.current) {
+      comparison.current?.resume();
+      restricted.current?.removeAttribute('inert');
+    }
     if (owner.current) setRecovering(false);
   }
   function requestRecovery() {
@@ -339,6 +361,7 @@ function CandidateSession({
       return;
     // Browser events must block new navigation before React commits a render.
     recoveryGate.current = true;
+    comparison.current?.suspend();
     setMonthly(null);
     setRelationPage(null);
     setRelationDetail(null);
@@ -393,6 +416,10 @@ function CandidateSession({
   }
 
   function clearContent() {
+    comparison.current?.cancel();
+    comparisonActiveRef.current = false;
+    comparisonSnapshot.current = null;
+    setComparisonActive(false);
     setMonthly(null);
     setRelationPage(null);
     setRelationDetail(null);
@@ -423,9 +450,15 @@ function CandidateSession({
   }
   async function execute(
     work: (signal: AbortSignal) => Promise<void>,
-    kind: 'read' | 'mutation' | 'recovery' = 'read',
+    kind: 'read' | 'mutation' | 'recovery' | 'comparison-exit' = 'read',
   ) {
     if (recoveryGate.current && kind !== 'recovery') return;
+    if (
+      comparisonActiveRef.current &&
+      kind !== 'recovery' &&
+      kind !== 'comparison-exit'
+    )
+      return;
     setMonthly(null);
     setRelationPage(null);
     setRelationDetail(null);
@@ -541,6 +574,174 @@ function CandidateSession({
     const result = await readCandidatePage(action, value, signal);
     await savedAuthority(signal);
     return result;
+  }
+  async function comparisonPosition(
+    chosenAsset: string,
+    position: CandidateComparisonPosition,
+    signal: AbortSignal,
+  ): Promise<Navigation> {
+    if (!position.savedStart || !openedView)
+      return { ...position, previous: [...position.previous] };
+    const current = await openReading(
+      openedView.savedView.viewId,
+      signal,
+      recoveryKind.current,
+    );
+    const page = current.viewSpec.page;
+    if (
+      manifestKey(current) !== manifestKey(openedView) ||
+      page.kind !== 'geometry' ||
+      candidateSavedReferenceKey(page.reference) !==
+        candidateSavedReferenceKey(fixed) ||
+      page.assetId.toLowerCase() !== chosenAsset.toLowerCase() ||
+      page.first !== (position.first ?? pageSize) ||
+      page.afterRecordId !== position.anchor
+    )
+      throw new CandidateReaderError('invalid');
+    return {
+      ...position,
+      after: current.request.input.after,
+      previous: [...position.previous],
+    };
+  }
+  async function readComparisonGeometry(
+    chosenAsset: string,
+    position: CandidateComparisonPosition,
+    signal: AbortSignal,
+  ) {
+    const next = await comparisonPosition(chosenAsset, position, signal);
+    const page = await readPage('geometry', input(next, chosenAsset), signal);
+    return { page, position: next };
+  }
+  function startComparison() {
+    if (
+      busy ||
+      recovering ||
+      recoveryGate.current ||
+      mutationPending.current ||
+      comparisonActiveRef.current ||
+      !geometry ||
+      tab !== 'map'
+    )
+      return;
+    const drawing = geometryDrawingKey(mapGeometry);
+    const camera =
+      supportedReadingCamera(singleMapReading.current?.camera()) ??
+      (liveCamera.current?.drawingKey === drawing
+        ? liveCamera.current.camera
+        : cameraRestore?.drawingKey === drawing
+          ? cameraRestore.camera
+          : undefined);
+    comparisonSnapshot.current = {
+      page: geometry,
+      position: {
+        ...geometryNav,
+        first: geometryNav.first ?? pageSize,
+        previous: [...geometryNav.previous],
+      },
+      selected,
+      ...(camera ? { camera } : {}),
+    };
+    comparisonActiveRef.current = true;
+    rasterCancel.current?.();
+    setComparisonActive(true);
+  }
+  async function returnFromComparison(target?: CandidateComparisonSelection) {
+    const snapshot = comparisonSnapshot.current;
+    if (
+      !comparisonActiveRef.current ||
+      !snapshot ||
+      recoveryGate.current ||
+      busy
+    )
+      return;
+    if (
+      target &&
+      candidateSavedReferenceKey(target.reference) !==
+        candidateSavedReferenceKey(fixed)
+    )
+      return;
+    comparison.current?.suspend();
+    await execute(async (signal) => {
+      if (target) {
+        if (
+          openedView &&
+          (target.assetId.toLowerCase() !==
+            snapshot.page.assetId.toLowerCase() ||
+            !snapshot.page.features.some(
+              (row) =>
+                row.recordId.toLowerCase() === target.recordId.toLowerCase(),
+            ))
+        )
+          throw new CandidateReaderError('invalid');
+        let position = firstPosition();
+        for (let page = 0; page < 10; page++) {
+          const value = await readPage(
+            'records',
+            input(position, target.assetId),
+            signal,
+          );
+          if (signal.aborted || !owner.current) return;
+          if (
+            value.records.some(
+              (row) =>
+                row.recordId.toLowerCase() === target.recordId.toLowerCase(),
+            )
+          ) {
+            setAssetId(target.assetId);
+            setRecords(value);
+            setRecordNav(position);
+            setGeometry(null);
+            setGeometryNav(firstPosition());
+            setSelected(target.recordId);
+            setTab('records');
+            comparisonActiveRef.current = false;
+            setComparisonActive(false);
+            comparisonSnapshot.current = null;
+            return;
+          }
+          if (!value.nextCursor || !value.records.length) break;
+          position = nextPosition(
+            position,
+            value.nextCursor,
+            value.records.at(-1)?.recordId,
+          );
+        }
+        setNotice(copy.limitedSearch);
+        return;
+      }
+      const result = await readComparisonGeometry(
+        snapshot.page.assetId,
+        snapshot.position,
+        signal,
+      );
+      if (signal.aborted || !owner.current) return;
+      setAssetId(snapshot.page.assetId);
+      setGeometry(result.page);
+      setGeometryNav(result.position);
+      setSelected(
+        result.page.features.some(
+          (row) =>
+            row.recordId.toLowerCase() === snapshot.selected?.toLowerCase(),
+        )
+          ? snapshot.selected
+          : null,
+      );
+      setTab('map');
+      if (snapshot.camera)
+        setCameraRestore({
+          referenceKey: candidateSavedReferenceKey(fixed),
+          assetId: snapshot.page.assetId.toLowerCase(),
+          drawingKey: geometryDrawingKey(result.page),
+          camera: snapshot.camera,
+          epoch: ++cameraEpoch.current,
+        });
+      comparisonActiveRef.current = false;
+      setComparisonActive(false);
+      comparisonSnapshot.current = null;
+    }, 'comparison-exit');
+    if (comparisonActiveRef.current && contentAvailable.current)
+      comparison.current?.resume();
   }
   async function relationAuthority(
     references: IngestionCandidateSavedReferences,
@@ -695,7 +896,12 @@ function CandidateSession({
     });
   }
   function switchTab(next: Tab) {
-    if (recoveryGate.current || mutationPending.current) return;
+    if (
+      recoveryGate.current ||
+      mutationPending.current ||
+      comparisonActiveRef.current
+    )
+      return;
     if (next !== 'originals') rasterCancel.current?.();
     setTab(next);
     if (next === 'map' && assetId) void loadGeometry(assetId, geometryNav);
@@ -936,6 +1142,10 @@ function CandidateSession({
   }
   function saveCurrent() {
     if (recoveryGate.current) return;
+    if (comparisonActiveRef.current) {
+      setNotice(copy.comparison.save);
+      return;
+    }
     if (topicMode || !assets || !viewName.trim()) return;
     const nav =
       tab === 'originals'
@@ -1245,6 +1455,10 @@ function CandidateSession({
         if (manifestKey(confirmation) !== manifestKey(current))
           throw new CandidateReaderError('invalid');
       }
+      if (comparisonActiveRef.current && comparison.current) {
+        await comparison.current.recover(signal);
+        await savedAuthority(signal);
+      }
       if (signal.aborted) return;
       if ('assets' in value) {
         setAssets(value);
@@ -1279,6 +1493,7 @@ function CandidateSession({
     else void loadAssets();
     return () => {
       owner.current = false;
+      comparison.current?.cancel();
       pending.current?.abort();
     };
   }, []);
@@ -1421,7 +1636,7 @@ function CandidateSession({
         <div className={styles.actions}>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || comparisonActive}
             onClick={() =>
               recoveryViewId.current
                 ? void openSaved(recoveryViewId.current)
@@ -1573,13 +1788,13 @@ function CandidateSession({
                 label: item.ingestionId,
               }))}
               readOnly={readOnly || topicMode}
-              parentBusy={busy}
+              parentBusy={busy || comparisonActive}
               supplementLookup={openedView ? undefined : supplementLookup}
             />
           </details>
           <CandidateRelationPanel
             locale={locale}
-            busy={busy || recovering}
+            busy={busy || recovering || comparisonActive}
             page={relationPage}
             detail={relationDetail}
             canPrevious={relationNav.previous.length > 0}
@@ -1643,7 +1858,12 @@ function CandidateSession({
                         : undefined;
               if (next) {
                 event.preventDefault();
-                if (recoveryGate.current || mutationPending.current) return;
+                if (
+                  recoveryGate.current ||
+                  mutationPending.current ||
+                  comparisonActiveRef.current
+                )
+                  return;
                 switchTab(next);
                 event.currentTarget
                   .querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)
@@ -1661,7 +1881,7 @@ function CandidateSession({
                 tabIndex={tab === value ? 0 : -1}
                 data-tab={value}
                 key={value}
-                disabled={mutating}
+                disabled={mutating || comparisonActive}
                 onClick={() => switchTab(value)}
               >
                 {copy[value]}
@@ -1888,71 +2108,120 @@ function CandidateSession({
                     </ContextHelp>
                   </div>
                   <p className={styles.notice}>{copy.geometryPending}</p>
-                  {geometry.features.length ? (
-                    <DataFoundationMap
-                      publicReferences={publicReferences}
-                      publicReferenceState={publicReferenceState}
-                      key={
-                        cameraRestore?.drawingKey ===
-                        geometryDrawingKey(mapGeometry)
-                          ? cameraRestore?.epoch
-                          : 0
-                      }
+                  {comparisonActive && comparisonSnapshot.current ? (
+                    <CandidateMapComparison
+                      {...{ publicReferences, publicReferenceState }}
+                      ref={comparison}
                       locale={locale}
-                      ariaLabel={copy.map}
-                      displayCrs="EPSG:4326"
-                      features={mapFeatures}
-                      stacExtents={noStacExtents}
-                      labels={labels}
-                      onSelectRecord={selectRecord}
-                      selectedRecordId={selected}
-                      initialReadingCamera={
-                        cameraRestore?.drawingKey ===
-                        geometryDrawingKey(mapGeometry)
-                          ? cameraRestore?.camera
-                          : undefined
+                      seed={comparisonSnapshot.current}
+                      assetIds={
+                        openedView
+                          ? [comparisonSnapshot.current.page.assetId]
+                          : assets.assets
+                              .filter(
+                                (asset) =>
+                                  asset.featureCount !== null &&
+                                  asset.featureCount > 0,
+                              )
+                              .map((asset) => asset.assetId)
                       }
-                      onReadingCamera={(camera) => {
-                        const drawingKey = geometryDrawingKey(mapGeometry);
-                        if (drawingKey)
-                          liveCamera.current = { drawingKey, camera };
+                      fixedPage={openedView !== null}
+                      blocked={recovering || busy}
+                      readGeometry={readComparisonGeometry}
+                      originalUrl={originalUrl}
+                      onFailure={(kind) => {
+                        pending.current?.abort();
+                        clearContent();
+                        setFailure(kind);
                       }}
+                      onReturn={(target) => void returnFromComparison(target)}
                     />
                   ) : (
-                    <p>{copy.noGeometry}</p>
+                    <button
+                      type="button"
+                      disabled={busy || recovering}
+                      onClick={startComparison}
+                    >
+                      {copy.comparison.open}
+                    </button>
                   )}
-                  <ul className={styles.geometryList}>
-                    {geometry.features.map((feature) => (
-                      <li key={feature.recordId}>
-                        <button
-                          type="button"
-                          aria-pressed={
-                            feature.recordId.toLowerCase() ===
-                            selected?.toLowerCase()
+                  {comparisonActive ? null : (
+                    <div className={styles.singleMap}>
+                      {geometry.features.length ? (
+                        <DataFoundationMap
+                          readingHandle={singleMapReading}
+                          publicReferences={publicReferences}
+                          publicReferenceState={publicReferenceState}
+                          key={
+                            cameraRestore?.drawingKey ===
+                            geometryDrawingKey(mapGeometry)
+                              ? cameraRestore?.epoch
+                              : 0
                           }
-                          onClick={() => selectRecord(feature.recordId)}
-                        >
-                          {copy.selectRecord} {feature.index} ·{' '}
-                          {copy.geometryKinds[feature.geometry.type]}
-                        </button>
-                        <span>{feature.sourceId ?? copy.locationUnknown}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {pager(
-                    geometryNav,
-                    geometry.nextCursor,
-                    geometry.features.at(-1)?.recordId,
-                    copy.previousGeometry,
-                    copy.nextGeometry,
-                    (position) => loadGeometry(geometry.assetId, position),
+                          locale={locale}
+                          ariaLabel={copy.map}
+                          displayCrs="EPSG:4326"
+                          features={mapFeatures}
+                          stacExtents={noStacExtents}
+                          labels={labels}
+                          onSelectRecord={selectRecord}
+                          selectedRecordId={selected}
+                          initialReadingCamera={
+                            cameraRestore?.drawingKey ===
+                            geometryDrawingKey(mapGeometry)
+                              ? cameraRestore?.camera
+                              : undefined
+                          }
+                          onReadingCamera={(camera) => {
+                            if (
+                              comparisonActiveRef.current ||
+                              recoveryGate.current
+                            )
+                              return;
+                            const drawingKey = geometryDrawingKey(mapGeometry);
+                            if (drawingKey)
+                              liveCamera.current = { drawingKey, camera };
+                          }}
+                        />
+                      ) : (
+                        <p>{copy.noGeometry}</p>
+                      )}
+                      <ul className={styles.geometryList}>
+                        {geometry.features.map((feature) => (
+                          <li key={feature.recordId}>
+                            <button
+                              type="button"
+                              aria-pressed={
+                                feature.recordId.toLowerCase() ===
+                                selected?.toLowerCase()
+                              }
+                              onClick={() => selectRecord(feature.recordId)}
+                            >
+                              {copy.selectRecord} {feature.index} ·{' '}
+                              {copy.geometryKinds[feature.geometry.type]}
+                            </button>
+                            <span>
+                              {feature.sourceId ?? copy.locationUnknown}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {pager(
+                        geometryNav,
+                        geometry.nextCursor,
+                        geometry.features.at(-1)?.recordId,
+                        copy.previousGeometry,
+                        copy.nextGeometry,
+                        (position) => loadGeometry(geometry.assetId, position),
+                      )}
+                    </div>
                   )}
                 </>
               ) : (
                 <p>{copy.noGeometry}</p>
               )}
             </section>
-            {selectedRow ? (
+            {selectedRow && !comparisonActive ? (
               <aside className={styles.selection}>
                 <h3>
                   {copy.selectedRecord} {selectedRow.index}
@@ -2051,7 +2320,9 @@ function CandidateSession({
                 <p className={styles.notice}>{copy.topicReadOnly}</p>
               ) : (
                 <>
-                  {' '}
+                  {comparisonActive ? (
+                    <p className={styles.notice}>{copy.comparison.save}</p>
+                  ) : null}{' '}
                   <form
                     className={styles.saveForm}
                     onSubmit={(event) => {
@@ -2086,6 +2357,7 @@ function CandidateSession({
                       type="submit"
                       disabled={
                         busy ||
+                        comparisonActive ||
                         !viewName.trim() ||
                         (tab !== 'originals' &&
                           (!assetId ||

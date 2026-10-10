@@ -15,8 +15,8 @@ checkPaths:
   - apps/api/src/platform/**
   - apps/api/src/v2-*
   - apps/api/src/data-foundation/**
-lastReviewedAt: 2026-10-09
-lastReviewedCommit: a32ad00c148bc1de08b18cfa168e0ee9952784e2
+lastReviewedAt: 2026-10-10
+lastReviewedCommit: 879a01ab770f27e169b2d51fa718829b138d586a
 ---
 
 # WISER Web / 产品界面
@@ -124,3 +124,5 @@ pnpm --filter @wiser/web test:e2e
 候选月报保留全部原值，仅凭明确的潮白河水系原格接入K5-001就绪九问。跨月覆盖与专业审核仍未核定。已索引原行统一通过本次有界语义读取取得的游标重读，保持当前核权及固定记录身份。 / Candidate monthly originals retain every row and enter K5-001 readiness questions only through explicit Chaobai water-system cell evidence. Cross-month coverage and professional review remain unconfirmed. Every indexed original row rereads its exact cursor page acquired by the bounded current semantic read, preserving current authority and exact native identity.
 
 候选地图与原生影像阅读可在认证入口加载逐文件核验的独立公共地理参照；失败关闭整组，不回落本机业务包。平面／鸟瞰切换保留中心、缩放和选择；旋转或倾斜时隐藏在线平面底图，合法既有相机字段沿原固定引用保存。公共背景不进入业务计数、点击、取景或保存记录引用，背景版本未纳入固定视图。配置与限制见[前端开发](../docs/src/content/docs/zh-CN/development/frontend.md#获权候选地图的公共背景与视角)。 / Authorized candidate maps and native raster reading can receive independently verified public backgrounds. Planar/bird’s-eye switching preserves reading state and suspends the planar online enhancement while tilted. Public references never enter business counts, hits, framing or saved record pins, and their manifest version is not saved. See [Frontend development](../docs/src/content/docs/en/development/frontend.md#authorized-candidate-map-backgrounds-and-perspective).
+
+候选地图可在当前获权范围内临时双窗比较，独立分页和选择，同步或独立操作镜头；退出重新读取原单窗，保存前须退出比较。原生影像窗口支持TCI编码色与SCL原码的地理双窗／卷帘，保留原值、掩膜、选择及计算分母。真实权限、像元交付、地理对齐与资源释放分别验收。 / Candidate maps provide temporary dual-pane reading within the existing authorized scope, with independent pages/selections and synchronized or independent cameras. Exit rereads the original single view before saving. Native raster windows compare original TCI encoding colors and SCL codes geographically without changing values, masks, selection or denominators; native authority, byte delivery, alignment and resource release are verified separately.

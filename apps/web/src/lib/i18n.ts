@@ -2954,6 +2954,22 @@ const zhCN = {
       openAction: '查看接入任务',
     },
     candidateReader: {
+      comparison: {
+        title: '候选地图双窗查阅',
+        open: '打开地图双窗',
+        left: '左窗',
+        right: '右窗',
+        asset: '来源文件',
+        synchronized: '同步镜头',
+        independent: '独立镜头',
+        exit: '返回原地图',
+        record: '以此窗查看记录',
+        scope:
+          '两窗分别保留来源、记录选择和分页位置。镜头联动仅改变视角，不确认对象对应或计量可比性。',
+        fixedScope:
+          '此固定视图或专题的双窗仅查阅已成功读取的固定页；不扩展来源或固定依据。',
+        save: '请先返回单窗，再保存当前查阅。',
+      },
       relations: {
         title: '关系依据',
         read: '读取关系依据',
@@ -3106,6 +3122,20 @@ const zhCN = {
       unknown: '未知',
       downloadOriginal: '下载原件',
       raster: {
+        display: {
+          title: '原生窗口地理对照',
+          single: '查看单窗',
+          sideBySide: '查看双窗',
+          swipe: '查看卷帘',
+          split: '卷帘分界位置',
+          tci: 'TCI编码色',
+          scl: 'SCL原类别码',
+          legend: 'SCL类别码图例',
+          scope:
+            '两层使用当前已读窗口的同一原生格网。TCI按三个原编码通道显示；SCL按原类别码分色，颜色不表示专业质量批准。',
+          swipeScope:
+            '卷帘使用同步镜头。切换显示与移动分界仅改变画面，原像元值、筛选和统计分母保持本次读取结果。',
+        },
         title: '候选栅格原生像元',
         open: '查看原生栅格',
         close: '收起原生栅格',
@@ -7243,6 +7273,22 @@ const en: typeof zhCN = {
       openAction: 'View ingestion task',
     },
     candidateReader: {
+      comparison: {
+        title: 'Candidate map comparison',
+        open: 'Open map comparison',
+        left: 'Left window',
+        right: 'Right window',
+        asset: 'Source file',
+        synchronized: 'Synchronized cameras',
+        independent: 'Independent cameras',
+        exit: 'Return to original map',
+        record: "View this window's record",
+        scope:
+          'Each window retains its own source, selection and page position. Camera synchronization changes only the view, without establishing object correspondence or measurement comparability.',
+        fixedScope:
+          'This fixed view or topic compares only its successfully read fixed page; sources and pins are not expanded.',
+        save: 'Return to a single window before saving.',
+      },
       relations: {
         title: 'Relation evidence',
         read: 'Read relation evidence',
@@ -7414,6 +7460,20 @@ const en: typeof zhCN = {
       unknown: 'Unknown',
       downloadOriginal: 'Download original',
       raster: {
+        display: {
+          title: 'Native-window geographic comparison',
+          single: 'Show single map',
+          sideBySide: 'Show two maps',
+          swipe: 'Show swipe comparison',
+          split: 'Swipe divider position',
+          tci: 'TCI encoded colors',
+          scl: 'Original SCL class codes',
+          legend: 'SCL class-code legend',
+          scope:
+            'Both layers use the same native grid of the currently read window. TCI shows its three encoded channels; SCL colors represent original class codes, without professional quality approval.',
+          swipeScope:
+            'Swipe comparison uses synchronized cameras. Display changes and divider movement only change the view, retaining the read pixel values, filtering and statistical denominator.',
+        },
         title: 'Native candidate raster pixels',
         open: 'Inspect native raster',
         close: 'Close native raster',

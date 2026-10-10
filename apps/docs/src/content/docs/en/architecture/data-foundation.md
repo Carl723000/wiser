@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-10
-lastReviewedCommit: 6fb83a8e286be73d721fa3af5931ba0e20982e91
+lastReviewedCommit: 879a01ab770f27e169b2d51fa718829b138d586a
 ---
 
 ## What runs today
@@ -722,3 +722,5 @@ The existing candidate geometry read preserves nested GeometryCollection structu
 Ordinary intake details additionally resolve one supplemental intake through the existing `data.ingestion.get` query and its server-verified `candidateReference`. Supplemental choices stay separate from the reader manifest and followup source. Existing candidate reads provide the actual evidence; all-source authorization and historical responsibility checks remain unchanged at command time. No public query, identity, permission, saved format or migration is added. A denied subsequent read clears supplemental labels and proof without reverting to the original source.
 
 Candidate geographic backgrounds are separate public references loaded from trusted server configuration after the existing candidate route authority check. Every declared file, license, hash and budget must pass before the complete path-free group reaches the browser. A failed group closes only its reference layer; it never falls back to a local business pack or grants candidate access. Reference features do not enter business counts, record hits, camera framing or saved record pins. Existing fixed candidate references and camera fields remain unchanged; background manifest versions are not persisted in candidate saved views.
+
+Candidate map comparison remains a Web-local reading adapter over the existing geometry and record capabilities. It keeps one fixed candidate authority and two independent finite reading controllers; it does not create published data, persistent comparison specifications or a new permission path. Saved views/topics keep their fixed geometry scope, and exact-record backflow retains the existing authorized bounded lookup. Native raster comparison derives both display layers from the same verified window, reuses identical per-cell geography and never changes the source values, masks or analysis denominator.
