@@ -20,7 +20,7 @@ checkPaths:
   - apps/web/src/app/*/data-foundation/**
   - infrastructure/data-foundation/**
 lastReviewedAt: 2026-10-10
-lastReviewedCommit: 33bfb6abc1c51f1cda6701060e2d1ae8e172ce12
+lastReviewedCommit: 6fb83a8e286be73d721fa3af5931ba0e20982e91
 ---
 
 ## What runs today

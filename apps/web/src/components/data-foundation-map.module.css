@@ -110,6 +110,7 @@
 }
 
 .map {
+  align-self: start;
   position: relative;
   min-height: clamp(330px, 55vw, 620px);
   border: 1px solid var(--border-strong);

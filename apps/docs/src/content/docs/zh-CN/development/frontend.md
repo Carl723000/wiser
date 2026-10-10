@@ -284,7 +284,7 @@ BusinessQuery v2允许已审与待审关系共同展示，但不改变断言状�
 
 格式保留既有行政／河段派生件，另支持分别冻结的参考河段、原生河线及空心的汇口／设施参考锚点。预期要素数取自每个固定文件声明，不再限制为五要素。地图区分固定文件数、固定文件要素数和当前显示参考要素；筛选与视觉去重不改变业务记录计数。折叠证据保留原件哈希、逐文件许可和清单版本。任一文件失败时关闭整组参照，明确提示文件缺项或校验未通过，资料记录仍可查阅。显式配置清单后，失败不回退旧两文件配置。
 
-未配置清单时，`WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON`与`WISER_SPATIAL_REACH_REFERENCE_GEOJSON`继续兼容，原完整SHA-256守卫及1 MiB／256 KiB限制保留。所有文件读取仍受非生产、关闭Auth及本机Host门禁约束。该层只作独立公共地理参照，不成为候选业务定位、月报边界或登录后Data地图回退。
+未配置清单时，`WISER_SPATIAL_REGIONAL_REFERENCE_GEOJSON`与`WISER_SPATIAL_REACH_REFERENCE_GEOJSON`继续兼容，原完整SHA-256守卫及1 MiB／256 KiB限制保留。公共参照文件由下述独立、有界的服务端加载器读取；业务WorkspacePack仍受非生产、关闭Auth及本机Host门禁约束。该层只作独立公共地理参照，不成为候选业务定位、月报边界或登录后Data地图回退。
 
 服务器校验固定来源与几何来源版本、哈希格式和使用条件，剥离原件路径及未知字段；不可显示的来源和关联记录清除。派生影像 PNG 只通过本机受限 `spatial-workspace-media` 路由交付，生产环境不可用。正式 Auth、Data API、RLS、入库与专业审核继续按既有流程另验。
 
